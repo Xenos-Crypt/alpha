@@ -1,0 +1,25 @@
+scene3d: GL context ready — Intel / Intel(R) HD Graphics 530
+scene3d: PASS init_embedded (640x670 FBO)
+scene3d: PASS loaded mesh assets/cube.obj (id 0): 36 vertices
+scene3d: PASS loaded mesh assets/roof.obj (id 1): 18 vertices
+scene3d: PASS loaded mesh assets/sphere.obj (id 2): 1056 vertices
+scene3d: PASS loaded mesh assets/cylinder.obj (id 3): 192 vertices
+scene3d: PASS loaded mesh assets/plane.obj (id 4): 6 vertices
+scene3d: PASS loaded mesh assets/foliage.obj (id 5): 1080 vertices
+scene3d: PASS loaded mesh assets/stair-rail.obj (id 6): 96 vertices
+scene3d: PASS loaded mesh assets/woman.obj (id 7): 73047 vertices
+scene3d: PASS loaded mesh assets/man.obj (id 8): 33858 vertices
+scene3d: PASS loaded texture assets/asphalt.bmp (id 0): 1024x1024
+scene3d: PASS loaded texture assets/paving.bmp (id 1): 1024x1024
+scene3d: PASS loaded texture assets/brick.bmp (id 2): 1024x1024
+scene3d: PASS loaded texture assets/plaster.bmp (id 3): 1024x1024
+scene3d: PASS loaded texture assets/wood.bmp (id 4): 1024x1024
+scene3d: PASS loaded texture assets/grass.bmp (id 5): 1024x1024
+scene3d: PASS loaded texture assets/roof.bmp (id 6): 1024x1024
+scene3d: PASS loaded texture assets/woman.bmp (id 7): 512x512
+scene3d: PASS loaded texture assets/man.bmp (id 8): 1024x1024
+scene3d: PASS loaded texture assets/cafe.bmp (id 9): 1024x128
+scene3d: PASS loaded texture assets/books.bmp (id 10): 1024x128
+scene3d: PASS loaded texture assets/market.bmp (id 11): 1024x128
+scene3d: PASS loaded texture assets/leaf.bmp (id 12): 128x128
+Another World: native design preview ready

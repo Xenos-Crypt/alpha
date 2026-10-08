@@ -1,0 +1,10 @@
+static void s3d_update_embedded_input(float dt){
+    if(!g_inputEnabled||!g_embedHost||GetForegroundWindow()!=g_embedHost){g_lookActive=0;return;}
+    POINT cur;GetCursorPos(&cur);ScreenToClient(g_embedHost,&cur);
+    if(!PtInRect(&g_inputRect,cur)){g_lookActive=0;return;}
+    if(GetAsyncKeyState(VK_RBUTTON)&0x8000){if(!g_lookActive){g_lookActive=1;g_lastMouse=cur;}else{g_camYaw+=(cur.x-g_lastMouse.x)*.003f;g_camPitch-=(cur.y-g_lastMouse.y)*.003f;g_camPitch=fmaxf(-1.45f,fminf(1.45f,g_camPitch));g_lastMouse=cur;}}else g_lookActive=0;
+    float forward=((GetAsyncKeyState('W')&0x8000)?1.f:0.f)-((GetAsyncKeyState('S')&0x8000)?1.f:0.f);
+    float side=((GetAsyncKeyState('D')&0x8000)?1.f:0.f)-((GetAsyncKeyState('A')&0x8000)?1.f:0.f),len=sqrtf(forward*forward+side*side);
+    if(len>0){float speed=(GetAsyncKeyState(VK_SHIFT)&0x8000?4.8f:2.6f)*fminf(dt,.08f)/len;
+        s3d_move_camera((sinf(g_camYaw)*forward+cosf(g_camYaw)*side)*speed,(-cosf(g_camYaw)*forward+sinf(g_camYaw)*side)*speed);}
+}

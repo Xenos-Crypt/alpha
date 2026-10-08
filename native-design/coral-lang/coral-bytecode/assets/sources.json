@@ -1,0 +1,44 @@
+[
+  {
+    "name": "asphalt",
+    "file": "asphalt.bmp",
+    "source": "https://polyhaven.com/a/asphalt_02",
+    "license": "CC0"
+  },
+  {
+    "name": "brick",
+    "file": "brick.bmp",
+    "source": "https://polyhaven.com/a/brick_wall_001",
+    "license": "CC0"
+  },
+  {
+    "name": "paving",
+    "file": "paving.bmp",
+    "source": "https://polyhaven.com/a/pavement_01",
+    "license": "CC0"
+  },
+  {
+    "name": "wood",
+    "file": "wood.bmp",
+    "source": "https://polyhaven.com/a/wood_planks",
+    "license": "CC0"
+  },
+  {
+    "name": "plaster",
+    "file": "plaster.bmp",
+    "source": "https://polyhaven.com/a/plastered_wall",
+    "license": "CC0"
+  },
+  {
+    "name": "roof",
+    "file": "roof.bmp",
+    "source": "https://polyhaven.com/a/ceramic_roof_01",
+    "license": "CC0"
+  },
+  {
+    "name": "grass",
+    "file": "grass.bmp",
+    "source": "https://polyhaven.com/a/aerial_grass_rock",
+    "license": "CC0"
+  }
+]

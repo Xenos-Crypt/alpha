@@ -1,0 +1,37 @@
+/* OBJ positions, optional UVs and authored smooth normals. Supports negative indices.
+ * Buffers grow with the file; malformed faces fail instead of indexing arbitrary memory. */
+static int obj_index_(int value,int count){return value>0?value-1:value<0?count+value:-1;}
+static int load_obj_pos_normal(const char *path,float **outVerts,int *outVertCount){
+    FILE *f=fopen(path,"rb");if(!f){fprintf(stderr,"scene3d: cannot open %s\n",path);return 0;}
+    int pc=0,tc=0,nc=0,cap=4096,vcount=0,vcap=4096,uvCount=0;
+    S3DVec3 *pos=malloc(sizeof(*pos)*cap),*tex=malloc(sizeof(*tex)*cap),*norm=malloc(sizeof(*norm)*cap);
+    float *vertices=malloc(sizeof(float)*8*vcap);char line[4096];int valid=pos&&tex&&norm&&vertices;
+    while(valid&&fgets(line,sizeof(line),f)){
+        if(pc>=cap||tc>=cap||nc>=cap){if(cap>=1000000){valid=0;break;}cap*=2;
+            void *p=realloc(pos,sizeof(*pos)*cap);if(!p){valid=0;break;}pos=p;
+            p=realloc(tex,sizeof(*tex)*cap);if(!p){valid=0;break;}tex=p;
+            p=realloc(norm,sizeof(*norm)*cap);if(!p){valid=0;break;}norm=p;}
+        if(line[0]=='v'&&line[1]==' '){if(sscanf(line+2,"%f %f %f",&pos[pc].x,&pos[pc].y,&pos[pc].z)==3)pc++;else valid=0;}
+        else if(line[0]=='v'&&line[1]=='t'){if(sscanf(line+2,"%f %f",&tex[tc].x,&tex[tc].y)==2)tc++;else valid=0;}
+        else if(line[0]=='v'&&line[1]=='n'){if(sscanf(line+2,"%f %f %f",&norm[nc].x,&norm[nc].y,&norm[nc].z)==3)nc++;else valid=0;}
+        else if(line[0]=='f'&&line[1]==' '){int refs[128][3],count=0;char *p=line+2;
+            while(*p&&count<128){while(*p==' '||*p=='\t')p++;if(!*p||*p=='\n'||*p=='\r'||*p=='#')break;char *end;int vi=(int)strtol(p,&end,10),ti=0,ni=0;if(end==p){valid=0;break;}p=end;
+                if(*p=='/'){p++;if(*p!='/')ti=(int)strtol(p,&p,10);if(*p=='/'){p++;ni=(int)strtol(p,&p,10);}}
+                refs[count][0]=obj_index_(vi,pc);refs[count][1]=obj_index_(ti,tc);refs[count][2]=obj_index_(ni,nc);
+                if(refs[count][0]<0||refs[count][0]>=pc||(ti&&(refs[count][1]<0||refs[count][1]>=tc))||(ni&&(refs[count][2]<0||refs[count][2]>=nc))){valid=0;break;}count++;
+                while(*p&&*p!=' '&&*p!='\t'&&*p!='\n'&&*p!='\r')p++;
+            }
+            if(!valid||count<3){valid=0;break;}
+            for(int k=1;k+1<count;k++){int corners[3]={0,k,k+1};S3DVec3 a=pos[refs[0][0]],b=pos[refs[k][0]],c=pos[refs[k+1][0]];
+                float ux=b.x-a.x,uy=b.y-a.y,uz=b.z-a.z,vx=c.x-a.x,vy=c.y-a.y,vz=c.z-a.z;
+                S3DVec3 fallback={uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx};float len=sqrtf(fallback.x*fallback.x+fallback.y*fallback.y+fallback.z*fallback.z);
+                if(len>0.00001f){fallback.x/=len;fallback.y/=len;fallback.z/=len;}else continue;
+                if(vcount+3>vcap){vcap*=2;void *p2=realloc(vertices,sizeof(float)*8*vcap);if(!p2){valid=0;break;}vertices=p2;}
+                for(int j=0;j<3;j++){int *ref=refs[corners[j]];S3DVec3 v=pos[ref[0]],n=ref[2]>=0?norm[ref[2]]:fallback;float *dst=vertices+8*vcount++;
+                    dst[0]=v.x;dst[1]=v.y;dst[2]=v.z;dst[3]=n.x;dst[4]=n.y;dst[5]=n.z;dst[6]=ref[1]>=0?tex[ref[1]].x:0;dst[7]=ref[1]>=0?tex[ref[1]].y:0;if(ref[1]>=0)uvCount++;}
+            }
+        }
+    }
+    fclose(f);free(pos);free(tex);free(norm);if(!valid||!vcount){free(vertices);fprintf(stderr,"scene3d: invalid/empty OBJ %s\n",path);return 0;}
+    g_loadingUV=uvCount==vcount;*outVerts=vertices;*outVertCount=vcount;return 1;
+}

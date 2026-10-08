@@ -1,0 +1,57 @@
+[
+  {
+    "path": "creal-lang/c/scene3d_gl.c",
+    "originalSHA256": "6676b596633cc72dcbf798fac97467127e2792039be98a96211b5954face5139",
+    "stagedSHA256": "b9850a94adf6209bb16a7e2e2339064245ce7b39a0334fff73b0d57d60833887"
+  },
+  {
+    "path": "creal-lang/c/scene3d.h",
+    "originalSHA256": "fdaa56980957ac6cae064da7f31f7dc46a07a27fd4d745fd84c7538de168c221",
+    "stagedSHA256": "5a12bcb0b4e909d8c0a1631520ea65381c06b015c592e1b1b98d730ad6c7a4be"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/compiler.c",
+    "originalSHA256": "0f67382f370df1c5d7c39432084b9964b7d59ea10c17e53c8072c2900b9d60ff",
+    "stagedSHA256": "909c94cbae667c4e313c5b6c3778f2f4335d17c5bedcd742b52f168301fdff7b"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/vm_builtins_win.c",
+    "originalSHA256": "3780a27de9525c34da8b1e9a38779a86a1343a7dc0f85cd6b57ea9f280819d0b",
+    "stagedSHA256": "86a157ba7b476b016e1a7e909fa501079a4b60a4763d80c84e1bcebc1257c21d"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/ashford.co",
+    "originalSHA256": "c7f639f856f4826daf4488adf2354a31c88922d57ed2c5c25e7a614040bb5aeb",
+    "stagedSHA256": "2bb7fbd642fa62ac5dd3a6b12dbde41a0dd9db3e895ed2987f4aa362c2918f99"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/coral-bytecode.exe",
+    "originalSHA256": "483f6254b99573331534efcd4d8aef4a9a0024568023bd673383913d85ad2e61",
+    "stagedSHA256": "bb80ad80f06d27d940e3e614e88ce7282cb8f43ecc57b6f3207c7da4093adc45"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/SCENE3D.md",
+    "originalSHA256": "d18a1cb5a716efe2900673408964d541a61c74683025f97905415447e1cc5489",
+    "stagedSHA256": "7a17860faaa45da8dd226531ead5ce5a8aa457a2f0bdd85930c3a2d0acaf82f2"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/assets/cube.obj",
+    "originalSHA256": "4ac8f8915f8731388bb739217769fc263f5daf0d18360c59f448269c39d0948f",
+    "stagedSHA256": "4ac8f8915f8731388bb739217769fc263f5daf0d18360c59f448269c39d0948f"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/assets/roof.obj",
+    "originalSHA256": "ab87e6b3e8f58dd3f4401f9d6ec7bbe977dc9a226596c4131385bc4e73c55bbe",
+    "stagedSHA256": "ab87e6b3e8f58dd3f4401f9d6ec7bbe977dc9a226596c4131385bc4e73c55bbe"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/assets/foliage.obj",
+    "originalSHA256": null,
+    "stagedSHA256": "e3940f962d035746baf313725c24d97715c1084f5a70e1c3948a99d4f178c128"
+  },
+  {
+    "path": "coral-lang/coral-bytecode/assets/stair-rail.obj",
+    "originalSHA256": null,
+    "stagedSHA256": "ce5efec091029a4e88a28b5515db69e6b9196e72db24880a94d124442798bb7e"
+  }
+]

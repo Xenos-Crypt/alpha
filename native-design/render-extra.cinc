@@ -1,0 +1,36 @@
+/* Static town shadow map. Regenerated only when scene geometry/light changes. */
+static GLuint g_shadowFbo,g_shadowTex;
+static Mat4_ g_lightVP;
+static void s3d_prepare_shadow(void){
+    p_glGenFramebuffers(1,&g_shadowFbo);p_glBindFramebuffer(S3D_FRAMEBUFFER,g_shadowFbo);glGenTextures(1,&g_shadowTex);glBindTexture(GL_TEXTURE_2D,g_shadowTex);
+    glTexImage2D(GL_TEXTURE_2D,0,S3D_DEPTH_COMPONENT24,1536,1536,0,GL_DEPTH_COMPONENT,GL_FLOAT,NULL);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,0x812D);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,0x812D);float white[4]={1,1,1,1};glTexParameterfv(GL_TEXTURE_2D,GL_TEXTURE_BORDER_COLOR,white);
+    p_glFramebufferTexture2D(S3D_FRAMEBUFFER,S3D_DEPTH_ATTACHMENT,GL_TEXTURE_2D,g_shadowTex,0);glDrawBuffer(GL_NONE);glReadBuffer(GL_NONE);
+    if(p_glCheckFramebufferStatus(S3D_FRAMEBUFFER)!=S3D_FRAMEBUFFER_COMPLETE){fprintf(stderr,"scene3d: shadow FBO failed\n");exit(1);}p_glBindFramebuffer(S3D_FRAMEBUFFER,0);
+}
+static void s3d_draw_shadow(void){
+    if(g_shadowDirty){float len=sqrtf(g_lightX*g_lightX+g_lightY*g_lightY+g_lightZ*g_lightZ);if(len<.001f)len=1;
+        float x=-g_lightX/len*70,y=-g_lightY/len*70,z=-g_lightZ/len*70;
+        Mat4_ view=mat4_fps_view_(x,y,z,atan2f(-x,z),asinf(-y/70));Mat4_ ortho=mat4_identity_();ortho.m[0]=ortho.m[5]=1.f/65;ortho.m[10]=-2.f/160;ortho.m[14]=-1.0125f;g_lightVP=mat4_mul_(ortho,view);
+        p_glBindFramebuffer(S3D_FRAMEBUFFER,g_shadowFbo);glViewport(0,0,1536,1536);glClear(GL_DEPTH_BUFFER_BIT);p_glUseProgram(g_prog);p_glUniform1i(g_shadowPassLoc,1);p_glUniformMatrix4fv(g_vpLoc,1,GL_FALSE,g_lightVP.m);p_glUniformMatrix4fv(g_lightVpLoc,1,GL_FALSE,g_lightVP.m);
+        glEnable(GL_POLYGON_OFFSET_FILL);glPolygonOffset(1.2f,2.f);
+        for(int i=0;i<g_objectCount;i++){SceneObj *o=&g_objects[i];if(!o->used)continue;Mesh *m=&g_meshes[o->meshId];Mat4_ model=mat4_mul_(mat4_translate_(o->x,o->y,o->z),mat4_mul_(mat4_rotate_y_(o->yaw),mat4_scale_(o->sx,o->sy,o->sz)));p_glUniformMatrix4fv(g_modelLoc,1,GL_FALSE,model.m);p_glBindVertexArray(m->vao);glDrawArrays(GL_TRIANGLES,0,m->vertCount);}glDisable(GL_POLYGON_OFFSET_FILL);g_shadowDirty=0;
+    }
+    p_glUniformMatrix4fv(g_lightVpLoc,1,GL_FALSE,g_lightVP.m);p_glUniform1i(g_hasShadowLoc,1);p_glUniform1i(g_shadowMapLoc,1);p_activeTexture(0x84C1);glBindTexture(GL_TEXTURE_2D,g_shadowTex);p_activeTexture(0x84C0);
+}
+static int s3d_blocked(float x,float z){
+    for(int i=0;i<g_objectCount;i++){SceneObj *o=&g_objects[i];if(!o->used)continue;Mesh *m=&g_meshes[o->meshId];float low=o->y+m->minY*o->sy,high=o->y+m->maxY*o->sy;if(high<.3f||low>g_camY-.12f)continue;
+        float dx=x-o->x,dz=z-o->z,c=cosf(o->yaw),s=sinf(o->yaw),lx=c*dx-s*dz,lz=s*dx+c*dz;
+        if(lx>m->minX*o->sx-.22f&&lx<m->maxX*o->sx+.22f&&lz>m->minZ*o->sz-.22f&&lz<m->maxZ*o->sz+.22f)return 1;
+    }return 0;
+}
+static void s3d_move_camera(float dx,float dz){if(!s3d_blocked(g_camX+dx,g_camZ))g_camX+=dx;if(!s3d_blocked(g_camX,g_camZ+dz))g_camZ+=dz;}
+static void s3d_resize_embedded(int width,int height){
+    if(width<1||height<1||width==g_embedW&&height==g_embedH)return;
+    if(width>4096)width=4096;if(height>2160)height=2160;
+    wglMakeCurrent(g_hdc,g_glrc);glBindTexture(GL_TEXTURE_2D,g_embedColorTex);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,NULL);p_glBindRenderbuffer(S3D_RENDERBUFFER,g_embedDepthRb);p_glRenderbufferStorage(S3D_RENDERBUFFER,S3D_DEPTH_COMPONENT24,width,height);
+    unsigned char *pixels=realloc(g_embedPixels,(size_t)width*height*4);if(!pixels){fprintf(stderr,"scene3d: resize allocation failed\n");exit(1);}g_embedPixels=pixels;unsigned char *row=realloc(g_embedRow,(size_t)width*4);if(!row){fprintf(stderr,"scene3d: resize row allocation failed\n");exit(1);}g_embedRow=row;g_embedW=width;g_embedH=height;
+}
+static void s3d_set_embedded_host(void *window,int x,int y,int width,int height){g_embedHost=(HWND)window;g_inputRect=(RECT){x,y,x+width,y+height};}
+static void s3d_set_input_enabled(int enabled){g_inputEnabled=enabled;g_lookActive=0;}

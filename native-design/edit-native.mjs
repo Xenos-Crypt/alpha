@@ -1,0 +1,70 @@
+import fs from 'node:fs/promises';
+const root='native-design/creal-lang/c/';let src=(await fs.readFile(root+'scene3d_gl.c','utf8')).replaceAll('\r\n','\n');
+const replace=(a,b)=>{if(!src.includes(a))throw Error('Missing edit anchor '+a.slice(0,70));src=src.replace(a,b);};
+replace('#define MAX_OBJECTS 512','#define MAX_OBJECTS 4096');
+replace('int vertCount; } Mesh;','int vertCount, hasUV; float minX,maxX,minY,maxY,minZ,maxZ; } Mesh;');
+replace('static GLint g_modelLoc, g_vpLoc, g_colorLoc, g_lightLoc, g_texLoc, g_useTexLoc;',`static GLint g_modelLoc, g_vpLoc, g_colorLoc, g_lightLoc, g_texLoc, g_useTexLoc;
+static GLint g_eyeLoc, g_uvLoc, g_lightVpLoc, g_shadowMapLoc, g_shadowPassLoc, g_hasShadowLoc;
+typedef void (WINAPI *PFNACTIVETEX)(GLenum);
+typedef void (WINAPI *PFNGENMIP)(GLenum);
+static PFNACTIVETEX p_activeTexture;
+static PFNGENMIP p_generateMipmap;
+static int g_loadingUV=0, g_shadowDirty=1;
+static HWND g_embedHost=NULL;
+static RECT g_inputRect;
+static int g_inputEnabled=1;
+static void s3d_prepare_shadow(void);
+static void s3d_draw_shadow(void);
+static void s3d_move_camera(float x,float z);`);
+const loader=await fs.readFile('native-design/obj-loader.cinc','utf8');let start=src.indexOf('static int load_obj_pos_normal('),end=src.indexOf('\nstatic unsigned char *load_bmp_rgba',start);src=src.slice(0,start)+loader+src.slice(end);
+const shader=await fs.readFile('native-design/shaders.cinc','utf8');start=src.indexOf('    const char *vsrc =');end=src.indexOf('    GLuint vs =',start);src=src.slice(0,start)+shader+src.slice(end);
+replace('    glEnable(GL_DEPTH_TEST);',`    g_eyeLoc=p_glGetUniformLocation(g_prog,"uEye");g_uvLoc=p_glGetUniformLocation(g_prog,"uHasUV");
+    g_lightVpLoc=p_glGetUniformLocation(g_prog,"uLightVP");g_shadowMapLoc=p_glGetUniformLocation(g_prog,"uShadowMap");
+    g_shadowPassLoc=p_glGetUniformLocation(g_prog,"uShadowPass");g_hasShadowLoc=p_glGetUniformLocation(g_prog,"uHasShadow");
+    p_activeTexture=(PFNACTIVETEX)wglGetProcAddress("glActiveTexture");p_generateMipmap=(PFNGENMIP)wglGetProcAddress("glGenerateMipmap");
+    glEnable(GL_DEPTH_TEST);`);
+replace('    printf("scene3d: PASS init_embedded', '    s3d_prepare_shadow();\n    printf("scene3d: PASS init_embedded');
+start=src.indexOf('static void s3d_update_embedded_input(');end=src.indexOf('\nstatic void s3d_tick_embedded(',start);src=src.slice(0,start)+await fs.readFile('native-design/input.cinc','utf8')+src.slice(end);
+replace('    p_glBindFramebuffer(S3D_FRAMEBUFFER, g_embedFbo);\n    glViewport', '    s3d_draw_shadow();\n    p_glBindFramebuffer(S3D_FRAMEBUFFER, g_embedFbo);\n    glViewport');
+src=src.replaceAll('glClearColor(0.05f, 0.07f, 0.10f, 1.0f);','glClearColor(0.57f,0.69f,0.78f,1.0f);').replaceAll('glClearColor(0.05f,0.07f,0.10f,1);','glClearColor(0.57f,0.69f,0.78f,1);');
+src=src.replaceAll('mat4_perspective_(1.1f,','mat4_perspective_(1.22f,');
+src=src.replaceAll('p_glUniform1i(g_texLoc, 0);',`p_glUniform1i(g_texLoc, 0);p_glUniform3f(g_eyeLoc,g_camX,g_camY,g_camZ);p_glUniform1i(g_shadowPassLoc,0);`);
+src=src.replaceAll('p_glUniform3f(g_colorLoc, o->r, o->g, o->b);','p_glUniform3f(g_colorLoc, o->r, o->g, o->b);p_glUniform1i(g_uvLoc,m->hasUV);');
+replace('    unsigned char *rowtmp = malloc((size_t)g_embedW * 4);','    unsigned char *rowtmp = g_embedRow;');replace('    free(rowtmp);','');
+replace('static unsigned char *g_embedPixels = NULL;', 'static unsigned char *g_embedRow=NULL;\nstatic unsigned char *g_embedPixels = NULL;');
+replace('    g_embedPixels = malloc((size_t)width * height * 4);','    g_embedPixels = malloc((size_t)width * height * 4);g_embedRow=malloc((size_t)width*4);\n    if(!g_embedPixels||!g_embedRow){fprintf(stderr,"scene3d: out of memory\\n");exit(1);}');
+replace('sizeof(float)*6*vertCount','sizeof(float)*8*vertCount');replace('6*sizeof(float), (void*)0','8*sizeof(float), (void*)0');replace('6*sizeof(float), (void*)(3*sizeof(float))','8*sizeof(float), (void*)(3*sizeof(float))');
+replace('    m->vertCount = vertCount;',`    p_glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,8*sizeof(float),(void*)(6*sizeof(float)));p_glEnableVertexAttribArray(2);
+    m->hasUV=g_loadingUV;m->minX=m->minY=m->minZ=1e9f;m->maxX=m->maxY=m->maxZ=-1e9f;
+    for(int i=0;i<vertCount;i++){float *v=verts+i*8;m->minX=fminf(m->minX,v[0]);m->maxX=fmaxf(m->maxX,v[0]);m->minY=fminf(m->minY,v[1]);m->maxY=fmaxf(m->maxY,v[1]);m->minZ=fminf(m->minZ,v[2]);m->maxZ=fmaxf(m->maxZ,v[2]);}
+    m->vertCount = vertCount;`);
+replace('    free(pixels);', '    p_generateMipmap(GL_TEXTURE_2D);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);\n    free(pixels);');
+replace('    return g_objectCount++;','    g_shadowDirty=1;return g_objectCount++;');replace('o->yaw=yaw;','o->yaw=yaw;g_shadowDirty=1;');
+replace('g_lightZ=z; }','g_lightZ=z;g_shadowDirty=1; }');
+const extra=await fs.readFile('native-design/render-extra.cinc','utf8');start=src.indexOf('static const Scene3D g_scene3d =');src=src.slice(0,start)+extra+'\n'+src.slice(start);
+replace('s3d_get_embedded_height\n};','s3d_get_embedded_height,\n    s3d_resize_embedded,s3d_set_embedded_host,s3d_set_input_enabled\n};');
+await fs.writeFile(root+'scene3d_gl.c',src);
+let header=(await fs.readFile(root+'scene3d.h','utf8')).replace('} Scene3D;',`    /* Reallocate only the framebuffer attachments, preserving scene and GL context. */
+    void (*resize_embedded)(int width,int height);
+    /* Host window + client-space view rectangle; input is limited to this view and focus. */
+    void (*set_embedded_host)(void *window,int x,int y,int width,int height);
+    /* Presentation control: disable exploration while a UI panel is being inspected. */
+    void (*set_input_enabled)(int enabled);
+} Scene3D;`);await fs.writeFile(root+'scene3d.h',header);
+let ui=(await fs.readFile(root+'win32_backend.c','utf8')).replaceAll('\r\n','\n');
+ui=ui.replace('    scene3d_backend()->tick_embedded(dt);',`    int viewW=r.right-r.left,viewH=r.bottom-r.top;if(viewW<1||viewH<1)return;
+    scene3d_backend()->resize_embedded(viewW,viewH);
+    scene3d_backend()->set_embedded_host(g_hwnd,r.left,r.top,viewW,viewH);
+    scene3d_backend()->tick_embedded(dt);`);
+ui=ui.replace('    DWORD window_style = g_custom_chrome',`    const char *window_title=g_workspace?element_attr(&g_elements.items[0],"title"):NULL;
+    int initial_width=g_workspace?dimension(&g_elements.items[0],"windowwidth",1440):480;
+    int initial_height=g_workspace?dimension(&g_elements.items[0],"windowheight",950):640;
+    DWORD window_style = g_custom_chrome`);
+ui=ui.replace('0, CLASS_NAME, g_workspace ? "Cryptic" : "Creal", window_style,','0, CLASS_NAME, window_title ? window_title : g_workspace ? "Cryptic" : "Creal", window_style,');ui=ui.replace('CW_USEDEFAULT, CW_USEDEFAULT, g_workspace ? 1440 : 480, g_workspace ? 950 : 640,','CW_USEDEFAULT, CW_USEDEFAULT, initial_width, initial_height,');
+await fs.writeFile(root+'win32_backend.c',ui);
+let compiler=await fs.readFile('native-design/coral-lang/coral-bytecode/compiler.c','utf8');compiler=compiler.replace('if (strcmp(name, "scene3dOnTick") == 0) return 75;','if (strcmp(name, "scene3dOnTick") == 0) return 75;\n    if (strcmp(name, "scene3dSetInput") == 0) return 76;');await fs.writeFile('native-design/coral-lang/coral-bytecode/compiler.c',compiler);
+let vm=await fs.readFile('native-design/coral-lang/coral-bytecode/vm_builtins_win.c','utf8');vm=vm.replace('        default:\n            runtime_error',`        case 76:
+            if(argc!=1||args[0].type!=VAL_NUMBER)runtime_error(line,"scene3dSetInput requires one number (0 or 1)");
+            scene3d_backend()->set_input_enabled(args[0].as.number!=0);return nil_value();
+        default:
+            runtime_error`);await fs.writeFile('native-design/coral-lang/coral-bytecode/vm_builtins_win.c',vm);

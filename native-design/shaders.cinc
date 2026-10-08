@@ -1,0 +1,12 @@
+    const char *vsrc=
+        "#version 330 core\nlayout(location=0) in vec3 aPos;layout(location=1) in vec3 aNormal;layout(location=2) in vec2 aUV;\n"
+        "uniform mat4 uModel,uViewProj,uLightVP;out vec3 vNormal,vWorldPos;out vec2 vUV;out vec4 vShadow;\n"
+        "void main(){vec4 wp=uModel*vec4(aPos,1);vWorldPos=wp.xyz;vNormal=transpose(inverse(mat3(uModel)))*aNormal;vUV=aUV;vShadow=uLightVP*wp;gl_Position=uViewProj*wp;}\n";
+    const char *fsrc=
+        "#version 330 core\nin vec3 vNormal,vWorldPos;in vec2 vUV;in vec4 vShadow;\n"
+        "uniform vec3 uColor,uLightDir,uEye;uniform sampler2D uTex,uShadowMap;uniform int uUseTexture,uHasUV,uShadowPass,uHasShadow;out vec4 FragColor;\n"
+        "float shadow(vec3 N){if(uHasShadow==0)return 1.;vec3 p=vShadow.xyz/vShadow.w*.5+.5;if(p.z>1.||p.z<0.||p.x<0.||p.x>1.||p.y<0.||p.y>1.)return 1.;float bias=max(.0006*(1.-dot(N,normalize(-uLightDir))),.0002);float visibility=0.;vec2 stepUV=1./vec2(textureSize(uShadowMap,0));for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)visibility+=p.z-bias<=texture(uShadowMap,p.xy+vec2(x,y)*stepUV).r?1.:0.;return visibility/9.;}\n"
+        "void main(){if(uShadowPass==1){FragColor=vec4(1);return;}vec3 N=normalize(vNormal),base=uColor;\n"
+        "if(uUseTexture==1){vec3 an=abs(N);vec2 uv=vUV;if(uHasUV==0){if(an.x>=an.y&&an.x>=an.z)uv=vWorldPos.zy*.5;else if(an.y>=an.z)uv=vWorldPos.xz*.5;else uv=vWorldPos.xy*.5;}base=pow(texture(uTex,uv).rgb,vec3(2.2))*uColor;}else base=pow(base,vec3(2.2));\n"
+        "float diffuse=max(dot(N,normalize(-uLightDir)),0.);vec3 ambient=mix(vec3(.19,.17,.13),vec3(.34,.39,.43),N.y*.5+.5);vec3 lit=base*(ambient+vec3(1.08,1.0,.86)*diffuse*shadow(N));\n"
+        "vec3 V=normalize(uEye-vWorldPos),H=normalize(V+normalize(-uLightDir));float gloss=pow(max(dot(N,H),0.),32.)*.035;lit+=gloss;float fog=1.-exp(-length(uEye-vWorldPos)*.008);lit=mix(lit,vec3(.42,.53,.63),fog);FragColor=vec4(pow(lit/(lit+vec3(.55)),vec3(1./2.2)),1);}\n";

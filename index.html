@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Another World — Ashford</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23243a31'/%3E%3Ctext x='8' y='43' font-family='Arial' font-size='27' fill='%23d0e5bf'%3EAW%3C/text%3E%3C/svg%3E"><link rel="stylesheet" href="style.css"></head>
+<body><canvas id="world"></canvas><div id="veil"></div>
+<div id="camera-overlay"></div><header><a class="brand">ANOTHER <span>WORLD</span><small>ASHFORD / OPEN WORLD SIMULATION</small></a><div class="location"><i></i> ASHFORD · TOWN DISTRICT <span id="time">09:00</span></div><button id="pause">Ⅱ</button></header>
+<section id="intro"><div class="eyebrow">FIRST CHAPTER / ASHFORD</div><h1>Ordinary town.<br>Extraordinary lives.</h1><p>A place to exist, explore, and leave a mark.<br>Everyone here has somewhere to go. Including you.</p>
+  <div id="continuePanel" hidden><div class="eyebrow">WELCOME BACK</div><p id="continueSummary"></p><button id="continueBtn" disabled>Continue your life <span>↗</span></button><button id="restartBtn" type="button" class="linkbtn">Start a new life instead</button></div>
+  <div id="newGamePanel">
+    <div class="eyebrow trackLabel">CHOOSE YOUR TRACK</div>
+    <div class="tracks" id="tracks">
+      <button class="track" data-track="simple">Simple<small>Friendlier start, more perks</small></button>
+      <button class="track" data-track="medium">Medium<small>Balanced odds</small></button>
+      <button class="track" data-track="hard">Hard<small>Tougher start, fewer perks</small></button>
+    </div>
+    <button id="enter" disabled>Choose a track to begin <span>↗</span></button>
+  </div>
+  <div class="intro-note">3D TOWN PROTOTYPE · LOCAL NPC SIMULATION</div></section>
+<aside id="status"><div class="eyebrow">YOUR STATE</div><h3>Feeling grounded <span>✧</span></h3><div class="meter"><span>Vitality</span><b>100</b></div><div class="bar"><i></i></div><div class="meter"><span>Power reserve</span><b id="energy">100</b></div><div class="bar power"><i id="energybar"></i></div><div class="ability"><span>◎</span><div>Impulse<small>Push the world around you</small></div><kbd>Q</kbd></div><div class="traits"><span>Confidence<b id="confidence">55</b></span><span>Peace<b id="peace">55</b></span><span>Karma<b id="karma">55</b></span><span>Wisdom<b id="wisdom">55</b></span></div></aside>
+<div id="crosshair">·</div><div id="prompt"></div>
+<aside id="activity"><div class="eyebrow"><i></i> LIFE AROUND YOU</div><div id="events"></div></aside>
+<footer><div><span class="live-dot"></span> <b id="population">12</b> lives unfolding <span class="divider">/</span> <span id="weather">Clear skies · 18°C</span></div><div><kbd>W A S D</kbd> Move <kbd>Mouse</kbd> Look <kbd>E</kbd> Talk <kbd>P</kbd> Phone <kbd>Q</kbd> Power</div></footer>
+<section id="dialog" hidden><div class="eyebrow">A MOMENT WITH <span id="npcname"></span></div><p id="npcbio"></p><h2 id="speech"></h2><p id="mood"></p><form id="saybox"><input id="sayinput" type="text" maxlength="300" placeholder="Say or do anything…" autocomplete="off"><button id="saybtn" type="submit">Say</button></form><div class="choices"><button data-chat="kind">How are you feeling?</button><button data-chat="power">Ask about their power</button><button data-chat="rude">Leave me alone.</button><button id="closechat">Say goodbye</button></div></section>
+<section id="phone" hidden><div class="phone-top"><span id="phone-time">09:00</span><span>● ▰</span></div><h3>Your reflection</h3><canvas id="selfie" width="260" height="330"></canvas><p>You · Ashford</p><small>A little extraordinary.</small>
+  <div class="story"><div class="eyebrow">YOUR STORY</div><p id="storyage"></p><p id="storybio"></p><small id="storyperk"></small></div>
+  <div class="deathzone"><button id="deathbtn" type="button">End this life</button></div>
+  <button id="closephone">Put phone away</button></section>
+<section id="judgment" hidden><div class="eyebrow">THE JUDGE OF DEATH</div><h2 id="judgeverdict"></h2><p id="judgetext"></p>
+  <div class="rebirth"><div class="eyebrow">YOU ARE REBORN AS</div><h3 id="rebirthform"></h3><p id="rebirthbio"></p><small id="rebirthperk"></small></div>
+  <button id="beginrebirth">Begin this new life <span>↗</span></button></section>
+<div id="notice"></div><script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script><script type="module" src="game.js"></script></body></html>
