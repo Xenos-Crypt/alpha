@@ -19,9 +19,22 @@
            pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
   #help { position: fixed; right: 16px; top: 16px; color: #fff; font-size: 12px; line-height: 1.55; background: rgba(10, 14, 24, .45);
           padding: 10px 14px; border-radius: 12px; pointer-events: none; }
-  #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column;
+  #start { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
            background: rgba(0,0,0,.55); color: #fff; cursor: pointer; text-align: center; z-index: 20; }
   #start h1 { margin: 0 0 8px; font-size: 42px; letter-spacing: .02em; }
+
+  /* Sign up / log in, shown before anything else */
+  #auth { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
+          background: rgba(0,0,0,.88); color: #fff; text-align: center; z-index: 30; font-family: system-ui, sans-serif; }
+  #auth h1 { margin: 0 0 18px; font-size: 30px; }
+  #auth input { font: inherit; font-size: 15px; width: 260px; padding: 10px 12px; margin-bottom: 10px; border-radius: 8px;
+                border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08); color: #fff; }
+  #auth input::placeholder { color: rgba(255,255,255,.5); }
+  #authBtn { font: inherit; font-size: 16px; color: #fff; background: #3867d6; border: 0; border-radius: 10px;
+             padding: 10px 24px; cursor: pointer; width: 284px; margin-top: 4px; }
+  #authBtn:disabled { background: #444b5a; cursor: default; opacity: .7; }
+  #authSwitch { margin-top: 14px; font-size: 13px; opacity: .75; cursor: pointer; text-decoration: underline; }
+  #authError { margin-top: 10px; font-size: 13px; color: #ff6b6b; min-height: 16px; max-width: 280px; }
 
   /* Birth / dice-roll onboarding, shown once per browser before the normal start screen */
   #spawn { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
@@ -141,7 +154,10 @@
   #bossbar .bfill { height: 100%; width: 100%; background: linear-gradient(90deg, #c0392b, #ff6b6b); transition: width .15s; }
 </style>
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+} }
 </script>
 </head>
 <body>
@@ -192,6 +208,14 @@
   <div id="tabSkills" style="display:none"></div>
   <button class="close" id="closeBoard">Close (C)</button>
 </div>
+<div id="auth">
+  <h1 id="authTitle">Sign up</h1>
+  <input id="authEmail" type="email" placeholder="Email" autocomplete="email">
+  <input id="authPass" type="password" placeholder="Password" autocomplete="current-password">
+  <button id="authBtn">Sign up</button>
+  <div id="authSwitch">Already have an account? Log in</div>
+  <div id="authError"></div>
+</div>
 <div id="spawn">
   <h1>Before you're born…</h1>
   <p class="sub">Every life starts with one roll of the die. It decides the family and luck you're born into — there's no choosing, and no re-rolling.</p>
@@ -212,6 +236,12 @@
 
 <script type="module">
 import * as THREE from 'three';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  'https://teyuiwdcqzjcvzejlsnc.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRleXVpd2RjcXpqY3Z6ZWpsc25jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1Nzg3MjcsImV4cCI6MjEwNzE1NDcyN30.fkhPyK21YxN_swhUsfZO2QbcnAdBamjNnXdgXEXOd3s'
+);
 
 // =====================================================================
 // HELPERS
@@ -1235,65 +1265,111 @@ const STAT_INFO = {
 const prog = { level: 1, xp: 0, points: 0, str: 0, def: 0, agi: 0, men: 0 };
 
 // =====================================================================
-// BIRTH / DICE-ROLL ONBOARDING
-// One roll per browser, ever: the result (family/backstory/stats) is
-// stored in localStorage so a returning player keeps the life they were
-// born into rather than re-rolling on every visit.
+// ACCOUNT + BIRTH ONBOARDING
+// Sign up/log in with Supabase (real auth, hashed passwords server-side —
+// nothing sensitive ever sits in localStorage). Each account gets exactly
+// one birth roll, ever; the result is stored in the `profiles` table, keyed
+// to that account and locked by row-level security so no one can read or
+// forge another player's row from the network tab or DevTools.
 // =====================================================================
-const ORIGIN_KEY = 'aw_origin';
 let origin = null;
-try { const saved = localStorage.getItem(ORIGIN_KEY); if (saved) origin = JSON.parse(saved); } catch {}
 
 function rollDieFace(n) {
-  // Rotations that bring face n to face the camera (matches the .f1..f6 transforms above).
   const rot = { 1: 'rotateX(0deg) rotateY(0deg)', 6: 'rotateY(180deg)', 2: 'rotateY(-90deg)',
                 5: 'rotateY(90deg)', 3: 'rotateX(-90deg)', 4: 'rotateX(90deg)' };
   return rot[n] || rot[1];
 }
 
-function initSpawnScreen() {
-  if (origin) return; // already born on this browser — skip straight to the normal start screen
-  $('spawn').style.display = 'flex';
-  $('start').style.display = 'none';
-  const dieEl = $('die'), btn = $('spawnBtn');
-  let spinTimer = null;
-  btn.addEventListener('click', async () => {
-    btn.disabled = true; btn.textContent = 'Rolling…';
-    let face = 1;
-    spinTimer = setInterval(() => { face = 1 + Math.floor(Math.random() * 6); dieEl.style.transform = rollDieFace(face); }, 120);
-    const roll = 1 + Math.floor(Math.random() * 6);
-    const [res] = await Promise.all([
-      fetch('/api/generate-life', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ roll }) })
-        .then(r => r.json()).catch(() => null),
-      new Promise(r => setTimeout(r, 1400)), // let the spin play for a beat even if the API is instant
-    ]);
-    clearInterval(spinTimer);
-    dieEl.style.transform = rollDieFace(roll);
-    const data = res && !res.error ? res : null;
-    origin = {
-      roll,
-      family: data?.family || 'An unremembered family',
-      backstory: data?.backstory || 'The details of your birth are lost, but you are here now, and that is what matters.',
-      stats: data?.stats || { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
-      perk: data?.perk || 'A clean slate',
-    };
-    try { localStorage.setItem(ORIGIN_KEY, JSON.stringify(origin)); } catch {}
-    prog.points += roll; // the roll grants 1-6 bonus skill points, so luck at birth has a real mechanical effect
-    $('spawnRoll').textContent = `You rolled a ${roll}`;
-    $('spawnFam').textContent = origin.family;
-    $('spawnBio').textContent = origin.backstory;
-    $('spawnPerk').textContent = 'Perk: ' + origin.perk;
-    $('spawnResult').style.display = 'block';
-  });
-  $('beginBtn').addEventListener('click', () => {
-    $('spawn').style.display = 'none';
-    $('start').style.display = 'flex';
+function showAuthScreen() {
+  return new Promise(resolve => {
+    $('auth').style.display = 'flex';
+    $('start').style.display = 'none';
+    let mode = 'signup';
+    const title = $('authTitle'), btn = $('authBtn'), switchEl = $('authSwitch'), err = $('authError');
+    function setMode(m) {
+      mode = m;
+      title.textContent = m === 'signup' ? 'Sign up' : 'Log in';
+      btn.textContent = m === 'signup' ? 'Sign up' : 'Log in';
+      switchEl.textContent = m === 'signup' ? 'Already have an account? Log in' : "Don't have an account? Sign up";
+    }
+    setMode('signup');
+    switchEl.addEventListener('click', () => setMode(mode === 'signup' ? 'login' : 'signup'));
+    btn.addEventListener('click', async () => {
+      const email = $('authEmail').value.trim(), password = $('authPass').value;
+      err.textContent = '';
+      if (!email || password.length < 6) { err.textContent = 'Enter an email and a password of at least 6 characters.'; return; }
+      btn.disabled = true; btn.textContent = 'Please wait…';
+      const { data, error } = mode === 'signup'
+        ? await supabase.auth.signUp({ email, password })
+        : await supabase.auth.signInWithPassword({ email, password });
+      btn.disabled = false; btn.textContent = mode === 'signup' ? 'Sign up' : 'Log in';
+      if (error) { err.textContent = error.message; return; }
+      if (mode === 'signup' && !data.session) { err.textContent = 'Check your email to confirm your account, then log in.'; return; }
+      $('auth').style.display = 'none';
+      resolve(data.session);
+    });
   });
 }
-initSpawnScreen();
+
+async function loadOrCreateProfile(userId) {
+  const { data } = await supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle();
+  if (data) {
+    origin = { roll: data.roll, family: data.family, backstory: data.backstory, stats: data.stats, perk: data.perk };
+    prog.points += data.points || 0;
+    return true; // already born — skip the dice roll
+  }
+  return false;
+}
+
+function runSpawnScreen(userId) {
+  return new Promise(resolve => {
+    $('spawn').style.display = 'flex';
+    $('start').style.display = 'none';
+    const dieEl = $('die'), btn = $('spawnBtn');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; btn.textContent = 'Rolling…';
+      let spinTimer = setInterval(() => { dieEl.style.transform = rollDieFace(1 + Math.floor(Math.random() * 6)); }, 120);
+      const roll = 1 + Math.floor(Math.random() * 6);
+      const [res] = await Promise.all([
+        fetch('/api/generate-life', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ roll }) })
+          .then(r => r.json()).catch(() => null),
+        new Promise(r => setTimeout(r, 1400)),
+      ]);
+      clearInterval(spinTimer);
+      dieEl.style.transform = rollDieFace(roll);
+      const data = res && !res.error ? res : null;
+      origin = {
+        roll,
+        family: data?.family || 'An unremembered family',
+        backstory: data?.backstory || 'The details of your birth are lost, but you are here now, and that is what matters.',
+        stats: data?.stats || { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
+        perk: data?.perk || 'A clean slate',
+      };
+      prog.points += roll;
+      await supabase.from('profiles').insert({ user_id: userId, ...origin, points: roll });
+      $('spawnRoll').textContent = `You rolled a ${roll}`;
+      $('spawnFam').textContent = origin.family;
+      $('spawnBio').textContent = origin.backstory;
+      $('spawnPerk').textContent = 'Perk: ' + origin.perk;
+      $('spawnResult').style.display = 'block';
+    });
+    $('beginBtn').addEventListener('click', () => { $('spawn').style.display = 'none'; resolve(); });
+  });
+}
+
+async function boot() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const activeSession = session || await showAuthScreen();
+  const bornAlready = await loadOrCreateProfile(activeSession.user.id);
+  if (!bornAlready) await runSpawnScreen(activeSession.user.id);
+  $('start').style.display = 'flex';
+}
+boot();
 const maxHp = () => 100 + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
-const drainMul = () => 1;
+// A roll of 1 drains hunger/energy 50% faster for this profile, forever; a roll of 6 drains 30% slower.
+// This is the one lasting mechanical consequence of the birth roll — everything else from it is flavor text.
+const drainMul = () => origin ? 1.6 - origin.roll * 0.1 : 1;
 const defMul = () => 1 / (1 + prog.def * 0.06);
 const psyDmg = () => 10 + prog.men * 4;
 const psyCdMax = () => Math.max(4, 9 - prog.men * 0.3);
