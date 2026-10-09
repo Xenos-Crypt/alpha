@@ -1,9 +1,0 @@
-﻿import fs from 'node:fs/promises';
-await fs.mkdir('assets',{recursive:true});
-const assets=await fetch('https://api.polyhaven.com/assets?t=textures').then(r=>r.json());
-const choices=[['asphalt','asphalt_02'],['brick','brick_wall_001'],['paving','pavement_01'],['wood','wood_planks'],['plaster','plastered_wall'],['roof','roof_tiles_02'],['grass','grass_01']];
-let manifest=[];
-for(let [name,wanted] of choices){const id=assets[wanted]?wanted:Object.keys(assets).find(k=>k.includes(name==='paving'?'pavement':name));if(!id)continue;const data=await fetch('https://api.polyhaven.com/files/'+id).then(r=>r.json());let files={};for(let [key,type]of[['diff','diff'],['normal','nor_gl'],['rough','rough']]){let entry=data[type]||data[Object.keys(data).find(k=>k.toLowerCase().startsWith(type))];let file=entry?.['1k']?.jpg||entry?.['1k']?.png;if(!file){console.log(name,type,'available:',Object.keys(data).join(','));continue;}const ext=file.url.endsWith('.png')?'png':'jpg',dest=`assets/${name}-${key}.${ext}`;const response=await fetch(file.url);if(!response.ok)throw Error(response.status+' '+file.url);await fs.writeFile(dest,Buffer.from(await response.arrayBuffer()));files[key]=dest;console.log(dest);}manifest.push({name,id,license:'CC0',source:'https://polyhaven.com/a/'+id,files});}
-await fs.writeFile('assets/manifest.json',JSON.stringify(manifest,null,2));
-const skyid='kloofendal_48d_partly_cloudy_puresky';const skydata=await fetch('https://api.polyhaven.com/files/'+skyid).then(r=>r.json());const skyfile=skydata.hdri['1k'].hdr;const sky=await fetch(skyfile.url);if(!sky.ok)throw Error('Sky download failed');await fs.writeFile('assets/sky.hdr',Buffer.from(await sky.arrayBuffer()));manifest.push({name:'sky',id:skyid,license:'CC0',source:'https://polyhaven.com/a/'+skyid,files:{hdri:'assets/sky.hdr'}});await fs.writeFile('assets/manifest.json',JSON.stringify(manifest,null,2));
-
