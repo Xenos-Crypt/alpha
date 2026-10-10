@@ -23,6 +23,29 @@
            background: rgba(0,0,0,.55); color: #fff; cursor: pointer; text-align: center; z-index: 20; }
   #start h1 { margin: 0 0 8px; font-size: 42px; letter-spacing: .02em; }
 
+  /* Main menu, shown after login/spawn, before entering the world. The 3D scene
+     keeps rendering behind it as a live preview (the render loop never stops). */
+  #menu { position: fixed; inset: 0; display: none; z-index: 22; font-family: system-ui, sans-serif;
+          background: linear-gradient(90deg, transparent 55%, rgba(5,7,14,.78) 100%); }
+  #menu .panel { position: absolute; right: 0; top: 0; bottom: 0; width: min(360px, 86vw);
+                 display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 32px; box-sizing: border-box; }
+  #menu h1 { color: #fff; font-size: 30px; margin: 0 0 18px; letter-spacing: .02em; }
+  #menu button { font: inherit; font-size: 16px; color: #fff; background: rgba(20, 24, 38, .7);
+                 border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 14px 18px;
+                 text-align: left; cursor: pointer; transition: background .15s, border-color .15s; }
+  #menu button:hover { background: rgba(56, 103, 214, .55); border-color: #3867d6; }
+  #menu button .sub { display: block; font-size: 12px; opacity: .65; margin-top: 2px; font-weight: 400; }
+  #menu button b { font-weight: 700; }
+  #menuSignout { position: absolute; left: 20px; bottom: 16px; color: rgba(255,255,255,.55); font-size: 12px;
+                 background: none; border: 0; cursor: pointer; text-decoration: underline; padding: 4px; }
+  #contactModal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+                  background: rgba(0,0,0,.6); z-index: 23; }
+  #contactModal .box { background: #14182a; border: 1px solid rgba(255,255,255,.15); border-radius: 12px;
+                        padding: 24px 28px; color: #fff; max-width: 320px; text-align: center; font-family: system-ui, sans-serif; }
+  #contactModal a { color: #74b9ff; }
+  #contactModal button { margin-top: 16px; font: inherit; color: #fff; background: #2f3542; border: 0;
+                          border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+
   /* Sign up / log in, shown before anything else */
   #auth { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
           background: rgba(0,0,0,.88); color: #fff; text-align: center; z-index: 30; font-family: system-ui, sans-serif; }
@@ -208,6 +231,24 @@
   </div>
   <div id="tabSkills" style="display:none"></div>
   <button class="close" id="closeBoard">Close (C)</button>
+</div>
+<div id="menu">
+  <div class="panel">
+    <h1>Another World</h1>
+    <button id="menuOffline"><b>Offline mode</b><span class="sub">Play solo, no one else around</span></button>
+    <button id="menuHost"><b>Host game</b><span class="sub">Start a game others can join — coming soon</span></button>
+    <button id="menuJoin"><b>Join game</b><span class="sub">Enter a code or browse open games — coming soon</span></button>
+    <button id="menuCreate"><b>Create game</b><span class="sub">Add your own content — coming soon</span></button>
+    <button id="menuContact"><b>Contact us</b><span class="sub">Questions, issues, feedback</span></button>
+  </div>
+  <button id="menuSignout">Sign out</button>
+</div>
+<div id="contactModal">
+  <div class="box">
+    <h2 style="margin:0 0 10px;font-size:18px;">Contact us</h2>
+    <p style="opacity:.8;font-size:14px;line-height:1.5;">Reach us any time at<br><a href="mailto:helpcenter@anotherworld.world">helpcenter@anotherworld.world</a></p>
+    <button id="contactClose">Close</button>
+  </div>
 </div>
 <div id="auth">
   <h1 id="authTitle">Sign up</h1>
@@ -1366,12 +1407,26 @@ function runSpawnScreen(userId) {
   });
 }
 
+function showMenu() {
+  return new Promise(resolve => {
+    $('menu').style.display = 'block';
+    $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(); };
+    $('menuHost').onclick = () => toast('Hosting a game is still in development — check back soon.');
+    $('menuJoin').onclick = () => toast('Joining a game is still in development — check back soon.');
+    $('menuCreate').onclick = () => toast('Creating your own content is still in development — check back soon.');
+    $('menuContact').onclick = () => { $('contactModal').style.display = 'flex'; };
+    $('contactClose').onclick = () => { $('contactModal').style.display = 'none'; };
+    $('menuSignout').onclick = async () => { await supabase.auth.signOut(); location.reload(); };
+  });
+}
+
 async function boot() {
   const { data: { session } } = await supabase.auth.getSession();
   const activeSession = session || await showAuthScreen();
   supabase.from('logins').insert({ user_id: activeSession.user.id });
   const bornAlready = await loadOrCreateProfile(activeSession.user.id);
   if (!bornAlready) await runSpawnScreen(activeSession.user.id);
+  await showMenu();
   $('start').style.display = 'flex';
 }
 boot();

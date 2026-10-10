@@ -1,0 +1,7 @@
+# server.cjs is for local dev only (npm start). Its presence makes Vercel's
+# zero-config Node detection wrap the whole app as one function around it,
+# which then serves static files from its own bundled filesystem instead of
+# Vercel's real static CDN — breaking any file it didn't statically trace
+# (confirm.html, assets/map/tiles/*.json, etc). Excluding it lets Vercel fall
+# back to its normal static-files + /api-serverless-functions convention.
+server.cjs
