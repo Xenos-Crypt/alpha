@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Another World</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; user-select: none; }
@@ -323,6 +323,7 @@ import * as THREE from 'three';
 import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physics.js';
 import { buildPlaces } from './places.js';
 import { createReconstruction } from './reconstruction.js';
+import { setupMobileControls } from './mobile-controls.js';
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -365,7 +366,8 @@ const at = (p, h) => new THREE.Vector3(p.x, p.y + h, p.z);
 // =====================================================================
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+const touchDevice = matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0;
+renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1 : 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -380,7 +382,7 @@ const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x6b5a3a, 0.9);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(touchDevice ? 1024 : 2048, touchDevice ? 1024 : 2048);
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
 Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 1, far: 300 });
@@ -785,6 +787,7 @@ function collapseBuilding(b) {
   } });
 }
 
+const streetSeats = [];
 function addBench(x, z, rotY) {
   const g = new THREE.Group();
   g.position.set(x, CURB, z);
@@ -793,6 +796,11 @@ function addBench(x, z, rotY) {
   mesh(new THREE.BoxGeometry(1.8, 0.08, 0.5), woodMatPlain, g).position.y = 0.45;
   mesh(new THREE.BoxGeometry(1.8, 0.4, 0.06), woodMatPlain, g).position.set(0, 0.75, -0.22);
   for (const sx of [-0.8, 0.8]) mesh(new THREE.BoxGeometry(0.06, 0.45, 0.45), 0x333333, g).position.set(sx, 0.22, 0);
+  g.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(g);
+  const collider = { minX: bounds.min.x, maxX: bounds.max.x, minZ: bounds.min.z, maxZ: bounds.max.z };
+  colliders.push(collider);
+  streetSeats.push({ x, z, yaw: rotY, seatY: CURB + .49, label: 'Sit on street bench', model: g, collider, health: 60, broken: false, impactTimes: new WeakMap() });
 }
 
 // Fill the city. Cell (0,0) is home, (-1,0) is the park, (1,0) is the training ground,
@@ -867,9 +875,103 @@ addBench(PARK.x + 2.5, PARK.z - 4, -Math.PI / 2);
 addBench(PARK.x - 2.5, PARK.z + 4, Math.PI / 2);
 
 // =====================================================================
+// PARK LIFE: flower beds, a duck pond, wandering pets and butterflies, and
+// real drowning if you wade into deep water without the Water class.
+// =====================================================================
+const waterZones = [{ x: PARK.x + 6.5, z: PARK.z + 6.5, r: 4 }]; // ponds — walking in without Water risks drowning
+const flowerColors = [0xff6b81, 0xffd166, 0xff9f43, 0xeaff8f, 0xa29bfe];
+function addFlowerPatch(x, z, n = 6) {
+  for (let i = 0; i < n; i++) {
+    const fx = x + (rand() - 0.5) * 2.2, fz = z + (rand() - 0.5) * 2.2, fy = groundY(fx, fz);
+    box(0.05, 0.3, 0.05, fx, fy + 0.15, fz, 0x3f8f3a, false);
+    mesh(new THREE.ConeGeometry(0.12, 0.18, 6), pick(flowerColors)).position.set(fx, fy + 0.34, fz);
+  }
+}
+for (const [ox, oz] of [[-7, -2], [7, 2], [-2, 8], [3, -8], [-10, 1]]) addFlowerPatch(PARK.x + ox, PARK.z + oz);
+
+const ducks = [];
+function addDuck(cx, cz, r) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: pick([0x8d6e3a, 0x5a4a2f, 0xffffff]), roughness: 0.9 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), bodyMat); body.scale.set(1.3, 0.9, 1); g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), bodyMat); head.position.set(0.22, 0.18, 0); g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 6), new THREE.MeshStandardMaterial({ color: 0xff9f1a }));
+  beak.rotation.z = Math.PI / 2; beak.position.set(0.32, 0.16, 0); g.add(beak);
+  g.position.set(cx, CURB + 0.07, cz);
+  scene.add(g);
+  ducks.push({ g, cx, cz, r: r * 0.55, phase: rand() * Math.PI * 2, speed: 0.4 + rand() * 0.3 });
+}
+for (const z of waterZones) for (let i = 0; i < 3; i++) addDuck(z.x, z.z, z.r);
+function updateDucks(dt) {
+  for (const d of ducks) {
+    d.phase += d.speed * dt;
+    const x = d.cx + Math.cos(d.phase) * d.r, z = d.cz + Math.sin(d.phase) * d.r;
+    d.g.position.set(x, CURB + 0.07 + Math.sin(performance.now() / 300 + d.phase) * 0.02, z);
+    d.g.rotation.y = -d.phase - Math.PI / 2;
+  }
+}
+
+const parkPets = [];
+function addPet(kind, x, z) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: kind === 'dog' ? pick([0xc68a4a, 0x6b4a2f, 0xe8e0d0]) : pick([0x333333, 0xe8e0d0, 0xc68a4a]), roughness: 0.9 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, kind === 'dog' ? 0.42 : 0.3, 4, 8), mat);
+  body.rotation.z = Math.PI / 2; body.position.y = 0.22; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), mat);
+  head.position.set(kind === 'dog' ? 0.32 : 0.24, 0.26, 0); g.add(head);
+  for (const s of [-1, 1]) for (const f of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6), mat);
+    leg.position.set(f * (kind === 'dog' ? 0.16 : 0.11), 0.1, s * 0.09); g.add(leg);
+  }
+  const home = new THREE.Vector3(x, CURB, z);
+  g.position.copy(home);
+  scene.add(g);
+  parkPets.push({ g, home, target: home.clone(), speed: 0.8 + rand() * 0.5, waitT: rand() * 3 });
+}
+addPet('dog', PARK.x - 4, PARK.z - 6);
+addPet('dog', PARK.x + 8, PARK.z + 8);
+addPet('cat', PARK.x - 8, PARK.z + 3);
+function updatePets(dt) {
+  for (const a of parkPets) {
+    const p = a.g.position;
+    if (distXZ(p, a.target) < 0.3) {
+      a.waitT -= dt;
+      if (a.waitT <= 0) { a.target = a.home.clone().add(new THREE.Vector3((rand() - 0.5) * 8, 0, (rand() - 0.5) * 8)); a.waitT = 2 + rand() * 3; }
+    } else {
+      const dir = new THREE.Vector3(a.target.x - p.x, 0, a.target.z - p.z).normalize();
+      p.addScaledVector(dir, a.speed * dt);
+      a.g.rotation.y = Math.atan2(dir.x, dir.z);
+    }
+    p.y = groundY(p.x, p.z);
+  }
+}
+
+const butterflies = [];
+function addButterfly(x, z) {
+  const mat = new THREE.MeshBasicMaterial({ color: pick([0xffb6c1, 0xffe66d, 0x74b9ff, 0xffffff]), side: THREE.DoubleSide });
+  const m = new THREE.Mesh(new THREE.CircleGeometry(0.1, 6), mat);
+  scene.add(m);
+  butterflies.push({ m, cx: x, cz: z, phase: rand() * 10, h: 0.6 + rand() * 0.4 });
+}
+for (const [ox, oz] of [[-7, -2], [7, 2], [-2, 8], [3, -8]]) addButterfly(PARK.x + ox, PARK.z + oz);
+function updateButterflies(dt) {
+  for (const b of butterflies) {
+    b.phase += dt * 1.5;
+    const x = b.cx + Math.sin(b.phase) * 1.4, z = b.cz + Math.sin(b.phase * 1.7) * 1.4;
+    const y = groundY(x, z) + b.h + Math.sin(b.phase * 4) * 0.1;
+    b.m.position.set(x, y, z);
+    b.m.rotation.y = b.phase;
+    b.m.rotation.x = Math.sin(b.phase * 6) * 0.6;
+  }
+}
+function updateParkLife(dt) { updateDucks(dt); updatePets(dt); updateButterflies(dt); }
+
+// =====================================================================
 // TRAINING GROUND (sand arena with a fence and a sign)
 // =====================================================================
 const TRAIN = new THREE.Vector3(60, CURB, 20);
+addBench(TRAIN.x - 10, TRAIN.z - 7, Math.PI / 2);
+addBench(TRAIN.x - 10, TRAIN.z + 7, Math.PI / 2);
 for (const s of [-1, 1]) for (const o of [-7.75, 7.75]) {
   // rails along the north/south sides, then east/west sides, leaving a gap in the middle of each
   box(10.5, 0.12, 0.12, TRAIN.x + o, CURB + 0.95, TRAIN.z + s * 13, woodMatPlain);
@@ -979,6 +1081,7 @@ const HOUSE_COLORS = [[0xf6e3c5, 0x8e3b2f], [0xdfe8ef, 0x34495e], [0xf3d6d6, 0x6
 // interior's chair) registers here as {x,z,yaw}. One proximity check + one E
 // handler covers all of them, instead of a separate one-off per location.
 const sitSpots = [
+  ...streetSeats,
   { x: 14.75, z: 20.8, yaw: Math.PI / 2, seatY: F_Y + 0.45, label: 'Sit on couch' },
   { x: 22, z: 20.6, yaw: 0, seatY: F_Y + 0.5, label: 'Sit on stool' },
   { x: 22, z: 22.4, yaw: Math.PI, seatY: F_Y + 0.5, label: 'Sit on stool' },
@@ -1409,7 +1512,7 @@ player.position.copy(SPAWN);
 
 let vy = 0, onGround = true;
 const pvel = new THREE.Vector3();          // knockback velocity
-let playerStun = 0, iFrames = 0, playerBlocking = false, awaken = 0;
+let playerStun = 0, iFrames = 0, playerBlocking = false, awaken = 0, drownWarned = false;
 let action = null;                          // the move currently being performed
 let comboIdx = 0, lastM1 = 0, m1Cd = 0, dashCd = 0, mouseHeld = false;
 const stats = { hp: 100, hunger: 80, energy: 80, ult: 0, gold: 0 };
@@ -4033,7 +4136,7 @@ function interact() {
   if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
   const service = nearestInteractable();
-  if (service && (player.position.x > 350 || player.position.x < -350)) return service.action();
+  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board')) return service.action();
   const cb = nearestCivicBuilding();
   if (cb) return enterCivicBuilding(cb);
   const g = nearestGate();
@@ -4097,7 +4200,7 @@ let civicTvCanvas, civicTvTexture, civicTvT = 0;
   box(2.7, 1.8, 0.15, CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.6, 0x1a1a1a, false);
   sitSpots.push({ x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, yaw: Math.PI, seatY: 0.9, label: 'Sit and watch TV' }); // face -Z, toward the TV
 })();
-let sitting = false, sitReturnPosition = null;
+let sitting = false, sitReturnPosition = null, activeSitSpot = null;
 function updateCivicTv(dt) {
   if (!civicTvCanvas) return;
   civicTvT += dt;
@@ -4114,6 +4217,7 @@ function updateCivicTv(dt) {
 function nearestSitSpot(maxD = 3) {
   let best = null, bestD = maxD;
   for (const s of sitSpots) {
+    if (s.broken) continue;
     const d = Math.hypot(player.position.x - s.x, player.position.z - s.z);
     if (d < bestD) { bestD = d; best = s; }
   }
@@ -4121,7 +4225,8 @@ function nearestSitSpot(maxD = 3) {
 }
 function toggleSit(spot) {
   if (!sitting) {
-    if (!spot || inCar || action) return;
+    if (!spot || spot.broken || inCar || action) return;
+    activeSitSpot = spot;
     sitReturnPosition = player.position.clone();
     sitting = true;
     action = null; mouseHeld = false; vy = 0; pvel.set(0, 0, 0);
@@ -4129,7 +4234,7 @@ function toggleSit(spot) {
     player.rotation.y = spot.yaw;
     toast('Sitting. Press E to stand.');
   } else {
-    sitting = false;
+    sitting = false; activeSitSpot = null;
     if (sitReturnPosition) player.position.copy(sitReturnPosition);
     player.position.y = groundY(player.position.x, player.position.z);
     sitReturnPosition = null; vy = 0; pvel.set(0, 0, 0);
@@ -4308,6 +4413,15 @@ function updateHotbar() {
 // =====================================================================
 const keys = {};
 let locked = false, yaw = Math.PI, pitch = 0.3, camDist = 6;
+let mobileControls = null;
+function requestGameControl() {
+  if (mobileControls?.mobile) {
+    if (innerHeight >= innerWidth) return;
+    locked = true; boardOpen = false; $('board').style.display = 'none'; $('start').style.display = 'none';
+    mobileControls.update();
+  } else renderer.domElement.requestPointerLock();
+}
+function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style.display = boardOpen ? 'none' : 'flex'; }
 
 function toggleBoard(open) {
   if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
@@ -4318,7 +4432,7 @@ function toggleBoard(open) {
     document.exitPointerLock();
     locked = false;
   } else {
-    renderer.domElement.requestPointerLock();
+    requestGameControl();
   }
 }
 $('closeBoard').addEventListener('click', () => toggleBoard(false));
@@ -4370,6 +4484,7 @@ addEventListener('wheel', e => {
 const startEl = $('start');
 startEl.addEventListener('click', () => renderer.domElement.requestPointerLock());
 document.addEventListener('pointerlockchange', () => {
+  if (mobileControls?.mobile) return;
   const pointerOn = document.pointerLockElement === renderer.domElement;
   if (pointerOn && freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
@@ -4428,6 +4543,13 @@ function updatePlayer(dt) {
   if (player.position.y <= floorY) { player.position.y = floorY; vy = 0; onGround = true; }
   else if (player.position.y - floorY > 0.2) onGround = false;
 
+  // Real drowning logic: wade into a pond without the Water class and it costs you.
+  const wz = waterZones.find(w => distXZ(player.position, w) < w.r);
+  if (wz && !inCar && charIdx !== 2) {
+    stats.hp -= 18 * dt;
+    if (!drownWarned) { drownWarned = true; toast("You can't swim without the power of Water — get out!"); }
+  } else drownWarned = false;
+
   const pose = action?.pose ?? (playerBlocking ? 'block' : playerStun > 0 ? 'stunned' : null);
   animateHumanoid(P, pose === 'slash' ? 'punchR' : pose, moving && canMove, sprinting, onGround, dt);
   if (pose === 'slash') P.armR.pivot.rotation.x = lerp(-2.8, -0.4, clamp(action.t / 0.18, 0, 1));
@@ -4465,6 +4587,28 @@ function damageVehicle(v, deltaSpeed, point) {
     }
   }
 }
+function hitStreetSeats(v, from, to) {
+  const speed = Math.abs(v.speed);
+  if (speed < 1) return;
+  for (const seat of streetSeats) {
+    if (seat.broken || Math.abs(v.group.position.y - seat.model.position.y) > 2) continue;
+    if (segmentDistance(seat.model.position, from, to) > v.radius + .9) continue;
+    const now = performance.now();
+    if (now - (seat.impactTimes.get(v) ?? -Infinity) < 1000) continue;
+    seat.impactTimes.set(v, now);
+    seat.health = Math.max(0, seat.health - impactDamage(speed, .6));
+    if (seat.health > 0) continue;
+    seat.broken = true;
+    const i = colliders.indexOf(seat.collider); if (i >= 0) colliders.splice(i, 1);
+    if (sitting && activeSitSpot === seat) { toggleSit(null); hurtPlayer(Math.min(80, impactDamage(speed, .4)), v.group.position, Math.min(15, speed)); }
+    const parts = [...seat.model.children];
+    parts.forEach((part, i) => { part.position.y = .08 + i * .015; part.position.x += (i % 2 ? 1 : -1) * .25; part.position.z += (i - 1.5) * .22; part.rotation.set(i % 2 ? Math.PI / 2 : .12, i * .35, .1); });
+    v.speed *= .85;
+    damageVehicle(v, speed * .15, seat.model.position);
+    burst(at(seat.model.position, .4), 10, [0x8d7254, 0x554532], 5, .1, .5, 10, 1);
+    if (v === driving) { raiseWanted(30); toast('Street bench broken by the impact.'); }
+  }
+}
 function resolveRoadMovement(v, start, dt) {
   if (!isRoadVehicle(v)) return;
   const p = v.group.position, destination = p.clone();
@@ -4472,7 +4616,9 @@ function resolveRoadMovement(v, start, dt) {
   const velocity = vehicleVelocity(v);
   p.copy(start);
   for (let i = 1; i <= steps; i++) {
+    const previous = p.clone();
     p.lerpVectors(start, destination, i / steps);
+    hitStreetSeats(v, previous, p);
     const attempted = p.clone();
     if (collide(p, v.radius)) {
       const normal = p.clone().sub(attempted).setY(0).normalize();
@@ -4848,7 +4994,7 @@ function updateHud(dt) {
       : (v.ai && v.kind !== 'boat' ? 'E: Steal the ' : 'E: Drive the ') + names[v.kind];
     else { const it = nearestInteractable(); if (it) prompt = 'E: ' + it.label; }
   }
-  $('prompt').textContent = prompt;
+  $('prompt').textContent = mobileControls?.mobile ? prompt.replace(/^E:/, 'Interact:') : prompt;
   $('prompt').style.display = prompt ? 'block' : 'none';
 
   combo.t -= dt;
@@ -4880,9 +5026,18 @@ const townPlaces = buildPlaces({ scene, box, colliders, camBlockers, planeBlocks
   restrictedEntry: () => raiseWanted(90),
   addPoliceCar(x, z) { const v = makeVehicle('police', 0xf5f6fa); v.group.position.set(x, 0, z); v.ai = { from: nearestNode(v.group.position), to: [4, 0], prev: null, s: 0, cruise: 12, parked: true, stopTimer: 0, stopped: false, chasing: false, blockedT: 0, ignoreT: 0, ramCd: 0 }; },
   travelTo(d) { if (wanted > 0) { toast('Town travel is unavailable during a police pursuit.'); return; } if (inCar) exitVehicle(true); if (sitting) toggleSit(null); action = null; vy = 0; pvel.set(0, 0, 0); player.position.set(d.x, groundY(d.x, d.z), d.z); toast(d.name); },
-  resume() { renderer.domElement.requestPointerLock(); }
+  pause() { if (mobileControls?.mobile) { locked = false; mouseHeld = false; $('start').style.display = 'none'; } },
+  resume() { requestGameControl(); }
 });
 buildHotbar();
+mobileControls = setupMobileControls({
+  playing: () => locked && !boardOpen && document.getElementById('placesTravel')?.hidden !== false,
+  key: (code, down) => { keys[code] = down; },
+  look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, -.1, 1.2); },
+  interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
+  attack: down => { mouseHeld = down; if (down) m1(); },
+  board: () => toggleBoard(true), pause: pauseMobileGame
+});
 // Open index.html#test to run the simulation without clicking (used for automated checks)
 if (location.hash === '#test') { locked = true; startEl.style.display = 'none'; }
 if (location.hash === '#test-systems') {   // exercises building collapse, plane crash and a dungeon run
@@ -4919,6 +5074,7 @@ function frame() {
     if (inCivicInterior) updateCivicTv(dt);
     updateSitPrompt();
     updateVehicles(dt);
+    updateParkLife(dt);
     updatePlanes(dt);
     updateAdBalloon(dt);
     updateShips(dt);
@@ -4930,6 +5086,7 @@ function frame() {
     updateTasks(dt);
     updateParticles(dt);
   }
+  mobileControls?.update();
   townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar);
   updateCamera(locked ? rawDt : 0);
   updateWorldLight(locked ? dt : 0);

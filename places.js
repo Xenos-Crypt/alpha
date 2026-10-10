@@ -193,7 +193,7 @@ export function buildPlaces(ctx) {
       const button = document.createElement('button'); button.textContent = d.name; button.style.cssText = 'display:block;width:100%;padding:12px;margin-top:8px;text-align:left;cursor:pointer';
       button.onclick = () => { ctx.travelTo(d); panel.hidden = true; ctx.resume(); }; panel.append(button);
     }
-    panel.hidden = false; document.exitPointerLock();
+    panel.hidden = false; ctx.pause?.(); document.exitPointerLock();
   }
   sign('TOWN TRAVEL - PRESS E', 20, 2, 12, 6);
   interactables.push({ pos: new THREE.Vector3(20, 0, 12), r: 2.5, label: 'Open town travel board', action: openTravel });
