@@ -981,7 +981,7 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
   const isHome = cx === 0 && cz === 0, isPark = cx === -1 && cz === 0, isTraining = cx === 1 && cz === 0;
   const isResidential = cz === -1 && (cx === 0 || cx === -1);
-  const isPoliceCell = cx === 2 && cz === 0;   // downtown police post — see buildDowntownPolice()
+  const isPoliceCell = (cx === 2 && cz === 0) || (cx === -4 && cz === 1) || (cx === 2 && cz === -4);   // downtown police posts — see buildDowntownPolice()
   pavement(x0, z0, isHome || isPark || isResidential ? lawnMat : isTraining ? sandMat : null);
   if (isResidential) residentialCells.push([x0, z0]);
   if (isHome || isPark || isTraining || isResidential || isPoliceCell) continue;
@@ -1136,6 +1136,31 @@ addPet('dog', 28, 14);
 addPet('cat', PARK.x - 8, PARK.z + 3);
 addPet('horse', PARK.x + 16, PARK.z - 14);
 addPet('horse', PARK.x - 14, PARK.z - 10);
+
+// =====================================================================
+// HORSE RIDING ARENA: a fenced oval competition ground next to the park, with
+// jump obstacles and its own horses. Riding controls (mounting a horse and
+// actually steering it) aren't built yet — this is the real, enterable venue,
+// not the mount mechanic itself.
+// =====================================================================
+const ARENA = new THREE.Vector3(PARK.x - 60, CURB, PARK.z + 10);
+{
+  const rx = 26, rz = 16;
+  for (let i = 0; i < 28; i++) {
+    const a = (i / 28) * Math.PI * 2;
+    box(0.12, 1.1, 0.12, ARENA.x + Math.cos(a) * rx, 0.55, ARENA.z + Math.sin(a) * rz, 0x6b4a2f, false);
+  }
+  box(rx * 2 + 1, 0.06, rz * 2 + 1, ARENA.x, 0.03, ARENA.z, sandMat, false);
+  for (const [ox, oz] of [[-10, 0], [10, 0], [0, -6], [0, 6]]) {
+    box(2.6, 0.9, 0.18, ARENA.x + ox, 0.75, ARENA.z + oz, 0xc0392b, false);
+    for (const s of [-1, 1]) box(0.14, 1.1, 0.14, ARENA.x + ox + s * 1.3, 0.55, ARENA.z + oz, 0x6b4a2f, false);
+  }
+  signboard('HORSE RIDING ARENA', ARENA.x, 3, ARENA.z - rz - 1.5, 12, '#4a3b1d');
+  addBench(ARENA.x - 5, ARENA.z - rz - 3, 0);
+  addBench(ARENA.x + 5, ARENA.z - rz - 3, 0);
+  addPet('horse', ARENA.x - 8, ARENA.z + 2);
+  addPet('horse', ARENA.x + 6, ARENA.z - 3);
+}
 function updatePets(dt) {
   for (const a of parkPets) {
     const p = a.g.position;
@@ -2442,17 +2467,20 @@ let HOSPITAL_POS = null;
 // Downtown police post, right in the city near home/park — the original full
 // precinct (reception, holding cells, courtyard) stays out at the industrial
 // cluster, but a visible, enterable police presence belongs inside the city too.
-(function buildDowntownPolice() {
-  const x = 100, z = 20, w = 18, d = 16, h = 7;
+function buildDowntownPolice(x, z, name) {
+  const w = 18, d = 16, h = 7;
   box(w, h, d, x, h / 2, z, 0xd7dde6);
   box(w + 0.6, 0.6, d + 0.6, x, h + 0.3, z, 0x8c94a0);
   box(1.6, 0.35, 0.12, x, h - 1.5, z - d / 2 - 0.1, 0x3867d6, false);
   colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
-  civicBuildings.push({ type: 'police', name: 'Ashford Downtown Police Post', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  civicBuildings.push({ type: 'police', name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
   const v = makeVehicle('police', 0xf5f6fa);
   v.group.position.set(x + w / 2 + 6, 0, z); v.group.rotation.y = -Math.PI / 2;
   v.ai = { from: nearestNode(v.group.position), to: [0, 0], prev: null, s: 0, cruise: 12, parked: true, stopTimer: 0, stopped: false, chasing: false, blockedT: 0, ignoreT: 0, ramCd: 0 };
-})();
+}
+buildDowntownPolice(100, 20, 'Ashford Downtown Police Post — Central');
+buildDowntownPolice(-140, 60, 'Ashford Downtown Police Post — West');
+buildDowntownPolice(100, -140, 'Ashford Downtown Police Post — South');
 
 function loadCityTile(tx, tz) {
   const key = `${tx}_${tz}`;

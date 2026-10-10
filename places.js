@@ -94,7 +94,9 @@ export function buildPlaces(ctx) {
   slab(340, 260, 540, -70, 0x788367, -.04);
   slab(300, 10, 510, -4, 0x44484c); slab(10, 190, 540, -65, 0x44484c);
   slab(240, 10, 300, -4, 0x44484c); // road connecting town and district
-  const police = room('ASHFORD POLICE STATION', 410, -65, 34, 28, 0xc4cbd3);
+  // This is now the force's headquarters — taller than the standard room(), with
+  // its own flag (a red/black saltire, the national flag) and a badge emblem.
+  const police = room('ASHFORD POLICE HEADQUARTERS', 410, -65, 34, 28, 0xc4cbd3, 16);
   desk(police.x, police.z - 5, 'Police reception', ctx.policeReception);
   bench(400, -59); bench(421, -59);
   for (let dx = -11; dx <= 11; dx += 11) {
@@ -103,6 +105,23 @@ export function buildPlaces(ctx) {
   }
   sign('RECEPTION  |  REPORTS  |  CUSTODY', 410, 2.4, -72, 13);
   parking(410, -28); ctx.addPoliceCar?.(390, -30);
+  // Badge emblem above the entrance.
+  const badgeTex = makeTex(256, 256, g => {
+    g.fillStyle = '#c4cbd3'; g.fillRect(0, 0, 256, 256);
+    g.fillStyle = '#3867d6'; g.beginPath(); g.arc(128, 128, 100, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#ffd166'; g.font = 'bold 110px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('★', 128, 136);
+  });
+  const badge = new THREE.Mesh(new THREE.CircleGeometry(1.4, 32), new THREE.MeshBasicMaterial({ map: badgeTex }));
+  badge.position.set(410, 13.5, -65 + 14 + 0.3); scene.add(badge);
+  // National flag — red/black saltire — on a pole beside the entrance.
+  const flagTex = makeTex(256, 160, g => {
+    g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, 256, 160);
+    g.strokeStyle = '#c0392b'; g.lineWidth = 34;
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(256, 160); g.moveTo(256, 0); g.lineTo(0, 160); g.stroke();
+  });
+  box(.12, 9, .12, 398, 4.5, -51, 0x3a3a3a, false);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.6), new THREE.MeshBasicMaterial({ map: flagTex, side: THREE.DoubleSide }));
+  flag.position.set(399.3, 8, -51); scene.add(flag);
 
   const office = room('ASHFORD CONSTRUCTION', 470, -66, 30, 26, 0xc9bfa8);
   desk(470, -71, 'Take construction shift', ctx.constructionShift);
