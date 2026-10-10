@@ -321,6 +321,8 @@
 <script type="module">
 import * as THREE from 'three';
 import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physics.js';
+import { buildPlaces } from './places.js';
+import { createReconstruction } from './reconstruction.js';
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -609,7 +611,7 @@ function collide(p, r) {
       p.x += opts[0][0]; p.z += opts[0][1];
     }
   }
-  if (p.x < 1000) { p.x = clamp(p.x, -290, 290); p.z = clamp(p.z, -290, 290); }   // dungeons live far away at x = 2000
+  if (p.x > -1000 && p.x < 1000) { p.x = clamp(p.x, -900, 900); p.z = clamp(p.z, -650, 650); }   // dungeons live far away at x = 2000
   return hit;
 }
 const insideCollider = p => colliders.some(c => p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ);
@@ -628,7 +630,7 @@ function groundY(x, z) {
 // GROUND, ROADS, PAVEMENTS
 // =====================================================================
 const groundTex = grassTex.clone(); groundTex.repeat.set(150, 150); groundTex.needsUpdate = true;
-const ground = mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+const ground = mesh(new THREE.PlaneGeometry(1800, 1300), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
 ground.rotation.x = -Math.PI / 2;
 ground.castShadow = false;
 
@@ -738,12 +740,14 @@ function addBuilding(x, z, faceX, faceZ) {
 }
 
 // A destroyed building sinks into the ground in a cloud of dust, hurts everything nearby,
-// and leaves a smoking pile of rubble. It stays destroyed.
+// and leaves rubble before construction officers secure and rebuild the site.
 function collapseBuilding(b) {
   if (!b.alive) return;
+  const rebuild = reconstruction.begin(b, reconstructionDays);
   b.alive = false;
-  colliders.splice(colliders.indexOf(b.collider), 1);
-  for (const pb of b.blocks) planeBlocks.splice(planeBlocks.indexOf(pb), 1);
+  const colliderIndex = colliders.indexOf(b.collider);
+  if (colliderIndex >= 0) colliders.splice(colliderIndex, 1);
+  for (const pb of b.blocks) { const i = planeBlocks.indexOf(pb); if (i >= 0) planeBlocks.splice(i, 1); }
   for (const m of b.meshes) { const i = camBlockers.indexOf(m); if (i >= 0) camBlockers.splice(i, 1); }
   const base = new THREE.Vector3(b.x, CURB, b.z), size = Math.max(b.w, b.d), H = b.top;
   impactFrame(1.5);
@@ -751,6 +755,7 @@ function collapseBuilding(b) {
   raiseWanted(90);
   hitAround(base, size * 0.9, null, { dmg: 80, kb: 14, up: 8, stun: 2, heavy: true, impact: 1, guardBreak: true }, 60);
   if (!inCar && distXZ(player.position, base) < size) hurtPlayer(30, base, 15);
+  reactBystanders(base, false); // raiseWanted(90) above already covers the crime
   const start = b.meshes.map(m => m.position.clone());
   const fallAccel = 2 * (H + 3) / 16;   // reaches the ground in about 4 seconds
   addTask({ dur: 5, update(dt, t) {
@@ -768,13 +773,15 @@ function collapseBuilding(b) {
     if (distXZ(camera.position, base) < 90) shake = Math.max(shake, 0.3 * (1 - t / 5));
   }, end() {
     b.meshes.forEach(m => { m.visible = false; });
-    scorchMark(base, size * 0.75);
+    rebuild.debris.push(scorchMark(base, size * 0.75));
     for (let i = 0; i < 10; i++) {   // charred rubble pile — stays like this forever
       const s = 1.2 + Math.random() * 2.2;
       const r = box(s, s * 0.6, s, b.x + (Math.random() - 0.5) * b.w * 0.8, CURB + s * 0.25, b.z + (Math.random() - 0.5) * b.d * 0.8, pick([0x242321, 0x2e2a26, 0x1c1a18]), false);
       r.rotation.set(Math.random(), Math.random() * 3, Math.random());
+      rebuild.debris.push(r);
     }
     burnFor(new THREE.Vector3(b.x, CURB + 1, b.z), 60, Math.max(b.w, b.d) * 0.6);
+    reconstruction.secure(b);
   } });
 }
 
@@ -1316,6 +1323,8 @@ const POSES = {
   windup:   { aL: [-1.2, 0.1],  aR: [0.8, -0.3],  lL: 0.3,  lR: -0.4 },
   stunned:  { aL: [0.3, 0.6],   aR: [0.3, -0.6],  lL: 0.1,  lR: -0.1 },
   sit:      { aL: [-0.15, 0.08], aR: [0.15, -0.08], lL: -1.35, lR: -1.35 }, // negative = forward (see comment above); positive bent them backward, hidden behind the torso
+  phone:    { aL: [0.2, 0.1],   aR: [-2.3, 0.1],  lL: 0.1,  lR: -0.1 }, // recording or calling for help
+  cpr:      { aL: [-1.1, 0.05], aR: [-1.1, -0.05], lL: -1.0, lR: -0.15 }, // kneeling over an injured bystander
 };
 function animateHumanoid(h, pose, moving, sprinting, grounded, dt) {
   const k = 1 - Math.exp(-22 * dt);
@@ -1909,6 +1918,19 @@ if (CITY_ENABLED) fetch('./assets/map/tiles/manifest.json').then(r => r.json()).
 }).catch(e => console.warn('City manifest failed to load:', e.message));
 
 const civicBuildings = []; // real police/hospital/courthouse/etc, flat list across all loaded tiles — see enterCivicBuilding()
+// Hand-placed hospital — guaranteed to exist even with the OSM city (which also
+// has real hospitals) disabled. Ambulances stage from here and return here.
+let HOSPITAL_POS = null;
+(function buildHospital() {
+  const x = -200, z = -200, w = 20, d = 16, h = 10;
+  box(w, h, d, x, h / 2, z, 0xf5fbf8);
+  box(w + 0.6, 0.6, d + 0.6, x, h + 0.3, z, 0xd8ecE4);
+  box(1.6, 0.35, 0.12, x, h * 0.6, z - d / 2 - 0.1, 0xe84118, false); // red cross
+  box(0.35, 1.6, 0.12, x, h * 0.6, z - d / 2 - 0.1, 0xe84118, false);
+  colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  civicBuildings.push({ type: 'hospital', name: 'St. Mary General Hospital', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  HOSPITAL_POS = new THREE.Vector3(x, 0, z - d / 2 - 6);
+})();
 
 function loadCityTile(tx, tz) {
   const key = `${tx}_${tz}`;
@@ -2016,31 +2038,11 @@ boat.group.position.set(PIER.x + 4, 0, 195);
 // AIRFIELD + FLYABLE PLANES (west of the city)
 // W/S throttle · A/D turn · Space climb · Shift dive
 // =====================================================================
-const AIRFIELD_X = -225;
-const runwayTex = makeTex(64, 512, g => {
-  g.fillStyle = '#3a3c40'; g.fillRect(0, 0, 64, 512);
-  speckle(g, 64, 512, 2500, ['rgba(255,255,255,.05)', 'rgba(0,0,0,.18)']);
-  g.fillStyle = '#f0f0f0';
-  g.fillRect(3, 0, 2, 512); g.fillRect(59, 0, 2, 512);
-  for (let y = 0; y < 512; y += 64) g.fillRect(30, y, 4, 36);
-});
-runwayTex.repeat.set(1, 4);
-const runway = mesh(new THREE.PlaneGeometry(20, 260), new THREE.MeshStandardMaterial({ map: runwayTex, roughness: 0.9 }));
-runway.rotation.x = -Math.PI / 2;
-runway.position.set(AIRFIELD_X, 0.02, 0);
-runway.castShadow = false;
-const hangar = box(26, 9, 18, AIRFIELD_X - 30, 4.5, -60, 0x7f8c8d);
-camBlockers.push(hangar);
-planeBlocks.push({ minX: AIRFIELD_X - 43, maxX: AIRFIELD_X - 17, minZ: -69, maxZ: -51, top: 9 });
-box(0.2, 7, 14, AIRFIELD_X - 16.9, 3.5, -60, 0x2d3436, false);   // hangar door
-const tower = box(4, 14, 4, AIRFIELD_X - 30, 7, -30, 0xd9d4c7);
-camBlockers.push(tower);
-planeBlocks.push({ minX: AIRFIELD_X - 32, maxX: AIRFIELD_X - 28, minZ: -32, maxZ: -28, top: 16 });
-box(5.5, 2.5, 5.5, AIRFIELD_X - 30, 15.2, -30, glassMat, false);
+const AIRFIELD_X = -550;
 
 const AIRCRAFT = [
-  { name: 'Prop plane', color: 0xf5f6fa, accent: 0xe1b12c, maxSpeed: 45, takeoff: 22, turn: 0.9, jet: false, home: [AIRFIELD_X, -110] },
-  { name: 'Jet', color: 0x95a5a6, accent: 0x2c3e50, maxSpeed: 85, takeoff: 35, turn: 0.7, jet: true, home: [AIRFIELD_X + 16, -95] },
+  { name: 'Prop plane', color: 0xf5f6fa, accent: 0xe1b12c, maxSpeed: 45, takeoff: 22, turn: 0.9, jet: false, home: [AIRFIELD_X - 95, -48] },
+  { name: 'Jet', color: 0x95a5a6, accent: 0x2c3e50, maxSpeed: 85, takeoff: 35, turn: 0.7, jet: true, home: [AIRFIELD_X - 95, -12] },
 ];
 function makeAircraft(a) {
   const g = new THREE.Group();
@@ -2134,7 +2136,7 @@ function flyPlane(v, dt) {
   P.yaw += turn * v.turnRate * dt * (airborne ? 1 : 0.5) * Math.min(1, v.speed / 10);
   P.roll = lerp(P.roll, airborne ? -turn * 0.6 : 0, 1 - Math.exp(-3 * dt));
   // Fly back towards the city if you reach the edge of the map
-  if (Math.abs(p.x) > 280 || Math.abs(p.z) > 280) P.yaw = lerpAngle(P.yaw, Math.atan2(-p.x, -p.z), 1 - Math.exp(-1.5 * dt));
+  if (Math.abs(p.x) > 880 || Math.abs(p.z) > 630) P.yaw = lerpAngle(P.yaw, Math.atan2(-p.x, -p.z), 1 - Math.exp(-1.5 * dt));
 
   const climb = Math.sin(P.pitch) * v.speed * lift * 0.6 - (airborne ? (1 - lift) * 8 : 0);
   v.alt = Math.min(300, v.alt + climb * dt);
@@ -2262,12 +2264,10 @@ function applyHit(e, h) {
     e.vel.z += dir.z * (h.kb || 0);
     if (h.up) { e.vel.y = h.up; e.onGround = false; }
   }
-  if (e.kind === 'npc') {   // people run away, everyone nearby panics, and the police get called
-    e.ped.state = 'panic'; e.ped.panicT = 6;
-    for (const o of peds) {
-      if (o !== e && o.alive && !o.hidden && o.ped.state !== 'boarding' && distXZ(o.root.position, p) < 15) { o.ped.state = 'panic'; o.ped.panicT = 5; }
-    }
-    if (!h.police) raiseWanted();
+  if (e.kind === 'npc') {   // people run away, everyone nearby reacts, and the police get called
+    if (e.hp > 0 && e.hp <= 15) { e.ped.state = 'down'; e.ped.downT = 0; }
+    else { e.ped.state = 'panic'; e.ped.panicT = 6; }
+    reactBystanders(p, !h.police);
   }
 
   popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '');
@@ -2557,11 +2557,86 @@ for (let i = 0; i < 34; i++) {
     ped: { state: 'wander', node: next, prev: start, target: cornerPos(next), speed: 1.2 + Math.random() * 0.6, panicT: 0, waitT: 0, stop: null, bus: null } }));
 }
 
+// Bystanders react to nearby violence/explosions like real people would instead
+// of only the directly-hit ped panicking: close by, people flee; a bit further
+// out, some pull out a phone to film it and some call it in to the police.
+function reactBystanders(center, criminal) {
+  for (const o of peds) {
+    if (!o.alive || o.hidden) continue;
+    if (['boarding', 'riding', 'down', 'cpr'].includes(o.ped.state)) continue;
+    const d = distXZ(o.root.position, center);
+    if (d < 15) { o.ped.state = 'panic'; o.ped.panicT = 5 + Math.random() * 2; }
+    else if (d < 45 && o.ped.state !== 'panic') {
+      const r = Math.random();
+      if (r < 0.3) { o.ped.state = 'call'; o.ped.reactT = 4 + Math.random() * 3; o.ped.lookAt = center.clone(); }
+      else if (r < 0.6) { o.ped.state = 'record'; o.ped.reactT = 5 + Math.random() * 4; o.ped.lookAt = center.clone(); }
+    }
+  }
+  if (criminal) raiseWanted();
+}
+// A badly hurt NPC goes 'down' instead of just fleeing; a nearby bystander will
+// come give CPR, and if nobody's close (or CPR runs long enough) an ambulance
+// gets called in from the hospital to pick them up.
+function dispatchAmbulance(victim) {
+  if (!HOSPITAL_POS || victim.ped.ambulanceDispatched) return;
+  victim.ped.ambulanceDispatched = true;
+  const dest = victim.root.position.clone();
+  const amb = makeVehicle('car', 0xffffff);
+  amb.ai = null;
+  amb.group.position.copy(HOSPITAL_POS); amb.group.position.y = 0;
+  toast('An ambulance has been dispatched to the scene.');
+  const st = { phase: 1, exit: HOSPITAL_POS.clone() };
+  addTask({ dur: 120, update(dt, t, task) {
+    const p = amb.group.position, target = st.phase === 1 ? dest : st.exit;
+    const dir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z), d = dir.length();
+    if (d > 2) {
+      dir.normalize(); p.addScaledVector(dir, 11 * dt);
+      amb.group.rotation.y = lerpAngle(amb.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
+    } else if (st.phase === 1) {
+      st.phase = 2;
+      victim.hidden = true; victim.root.visible = false; victim.root.position.copy(HIDDEN);
+      victim.ped.state = 'rescued'; victim.alive = true; victim.hp = victim.maxHp;
+      toast('Patient loaded — ambulance is heading back to the hospital.');
+    } else task.t = task.dur;
+  }, end() { const i = vehicles.indexOf(amb); if (i >= 0) vehicles.splice(i, 1); disposeObj(amb.group); } });
+}
 function updatePed(e, dt) {
   const s = e.ped, p = e.root.position;
   let moving = false, speed = s.speed;
   if (e.stun > 0 || !e.onGround) { animateHumanoid(e.h, e.stun > 0 ? 'stunned' : null, false, false, e.onGround, dt); return; }
   switch (s.state) {
+    case 'down': {
+      s.downT = (s.downT || 0) + dt;
+      animateHumanoid(e.h, 'stunned', false, false, e.onGround, dt);
+      if (s.downT > 1.5 && !s.helperAssigned) {
+        s.helperAssigned = true;
+        const helper = peds.find(o => o !== e && o.alive && !o.hidden && o.ped.state === 'wander' && distXZ(o.root.position, p) < 25);
+        if (helper) { helper.ped.state = 'cpr'; helper.ped.cprTarget = e; helper.ped.cprT = 0; }
+        else dispatchAmbulance(e);
+      }
+      break;
+    }
+    case 'call': case 'record': {
+      s.reactT -= dt;
+      if (s.lookAt) e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(s.lookAt.x - p.x, s.lookAt.z - p.z), 1 - Math.exp(-4 * dt));
+      animateHumanoid(e.h, 'phone', false, false, e.onGround, dt);
+      if (s.reactT <= 0) {
+        if (s.state === 'call') raiseWanted(30);
+        s.state = 'wander'; s.node = nearestCorner(p); s.prev = null; s.target = cornerPos(s.node);
+      }
+      break;
+    }
+    case 'cpr': {
+      const victim = s.cprTarget;
+      if (!victim || !victim.alive || victim.ped.state !== 'down') { s.state = 'wander'; s.node = nearestCorner(p); s.prev = null; s.target = cornerPos(s.node); break; }
+      const vp = victim.root.position;
+      if (distXZ(p, vp) > 1.2) { moving = walkTowards(e, vp, 2, dt); animateHumanoid(e.h, null, moving, false, e.onGround, dt); break; }
+      s.cprT = (s.cprT || 0) + dt;
+      animateHumanoid(e.h, 'cpr', false, false, e.onGround, dt);
+      if (s.cprT > 6 && !victim.ped.ambulanceDispatched) dispatchAmbulance(victim);
+      if (victim.ped.state === 'rescued') { s.state = 'wander'; s.node = nearestCorner(p); s.prev = null; s.target = cornerPos(s.node); }
+      break;
+    }
     case 'panic': {
       s.panicT -= dt;
       const away = new THREE.Vector3(p.x - player.position.x, 0, p.z - player.position.z);
@@ -2749,8 +2824,37 @@ function explodeVehicle(v, criminal = true) {
     const distance = other.group.position.distanceTo(center);
     if (distance < radius) damageVehiclePower(other, 75 * (1 - distance / radius), center, criminal);
   }
+  reactBystanders(center, false); // panic/record/call radius; raiseWanted(120) below already covers the crime
   if (criminal) raiseWanted(120);
   toast('Vehicle exploded! Keep clear of the blast.');
+  setTimeout(() => dispatchTowTruck(v), 20000); // give it time to actually burn before towing it off
+}
+// A tow truck drives out from off-map, hooks the wreck, and hauls it away for good.
+function dispatchTowTruck(v) {
+  if (v.towDispatched || !vehicles.includes(v)) return;
+  v.towDispatched = true;
+  const dest = v.group.position.clone();
+  const start = dest.clone().add(new THREE.Vector3((Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 30), 0, (Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 30)));
+  const tow = makeVehicle('car', 0xffaa00);
+  tow.ai = null;
+  tow.group.position.copy(start); tow.group.position.y = 0;
+  toast('A tow truck is on its way to clear the wreckage.');
+  const st = { phase: 1, exit: null };
+  addTask({ dur: 150, update(dt, t, task) {
+    const p = tow.group.position, target = st.phase === 1 ? dest : st.exit;
+    if (!target) return;
+    const dir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z), d = dir.length();
+    if (d > 2.5) {
+      dir.normalize(); p.addScaledVector(dir, 9 * dt);
+      tow.group.rotation.y = lerpAngle(tow.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
+    } else if (st.phase === 1) {
+      st.phase = 2;
+      st.exit = dest.clone().add(new THREE.Vector3((Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 40), 0, (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 40)));
+      const i = vehicles.indexOf(v); if (i >= 0) vehicles.splice(i, 1);
+      disposeObj(v.group);
+      toast('Wreckage hooked up — tow truck heading out.');
+    } else task.t = task.dur;
+  }, end() { const i = vehicles.indexOf(tow); if (i >= 0) vehicles.splice(i, 1); disposeObj(tow.group); } });
 }
 
 // Hit everything within r of center. Returns how many were hit.
@@ -3853,6 +3957,7 @@ function sleep() {
     stats.hp = Math.min(maxHp(), stats.hp + 30);
     stats.hunger = Math.max(0, stats.hunger - 15);
     dayTime = (dayTime + 0.3) % 1;
+    reconstructionDays += 0.3;
     $('fade').style.opacity = 0;
     toast('You slept. Energy restored.');
   }, 700);
@@ -3927,6 +4032,8 @@ function interact() {
   if (seat) return toggleSit(seat); // any registered seat — house couch, bus bench, or the civic chair
   if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
+  const service = nearestInteractable();
+  if (service && (player.position.x > 350 || player.position.x < -350)) return service.action();
   const cb = nearestCivicBuilding();
   if (cb) return enterCivicBuilding(cb);
   const g = nearestGate();
@@ -4277,6 +4384,7 @@ document.addEventListener('pointerlockerror', () => {
 // UPDATE
 // =====================================================================
 const DAY_LEN = 300; // seconds per in-game day
+let reconstructionDays = 0;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 
 function updatePlayer(dt) {
@@ -4517,7 +4625,7 @@ function updatePursuit(dt) {
 }
 function policeChase(v, dt) {
   const ai = v.ai, p = v.group.position;
-  ai.chasing = true;
+  ai.chasing = true; ai.parked = false;
   ai.ramCd -= dt;
   const actualTarget = inCar ? driving.group.position : player.position;
   const tp = !inCivicInterior && policeCanSee(v, actualTarget) ? actualTarget : policeLastSeen;
@@ -4557,7 +4665,7 @@ function busArrive(v, stop) {
 
 function updateVehicles(dt) {
   for (const v of vehicles) {
-    if (v.disabled) { v.speed = 0; continue; }
+    if (v.disabled || (v.ai?.parked && wanted <= 0)) { v.speed = 0; continue; }
     v.crashCooldown = Math.max(0, (v.crashCooldown || 0) - dt);
     const roadStart = v.group.position.clone();
     if (v === driving || !v.ai) driveVehicle(v, dt);
@@ -4745,6 +4853,29 @@ function updateHud(dt) {
 // =====================================================================
 // MAIN LOOP
 // =====================================================================
+const reconstruction = createReconstruction({ scene, colliders, camBlockers, planeBlocks, groundY, makeTex, toast,
+  makeOfficer: () => makeHumanoid({ outfit: 0xffa52b, hair: 0x483829, pants: 0x324252 }),
+  animateOfficer: (officer, moving, dt) => animateHumanoid(officer, null, moving, false, true, dt),
+  dispose(obj) { obj.removeFromParent(); const geometries=new Set(), materials=new Set(), textures=new Set();obj.traverse(child=>{if(!child.isMesh)return;geometries.add(child.geometry);for(const m of Array.isArray(child.material)?child.material:[child.material]){materials.add(m);if(m.map)textures.add(m.map);}});for(const t of textures)t.dispose();for(const m of materials)m.dispose();for(const g of geometries)g.dispose(); }
+});
+let nextConstructionShift = 0;
+function buyFood(price, energy) {
+  if (stats.gold < price) { toast('Not enough gold. Visit the construction office for a shift.'); return; }
+  stats.gold -= price; stats.hunger = 100; stats.energy = Math.min(100, stats.energy + energy);
+  toast('Food purchased. Hunger restored.');
+}
+const townPlaces = buildPlaces({ scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast,
+  policeReception() { toast(wanted > 0 ? 'An active pursuit is in progress. Lose the pursuing units before returning to reception.' : 'Police reception: no active wanted alert. Public reception and custody viewing are open.'); },
+  constructionShift() {
+    if (performance.now() < nextConstructionShift) { toast('Next shift available in ' + Math.ceil((nextConstructionShift - performance.now()) / 1000) + ' seconds.'); return; }
+    nextConstructionShift = performance.now() + 60000; stats.gold += 75; stats.energy = Math.max(0, stats.energy - 15); gainXp(15); toast('Construction shift completed: +75 gold, +15 XP, ?15 energy.');
+  },
+  buyGroceries: () => buyFood(15, 10), buyMeal: () => buyFood(10, 20),
+  restrictedEntry: () => raiseWanted(90),
+  addPoliceCar(x, z) { const v = makeVehicle('police', 0xf5f6fa); v.group.position.set(x, 0, z); v.ai = { from: nearestNode(v.group.position), to: [4, 0], prev: null, s: 0, cruise: 12, parked: true, stopTimer: 0, stopped: false, chasing: false, blockedT: 0, ignoreT: 0, ramCd: 0 }; },
+  travelTo(d) { if (wanted > 0) { toast('Town travel is unavailable during a police pursuit.'); return; } if (inCar) exitVehicle(true); if (sitting) toggleSit(null); action = null; vy = 0; pvel.set(0, 0, 0); player.position.set(d.x, groundY(d.x, d.z), d.z); toast(d.name); },
+  resume() { renderer.domElement.requestPointerLock(); }
+});
 buildHotbar();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
 if (location.hash === '#test') { locked = true; startEl.style.display = 'none'; }
@@ -4768,6 +4899,8 @@ function frame() {
   if (hitStop > 0) { hitStop -= rawDt; dt = 0; }   // freeze the world for a split second on big hits
   if (locked) {
     dayTime = (dayTime + dt / DAY_LEN) % 1;
+    reconstructionDays += dt / DAY_LEN;
+    reconstruction.update(reconstructionDays, dt);
     for (const c of characters) c.cds = c.cds.map(v => Math.max(0, v - dt));
     dashCd = Math.max(0, dashCd - dt);
     psyCd = Math.max(0, psyCd - dt);
@@ -4791,6 +4924,7 @@ function frame() {
     updateTasks(dt);
     updateParticles(dt);
   }
+  townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar);
   updateCamera(locked ? rawDt : 0);
   updateWorldLight(locked ? dt : 0);
   updatePops(locked ? rawDt : 0);
