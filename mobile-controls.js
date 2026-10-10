@@ -14,7 +14,8 @@ export function setupMobileControls(ctx) {
   #mobileTop{position:absolute;right:max(16px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));display:flex;gap:8px}
   #rotatePhone{position:fixed;inset:0;z-index:100;background:#101c2b;display:flex;align-items:center;justify-content:center;flex-direction:column;color:white;text-align:center;padding:24px;font:20px system-ui}
   #rotatePhone[hidden]{display:none}#rotatePhone p{font-size:15px;max-width:300px;color:#b9cbdc}
-  .mobile-game #help,.mobile-game #hotbar,.mobile-game #mouseHint{display:none!important}
+  .mobile-game #settingsBtn,.mobile-game #hotbar,.mobile-game #mouseHint{display:none!important}
+  .mobile-game #settingsPanel{max-height:85%;width:min(480px,80vw)}
   .mobile-game #hud{left:max(8px,env(safe-area-inset-left));top:8px;padding:6px 8px;font-size:10px;max-width:160px}
   .mobile-game #hud .bar{width:120px;height:5px;margin:2px 0 3px}.mobile-game #hud .name{font-size:11px;margin-bottom:3px}
   .mobile-game #toast{font-size:14px;white-space:normal;width:65%;text-align:center;top:18%}
@@ -47,6 +48,7 @@ export function setupMobileControls(ctx) {
   button('Dash',ctx.dash);button('Psychic',ctx.psychic);button('Block',()=>ctx.key('KeyF',true),()=>ctx.key('KeyF',false));button('Switch',ctx.switchCharacter);
   for(let i=0;i<4;i++)button('Power '+(i+1),()=>ctx.skill(i));button('Ultimate',ctx.ultimate);
   button('Stats',()=>{reset();ctx.board();},null,root.querySelector('#mobileTop'));
+  button('Settings',()=>{reset();ctx.settings();},null,root.querySelector('#mobileTop'));
   button('Pause',()=>{reset();ctx.pause();},null,root.querySelector('#mobileTop'));
   function update(){const portrait=innerHeight>=innerWidth;rotate.hidden=!portrait;if(portrait&&ctx.playing()){reset();ctx.pause();}root.style.display=!portrait&&ctx.playing()?'block':'none';if(!ctx.playing())reset();}
   addEventListener('resize',update);addEventListener('blur',()=>{reset();ctx.pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden){reset();ctx.pause();}});update();

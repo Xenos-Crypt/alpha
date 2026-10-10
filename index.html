@@ -2178,7 +2178,7 @@ for (let i = 0; i < 3; i++) {
   if (big) for (let c = 0; c < 6; c++) mesh(new THREE.BoxGeometry(7, 2.4, 5), pick(AWNING_COLORS), g).position.set(0, 3.9 + (c % 2) * 2.4, -8 + Math.floor(c / 2) * 7);
   else mesh(new THREE.BoxGeometry(6, 2.5, 18), 0xf5f6fa, g).position.set(0, 3.9, 5);
   scene.add(g);
-  ships.push({ g, z: 225 + i * 25, x: -250 + i * 200, spd: (5 + i * 1.5) * (i % 2 ? -1 : 1) });
+  ships.push({ g, z: 360 + i * 60, x: -250 + i * 200, spd: (5 + i * 1.5) * (i % 2 ? -1 : 1) });
 }
 function updateShips(dt) {
   const t = performance.now() / 1000;
@@ -4490,11 +4490,11 @@ let mobileControls = null;
 function requestGameControl() {
   if (mobileControls?.mobile) {
     if (innerHeight >= innerWidth) return;
-    locked = true; boardOpen = false; $('board').style.display = 'none'; $('start').style.display = 'none';
+    locked = true; boardOpen = false; settingsOpen = false; $('board').style.display = 'none'; $('settingsPanel').style.display = 'none'; $('start').style.display = 'none';
     mobileControls.update();
   } else renderer.domElement.requestPointerLock();
 }
-function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style.display = boardOpen ? 'none' : 'flex'; }
+function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style.display = boardOpen || settingsOpen ? 'none' : 'flex'; }
 
 function toggleBoard(open) {
   if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
@@ -4614,6 +4614,7 @@ let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 
 let swimming = false, waterExhausted = false;
 function isSeaWater(x,z) {
+  if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
   return x>=-300&&x<=300&&z>SEA_Z&&z<650&&!(x>18&&x<22&&z<206)&&harbour?.groundAt(x,z)==null;
 }
 function updateSwimming(dt) {
@@ -4623,7 +4624,7 @@ function updateSwimming(dt) {
   const waterPower=charIdx===2;
   player.position.addScaledVector(dir,(stats.energy<=0?1: sprint?4:2.3)*(waterPower?1.3:1)*dt);
   player.position.addScaledVector(pvel,dt);pvel.multiplyScalar(Math.max(0,1-4*dt));collide(player.position,.4);
-  stats.energy=Math.max(0,stats.energy-dt*(waterPower?.12:sprint?1.8:moving?.65:.2));
+  stats.energy=Math.max(0,stats.energy-dt*(waterPower ? .12 : sprint ? 1.8 : moving ? .65 : .2));
   if(stats.energy===0){stats.hp=Math.max(0,stats.hp-12*dt);if(!waterExhausted){waterExhausted=true;toast('Exhausted in the water! Get to shore or a dock ladder.');}}
   else waterExhausted=false;
   const targetY=stats.energy>0?-1.05:-1.35;player.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
@@ -5159,12 +5160,12 @@ interactables.push({pos:new THREE.Vector3(-153,0,231),r:3,label:'Climb dock ladd
 for(const x of [-153.5,-152.5])box(.08,3,.08,x,-.2,231,0xd1bc58,false);
 for(let y=-1.5;y<1.2;y+=.35)box(1,.06,.06,-153,y,231,0xd1bc58,false);
 mobileControls = setupMobileControls({
-  playing: () => locked && !boardOpen && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !boardOpen && !settingsOpen && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, -.1, 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
   attack: down => { mouseHeld = down; if (down) m1(); },
-  board: () => toggleBoard(true), pause: pauseMobileGame
+  board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame
 });
 // Open index.html#test to run the simulation without clicking (used for automated checks)
 if (location.hash === '#test') { locked = true; startEl.style.display = 'none'; }

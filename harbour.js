@@ -5,6 +5,7 @@ export function buildHarbour(ctx) {
   const dock={minX:-150,maxX:-50,minZ:178,maxZ:236,height:1.2};
   box(100,1.2,58,-100,.6,207,0x92948e,false);
   box(100,.1,24,-100,.05,165,0x66696b,false);
+  for(let step=0;step<6;step++)box(14,.2,1,-103,.1+step*.2,172.5+step,0x969a96,false);
   function piece(w,h,d,x,y,z,c,parent){const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:c,roughness:.7}));mesh.position.set(x,y,z);parent.add(mesh);return mesh;}
   function sign(text,x,y,z){const map=makeTex(768,96,g=>{g.fillStyle='#173e51';g.fillRect(0,0,768,96);g.fillStyle='white';g.font='bold 34px sans-serif';g.textAlign='center';g.fillText(text,384,60);});const m=new THREE.Mesh(new THREE.PlaneGeometry(16,2),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));m.position.set(x,y,z);scene.add(m);}
   sign('ASHFORD PORT - CARGO AND FERRY',-100,4,178);
@@ -33,7 +34,7 @@ export function buildHarbour(ctx) {
   for(let i=0;i<6;i++){const h=makePerson({outfit:0xffb32c,hair:0x49362b,pants:0x334957});const helmet=new THREE.Mesh(new THREE.SphereGeometry(.28,10,6),new THREE.MeshStandardMaterial({color:0xffdc43}));helmet.position.y=2.02;helmet.scale.y=.55;h.rig.add(helmet);actors.push({h,x:-140+i*15,z:217,phase:i});}
   interactables.push({pos:new THREE.Vector3(-103,1.2,182),r:3,label:'Speak to port supervisor',action:()=>ctx.toast('Container loading is underway. Stay outside the crane and forklift operating lanes. Cargo ship access is at the gangway.')} );
   return {dock,actors,cranes,forklifts,ship,
-    groundAt(x,z){if(x>=dock.minX&&x<=dock.maxX&&z>=dock.minZ&&z<=dock.maxZ)return dock.height;if(x>-138&&x<-86&&z>250&&z<261)return 2.8;return null;},
+    groundAt(x,z){if(x>-110&&x<-96&&z>=172&&z<178)return (z-172)*.2;if(x>=dock.minX&&x<=dock.maxX&&z>=dock.minZ&&z<=dock.maxZ)return dock.height;if(x>-138&&x<-86&&z>250&&z<261)return 2.8;return null;},
     update(time,dt){for(const c of cranes){c.hoist.position.set(c.x,17,226+Math.sin(time*.22+c.phase)*7);c.hoist.scale.y=.6+Math.sin(time*.3+c.phase)*.2;}for(const f of forklifts){f.g.position.set(f.x,1.2,198+Math.sin(time*.25+f.x)*15);f.g.rotation.y=Math.cos(time*.25+f.x)>0?0:Math.PI;}for(const a of actors){a.h.root.position.set(a.x+Math.sin(time*.18+a.phase)*3,1.2,a.z);a.h.root.rotation.y=Math.cos(time*.18+a.phase)>0?Math.PI/2:-Math.PI/2;animatePerson(a.h,true,dt);}ship.position.y=.03+Math.sin(time*.7)*.06;}
   };
 }
