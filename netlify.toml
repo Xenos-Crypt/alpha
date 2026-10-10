@@ -6,3 +6,13 @@
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
+
+# TEMPORARY: anotherworld.world's SSL certificate hasn't provisioned yet, so bounce
+# any plain-HTTP visitors straight to the working default domain. Remove this once
+# the custom domain's HTTPS is confirmed working, otherwise it'll keep bouncing
+# people away from the nicer URL for no reason.
+[[redirects]]
+  from = "http://anotherworld.world/*"
+  to = "https://curious-quokka-2202fb.netlify.app/:splat"
+  status = 302
+  force = true
