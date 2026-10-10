@@ -999,7 +999,7 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   box(1.8, 0.45, 2.6, x0 - 3, CURB + 0.225, back + face * 1.6, woodMatPlain);
   box(1.7, 0.1, 1.6, x0 - 3, CURB + 0.5, back + face * 2.0, 0x74b9ff, false);
   box(1.2, 0.12, 0.45, x0 - 3, CURB + 0.52, back + face * 0.6, 0xffffff, false);
-  box(2.2, 0.45, 0.9, x0 + 2.5, CURB + 0.225, back + face * 0.75, 0x6c5ce7);
+  box(2.2, 0.45, 0.9, x0 + 2.5, CURB + 0.225, back + face * 0.75, 0x6c5ce7, false); // non-colliding so the player can actually walk up to sit on it
   box(2.2, 0.55, 0.25, x0 + 2.5, CURB + 0.6, back + face * 0.35, 0x5b4bd6, false);
   sitSpots.push({ x: x0 + 2.5, z: back + face * 0.75, yaw: face > 0 ? 0 : Math.PI });
   box(1.4, 0.06, 0.9, x0 + 2.5, CURB + 0.75, z0 + face * 0.6, woodMatPlain);
@@ -1849,6 +1849,7 @@ colliders.push({ minX: -300, maxX: 18, minZ: SEA_Z, maxZ: 300 }, { minX: 22, max
 // the full city is 53k buildings / 19k roads, which is why this streams
 // instead of loading everything at once (see assets/map/tools/tile-geojson.mjs).
 // =====================================================================
+const CITY_ENABLED = false; // disabled for now — was causing real slowdown; flip back on once that's addressed
 const CITY_OFFSET = new THREE.Vector3(1500, 0, 0);
 const cityTiles = new Map(); // "tx_tz" -> { group, colliders: [...] }
 let cityManifest = null;
@@ -1856,7 +1857,7 @@ let cityStreamTimer = 0;
 const CITY_LOAD_RADIUS = 2;   // tiles within this ring of the player's tile get loaded
 const CITY_UNLOAD_RADIUS = 4; // tiles further than this get unloaded (hysteresis avoids load/unload thrashing at the boundary)
 
-fetch('./assets/map/tiles/manifest.json').then(r => r.json()).then(m => {
+if (CITY_ENABLED) fetch('./assets/map/tiles/manifest.json').then(r => r.json()).then(m => {
   cityManifest = m;
   console.log(`Edinburgh manifest loaded: ${m.tiles.length} tiles, ${m.tileSize}m each`);
 }).catch(e => console.warn('City manifest failed to load:', e.message));
@@ -1898,6 +1899,7 @@ function unloadCityTile(key) {
 }
 
 function updateCityStreaming(dt) {
+  if (!CITY_ENABLED) return;
   // Both the dungeon arena (x=2000) and the civic-interior pocket (x=-5000) sit
   // close enough to the city's ~4.6km radius that city tiles would otherwise
   // start streaming in around them while the player is inside. Skip entirely
