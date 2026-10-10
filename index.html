@@ -869,6 +869,7 @@ function addBuilding(x, z, faceX, faceZ) {
   const doorZ = z + faceZ * (d / 2 - 0.03);
   box(1.5, 2.3, 0.1, x, CURB + 1.15, doorZ, 0x241f1a, false);
   box(1.7, 0.15, 0.2, x, CURB + 2.35, doorZ, 0x3a332b, false);   // lintel
+  if (rand() < 0.5) addCCTV(x + (w / 2 - 0.6) * (faceX || 1), CURB + 3.6, doorZ + faceZ * 0.1, faceZ);
   const kind = pick(['apartment', 'shop', 'office']);
   const name = (kind === 'apartment' ? buildingAddressN + ' Ashford Apartments' : kind === 'shop' ? buildingAddressN + ' High Street Shop' : buildingAddressN + ' Ashford Offices');
   buildingAddressN += rand() < 0.5 ? 2 : 4;
@@ -889,6 +890,21 @@ function addBuilding(x, z, faceX, faceZ) {
   }
   buildings.push({ x, z, w, d, top, alive: true, meshes: scene.children.slice(firstChild),
                    collider: colliders[firstCollider], blocks: planeBlocks.slice(firstBlock) });
+}
+// A small security camera mounted near a building's entrance, slowly panning.
+const cctvMat = new THREE.MeshStandardMaterial({ color: 0x24282c, roughness: 0.5 });
+const cctvLensMat = new THREE.MeshStandardMaterial({ color: 0x0a0d10, emissive: 0xff2222, emissiveIntensity: 0 });
+function addCCTV(x, y, z, faceZ) {
+  const g = new THREE.Group();
+  const mount = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.3), cctvMat); mount.rotation.x = Math.PI / 2; g.add(mount);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.4), cctvMat); body.position.set(0, -0.02, 0.28); g.add(body);
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.1, 10), cctvLensMat);
+  lens.rotation.x = Math.PI / 2; lens.position.set(0, -0.02, 0.5); g.add(lens);
+  g.position.set(x, y, z);
+  g.rotation.y = faceZ < 0 ? 0 : Math.PI;
+  const baseY = g.rotation.y, phase = rand() * 10;
+  scene.add(g);
+  addTask({ dur: 1e9, update: (dt, t) => { g.rotation.y = baseY + Math.sin(t * 0.4 + phase) * 0.5; } });
 }
 
 // A destroyed building sinks into the ground in a cloud of dust, hurts everything nearby,
@@ -996,6 +1012,30 @@ lampSpots.forEach((p, i) => {
 });
 poles.castShadow = caps.castShadow = true;
 scene.add(poles, lanterns, caps);
+
+// Lamps can actually be broken (melee/powers) — see breakLampsNear(), called from
+// hitAround(). A broken lamp topples and stops contributing light at night.
+const lampBroken = new Array(lampSpots.length).fill(false);
+function breakLamp(i) {
+  if (lampBroken[i]) return;
+  lampBroken[i] = true;
+  const p = lampSpots[i];
+  dummyObj.rotation.set(0, 0, Math.PI / 2.3);
+  dummyObj.position.set(p.x, CURB + 0.3, p.z);
+  dummyObj.updateMatrix(); poles.setMatrixAt(i, dummyObj.matrix); poles.instanceMatrix.needsUpdate = true;
+  dummyObj.rotation.set(0, 0, 0); dummyObj.scale.setScalar(0); dummyObj.position.set(p.x, -5, p.z);
+  dummyObj.updateMatrix();
+  lanterns.setMatrixAt(i, dummyObj.matrix); lanterns.instanceMatrix.needsUpdate = true;
+  caps.setMatrixAt(i, dummyObj.matrix); caps.instanceMatrix.needsUpdate = true;
+  dummyObj.scale.setScalar(1);
+  burst(at(p, 4), 14, [0xfff1c9, 0xffc66b, 0x444444], 8, 0.15, 0.4, 6);
+  shake = Math.max(shake, 0.15);
+}
+function breakLampsNear(center, r) {
+  for (let i = 0; i < lampSpots.length; i++) {
+    if (!lampBroken[i] && distXZ(lampSpots[i], center) < r + 0.6) breakLamp(i);
+  }
+}
 
 // A small pool of real lights that follows the player to the nearest lamps at night.
 const lampLights = [];
@@ -3313,6 +3353,7 @@ function dispatchTowTruck(v) {
 
 // Hit everything within r of center. Returns how many were hit.
 function hitAround(center, r, hits, h, maxDy = 3) {
+  breakLampsNear(center, r);
   let n = hitVehicles(center, r, hits, h, maxDy);
   for (const e of enemies) {
     if (!e.alive || hits?.has(e)) continue;
@@ -5421,7 +5462,7 @@ function updateWorldLight(dt) {
   lampTimer -= dt;
   if (lampTimer <= 0) {
     lampTimer = 0.5;
-    (dungeon ? torchSpots : lampSpots).map(p => ({ p, d: distXZ(p, focus) })).sort((x, y) => x.d - y.d).slice(0, lampLights.length)
+    (dungeon ? torchSpots : lampSpots.filter((_, i) => !lampBroken[i])).map(p => ({ p, d: distXZ(p, focus) })).sort((x, y) => x.d - y.d).slice(0, lampLights.length)
       .forEach((n, i) => lampLights[i].position.set(n.p.x, dungeon ? n.p.y : CURB + 4, n.p.z));
   }
   for (const l of lampLights) l.intensity = dungeon ? 40 : glow * 30;
