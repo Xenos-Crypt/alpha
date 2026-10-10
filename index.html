@@ -2180,7 +2180,10 @@ function applyHit(e, h) {
   burst(at(p, e.height * 0.6), h.heavy ? 18 : 8, [0xffffff, 0xffe08a, characters[charIdx].fx], h.heavy ? 12 : 7, 0.12, 0.3, 8);
   stats.ult = Math.min(100, stats.ult + dmg * 0.6 * (1 + prog.men * 0.08));
   registerCombo(dmg);
-  if (h.heavy) impactFrame(h.impact ?? 1);
+  // The big screen-flash/shake was firing on every heavy hit regardless of target,
+  // which meant routine kills against trivial slimes felt as disruptive as a boss
+  // kill. Reserve the full flash for real enemies; slimes get the lighter version.
+  if (h.heavy && e.kind !== 'slime') impactFrame(h.impact ?? 1);
   else { hitStop = Math.max(hitStop, 0.035); shake = Math.max(shake, 0.08); }
 
   if (e.hp <= 0) killEnemy(e);

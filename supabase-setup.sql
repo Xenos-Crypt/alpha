@@ -45,7 +45,7 @@ create table if not exists logins (
 );
 
 alter table logins enable row level security;
-
+then 
 create policy "Users can insert own login" on logins
   for insert with check (auth.uid() = user_id);
 
