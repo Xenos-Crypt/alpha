@@ -706,16 +706,23 @@ function collide(p, r) {
       p.x += opts[0][0]; p.z += opts[0][1];
     }
   }
-  if (p.x > -1000 && p.x < 1000) { p.x = clamp(p.x, -900, 900); p.z = clamp(p.z, -650, 650); }   // dungeons live far away at x = 2000
+  if (p.x > -1000 && p.x < 1000) { p.x = clamp(p.x, -900, 900); p.z = clamp(p.z, -650, 800); }   // dungeons live far away at x = 2000; south bound extended for Riverside
   return hit;
 }
 const insideCollider = p => colliders.some(c => p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ);
 
 // City layout: roads every 40m (10m wide), blocks in between with 15cm-high pavements.
 const CURB = 0.15;
+const BRIDGE_X = 0, BRIDGE_HALF_W = 7, BRIDGE_Z0 = 160, BRIDGE_Z1 = 654, BRIDGE_Y = CURB + 0.4;
+const RIVERSIDE_Z0 = 640, RIVERSIDE_Z1 = 780, RIVERSIDE_X0 = -80, RIVERSIDE_X1 = 80;
 function groundY(x, z) {
   const dockFloor = harbour?.groundAt(x,z); if (dockFloor != null) return dockFloor;
   const terminalFloor = townPlaces?.floorAt(x,z); if (terminalFloor != null) return terminalFloor;
+  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z > BRIDGE_Z0 - 4 && z < BRIDGE_Z1 + 4) return BRIDGE_Y;   // river bridge deck
+  if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0 && z <= RIVERSIDE_Z1) {   // Riverside, across the bridge
+    const lx2 = ((x % 40) + 40) % 40, lz2 = ((z % 40) + 40) % 40;
+    return lx2 > 6 && lx2 < 34 && lz2 > 6 && lz2 < 34 ? CURB : 0;
+  }
   if (x >= -300 && x <= 300 && z > 187 && z < 650 && !(x > 18 && x < 22 && z < 206)) return -2;
   if (x > 1000) return 0;                                    // dungeon arena floor
   if (x > 18 && x < 22 && z > 164 && z < 206) return CURB;   // harbour pier
@@ -2127,6 +2134,56 @@ scene.add(sea);
 box(4, 0.3, 41, PIER.x, 0, 185.5, woodMatPlain, false);
 for (let z = 168; z <= 204; z += 4) for (const s of [-1, 1]) box(0.25, 1.2, 0.25, PIER.x + s * 1.9, -0.3, z, 0x5a3d26, false);
 // Water can be entered from any beach edge or dock.
+
+// =====================================================================
+// BRIDGE + RIVERSIDE: a drivable crossing over the water to a second,
+// smaller settlement on the far shore. groundY() already carves out the
+// deck's footprint from the "always drown" water zone above.
+// =====================================================================
+function signboard(text, x, y, z, width = 10, colour = '#15364a') {
+  const texture = makeTex(1024, 128, g => {
+    g.fillStyle = colour; g.fillRect(0, 0, 1024, 128);
+    g.fillStyle = '#ffffff'; g.font = 'bold 54px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 512, 64, 970);
+  });
+  const mat = new THREE.MeshBasicMaterial({ map: texture });
+  const geo = new THREE.PlaneGeometry(width, width / 8);
+  const front = new THREE.Mesh(geo, mat); front.position.set(x, y, z); scene.add(front);
+  const back = new THREE.Mesh(geo, mat); back.position.set(x, y, z); back.rotation.y = Math.PI; scene.add(back);
+}
+{
+  const midZ = (BRIDGE_Z0 + BRIDGE_Z1) / 2, len = BRIDGE_Z1 - BRIDGE_Z0;
+  box(BRIDGE_HALF_W * 2, 0.6, len, BRIDGE_X, BRIDGE_Y - 0.3, midZ, 0x5c5c5c, false);
+  for (const side of [-1, 1]) {
+    box(0.3, 1.1, len, BRIDGE_X + side * (BRIDGE_HALF_W - 0.2), BRIDGE_Y + 0.55, midZ, 0x3a3f45, false);
+    // Thin collider strip along each railing so you can't walk/drive off the edge into the water.
+    colliders.push({ minX: BRIDGE_X + side * (BRIDGE_HALF_W - 0.1) - 0.2, maxX: BRIDGE_X + side * (BRIDGE_HALF_W - 0.1) + 0.2, minZ: BRIDGE_Z0, maxZ: BRIDGE_Z1 });
+    for (let z = BRIDGE_Z0 + 10; z < BRIDGE_Z1; z += 24) lampSpots.push(new THREE.Vector3(BRIDGE_X + side * (BRIDGE_HALF_W - 0.7), BRIDGE_Y, z));
+  }
+  for (let z = BRIDGE_Z0 + 30; z < BRIDGE_Z1; z += 60) for (const side of [-1, 1])
+    box(1.4, 15, 1.4, BRIDGE_X + side * 4, BRIDGE_Y - 7.5, z, 0x6d6d6d, false);
+  signboard('RIVER BRIDGE — MERGE AHEAD', BRIDGE_X, BRIDGE_Y + 2.2, BRIDGE_Z0 - 3, 10);
+}
+// Ship control office at the bridge's north corner — real ships need the channel
+// kept clear, so this is where passage requests would be handled.
+{
+  const ox = BRIDGE_X + BRIDGE_HALF_W + 7, oz = BRIDGE_Z0 + 6;
+  box(6, 4.5, 6, ox, 2.25, oz, 0xdfe6ea);
+  box(6.4, 0.3, 6.4, ox, 4.65, oz, 0x3a4652, false);
+  signboard('BRIDGE CONTROL OFFICE', ox, 5.2, oz - 3.1, 7);
+  interactables.push({ pos: new THREE.Vector3(ox, 0, oz - 3.5), r: 2.5, label: 'Check bridge control office',
+    action: () => toast('No ships currently require passage — the channel is clear.') });
+}
+// Riverside: a smaller settlement across the bridge, built with the same
+// generators as the main town so it's consistent in style, just smaller.
+for (let cx = -2; cx <= 1; cx++) for (let cz = 16; cz <= 18; cz++) {
+  const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
+  pavement(x0, z0, lawnMat);
+  for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
+    if (rand() < 0.2) { addTree(x0 + ox, z0 + oz, 1.1); continue; }
+    addBuilding(x0 + ox, z0 + oz, Math.sign(ox), Math.sign(oz));
+  }
+}
+signboard('WELCOME TO RIVERSIDE', BRIDGE_X, BRIDGE_Y + 2.2, RIVERSIDE_Z0 + 6, 12, '#1d2e1f');
 
 // =====================================================================
 // REAL-WORLD CITY: Edinburgh, streamed in from pre-tiled OpenStreetMap data.
@@ -4774,6 +4831,8 @@ let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 let swimming = false, waterExhausted = false;
 function isSeaWater(x,z) {
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
+  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return false;
+  if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0) return false;
   return x>=-300&&x<=300&&z>SEA_Z&&z<650&&!(x>18&&x<22&&z<206)&&harbour?.groundAt(x,z)==null;
 }
 function updateSwimming(dt) {
