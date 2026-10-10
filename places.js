@@ -42,8 +42,14 @@ export function buildPlaces(ctx) {
       g.fillStyle = colour; g.fillRect(0, 0, 1024, 128);
       g.fillStyle = '#ffffff'; g.font = 'bold 54px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 512, 64, 970);
     });
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(width, width / 8), new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }));
-    m.position.set(x, y, z); scene.add(m); return m;
+    // A single DoubleSide plane shows the same texture mirrored from the back, which
+    // is why the text read backwards from one approach direction. Two single-sided
+    // planes back-to-back read correctly from both sides instead.
+    const mat = new THREE.MeshBasicMaterial({ map: texture });
+    const geo = new THREE.PlaneGeometry(width, width / 8);
+    const front = new THREE.Mesh(geo, mat); front.position.set(x, y, z); scene.add(front);
+    const back = new THREE.Mesh(geo, mat); back.position.set(x, y, z); back.rotation.y = Math.PI; scene.add(back);
+    return front;
   }
   function slab(w, d, x, z, colour, y = .06) { return box(w, .04, d, x, y, z, colour, false); }
   function wall(w, h, d, x, y, z, colour = palette.wall) {

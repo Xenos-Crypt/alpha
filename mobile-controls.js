@@ -50,7 +50,7 @@ export function setupMobileControls(ctx) {
   button('Stats',()=>{reset();ctx.board();},null,root.querySelector('#mobileTop'));
   button('Settings',()=>{reset();ctx.settings();},null,root.querySelector('#mobileTop'));
   button('Pause',()=>{reset();ctx.pause();},null,root.querySelector('#mobileTop'));
-  function update(){const portrait=innerHeight>=innerWidth;rotate.hidden=!portrait;if(portrait&&ctx.playing()){reset();ctx.pause();}root.style.display=!portrait&&ctx.playing()?'block':'none';if(!ctx.playing())reset();}
+  function update(){const portrait=innerHeight>=innerWidth;rotate.hidden=!portrait;if(portrait&&ctx.playing()){reset();ctx.pause();}const editing=ctx.editingLayout?.();root.style.display=!portrait&&(ctx.playing()||editing)?'block':'none';if(!ctx.playing()&&!editing)reset();}
   addEventListener('resize',update);addEventListener('blur',()=>{reset();ctx.pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden){reset();ctx.pause();}});update();
   return {mobile:true,update,reset};
 }

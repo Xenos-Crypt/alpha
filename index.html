@@ -291,7 +291,13 @@
     E: interact / drive / steal vehicles<br>
     C: stats &amp; skills<br>
     Look at a gate: see its rank &amp; danger<br>
-    L: lock / unlock mouse &nbsp;·&nbsp; Esc: pause
+    L: lock / unlock mouse &nbsp;·&nbsp; Esc: pause<br>
+    While driving — N: toggle manual/automatic transmission &nbsp;·&nbsp; Z / X: shift gear up/down (manual only)
+    <div class="row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px">
+      <button class="opt" id="layoutEditBtn">Move controls</button>
+      <button class="opt" id="layoutResetBtn">Reset layout</button>
+    </div>
+    <div class="sub">Drag the health/stats box or the skill bar anywhere on screen, then press Done.</div>
   </div>
   <div id="stabSound" style="display:none">
     <div class="row"><span>Master volume</span><input type="range" id="volumeSlider" min="0" max="100" value="80"><span id="volumeVal">80%</span></div>
@@ -307,6 +313,9 @@
     <div class="sub">Lower settings reduce render resolution and turn off shadows for better performance.</div>
   </div>
   <button class="close" id="closeSettings">Close</button>
+</div>
+<div id="layoutEditBar" style="display:none;position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:30;background:#14202eef;color:#fff;padding:8px 14px;border-radius:10px;font:13px system-ui;align-items:center;gap:10px">
+  Drag any highlighted panel to move it.<button id="layoutDoneBtn" style="font:inherit;color:#fff;background:#3867d6;border:0;border-radius:8px;padding:5px 12px;cursor:pointer">Done</button>
 </div>
 <div id="classSelect">
   <h1>Choose Your Elements</h1>
@@ -4541,6 +4550,73 @@ $('volumeSlider').addEventListener('input', e => {
   localStorage.setItem('masterVolume', e.target.value);
 });
 
+// =====================================================================
+// CUSTOM LAYOUT: drag the HUD/hotbar (desktop) or joystick/buttons (mobile)
+// anywhere on screen; positions persist in localStorage.
+// =====================================================================
+const DRAG_IDS = ['hud', 'hotbar', 'mobileStick', 'mobileButtons', 'mobileTop'];
+let layoutEditMode = false;
+const loadLayout = () => { try { return JSON.parse(localStorage.getItem('uiLayout') || '{}'); } catch { return {}; } };
+const saveLayoutPos = (id, left, top) => { const L = loadLayout(); L[id] = { left, top }; localStorage.setItem('uiLayout', JSON.stringify(L)); };
+function applyLayout() {
+  const L = loadLayout();
+  for (const id of DRAG_IDS) {
+    const el = document.getElementById(id), pos = L[id];
+    if (el && pos) { el.style.left = pos.left + 'px'; el.style.top = pos.top + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.transform = 'none'; }
+  }
+}
+function makeDraggable(el) {
+  if (!el || el.dataset.dragBound) return;
+  el.dataset.dragBound = '1';
+  let dragging = false, offX = 0, offY = 0;
+  el.addEventListener('pointerdown', e => {
+    if (!layoutEditMode) return;
+    e.preventDefault(); e.stopPropagation();
+    dragging = true; el.setPointerCapture(e.pointerId);
+    const r = el.getBoundingClientRect();
+    offX = e.clientX - r.left; offY = e.clientY - r.top;
+  });
+  el.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const left = clamp(e.clientX - offX, 0, innerWidth - el.offsetWidth);
+    const top = clamp(e.clientY - offY, 0, innerHeight - el.offsetHeight);
+    el.style.left = left + 'px'; el.style.top = top + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.transform = 'none';
+  });
+  const end = e => { if (!dragging) return; dragging = false; const r = el.getBoundingClientRect(); saveLayoutPos(el.id, r.left, r.top); };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+}
+function setLayoutEditMode(on) {
+  layoutEditMode = on;
+  for (const id of DRAG_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    makeDraggable(el);
+    el.style.pointerEvents = on ? 'auto' : '';
+    el.style.outline = on ? '2px dashed #ffd166' : '';
+    el.style.cursor = on ? 'grab' : '';
+  }
+  $('layoutEditBar').style.display = on ? 'flex' : 'none';
+  mobileControls?.update();
+}
+function resetLayout() {
+  localStorage.removeItem('uiLayout');
+  for (const id of DRAG_IDS) {
+    const el = document.getElementById(id);
+    if (el) { el.style.left = ''; el.style.top = ''; el.style.right = ''; el.style.bottom = ''; el.style.transform = ''; }
+  }
+  toast('Layout reset to default.');
+}
+$('layoutEditBtn').addEventListener('click', () => {
+  settingsOpen = false; $('settingsPanel').style.display = 'none';
+  setFreeMouse(true);
+  setLayoutEditMode(true);
+});
+$('layoutResetBtn').addEventListener('click', resetLayout);
+$('layoutDoneBtn').addEventListener('click', () => {
+  setLayoutEditMode(false);
+  setFreeMouse(false);
+});
+
 // L toggles the mouse: locked = mouse turns the camera; free = normal cursor, game keeps running
 let freeMouse = false;
 function setFreeMouse(on) {
@@ -4565,6 +4641,11 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyG') useUlt();
   if (e.code === 'KeyM') { player.position.set(CITY_OFFSET.x, player.position.y, CITY_OFFSET.z); toast('Teleported to Edinburgh (testing only)'); } // temporary test-only fast travel to the real-world map patch
   if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) useSkill(Number(e.code.slice(5)) - 1);
+  if (e.code === 'KeyN' && inCar && isRoadVehicle(driving)) { transmissionAuto = !transmissionAuto; gear = 1; toast(transmissionAuto ? 'Automatic transmission' : 'Manual transmission — Z/X to shift'); }
+  if (!transmissionAuto && inCar && isRoadVehicle(driving)) {
+    if (e.code === 'KeyZ') { gear = Math.min(5, gear + 1); toast('Gear ' + gear); }
+    if (e.code === 'KeyX') { gear = Math.max(1, gear - 1); toast('Gear ' + gear); }
+  }
 });
 addEventListener('keyup', e => keys[e.code] = false);
 // Switching windows/tabs never fires keyup for whatever was held, so a movement
@@ -4594,7 +4675,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || boardOpen || settingsOpen ? 'none' : 'flex';
+  startEl.style.display = locked || boardOpen || settingsOpen || layoutEditMode ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -4781,6 +4862,10 @@ function resolveRoadMovement(v, start, dt) {
     }
   }
 }
+// Manual/automatic transmission: in manual, top speed is capped by the current
+// gear until you shift up (Z) or down (X); N toggles between the two.
+const GEAR_RATIOS = [0.22, 0.42, 0.62, 0.82, 1.0];
+let transmissionAuto = true, gear = 1;
 function driveVehicle(v, dt) {
   if (isRoadVehicle(v) && isSeaWater(v.group.position.x,v.group.position.z)) { v.disabled=true;v.health=0;v.speed=0;if(v===driving){exitVehicle(true);toast('Vehicle submerged. Swim to shore.');}return; }
   if (v.kind === 'plane') return flyPlane(v, dt);
@@ -4792,7 +4877,8 @@ function driveVehicle(v, dt) {
     v.group.rotation.y += steer * (v.kind === 'bus' ? 1.1 : 1.8) * dt * Math.min(1, Math.abs(v.speed) / 8) * Math.sign(v.speed);
   }
   v.speed *= Math.max(0, 1 - (mine && (keys.KeyW || keys.KeyS) ? 0.3 : 1.5) * dt);
-  v.speed = clamp(v.speed, -8, v.maxSpeed);
+  const topSpeed = mine && !transmissionAuto && isRoadVehicle(v) ? v.maxSpeed * GEAR_RATIOS[gear - 1] : v.maxSpeed;
+  v.speed = clamp(v.speed, -8, topSpeed);
   const h = v.group.rotation.y, p = v.group.position;
   p.x += Math.sin(h) * v.speed * dt;
   p.z += Math.cos(h) * v.speed * dt;
@@ -5160,13 +5246,15 @@ interactables.push({pos:new THREE.Vector3(-153,0,231),r:3,label:'Climb dock ladd
 for(const x of [-153.5,-152.5])box(.08,3,.08,x,-.2,231,0xd1bc58,false);
 for(let y=-1.5;y<1.2;y+=.35)box(1,.06,.06,-153,y,231,0xd1bc58,false);
 mobileControls = setupMobileControls({
-  playing: () => locked && !boardOpen && !settingsOpen && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, -.1, 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
   attack: down => { mouseHeld = down; if (down) m1(); },
-  board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame
+  board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame,
+  editingLayout: () => layoutEditMode
 });
+applyLayout();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
 if (location.hash === '#test') { locked = true; startEl.style.display = 'none'; }
 if (location.hash === '#test-systems') {   // exercises building collapse, plane crash and a dungeon run
