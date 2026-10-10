@@ -405,6 +405,7 @@ import { createReconstruction } from './reconstruction.js';
 import { setupMobileControls } from './mobile-controls.js';
 import { buildHarbour } from './harbour.js';
 import { buildTransport } from './transport.js';
+import { buildBridge } from './bridge.js';
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -674,7 +675,7 @@ const colliders = [];      // axis-aligned boxes on the ground plane
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
-let harbour = null, townPlaces = null, transport = null;
+let harbour = null, townPlaces = null, transport = null, harbourBridge = null;
 const buildings = [];      // every city building, so it can be destroyed
 
 function mesh(geo, color, parent = scene) {
@@ -694,6 +695,7 @@ function box(w, h, d, x, y, z, color, collide = true) {
 function collide(p, r) {
   let hit = false;
   for (const c of colliders) {
+    if(c.baseYAt){const base=c.baseYAt(p.x,p.z);if(p.y<base-.8||p.y>base+2)continue;}
     const cx = clamp(p.x, c.minX, c.maxX), cz = clamp(p.z, c.minZ, c.maxZ);
     const dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
     if (d2 >= r * r) continue;
@@ -717,6 +719,7 @@ const CURB = 0.15;
 const BRIDGE_X = 0, BRIDGE_HALF_W = 7, BRIDGE_Z0 = 160, BRIDGE_Z1 = 654, BRIDGE_Y = CURB + 0.4;
 const RIVERSIDE_Z0 = 640, RIVERSIDE_Z1 = 780, RIVERSIDE_X0 = -80, RIVERSIDE_X1 = 80;
 function groundY(x, z) {
+  if(harbourBridge){const floor=harbourBridge.groundAt(x,z,inCar&&driving?driving.group.position.y:player.position.y);if(floor!=null)return floor;}
   const dockFloor = harbour?.groundAt(x,z); if (dockFloor != null) return dockFloor;
   const terminalFloor = townPlaces?.floorAt(x,z); if (terminalFloor != null) return terminalFloor;
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z > BRIDGE_Z0 - 4 && z < BRIDGE_Z1 + 4) return BRIDGE_Y;   // river bridge deck
@@ -724,7 +727,7 @@ function groundY(x, z) {
     const lx2 = ((x % 40) + 40) % 40, lz2 = ((z % 40) + 40) % 40;
     return lx2 > 6 && lx2 < 34 && lz2 > 6 && lz2 < 34 ? CURB : 0;
   }
-  if (x >= -300 && x <= 300 && z > 187 && z < 650 && !(x > 18 && x < 22 && z < 206)) return -2;
+  if (x >= -300 && x <= 300 && z > 187 && z < 900 && !(x > 18 && x < 22 && z < 206)) return -2;
   if (x > 1000) return 0;                                    // dungeon arena floor
   if (x > 18 && x < 22 && z > 164 && z < 206) return CURB;   // harbour pier
   if (Math.abs(x) > 160 || Math.abs(z) > 160) return 0;
@@ -1961,6 +1964,7 @@ async function boot() {
   const mode = await showMenu(!!existingSave);
   if (mode === 'continue') {
     applySoloSave(existingSave);
+    wanted = 0; pursuitBackupCooldown = 0;   // a reload should never resume with police already after you
   } else if (mode === 'new') {
     clearSolo(activeSession.user.id);
     await runSpawnScreen(activeSession.user.id, false);
@@ -2164,9 +2168,9 @@ const beach = mesh(new THREE.PlaneGeometry(600, SEA_Z - 165), sandMat);
 beach.rotation.x = -Math.PI / 2;
 beach.position.set(0, 0.01, (165 + SEA_Z) / 2);
 beach.castShadow = false;
-const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 650 - SEA_Z), new THREE.MeshStandardMaterial({ color: 0x2a7ab8, roughness: 0.15, metalness: 0.1 }));
+const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 900 - SEA_Z), new THREE.MeshStandardMaterial({ color: 0x2a7ab8, roughness: 0.15, metalness: 0.1 }));
 sea.rotation.x = -Math.PI / 2;
-sea.position.set(0, 0.03, (SEA_Z + 650) / 2);
+sea.position.set(0, 0.03, (SEA_Z + 900) / 2);
 sea.receiveShadow = true;
 scene.add(sea);
 box(4, 0.3, 41, PIER.x, 0, 185.5, woodMatPlain, false);
@@ -4869,10 +4873,11 @@ let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 
 let swimming = false, waterExhausted = false;
 function isSeaWater(x,z) {
+  if(harbourBridge&&harbourBridge.groundAt(x,z,inCar&&driving?driving.group.position.y:player.position.y)!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return false;
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0) return false;
-  return x>=-300&&x<=300&&z>SEA_Z&&z<650&&!(x>18&&x<22&&z<206)&&harbour?.groundAt(x,z)==null;
+  return x>=-300&&x<=300&&z>SEA_Z&&z<900&&!(x>18&&x<22&&z<206)&&harbour?.groundAt(x,z)==null;
 }
 function updateSwimming(dt) {
   if (!swimming) { swimming=true; action?.end?.(action); action=null; sitting=false; activeSitSpot=null; toast('Swimming: move toward shore to get out. Run uses more stamina.'); }
@@ -5233,6 +5238,7 @@ function updateNeeds(dt) {
     transport?.cancel();
     sitting = false; sitReturnPosition = null;
     stats.hp = maxHp(); stats.hunger = 60; stats.energy = 60;
+    wanted = 0; pursuitBackupCooldown = 0;   // fainting shouldn't leave police still chasing you home
     if (inCar) exitVehicle(true);
     if (dungeon) leaveDungeon();
     action = null;
@@ -5424,6 +5430,9 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
   pause() { if (mobileControls?.mobile) { locked = false; mouseHeld = false; $('start').style.display = 'none'; } },
   resume() { requestGameControl(); }
 });
+// The bridge/Riverside were hand-built directly in this file, not through places.js's
+// room() helper, so they never auto-registered on the travel map like everything else.
+townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
@@ -5439,6 +5448,8 @@ for(const pet of parkPets.filter(a=>a.kind==='dog').slice(0,2)){
 }
 const companion=parkPets.filter(a=>a.kind==='dog')[2];
 interactables.push({pos:companion.home.clone(),r:3,label:'Adopt companion dog',action:()=>{if(companion.owner){toast('Your companion dog follows you around town.');return;}companion.owner=player;companion.leash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xa68752}));scene.add(companion.leash);toast('You adopted a dog. Your companion will follow you.');}});
+harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex});
+townPlaces.destinations.push({name:'Harbour bridge',x:220,z:85});
 transport=buildTransport({scene,box,makeTex,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
  canBoard:()=>!inCar&&!sitting&&!action&&!swimming&&wanted===0,firstPerson:()=>cameraView==='first',board(){action=null;vy=0;pvel.set(0,0,0);},
  carry(pos){player.position.copy(pos);},leave(pos){player.position.copy(pos);player.position.y=groundY(pos.x,pos.z);collide(player.position,.4);vy=0;pvel.set(0,0,0);}

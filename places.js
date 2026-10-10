@@ -237,8 +237,17 @@ export function buildPlaces(ctx) {
     const minZ = Math.min(...zs) - 20, maxZ = Math.max(...zs) + 20;
     const toCanvas = (x, z) => [(x - minX) / (maxX - minX) * canvas.width, (z - minZ) / (maxZ - minZ) * canvas.height];
     const g = canvas.getContext('2d');
-    g.fillStyle = '#0c1622'; g.fillRect(0, 0, canvas.width, canvas.height);
-    g.strokeStyle = '#223247'; g.lineWidth = 1;
+    // An actual (schematic) map of the world's real layout, not just a plain
+    // dot grid: land, the sea/river band, and the bridge crossing it.
+    g.fillStyle = '#16301f'; g.fillRect(0, 0, canvas.width, canvas.height);
+    const waterZ0 = 187, waterZ1 = 650;
+    if (waterZ1 > minZ && waterZ0 < maxZ) {
+      const [, wy0] = toCanvas(0, Math.max(waterZ0, minZ)), [, wy1] = toCanvas(0, Math.min(waterZ1, maxZ));
+      g.fillStyle = '#1f5f8f'; g.fillRect(0, wy0, canvas.width, wy1 - wy0);
+      const [bx0] = toCanvas(-7, 0), [bx1] = toCanvas(7, 0);
+      g.fillStyle = '#8a8d90'; g.fillRect(bx0, wy0, bx1 - bx0, wy1 - wy0);
+    }
+    g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1;
     for (let i = 0; i <= 10; i++) {
       const x = i / 10 * canvas.width, y = i / 10 * canvas.height;
       g.beginPath(); g.moveTo(x, 0); g.lineTo(x, canvas.height); g.stroke();
