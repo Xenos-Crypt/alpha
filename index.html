@@ -1671,20 +1671,24 @@ fetch('./assets/map/tiles/manifest.json').then(r => r.json()).then(m => {
   console.log(`Edinburgh manifest loaded: ${m.tiles.length} tiles, ${m.tileSize}m each`);
 }).catch(e => console.warn('City manifest failed to load:', e.message));
 
+const civicBuildings = []; // real police/hospital/courthouse/etc, flat list across all loaded tiles — see enterCivicBuilding()
+
 function loadCityTile(tx, tz) {
   const key = `${tx}_${tz}`;
   if (cityTiles.has(key)) return;
   cityTiles.set(key, 'loading'); // placeholder so a slow fetch doesn't get requested twice
   fetch(`./assets/map/tiles/${key}.json`).then(r => r.ok ? r.json() : null).then(geojson => {
     if (!geojson) { cityTiles.delete(key); return; }
-    const { group, buildingColliders } = buildCityFromGeoJSON(geojson, cityManifest.origin);
+    const { group, buildingColliders, civicBuildings: tileCivic } = buildCityFromGeoJSON(geojson, cityManifest.origin);
     group.position.copy(CITY_OFFSET);
     scene.add(group);
     const tileColliders = buildingColliders.map(c => ({ minX: c.minX + CITY_OFFSET.x, maxX: c.maxX + CITY_OFFSET.x, minZ: c.minZ + CITY_OFFSET.z, maxZ: c.maxZ + CITY_OFFSET.z }));
     colliders.push(...tileColliders);
     const buildingMesh = group.getObjectByName('buildings');
     if (buildingMesh) camBlockers.push(buildingMesh);
-    cityTiles.set(key, { group, colliders: tileColliders, buildingMesh });
+    const civicEntries = tileCivic.map(c => ({ ...c, x: c.x + CITY_OFFSET.x, z: c.z + CITY_OFFSET.z }));
+    civicBuildings.push(...civicEntries);
+    cityTiles.set(key, { group, colliders: tileColliders, buildingMesh, civicEntries });
   }).catch(() => cityTiles.delete(key));
 }
 
@@ -1694,11 +1698,17 @@ function unloadCityTile(key) {
   scene.remove(tile.group);
   for (const c of tile.colliders) { const i = colliders.indexOf(c); if (i >= 0) colliders.splice(i, 1); }
   if (tile.buildingMesh) { const i = camBlockers.indexOf(tile.buildingMesh); if (i >= 0) camBlockers.splice(i, 1); }
+  for (const c of tile.civicEntries) { const i = civicBuildings.indexOf(c); if (i >= 0) civicBuildings.splice(i, 1); }
   tile.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   cityTiles.delete(key);
 }
 
 function updateCityStreaming(dt) {
+  // Both the dungeon arena (x=2000) and the civic-interior pocket (x=-5000) sit
+  // close enough to the city's ~4.6km radius that city tiles would otherwise
+  // start streaming in around them while the player is inside. Skip entirely
+  // whenever the player isn't actually out in the open world.
+  if (dungeon || inCivicInterior) return;
   cityStreamTimer += dt;
   if (cityStreamTimer < 1) return; // once a second is plenty — the player can't cross a 300m tile in under a second
   cityStreamTimer = 0;
@@ -3428,12 +3438,74 @@ function exitVehicle(force = false) {
 function interact() {
   if (inCar) return exitVehicle();
   if (action) return;
+  if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
+  const cb = nearestCivicBuilding();
+  if (cb) return enterCivicBuilding(cb);
   const g = nearestGate();
   if (g) return enterDungeon(g);
   const v = nearestVehicle();
   if (v) return enterVehicle(v);
   nearestInteractable()?.action();
+}
+
+// =====================================================================
+// CIVIC BUILDINGS: real police stations, hospitals, courthouses, libraries,
+// etc. from the OSM data are enterable. One shared interior pocket space is
+// reused for all of them (like the dungeon arena); the AI generates what's
+// actually inside — its purpose, rooms and the people you'd find there —
+// per visit, rather than every one having a hand-built unique interior.
+// =====================================================================
+const CIVIC_OFFSET = new THREE.Vector3(-5000, 0, 0);
+let inCivicInterior = false, civicReturnPos = null;
+(function buildCivicInterior() {
+  box(26, 0.3, 20, CIVIC_OFFSET.x, 0.15, CIVIC_OFFSET.z, 0xcfc9ba);             // floor
+  box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z - 10, 0xe8e4d8);            // back wall
+  box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z + 10, 0xe8e4d8);            // front wall (with a gap for the door, see below)
+  box(0.4, 6, 20, CIVIC_OFFSET.x - 13, 3, CIVIC_OFFSET.z, 0xe8e4d8);
+  box(0.4, 6, 20, CIVIC_OFFSET.x + 13, 3, CIVIC_OFFSET.z, 0xe8e4d8);
+  const light = new THREE.PointLight(0xfff4d6, 1.2, 30);
+  light.position.set(CIVIC_OFFSET.x, 5, CIVIC_OFFSET.z);
+  scene.add(light);
+})();
+function nearestCivicBuilding() {
+  let best = null, bestD = 6;
+  for (const b of civicBuildings) {
+    const d = Math.hypot(b.x - player.position.x, b.z - player.position.z);
+    if (d < bestD) { bestD = d; best = b; }
+  }
+  return best;
+}
+async function enterCivicBuilding(b) {
+  action = null;
+  civicReturnPos = player.position.clone();
+  $('fade').style.opacity = 1;
+  let data = null;
+  try {
+    const res = await fetch('/api/civic-interior', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: b.type, name: b.name }) });
+    data = await res.json(); if (data.error) data = null;
+  } catch {}
+  setTimeout(() => {
+    inCivicInterior = true;
+    player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8);
+    player.rotation.y = Math.PI;
+    yaw = 0; vy = 0; pvel.set(0, 0, 0);
+    $('fade').style.opacity = 0;
+    callout(b.name.toUpperCase(), 0xffd166, true);
+    const desc = data?.description || `You step into ${b.name}, but it's hard to make out much more right now.`;
+    const staff = data?.staff?.length ? ' Staff here: ' + data.staff.map(s => `${s.name} (${s.role})`).join(', ') + '.' : '';
+    toast(desc + staff);
+  }, 650);
+}
+function leaveCivicBuilding() {
+  $('fade').style.opacity = 1;
+  setTimeout(() => {
+    inCivicInterior = false;
+    player.position.copy(civicReturnPos);
+    player.position.y = groundY(player.position.x, player.position.z);
+    vy = 0;
+    $('fade').style.opacity = 0;
+  }, 650);
 }
 
 // =====================================================================

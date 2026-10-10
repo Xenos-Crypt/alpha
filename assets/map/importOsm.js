@@ -56,6 +56,15 @@ function estimateHeight(props) {
 
 const ROAD_WIDTH = { motorway: 10, trunk: 9, primary: 8, secondary: 7, tertiary: 6, residential: 5.5, service: 3.5, footway: 1.8, path: 1.2 };
 
+// Real-world amenity tags (from the same OSM data) worth making enterable and
+// visually distinct — civic/public buildings a player would actually look for.
+const CIVIC_AMENITIES = {
+  police: 'Police station', courthouse: 'Courthouse', hospital: 'Hospital', clinic: 'Clinic', doctors: "Doctor's surgery",
+  townhall: 'Town hall', library: 'Library', school: 'School', university: 'University', fire_station: 'Fire station',
+  community_centre: 'Community centre', job_centre: 'Job centre', post_office: 'Post office', bank: 'Bank',
+};
+const CIVIC_COLOR = 0xffd166;
+
 /**
  * @param {object} geojson - parsed Overpass Turbo export (buildings tagged `building`, roads tagged `highway`)
  * @returns {{group: THREE.Group, bounds: object, buildingCount: number, roadCount: number, buildingColliders: Array}}
@@ -78,8 +87,10 @@ export function buildCityFromGeoJSON(geojson, origin) {
   // this renders correctly from above instead of being backface-culled.
   const roadMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2e, roughness: 1, side: THREE.DoubleSide });
 
-  const buildingGeos = [], roadGeos = [], buildingColliders = [];
+  const buildingGeos = [], roadGeos = [], buildingColliders = [], civicBuildings = [];
   const box3 = new THREE.Box3();
+  const civicMarkerGeo = new THREE.ConeGeometry(1.5, 4, 6);
+  const civicMarkerMat = new THREE.MeshStandardMaterial({ color: CIVIC_COLOR, emissive: CIVIC_COLOR, emissiveIntensity: 0.6 });
 
   for (const f of features) {
     const props = f.properties || {};
@@ -98,6 +109,15 @@ export function buildCityFromGeoJSON(geojson, origin) {
       box3.setFromBufferAttribute(geo.getAttribute('position'));
       buildingColliders.push({ minX: box3.min.x, maxX: box3.max.x, minZ: box3.min.z, maxZ: box3.max.z });
       buildingGeos.push(geo);
+
+      const civicLabel = CIVIC_AMENITIES[props.amenity];
+      if (civicLabel) {
+        const cx = (box3.min.x + box3.max.x) / 2, cz = (box3.min.z + box3.max.z) / 2;
+        const marker = new THREE.Mesh(civicMarkerGeo, civicMarkerMat);
+        marker.position.set(cx, box3.max.y + 2.5, cz);
+        group.add(marker);
+        civicBuildings.push({ type: props.amenity, label: civicLabel, name: props.name || civicLabel, x: cx, z: cz });
+      }
     } else if (props.highway && f.geometry.type === 'LineString') {
       const pts = f.geometry.coordinates.map(([lon, lat]) => project(lon, lat));
       if (pts.length < 2) continue;
@@ -138,5 +158,5 @@ export function buildCityFromGeoJSON(geojson, origin) {
     group.add(buildingMesh);
   }
 
-  return { group, bounds, buildingCount: buildingGeos.length, roadCount: roadGeos.length, buildingColliders };
+  return { group, bounds, buildingCount: buildingGeos.length, roadCount: roadGeos.length, buildingColliders, civicBuildings };
 }
