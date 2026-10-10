@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Edinburgh import test</title>
+<style>html,body{margin:0;height:100%;background:#111;overflow:hidden}
+#info{position:fixed;left:12px;top:12px;color:#fff;font:13px system-ui;background:rgba(0,0,0,.5);padding:8px 12px;border-radius:8px}</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="info">Loading…</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { buildCityFromGeoJSON } from './importOsm.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 5000);
+camera.position.set(0, 220, 220);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(300, 400, 200);
+sun.castShadow = true;
+scene.add(sun);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({ color: 0x5a7a4a }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+fetch('./edinburgh-sample.geojson').then(r => r.json()).then(geojson => {
+  const { group, buildingCount, roadCount } = buildCityFromGeoJSON(geojson);
+  scene.add(group);
+  document.getElementById('info').textContent = `${buildingCount} buildings, ${roadCount} roads — drag to orbit, scroll to zoom`;
+}).catch(e => { document.getElementById('info').textContent = 'Failed to load: ' + e.message; });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+(function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+</script>
+</body>
+</html>

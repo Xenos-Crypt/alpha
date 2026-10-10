@@ -156,6 +156,7 @@
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
   "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
 } }
 </script>
@@ -237,6 +238,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { createClient } from '@supabase/supabase-js';
+import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
 const supabase = createClient(
   'https://teyuiwdcqzjcvzejlsnc.supabase.co',
@@ -1360,6 +1362,7 @@ function runSpawnScreen(userId) {
 async function boot() {
   const { data: { session } } = await supabase.auth.getSession();
   const activeSession = session || await showAuthScreen();
+  supabase.from('logins').insert({ user_id: activeSession.user.id });
   const bornAlready = await loadOrCreateProfile(activeSession.user.id);
   if (!bornAlready) await runSpawnScreen(activeSession.user.id);
   $('start').style.display = 'flex';
@@ -1558,6 +1561,71 @@ for (let z = 168; z <= 204; z += 4) for (const s of [-1, 1]) box(0.25, 1.2, 0.25
 // Invisible walls so you can't walk on the water (except along the pier)
 colliders.push({ minX: -300, maxX: 18, minZ: SEA_Z, maxZ: 300 }, { minX: 22, maxX: 300, minZ: SEA_Z, maxZ: 300 },
                { minX: 18, maxX: 22, minZ: 206, maxZ: 300 });
+
+// =====================================================================
+// REAL-WORLD CITY: Edinburgh, streamed in from pre-tiled OpenStreetMap data.
+// Placed far from the procedural town (offset on X) so nothing hand-placed
+// there moves. Only tiles near the player are ever built or collidable —
+// the full city is 53k buildings / 19k roads, which is why this streams
+// instead of loading everything at once (see assets/map/tools/tile-geojson.mjs).
+// =====================================================================
+const CITY_OFFSET = new THREE.Vector3(1500, 0, 0);
+const cityTiles = new Map(); // "tx_tz" -> { group, colliders: [...] }
+let cityManifest = null;
+let cityStreamTimer = 0;
+const CITY_LOAD_RADIUS = 2;   // tiles within this ring of the player's tile get loaded
+const CITY_UNLOAD_RADIUS = 4; // tiles further than this get unloaded (hysteresis avoids load/unload thrashing at the boundary)
+
+fetch('./assets/map/tiles/manifest.json').then(r => r.json()).then(m => {
+  cityManifest = m;
+  console.log(`Edinburgh manifest loaded: ${m.tiles.length} tiles, ${m.tileSize}m each`);
+}).catch(e => console.warn('City manifest failed to load:', e.message));
+
+function loadCityTile(tx, tz) {
+  const key = `${tx}_${tz}`;
+  if (cityTiles.has(key)) return;
+  cityTiles.set(key, 'loading'); // placeholder so a slow fetch doesn't get requested twice
+  fetch(`./assets/map/tiles/${key}.json`).then(r => r.ok ? r.json() : null).then(geojson => {
+    if (!geojson) { cityTiles.delete(key); return; }
+    const { group, buildingColliders } = buildCityFromGeoJSON(geojson, cityManifest.origin);
+    group.position.copy(CITY_OFFSET);
+    scene.add(group);
+    const tileColliders = buildingColliders.map(c => ({ minX: c.minX + CITY_OFFSET.x, maxX: c.maxX + CITY_OFFSET.x, minZ: c.minZ + CITY_OFFSET.z, maxZ: c.maxZ + CITY_OFFSET.z }));
+    colliders.push(...tileColliders);
+    const buildingMesh = group.getObjectByName('buildings');
+    if (buildingMesh) camBlockers.push(buildingMesh);
+    cityTiles.set(key, { group, colliders: tileColliders, buildingMesh });
+  }).catch(() => cityTiles.delete(key));
+}
+
+function unloadCityTile(key) {
+  const tile = cityTiles.get(key);
+  if (!tile || tile === 'loading') { cityTiles.delete(key); return; }
+  scene.remove(tile.group);
+  for (const c of tile.colliders) { const i = colliders.indexOf(c); if (i >= 0) colliders.splice(i, 1); }
+  if (tile.buildingMesh) { const i = camBlockers.indexOf(tile.buildingMesh); if (i >= 0) camBlockers.splice(i, 1); }
+  tile.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  cityTiles.delete(key);
+}
+
+function updateCityStreaming(dt) {
+  cityStreamTimer += dt;
+  if (cityStreamTimer < 1) return; // once a second is plenty — the player can't cross a 300m tile in under a second
+  cityStreamTimer = 0;
+  if (!cityManifest) return;
+  const localX = player.position.x - CITY_OFFSET.x, localZ = player.position.z - CITY_OFFSET.z;
+  // Player is nowhere near the city patch — don't even scan tiles.
+  if (Math.abs(localX) > 6000 || Math.abs(localZ) > 6000) return;
+  const ts = cityManifest.tileSize;
+  const ptx = Math.floor(localX / ts), ptz = Math.floor(localZ / ts);
+  for (let dx = -CITY_LOAD_RADIUS; dx <= CITY_LOAD_RADIUS; dx++)
+    for (let dz = -CITY_LOAD_RADIUS; dz <= CITY_LOAD_RADIUS; dz++)
+      loadCityTile(ptx + dx, ptz + dz);
+  for (const key of [...cityTiles.keys()]) {
+    const [tx, tz] = key.split('_').map(Number);
+    if (Math.max(Math.abs(tx - ptx), Math.abs(tz - ptz)) > CITY_UNLOAD_RADIUS) unloadCityTile(key);
+  }
+}
 
 const ships = [];
 const SHIP_COLORS = [0x2d3436, 0xb71540, 0x0a3d62];
@@ -3381,6 +3449,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyR') psychicGrip();
   if (e.code === 'KeyT') switchChar();
   if (e.code === 'KeyG') useUlt();
+  if (e.code === 'KeyM') { player.position.set(CITY_OFFSET.x, player.position.y, CITY_OFFSET.z); toast('Teleported to Edinburgh (testing only)'); } // temporary test-only fast travel to the real-world map patch
   if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) useSkill(Number(e.code.slice(5)) - 1);
 });
 addEventListener('keyup', e => keys[e.code] = false);
@@ -3801,6 +3870,7 @@ function frame() {
     wanted = Math.max(0, wanted - dt);
     updateNeeds(dt);
     if (!inCar) updatePlayer(dt);
+    updateCityStreaming(dt);
     updateVehicles(dt);
     updatePlanes(dt);
     updateShips(dt);

@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"@id":"way/157774344","foot":"yes","highway":"residential","lit":"yes","maxspeed":"20 mph","name":"Cumin Place","sidewalk":"both","source":"Bing;survey"},"geometry":{"type":"LineString","coordinates":[[-3.1843321,55.9341619],[-3.1850817,55.935164],[-3.1857481,55.9360118]]},"id":"way/157774344"}]}
