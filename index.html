@@ -768,15 +768,13 @@ function collapseBuilding(b) {
     if (distXZ(camera.position, base) < 90) shake = Math.max(shake, 0.3 * (1 - t / 5));
   }, end() {
     b.meshes.forEach(m => { m.visible = false; });
-    for (let i = 0; i < 10; i++) {   // rubble pile
+    scorchMark(base, size * 0.75);
+    for (let i = 0; i < 10; i++) {   // charred rubble pile — stays like this forever
       const s = 1.2 + Math.random() * 2.2;
-      const r = box(s, s * 0.6, s, b.x + (Math.random() - 0.5) * b.w * 0.8, CURB + s * 0.25, b.z + (Math.random() - 0.5) * b.d * 0.8, pick([0x6d6d6d, 0x7f7a70, 0x5a5550]), false);
+      const r = box(s, s * 0.6, s, b.x + (Math.random() - 0.5) * b.w * 0.8, CURB + s * 0.25, b.z + (Math.random() - 0.5) * b.d * 0.8, pick([0x242321, 0x2e2a26, 0x1c1a18]), false);
       r.rotation.set(Math.random(), Math.random() * 3, Math.random());
     }
-    addTask({ dur: 30, update: () => {   // smoke and embers for a while
-      if (Math.random() < 0.5) spawnParticle(new THREE.Vector3(b.x + (Math.random() - 0.5) * b.w * 0.6, CURB + 1, b.z + (Math.random() - 0.5) * b.d * 0.6),
-        new THREE.Vector3((Math.random() - 0.5), 3 + Math.random() * 2, (Math.random() - 0.5)), pick([0x3d3d3d, 0x555555, 0xff7a2f]), 0.5, 2.5, -0.3);
-    } });
+    burnFor(new THREE.Vector3(b.x, CURB + 1, b.z), 60, Math.max(b.w, b.d) * 0.6);
   } });
 }
 
@@ -1193,6 +1191,28 @@ function fxCrater(pos, r) {
   m.position.set(pos.x, groundY(pos.x, pos.z) + 0.04, pos.z);
   scene.add(m);
   addTask({ dur: 3, update: (dt, t) => { m.material.opacity = 0.55 * (1 - t / 3); }, end: () => disposeObj(m) });
+}
+// Permanent scorch decal left behind by fire/explosions — never disposed, stays forever.
+function scorchMark(pos, r) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(r, 20), fxMat(0x100d0a, 0.7, false));
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.z = Math.random() * Math.PI;
+  m.position.set(pos.x, groundY(pos.x, pos.z) + 0.03, pos.z);
+  scene.add(m);
+  return m;
+}
+// Sustained fire/smoke plume that slowly dies down but leaves the scorch mark behind for good.
+function burnFor(pos, dur, spread = 1) {
+  addTask({ dur, update: (dt, t) => {
+    const k = t / dur, intensity = 1 - k * 0.7; // flames die down but don't fully vanish till the end
+    if (Math.random() < intensity) spawnParticle(
+      new THREE.Vector3(pos.x + (Math.random() - 0.5) * spread, pos.y + 0.3, pos.z + (Math.random() - 0.5) * spread),
+      new THREE.Vector3((Math.random() - 0.5) * 0.6, 2.5 + Math.random() * 2, (Math.random() - 0.5) * 0.6),
+      pick([0xff7a2f, 0xffb347, 0x3d3d3d]), 0.35 + Math.random() * 0.3, 1.5, intensity > 0.3 ? -0.6 : 2);
+    if (Math.random() < 0.4 * intensity) spawnParticle(
+      new THREE.Vector3(pos.x + (Math.random() - 0.5) * spread * 1.4, pos.y + 0.5, pos.z + (Math.random() - 0.5) * spread * 1.4),
+      new THREE.Vector3((Math.random() - 0.5), 3 + Math.random() * 2.5, (Math.random() - 0.5)), pick([0x555555, 0x3d3d3d]), 0.5, 2.5, -0.3);
+  } });
 }
 function fxSwoosh(pos, dir, color, flip) {
   const g = new THREE.Group();
@@ -1706,7 +1726,8 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let driving = null, inCar = false, wanted = 0;
+let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0;
+const policeLastSeen = new THREE.Vector3();
 const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2cc, emissiveIntensity: 0.3 });
 const tailMat = new THREE.MeshStandardMaterial({ color: 0x880000, emissive: 0xff2020, emissiveIntensity: 0.3 });
 const glassMat = new THREE.MeshStandardMaterial({ color: 0x1c2833, roughness: 0.1, metalness: 0.5 });
@@ -2677,9 +2698,64 @@ function hurtPlayer(dmg, from, kb) {
 
 function startAction(a) { action = Object.assign({ t: 0, hits: new Set() }, a); }
 
+// Powers and melee share vehicle hit detection with character attacks.
+function hitVehicles(center, range, hits, h, maxDy, dir = null, minDot = -1) {
+  let count = 0;
+  for (const v of vehicles) {
+    if (!isRoadVehicle(v) || v.exploded || hits?.has(v)) continue;
+    const delta = v.group.position.clone().sub(center).setY(0), distance = delta.length();
+    if (distance > range + v.radius || Math.abs(v.group.position.y + 0.8 - center.y) > maxDy) continue;
+    if (dir && distance > 0.6 && delta.normalize().dot(dir) < minDot) continue;
+    hits?.add(v); damageVehiclePower(v, Number(h.dmg) || 0, center); count++;
+  }
+  return count;
+}
+function damageVehiclePower(v, damage, from, criminal = true) {
+  if (!isRoadVehicle(v) || v.exploded || !Number.isFinite(damage) || damage <= 0) return;
+  if (criminal) raiseWanted(v.kind === 'police' ? 120 : 60);
+  v.health = Math.max(0, (v.health ?? 100) - damage);
+  burst(at(v.group.position, 0.8), 8, [0xffcc66, 0x777777], 4, 0.1, 0.3, 8, 1);
+  if (v.health === 0) explodeVehicle(v, criminal);
+}
+function explodeVehicle(v, criminal = true) {
+  if (v.exploded) return;
+  v.exploded = true; v.disabled = true; v.health = 0; v.speed = 0;
+  const center = at(v.group.position, 0.8), radius = v.kind === 'bus' ? 8 : 6;
+  if (v === driving) { stats.hp = Math.max(0, stats.hp - 35); exitVehicle(true); }
+  // Mark the wreck before applying blast damage so chain reactions run once.
+  v.group.traverse(obj => {
+    if (!obj.isMesh) return;
+    const darken = material => { const m = material.clone(); m.color?.set(0x292727); m.emissive?.set(0); return m; };
+    obj.material = Array.isArray(obj.material) ? obj.material.map(darken) : darken(obj.material);
+  });
+  fxSphere(center, 0xff7b24, radius, 0.45);
+  burst(center, 45, [0xff8022, 0xffd166, 0x555555], 12, 0.2, 0.8, 9, 3);
+  shake = Math.max(shake, 0.65);
+  scorchMark(v.group.position, radius * 0.55);
+  burnFor(center, 40, 1.4); // the wreck keeps burning for a while, then just sits there charred for good
+  for (const e of enemies) {
+    if (!e.alive || e.hidden) continue;
+    const distance = e.root.position.distanceTo(center);
+    if (distance >= radius) continue;
+    applyHit(e, { dmg: 65 * (1 - distance / radius), from: center, kb: 15 * (1 - distance / radius), up: 4, stun: 1.5, heavy: true, police: !criminal });
+  }
+  if (v.passengers?.length) {
+    for (const e of v.passengers) { e.hidden = false; e.root.visible = true; e.root.position.copy(v.group.position).add(new THREE.Vector3(v.radius + 1, 0, 0)); collide(e.root.position, e.radius); e.ped.state = 'panic'; e.ped.panicT = 10; applyHit(e, { dmg: 45, from: center, kb: 6, up: 2, stun: 2, police: !criminal }); }
+    v.passengers = [];
+  }
+  if (!inCar && player.position.distanceTo(center) < radius) hurtPlayer(50 * (1 - player.position.distanceTo(center) / radius), center, 10);
+  for (const other of vehicles) {
+    if (other === v || other.exploded || !isRoadVehicle(other)) continue;
+    const distance = other.group.position.distanceTo(center);
+    if (distance < radius) damageVehiclePower(other, 75 * (1 - distance / radius), center, criminal);
+  }
+  if (criminal) raiseWanted(120);
+  toast('Vehicle exploded! Keep clear of the blast.');
+}
+
 // Hit everything within r of center. Returns how many were hit.
 function hitAround(center, r, hits, h, maxDy = 3) {
-  let n = 0;
+  let n = hitVehicles(center, r, hits, h, maxDy);
   for (const e of enemies) {
     if (!e.alive || hits?.has(e)) continue;
     if (distXZ(e.root.position, center) > r + e.radius || Math.abs(e.root.position.y - center.y) > maxDy) continue;
@@ -2691,7 +2767,7 @@ function hitAround(center, r, hits, h, maxDy = 3) {
 }
 // Hit everything in front of origin within range.
 function hitCone(origin, dir, range, minDot, hits, h, maxDy = 2.5) {
-  let n = 0;
+  let n = hitVehicles(origin, range, hits, h, maxDy, dir, minDot);
   for (const e of enemies) {
     if (!e.alive || hits?.has(e)) continue;
     const d = new THREE.Vector3(e.root.position.x - origin.x, 0, e.root.position.z - origin.z);
@@ -2828,6 +2904,7 @@ function explodeProjectile(pr) {
 function updateProjectiles(dt) {
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const pr = projectiles[i];
+    const previousPosition = pr.m.position.clone();
     pr.m.position.addScaledVector(pr.vel, dt);
     pr.dist += pr.speed * dt;
     spawnParticle(pr.m.position, randUnit().multiplyScalar(1.2), pick([pr.color, 0xffffff]), (pr.size || 0.25) * 0.6, 0.3);
@@ -2838,6 +2915,13 @@ function updateProjectiles(dt) {
       if (c.distanceTo(pr.m.position) > (pr.size || 0.4) + e.radius + 0.5) continue;
       if (pr.pierce) { pr.hits.add(e); applyHit(e, Object.assign({ from: pr.m.position.clone().addScaledVector(pr.vel, -0.1) }, pr.hit)); }
       else { done = true; break; }
+    }
+    for (const v of vehicles) {
+      if (!isRoadVehicle(v) || v.exploded || pr.hits.has(v)) continue;
+      if (segmentDistance(v.group.position, previousPosition, pr.m.position) > v.radius + (pr.size || 0.4) || Math.abs(pr.m.position.y - v.group.position.y - 0.8) > 1.5) continue;
+      pr.hits.add(v);
+      if (pr.hit) damageVehiclePower(v, Number(pr.hit.dmg) || 0, pr.m.position);
+      if (!pr.pierce) { pr.m.position.copy(v.group.position).y += 0.8; done = true; break; }
     }
     if (done) {
       if (pr.explode) explodeProjectile(pr);
@@ -2864,6 +2948,7 @@ function psychicGrip() {
   psyCd = psyCdMax();
   callout('PSYCHIC GRIP', 0xb388ff);
   fxRing(player.position, 0xb388ff, 4, 0.4);
+  hitVehicles(player.position, range, new Set(), { dmg: psyDmg() * 2 }, 3, f, 0.35);
   if (!grabbed.length) return;
   grabbed.forEach(e => { e.held = true; e.vel.set(0, 0, 0); e.glow = 0; if (e.ai) e.ai.state = 'idle'; });
   const side = new THREE.Vector3(f.z, 0, -f.x);
@@ -3789,6 +3874,7 @@ function nearestVehicle() {
 function raiseWanted(t = 45) {
   if (wanted <= 0) toast('WANTED! The police are after you.');
   wanted = Math.max(wanted, t);
+  policeLastSeen.copy(inCar && driving ? driving.group.position : player.position);
 }
 function enterVehicle(v) {
   if (v.disabled) { toast('This vehicle is wrecked. Choose another car.'); return; }
@@ -3806,7 +3892,8 @@ function enterVehicle(v) {
       v.passengers = [];
     }
     v.ai = null;
-    if (v.kind !== 'boat') raiseWanted(v.kind === 'police' ? 60 : 25);
+    if (v.kind !== 'boat') raiseWanted(v.kind === 'police' ? 120 : 25);
+    if (v.kind === 'police') { requestPoliceBackup(); toast('Police car stolen! Backup is pursuing you.'); }
   }
   driving = v; inCar = true; action = null;
   player.visible = false;
@@ -4391,11 +4478,49 @@ function trafficDrive(v, dt) {
   for (const w of v.wheels) w.rotation.x += v.speed * dt / 0.4;
 }
 
+function policeCanSee(v, target) {
+  if (distXZ(v.group.position, target) > 70) return false;
+  const from = v.group.position;
+  for (const c of colliders) {
+    let enter = 0, exit = 1;
+    for (const [axis, low, high] of [['x', c.minX, c.maxX], ['z', c.minZ, c.maxZ]]) {
+      const direction = target[axis] - from[axis];
+      if (Math.abs(direction) < 1e-8) { if (from[axis] < low || from[axis] > high) { enter = 2; break; } }
+      else { const a = (low - from[axis]) / direction, b = (high - from[axis]) / direction; enter = Math.max(enter, Math.min(a, b)); exit = Math.min(exit, Math.max(a, b)); }
+    }
+    if (enter <= exit && exit > 0.001 && enter < 0.999) return false;
+  }
+  return true;
+}
+function requestPoliceBackup() {
+  if (pursuitBackupCooldown > 0) return;
+  const target = inCar && driving ? driving.group.position : player.position;
+  const nearby = vehicles.filter(v => v.kind === 'police' && v.ai && !v.disabled && distXZ(v.group.position, target) < 140);
+  if (nearby.length >= 3) return;
+  // Limit the total fleet instead of spawning endlessly during long pursuits.
+  if (vehicles.filter(v => v.kind === 'police').length >= 6) return;
+  const unit = spawnTraffic('police', 0xf5f6fa);
+  if (target.x > 1000 || distXZ(unit.group.position, target) > 140) {
+    unit.group.position.copy(target).add(new THREE.Vector3(60, 0, 35));
+    collide(unit.group.position, unit.radius); unit.group.position.y = groundY(unit.group.position.x, unit.group.position.z);
+  }
+  unit.ai.chasing = true; pursuitBackupCooldown = 15;
+}
+function updatePursuit(dt) {
+  pursuitBackupCooldown = Math.max(0, pursuitBackupCooldown - dt);
+  if (wanted <= 0) return;
+  const target = inCar && driving ? driving.group.position : player.position;
+  const seen = !dungeon && !inCivicInterior && vehicles.some(v => v.kind === 'police' && v.ai && !v.disabled && policeCanSee(v, target));
+  if (seen) { policeLastSeen.copy(target); wanted = Math.max(wanted, 30); }
+  else wanted = Math.max(0, wanted - dt);
+  if (!dungeon && !inCivicInterior) requestPoliceBackup();
+}
 function policeChase(v, dt) {
   const ai = v.ai, p = v.group.position;
   ai.chasing = true;
   ai.ramCd -= dt;
-  const tp = inCar ? driving.group.position : player.position;
+  const actualTarget = inCar ? driving.group.position : player.position;
+  const tp = !inCivicInterior && policeCanSee(v, actualTarget) ? actualTarget : policeLastSeen;
   const want = Math.atan2(tp.x - p.x, tp.z - p.z);
   v.group.rotation.y += clamp(angleDiff(v.group.rotation.y, want), -2.2 * dt, 2.2 * dt);
   const d = distXZ(p, tp);
@@ -4646,7 +4771,7 @@ function frame() {
     for (const c of characters) c.cds = c.cds.map(v => Math.max(0, v - dt));
     dashCd = Math.max(0, dashCd - dt);
     psyCd = Math.max(0, psyCd - dt);
-    wanted = Math.max(0, wanted - dt);
+    updatePursuit(dt);
     updateNeeds(dt);
     if (!inCar) updatePlayer(dt);
     soloSaveTimer += dt;
