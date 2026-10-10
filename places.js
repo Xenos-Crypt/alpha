@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 export function buildPlaces(ctx) {
   const { scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast } = ctx;
-  const rooms = [], destinations = [], airportActors = [], terminalLevels = [];
+  const rooms = [], destinations = [], airportActors = [], terminalLevels = [], luggage = [];
   const palette = { wall: 0xdad5cb, trim: 0x34495e, floor: 0xb0b1ad, glass: 0x7596a5 };
   const fences = [], gates = [];
   const wireTexture = makeTex(128, 128, g => {
@@ -159,7 +159,14 @@ export function buildPlaces(ctx) {
   for (const [text, z] of [['36', -185], ['18', 185]]) { const m = sign(text, ax, .15, z, 10, '#383c42'); m.rotation.x = -Math.PI / 2; }
   for (const z of [-160, 0, 160]) { slab(48, 14, ax - 24, z, 0x53595b, .07); slab(48, .3, ax - 24, z, 0xd7bb52, .11); }
   slab(90, 120, ax - 106, -20, 0x8b8e8b); // apron
-  const terminal = room('ASHFORD REGIONAL AIRPORT', ax - 111, 80, 74, 34, 0xd6dce0, 12.4);
+  const terminal = room('ASHFORD REGIONAL AIRPORT', ax - 111, 80, 74, 34, new THREE.MeshStandardMaterial({color:0x99b3bf,transparent:true,opacity:.5,roughness:.2}), 12.4);
+  for(let x=ax-145;x<=ax-77;x+=6)box(.12,12.4,.2,x,6.2,97.3,0x3e5262,false);
+  box(42,.3,8,ax-111,4.3,101,0x3e5262,false);
+  for(const x of [ax-130,ax-92])box(.25,4.3,.25,x,2.15,104,0x3e5262,false);
+  room('ARRIVALS AND BAGGAGE',ax-168,80,28,34,0xb9c8d0,5);
+  const belt=new THREE.Mesh(new THREE.TorusGeometry(5,.4,8,32),new THREE.MeshStandardMaterial({color:0x333b43}));belt.rotation.x=Math.PI/2;belt.scale.y=.5;belt.position.set(ax-168,.75,80);scene.add(belt);
+  for(let i=0;i<5;i++){const bag=box(.7,.6,.45,ax-168,.95,80,[0x6b455d,0x3c6879,0xa5683f][i%3],false);luggage.push({bag,phase:i*Math.PI*2/5});}
+  interactables.push({pos:new THREE.Vector3(ax-168,0,85),r:2,label:'Baggage information',action:()=>toast('Arrivals and baggage reclaim. The main terminal next door has check-in, departures and the restaurant on three floors.')});
   desk(ax - 126, 82, 'Airport information', () => toast('Check-in and security lead to the departure lounge. Flyable aircraft are on the apron south of the terminal.'));
   sign('CHECK-IN    SECURITY    DEPARTURES', ax - 111, 3.6, 65, 24);
   for (const x of [ax - 137, ax - 119, ax - 101]) {
@@ -212,18 +219,57 @@ export function buildPlaces(ctx) {
 
   function openTravel() {
     let panel = document.getElementById('placesTravel');
-    if (!panel) { panel = document.createElement('div'); panel.id = 'placesTravel'; panel.style.cssText = 'position:fixed;inset:12% 25%;overflow:auto;background:#14202eef;color:white;padding:24px;z-index:60;border-radius:14px;font:16px system-ui'; document.body.append(panel); }
+    if (!panel) { panel = document.createElement('div'); panel.id = 'placesTravel'; panel.style.cssText = 'position:fixed;inset:8% 15%;overflow:auto;background:#14202eef;color:white;padding:24px;z-index:60;border-radius:14px;font:16px system-ui'; document.body.append(panel); }
     panel.replaceChildren();
-    const heading = document.createElement('h2'); heading.textContent = 'Town travel board'; panel.append(heading);
+    const heading = document.createElement('h2'); heading.textContent = 'Town map'; panel.append(heading);
+    const sub = document.createElement('p'); sub.style.cssText = 'opacity:.75;font-size:13px;margin:-6px 0 12px';
+    sub.textContent = "Click a pin, or a destination below, to drop a waypoint — you'll walk/drive there yourself, following the arrow.";
+    panel.append(sub);
     const close = document.createElement('button'); close.textContent = 'Close'; close.onclick = () => { panel.hidden = true; ctx.resume(); }; panel.append(close);
-    for (const d of destinations.filter(d => !d.name.includes('BARRACKS'))) {
+
+    const list = destinations.filter(d => !d.name.includes('BARRACKS'));
+    const canvas = document.createElement('canvas'); canvas.width = 560; canvas.height = 420;
+    canvas.style.cssText = 'display:block;margin:14px 0;background:#0c1622;border-radius:10px;width:100%;max-width:560px;cursor:pointer';
+    panel.append(canvas);
+    const pp = ctx.playerPos?.() || { x: 0, z: 0 };
+    const xs = list.map(d => d.x).concat(pp.x), zs = list.map(d => d.z).concat(pp.z);
+    const minX = Math.min(...xs) - 20, maxX = Math.max(...xs) + 20;
+    const minZ = Math.min(...zs) - 20, maxZ = Math.max(...zs) + 20;
+    const toCanvas = (x, z) => [(x - minX) / (maxX - minX) * canvas.width, (z - minZ) / (maxZ - minZ) * canvas.height];
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#0c1622'; g.fillRect(0, 0, canvas.width, canvas.height);
+    g.strokeStyle = '#223247'; g.lineWidth = 1;
+    for (let i = 0; i <= 10; i++) {
+      const x = i / 10 * canvas.width, y = i / 10 * canvas.height;
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, canvas.height); g.stroke();
+      g.beginPath(); g.moveTo(0, y); g.lineTo(canvas.width, y); g.stroke();
+    }
+    for (const d of list) {
+      const [px, py] = toCanvas(d.x, d.z);
+      g.fillStyle = '#ffd166'; g.beginPath(); g.arc(px, py, 6, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#fff'; g.font = '11px system-ui'; g.textAlign = 'center'; g.fillText(d.name, px, py - 10);
+    }
+    const [ppx, ppy] = toCanvas(pp.x, pp.z);
+    g.fillStyle = '#4fd1ff'; g.beginPath(); g.arc(ppx, ppy, 7, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
+    canvas.addEventListener('click', e => {
+      const r = canvas.getBoundingClientRect();
+      const mx = (e.clientX - r.left) / r.width * canvas.width, my = (e.clientY - r.top) / r.height * canvas.height;
+      let best = null, bestD = 22;
+      for (const d of list) { const [px, py] = toCanvas(d.x, d.z); const dd = Math.hypot(px - mx, py - my); if (dd < bestD) { bestD = dd; best = d; } }
+      if (best) { ctx.travelTo(best); panel.hidden = true; ctx.resume(); }
+    });
+
+    for (const d of list) {
       const button = document.createElement('button'); button.textContent = d.name; button.style.cssText = 'display:block;width:100%;padding:12px;margin-top:8px;text-align:left;cursor:pointer';
       button.onclick = () => { ctx.travelTo(d); panel.hidden = true; ctx.resume(); }; panel.append(button);
     }
     panel.hidden = false; ctx.pause?.(); document.exitPointerLock();
   }
-  sign('TOWN TRAVEL - PRESS E', 20, 2, 12, 6);
-  interactables.push({ pos: new THREE.Vector3(20, 0, 12), r: 2.5, label: 'Open town travel board', action: openTravel });
+  // Stood out on the lawn beside the house instead of pressed against the wall
+  // where it was covering the front door.
+  sign('TOWN TRAVEL - PRESS E', 12, 2, 14, 6);
+  interactables.push({ pos: new THREE.Vector3(12, 0, 14), r: 2.5, label: 'Open town travel board', action: openTravel });
   for (const d of destinations.filter(d => !d.name.includes('BARRACKS'))) interactables.push({ pos: new THREE.Vector3(d.x + 5, 0, d.z), r: 2.5, label: 'Open town travel board', action: openTravel });
   // Street name signs at intersections around town, purely decorative — gives streets
   // a visible identity instead of every block looking the same.
@@ -252,6 +298,7 @@ export function buildPlaces(ctx) {
     for (const r of rooms) r.roof.visible = inCar || !(Math.abs(player.position.x - r.x) < r.w / 2 && Math.abs(player.position.z - r.z) < r.d / 2);
     const insideTerminal=player.position.x>=ax-148&&player.position.x<=ax-74&&player.position.z>=63&&player.position.z<=97;
     for(const level of terminalLevels)level.mesh.visible=!insideTerminal||player.position.y>=level.y-.3;
+    for(const item of luggage){item.bag.position.set(ax-168+Math.cos(time*.3+item.phase)*5,.95,80+Math.sin(time*.3+item.phase)*2.5);}
     for(const a of airportActors){a.h.root.position.set(a.x+Math.sin(time*.3+a.phase)*2,a.y,a.z);a.h.root.rotation.y=Math.cos(time*.3+a.phase)>0?Math.PI/2:-Math.PI/2;ctx.animatePerson?.(a.h,true,dt);}
     const restricted = player.position.x > 438 && player.position.x < 510 && player.position.z > 75 && player.position.z < 148;
     if (restricted && !restrictedWarned) { toast('Restricted military compound: security has been alerted.'); ctx.restrictedEntry(); }

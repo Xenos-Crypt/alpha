@@ -15,6 +15,9 @@
   #clock, #extra { margin-top: 3px; }
   #prompt { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); color: #fff; font-size: 16px; pointer-events: none;
             background: rgba(10, 14, 24, .55); padding: 6px 14px; border-radius: 20px; display: none; }
+  #waypointArrow { position: fixed; left: 50%; top: 90px; transform: translateX(-50%); z-index: 9; display: none;
+                   flex-direction: column; align-items: center; pointer-events: none; color: #fff; font: 12px system-ui, sans-serif; text-shadow: 0 1px 3px #000; }
+  #waypointArrow .arrow { font-size: 26px; transition: transform .15s; color: #ffd166; }
   #toast { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); color: #fff; font-size: 20px; text-shadow: 0 1px 4px #000;
            pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
   #help { position: fixed; right: 16px; top: 16px; color: #fff; font-size: 12px; line-height: 1.55; background: rgba(10, 14, 24, .45);
@@ -236,6 +239,7 @@
   "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
 } }
 </script>
+<link rel="stylesheet" href="responsive-ui.css">
 </head>
 <body>
 <canvas id="fx2d"></canvas>
@@ -257,6 +261,7 @@
 <div id="bossbar"><div class="bname"></div><div class="btrack"><div class="bfill"></div></div></div>
 <div id="hotbar"></div>
 <div id="prompt"></div>
+<div id="waypointArrow"><div class="arrow">⬆</div><div id="waypointLabel"></div></div>
 <div id="toast"></div>
 <div id="callout"></div>
 <div id="combo"><div class="hits"></div><div class="dmg"></div></div>
@@ -343,12 +348,29 @@
   </div>
 </div>
 <div id="auth">
-  <h1 id="authTitle">Sign up</h1>
-  <input id="authEmail" type="email" placeholder="Email" autocomplete="email">
-  <input id="authPass" type="password" placeholder="Password" autocomplete="current-password">
-  <button id="authBtn">Sign up</button>
-  <div id="authSwitch">Already have an account? Log in</div>
-  <div id="authError"></div>
+  <div class="auth-shell">
+    <section class="auth-hero" aria-label="About Another World">
+      <div class="auth-brand">ANOTHER WORLD</div>
+      <h2>One life.<br>A world of<br><span>possibilities.</span></h2>
+      <p>Discover your powers. Explore the city, take to the skies, or find your own path along the coast. Every story starts somewhere.</p>
+      <div class="auth-tags"><span>Explore a living city</span><span>Master your powers</span><span>Drive, fly &amp; swim</span></div>
+      <div class="auth-scene" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="auth-caption">Your next adventure starts in Ashford.</div>
+    </section>
+    <section class="auth-card">
+      <div class="eyebrow">YOUR STORY STARTS HERE</div>
+      <h1 id="authTitle">Start your story</h1>
+      <p>Create your account, discover your beginnings, then step into the world.</p>
+      <form id="authForm">
+        <label for="authEmail">Email address</label><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" required>
+        <label for="authPass">Password</label><input id="authPass" type="password" placeholder="At least 6 characters" autocomplete="new-password" minlength="6" required>
+        <button id="authBtn" type="submit">Create account</button>
+      </form>
+      <button id="authSwitch" type="button">Already have an account? Log in</button>
+      <div id="authError" role="status" aria-live="polite"></div>
+      <p class="auth-note">You may need to confirm your email before entering. On a phone, rotate sideways when you're ready to play.</p>
+    </section>
+  </div>
 </div>
 <div id="spawn">
   <h1>Before you're born…</h1>
@@ -1637,13 +1659,16 @@ function showAuthScreen() {
     const title = $('authTitle'), btn = $('authBtn'), switchEl = $('authSwitch'), err = $('authError');
     function setMode(m) {
       mode = m;
-      title.textContent = m === 'signup' ? 'Sign up' : 'Log in';
-      btn.textContent = m === 'signup' ? 'Sign up' : 'Log in';
+      title.textContent = m === 'signup' ? 'Start your story' : 'Welcome back';
+      $('authPass').autocomplete = m === 'signup' ? 'new-password' : 'current-password';
+      btn.textContent = m === 'signup' ? 'Create account' : 'Continue your story';
       switchEl.textContent = m === 'signup' ? 'Already have an account? Log in' : "Don't have an account? Sign up";
     }
     setMode('signup');
     switchEl.addEventListener('click', () => setMode(mode === 'signup' ? 'login' : 'signup'));
-    btn.addEventListener('click', async () => {
+    $('authForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      if (btn.disabled) return;
       const email = $('authEmail').value.trim(), password = $('authPass').value;
       err.textContent = '';
       if (!email || password.length < 6) { err.textContent = 'Enter an email and a password of at least 6 characters.'; return; }
@@ -1651,7 +1676,7 @@ function showAuthScreen() {
       const { data, error } = mode === 'signup'
         ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + '/confirm.html' } })
         : await supabase.auth.signInWithPassword({ email, password });
-      btn.disabled = false; btn.textContent = mode === 'signup' ? 'Sign up' : 'Log in';
+      btn.disabled = false; btn.textContent = mode === 'signup' ? 'Create account' : 'Continue your story';
       if (error) { err.textContent = error.message; return; }
       if (mode === 'signup' && !data.session) {
         // Don't make them retype everything: switch straight to the login form, email
@@ -2939,6 +2964,9 @@ function updateLabels() {
 function hurtPlayer(dmg, from, kb) {
   if (iFrames > 0 || inCar) return;
   dmg *= defMul();
+  // High defense can knock dmg down near zero; it still rounded to "0" in the
+  // taken-damage popup along with a full flash/stun/knockback for nothing.
+  if (dmg < 0.5) return;
   const dir = new THREE.Vector3(player.position.x - from.x, 0, player.position.z - from.z).normalize();
   if (playerBlocking && fwdOf(player).dot(dir) < -0.3) {
     dmg *= 0.2; kb *= 0.3;
@@ -4617,6 +4645,23 @@ $('layoutDoneBtn').addEventListener('click', () => {
   setFreeMouse(false);
 });
 
+// =====================================================================
+// WAYPOINTS: the travel board sets a waypoint and an on-screen compass arrow
+// instead of teleporting outright — you walk/drive there yourself.
+// =====================================================================
+let waypoint = null;
+function setWaypoint(d) { waypoint = { x: d.x, z: d.z, name: d.name }; toast('Waypoint set: ' + d.name + ' — follow the arrow.'); }
+function updateWaypoint() {
+  const el = $('waypointArrow');
+  if (!waypoint) { el.style.display = 'none'; return; }
+  const dx = waypoint.x - player.position.x, dz = waypoint.z - player.position.z, dist = Math.hypot(dx, dz);
+  if (dist < 5) { toast("You've arrived at " + waypoint.name + '.'); waypoint = null; el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const rel = angleDiff(yaw, Math.atan2(dx, dz));
+  el.querySelector('.arrow').style.transform = `rotate(${rel}rad)`;
+  $('waypointLabel').textContent = waypoint.name + ' · ' + Math.round(dist) + 'm';
+}
+
 // L toggles the mouse: locked = mouse turns the camera; free = normal cursor, game keeps running
 let freeMouse = false;
 function setFreeMouse(on) {
@@ -5222,7 +5267,7 @@ function buyFood(price, energy) {
   stats.gold -= price; stats.hunger = 100; stats.energy = Math.min(100, stats.energy + energy);
   toast('Food purchased. Hunger restored.');
 }
-townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt), playerY:()=>player.position.y, scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast,
+townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt), playerY:()=>player.position.y, playerPos:()=>player.position, scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast,
   policeReception() { toast(wanted > 0 ? 'An active pursuit is in progress. Lose the pursuing units before returning to reception.' : 'Police reception: no active wanted alert. Public reception and custody viewing are open.'); },
   constructionShift() {
     if (performance.now() < nextConstructionShift) { toast('Next shift available in ' + Math.ceil((nextConstructionShift - performance.now()) / 1000) + ' seconds.'); return; }
@@ -5231,17 +5276,17 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
   buyGroceries: () => buyFood(15, 10), buyMeal: () => buyFood(10, 20),
   restrictedEntry: () => raiseWanted(90),
   addPoliceCar(x, z) { const v = makeVehicle('police', 0xf5f6fa); v.group.position.set(x, 0, z); v.ai = { from: nearestNode(v.group.position), to: [4, 0], prev: null, s: 0, cruise: 12, parked: true, stopTimer: 0, stopped: false, chasing: false, blockedT: 0, ignoreT: 0, ramCd: 0 }; },
-  travelTo(d) { if (wanted > 0) { toast('Town travel is unavailable during a police pursuit.'); return; } if (inCar) exitVehicle(true); if (sitting) toggleSit(null); action = null; vy = 0; pvel.set(0, 0, 0); player.position.set(d.x, groundY(d.x, d.z), d.z); toast(d.name); },
+  travelTo(d) { if (wanted > 0) { toast('Town travel is unavailable during a police pursuit.'); return; } setWaypoint(d); },
   pause() { if (mobileControls?.mobile) { locked = false; mouseHeld = false; $('start').style.display = 'none'; } },
   resume() { requestGameControl(); }
 });
 buildHotbar();
-harbour = buildHarbour({scene,box,colliders,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
   returnDock(x,z){player.position.set(x,1.2,z);swimming=false;vy=0;pvel.set(0,0,0);}
 });
 townPlaces.destinations.push({name:'Ashford Port',x:-103,z:170});
-interactables.push({pos:new THREE.Vector3(-153,0,231),r:3,label:'Climb dock ladder',action:()=>{player.position.set(-145,1.2,231);swimming=false;vy=0;toast('Climbed onto the dock.');}});
+interactables.push({pos:new THREE.Vector3(-153,0,231),r:3,label:'Climb dock ladder',action:()=>{player.position.set(-149,1.2,231);swimming=false;vy=0;toast('Climbed onto the dock.');}});
 // Visible emergency ladder outside the fenced cargo yard.
 for(const x of [-153.5,-152.5])box(.08,3,.08,x,-.2,231,0xd1bc58,false);
 for(let y=-1.5;y<1.2;y+=.35)box(1,.06,.06,-153,y,231,0xd1bc58,false);
@@ -5290,6 +5335,7 @@ function frame() {
     updateCityStreaming(dt);
     if (inCivicInterior) updateCivicTv(dt);
     updateSitPrompt();
+    updateWaypoint();
     updateVehicles(dt);
     updateParkLife(dt);
     updatePlanes(dt);
