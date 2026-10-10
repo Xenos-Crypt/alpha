@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 export function buildPlaces(ctx) {
   const { scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast } = ctx;
-  const rooms = [], destinations = [];
+  const rooms = [], destinations = [], airportActors = [], terminalLevels = [];
   const palette = { wall: 0xdad5cb, trim: 0x34495e, floor: 0xb0b1ad, glass: 0x7596a5 };
   const fences = [], gates = [];
   const wireTexture = makeTex(128, 128, g => {
@@ -70,11 +70,11 @@ export function buildPlaces(ctx) {
     slab(5, 12, x, z + d / 2 + 6, 0x999c9b);
     return { x, z, w, d };
   }
-  function bench(x, z, yaw = Math.PI, label = 'Sit on bench') {
-    box(2.4, .15, .65, x, .5, z, 0x665747, false);
-    box(2.4, .7, .1, x, .85, z + .3, 0x665747, false);
-    for (const dx of [-.9, .9]) box(.12, .5, .5, x + dx, .25, z, 0x30343a, false);
-    sitSpots.push({ x, z, yaw, seatY: .575, label });
+  function bench(x, z, yaw = Math.PI, label = 'Sit on bench', floorY = 0) {
+    box(2.4, .15, .65, x, floorY + .5, z, 0x665747, false);
+    box(2.4, .7, .1, x, floorY + .85, z + .3, 0x665747, false);
+    for (const dx of [-.9, .9]) box(.12, .5, .5, x + dx, floorY + .25, z, 0x30343a, false);
+    sitSpots.push({ x, z, yaw, seatY: floorY + .575, label });
   }
   function desk(x, z, label, action) {
     box(4, .9, 1.2, x, .45, z, 0x6a5949); box(.9, .5, .08, x, 1.15, z, 0x233342, false);
@@ -153,12 +153,33 @@ export function buildPlaces(ctx) {
   for (const [text, z] of [['36', -185], ['18', 185]]) { const m = sign(text, ax, .15, z, 10, '#383c42'); m.rotation.x = -Math.PI / 2; }
   for (const z of [-160, 0, 160]) { slab(48, 14, ax - 24, z, 0x53595b, .07); slab(48, .3, ax - 24, z, 0xd7bb52, .11); }
   slab(90, 120, ax - 106, -20, 0x8b8e8b); // apron
-  const terminal = room('ASHFORD REGIONAL AIRPORT', ax - 111, 80, 74, 34, 0xd6dce0, 7);
+  const terminal = room('ASHFORD REGIONAL AIRPORT', ax - 111, 80, 74, 34, 0xd6dce0, 12.4);
   desk(ax - 126, 82, 'Airport information', () => toast('Check-in and security lead to the departure lounge. Flyable aircraft are on the apron south of the terminal.'));
   sign('CHECK-IN    SECURITY    DEPARTURES', ax - 111, 3.6, 65, 24);
-  for (const x of [ax - 137, ax - 119, ax - 101, ax - 83]) {
+  for (const x of [ax - 137, ax - 119, ax - 101]) {
     box(7, 1, 1.3, x, .5, 71, 0x567889); bench(x, 88, Math.PI, 'Sit in departure lounge');
     box(4, 3, .1, x, 2.3, 63.3, palette.glass, false);
+  }
+  // Three terminal floors; east-wing stairs connect them without teleporting.
+  for (const y of [4, 8]) {
+    const floor = box(61,.16,34,ax-117.5,y-.08,80,0xb5bfc4,false); terminalLevels.push({mesh:floor,y});
+    for(const z of [73,86])for(const x of [ax-137,ax-119,ax-101])bench(x,z,Math.PI,'Sit in airport lounge',y);
+    for(const x of [ax-137,ax-119,ax-101])box(8,2,.1,x,y+2.2,97.25,0x84a7b9,false);
+    sign(y===4?'DEPARTURE LOUNGE - GATES 1 TO 3':'RESTAURANT - OBSERVATION LOUNGE',ax-116,y+2.6,65,24);
+  }
+  const ramps = [{minX:ax-85,maxX:ax-81,minZ:68,maxZ:92,from:0,to:4,reverse:true},{minX:ax-79,maxX:ax-75,minZ:68,maxZ:92,from:4,to:8,reverse:false}];
+  for(const ramp of ramps){for(let step=0;step<24;step++){const z=68+step+.5,t=ramp.reverse?1-(step+.5)/24:(step+.5)/24,y=ramp.from+t*4;box(4,.17,1,(ramp.minX+ramp.maxX)/2,y-.085,z,0x6a7682,false);}for(const x of [ramp.minX,ramp.maxX]){const rail=box(.08,.08,24.35,x,(ramp.from+ramp.to)/2+1,80,0xc4cace,false);rail.rotation.x=ramp.reverse?Math.atan(4/24):-Math.atan(4/24);}}
+  sign('STAIRS TO DEPARTURES AND RESTAURANT',ax-83,2.8,93,10);
+  interactables.push({pos:new THREE.Vector3(ax-126,0,90),r:2,label:'Speak to airport security',action:()=>toast('Airport security: check in on the ground floor, take the stairs for departures, and use the marked apron gate for aircraft. Keep off the runway.')});
+  interactables.push({pos:new THREE.Vector3(ax-111,8,82),r:2,label:'Buy airport meal',action:ctx.buyMeal});
+  if(ctx.makePerson){
+    for(let i=0;i<12;i++){
+      const officer=i<3,y=i<6?0:i<10?4:8;
+      const h=ctx.makePerson({outfit:officer?0x213c59:[0x9b5a45,0x527a6c,0x6c6591][i%3],hair:0x423329,pants:0x303947});
+      const x=ax-136+(i%3)*16,z=officer?90:82;
+      airportActors.push({h,x,z,y,officer,phase:i});h.root.position.set(x,y,z);
+      if(officer){const cap=new THREE.Mesh(new THREE.CylinderGeometry(.27,.27,.12,10),new THREE.MeshStandardMaterial({color:0x213c59}));cap.position.y=2.02;h.rig.add(cap);}
+    }
   }
   parking(ax - 111, 125, 80, 24);
   for (const z of [-48, -12, 24]) {
@@ -212,8 +233,17 @@ export function buildPlaces(ctx) {
     }
   }
   let restrictedWarned = false;
-  return { destinations, rooms, fences, gates, airportX: ax, update(player, inCar) {
+  return { destinations, rooms, fences, gates, airportActors, terminalLevels, airportX: ax,
+    floorAt(x,z,y=ctx.playerY?.()||0){
+      if(x<ax-148||x>ax-74||z<63||z>97)return null;
+      for(const r of ramps){if(x>=r.minX&&x<=r.maxX&&z>=r.minZ&&z<=r.maxZ){const t=r.reverse?1-(z-68)/24:(z-68)/24,value=r.from+t*4;if(Math.abs(y-value)<1.2)return value;}}
+      return y>=7.6?8:y>=3.6?4:.08;
+    },
+    update(player, inCar, time=0,dt=0) {
     for (const r of rooms) r.roof.visible = inCar || !(Math.abs(player.position.x - r.x) < r.w / 2 && Math.abs(player.position.z - r.z) < r.d / 2);
+    const insideTerminal=player.position.x>=ax-148&&player.position.x<=ax-74&&player.position.z>=63&&player.position.z<=97;
+    for(const level of terminalLevels)level.mesh.visible=!insideTerminal||player.position.y>=level.y-.3;
+    for(const a of airportActors){a.h.root.position.set(a.x+Math.sin(time*.3+a.phase)*2,a.y,a.z);a.h.root.rotation.y=Math.cos(time*.3+a.phase)>0?Math.PI/2:-Math.PI/2;ctx.animatePerson?.(a.h,true,dt);}
     const restricted = player.position.x > 438 && player.position.x < 510 && player.position.z > 75 && player.position.z < 148;
     if (restricted && !restrictedWarned) { toast('Restricted military compound: security has been alerted.'); ctx.restrictedEntry(); }
     restrictedWarned = restricted;

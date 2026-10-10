@@ -365,6 +365,7 @@ import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physi
 import { buildPlaces } from './places.js';
 import { createReconstruction } from './reconstruction.js';
 import { setupMobileControls } from './mobile-controls.js';
+import { buildHarbour } from './harbour.js';
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -528,18 +529,18 @@ const grassTex = makeTex(256, 256, (g, w, h) => {
 // One 40m x 40m road tile centred on an intersection; repeated across the city.
 const roadTex = makeTex(512, 512, (g) => {
   g.fillStyle = '#8c8c8c'; g.fillRect(0, 0, 512, 512);           // hidden under pavements
-  g.fillStyle = '#3a3c40'; g.fillRect(192, 0, 128, 512); g.fillRect(0, 192, 512, 128);
+  g.fillStyle = '#3a3c40'; g.fillRect(179, 0, 154, 512); g.fillRect(0, 179, 512, 154);   // widened from 128 to 154px (10m -> ~12m)
   speckle(g, 512, 512, 9000, ['rgba(255,255,255,.05)', 'rgba(0,0,0,.18)']);
   g.fillStyle = '#e8e8e8';                                          // edge lines
-  for (const x of [198, 312]) { g.fillRect(x, 0, 2, 150); g.fillRect(x, 362, 2, 150); }
-  for (const y of [198, 312]) { g.fillRect(0, y, 150, 2); g.fillRect(362, y, 150, 2); }
+  for (const x of [185, 325]) { g.fillRect(x, 0, 2, 137); g.fillRect(x, 375, 2, 137); }
+  for (const y of [185, 325]) { g.fillRect(0, y, 137, 2); g.fillRect(375, y, 137, 2); }
   g.fillStyle = '#e6c24a';                                          // centre dashes
-  for (let y = 4; y < 150; y += 48) { g.fillRect(254, y, 4, 28); g.fillRect(254, y + 360, 4, 28); }
-  for (let x = 4; x < 150; x += 48) { g.fillRect(x, 254, 28, 4); g.fillRect(x + 360, 254, 28, 4); }
+  for (let y = 4; y < 137; y += 48) { g.fillRect(254, y, 4, 28); g.fillRect(254, y + 371, 4, 28); }
+  for (let x = 4; x < 137; x += 48) { g.fillRect(x, 254, 28, 4); g.fillRect(x + 371, 254, 28, 4); }
   g.fillStyle = '#f0f0f0';                                          // zebra crossings
-  for (let x = 197; x < 316; x += 13) {
-    g.fillRect(x, 154, 7, 32); g.fillRect(x, 326, 7, 32);
-    g.fillRect(154, x, 32, 7); g.fillRect(326, x, 32, 7);
+  for (let x = 184; x < 329; x += 13) {
+    g.fillRect(x, 141, 7, 32); g.fillRect(x, 339, 7, 32);
+    g.fillRect(141, x, 32, 7); g.fillRect(339, x, 32, 7);
   }
 });
 
@@ -634,6 +635,7 @@ const colliders = [];      // axis-aligned boxes on the ground plane
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
+let harbour = null, townPlaces = null;
 const buildings = [];      // every city building, so it can be destroyed
 
 function mesh(geo, color, parent = scene) {
@@ -674,11 +676,14 @@ const insideCollider = p => colliders.some(c => p.x > c.minX && p.x < c.maxX && 
 // City layout: roads every 40m (10m wide), blocks in between with 15cm-high pavements.
 const CURB = 0.15;
 function groundY(x, z) {
+  const dockFloor = harbour?.groundAt(x,z); if (dockFloor != null) return dockFloor;
+  const terminalFloor = townPlaces?.floorAt(x,z); if (terminalFloor != null) return terminalFloor;
+  if (x >= -300 && x <= 300 && z > 187 && z < 650 && !(x > 18 && x < 22 && z < 206)) return -2;
   if (x > 1000) return 0;                                    // dungeon arena floor
   if (x > 18 && x < 22 && z > 164 && z < 206) return CURB;   // harbour pier
   if (Math.abs(x) > 160 || Math.abs(z) > 160) return 0;
   const lx = ((x % 40) + 40) % 40, lz = ((z % 40) + 40) % 40;
-  return lx > 5 && lx < 35 && lz > 5 && lz < 35 ? CURB : 0;
+  return lx > 6 && lx < 34 && lz > 6 && lz < 34 ? CURB : 0;   // roads widened from 10m to ~12m
 }
 
 // =====================================================================
@@ -1017,7 +1022,24 @@ function updateButterflies(dt) {
     b.m.rotation.x = Math.sin(b.phase * 6) * 0.6;
   }
 }
-function updateParkLife(dt) { updateDucks(dt); updatePets(dt); updateButterflies(dt); }
+// Birds circling over town — there was nothing at all flying overhead before.
+const birds = [];
+function addBird(x, z, h) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(0.18, 3), new THREE.MeshBasicMaterial({ color: 0x2b2b2b, side: THREE.DoubleSide }));
+  scene.add(m);
+  birds.push({ m, cx: x, cz: z, r: 14 + rand() * 10, h, phase: rand() * 10, speed: 0.3 + rand() * 0.2 });
+}
+for (let i = 0; i < 8; i++) addBird(PARK.x + (rand() - 0.5) * 60, PARK.z + (rand() - 0.5) * 60, 13 + rand() * 6);
+function updateBirds(dt) {
+  for (const b of birds) {
+    b.phase += b.speed * dt;
+    const x = b.cx + Math.cos(b.phase) * b.r, z = b.cz + Math.sin(b.phase) * b.r;
+    b.m.position.set(x, b.h + Math.sin(b.phase * 3) * 0.4, z);
+    b.m.rotation.y = -b.phase;
+    b.m.rotation.x = -Math.PI / 2 + Math.sin(b.phase * 3) * 0.3;
+  }
+}
+function updateParkLife(dt) { updateDucks(dt); updatePets(dt); updateButterflies(dt); updateBirds(dt); }
 
 // =====================================================================
 // TRAINING GROUND (sand arena with a fence and a sign)
@@ -2042,16 +2064,14 @@ const beach = mesh(new THREE.PlaneGeometry(600, SEA_Z - 165), sandMat);
 beach.rotation.x = -Math.PI / 2;
 beach.position.set(0, 0.01, (165 + SEA_Z) / 2);
 beach.castShadow = false;
-const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 300 - SEA_Z), new THREE.MeshStandardMaterial({ color: 0x2a7ab8, roughness: 0.15, metalness: 0.1 }));
+const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 650 - SEA_Z), new THREE.MeshStandardMaterial({ color: 0x2a7ab8, roughness: 0.15, metalness: 0.1 }));
 sea.rotation.x = -Math.PI / 2;
-sea.position.set(0, 0.03, (SEA_Z + 300) / 2);
+sea.position.set(0, 0.03, (SEA_Z + 650) / 2);
 sea.receiveShadow = true;
 scene.add(sea);
 box(4, 0.3, 41, PIER.x, 0, 185.5, woodMatPlain, false);
 for (let z = 168; z <= 204; z += 4) for (const s of [-1, 1]) box(0.25, 1.2, 0.25, PIER.x + s * 1.9, -0.3, z, 0x5a3d26, false);
-// Invisible walls so you can't walk on the water (except along the pier)
-colliders.push({ minX: -300, maxX: 18, minZ: SEA_Z, maxZ: 300 }, { minX: 22, maxX: 300, minZ: SEA_Z, maxZ: 300 },
-               { minX: 18, maxX: 22, minZ: 206, maxZ: 300 });
+// Water can be entered from any beach edge or dock.
 
 // =====================================================================
 // REAL-WORLD CITY: Edinburgh, streamed in from pre-tiled OpenStreetMap data.
@@ -3070,7 +3090,7 @@ function aimMelee() {
   return fwdOf(player);
 }
 
-function canAct() { return !sitting && !action && !inCar && playerStun <= 0 && locked; }
+function canAct() { return !swimming && !sitting && !action && !inCar && playerStun <= 0 && locked; }
 
 // ---- M1: 4-hit combo, the last hit is a heavy knockback with an impact frame ----
 function m1() {
@@ -4122,7 +4142,7 @@ function eat() {
   stats.hunger = 100;
   toast('You ate a snack. Hunger restored.');
 }
-const nearestInteractable = () => interactables.find(it => distXZ(player.position, it.pos) < it.r);
+const nearestInteractable = () => interactables.find(it => distXZ(player.position, it.pos) < it.r && Math.abs(player.position.y - it.pos.y) < 2);
 function nearestVehicle() {
   let best = null, bd = 3.6;
   for (const v of vehicles) {
@@ -4270,7 +4290,7 @@ function updateCivicTv(dt) {
 function nearestSitSpot(maxD = 3) {
   let best = null, bestD = maxD;
   for (const s of sitSpots) {
-    if (s.broken) continue;
+    if (s.broken || Math.abs(player.position.y - ((s.seatY ?? .5) - .5)) > 1.8) continue;
     const d = Math.hypot(player.position.x - s.x, player.position.z - s.z);
     if (d < bestD) { bestD = d; best = s; }
   }
@@ -4592,7 +4612,28 @@ const DAY_LEN = 300; // seconds per in-game day
 let reconstructionDays = 0;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 
+let swimming = false, waterExhausted = false;
+function isSeaWater(x,z) {
+  return x>=-300&&x<=300&&z>SEA_Z&&z<650&&!(x>18&&x<22&&z<206)&&harbour?.groundAt(x,z)==null;
+}
+function updateSwimming(dt) {
+  if (!swimming) { swimming=true; action?.end?.(action); action=null; sitting=false; activeSitSpot=null; toast('Swimming: move toward shore to get out. Run uses more stamina.'); }
+  playerBlocking=false;mouseHeld=false;onGround=false;
+  const dir=inputDir(),moving=dir.lengthSq()>0,sprint=keys.ShiftLeft&&stats.energy>0;
+  const waterPower=charIdx===2;
+  player.position.addScaledVector(dir,(stats.energy<=0?1: sprint?4:2.3)*(waterPower?1.3:1)*dt);
+  player.position.addScaledVector(pvel,dt);pvel.multiplyScalar(Math.max(0,1-4*dt));collide(player.position,.4);
+  stats.energy=Math.max(0,stats.energy-dt*(waterPower?.12:sprint?1.8:moving?.65:.2));
+  if(stats.energy===0){stats.hp=Math.max(0,stats.hp-12*dt);if(!waterExhausted){waterExhausted=true;toast('Exhausted in the water! Get to shore or a dock ladder.');}}
+  else waterExhausted=false;
+  const targetY=stats.energy>0?-1.05:-1.35;player.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
+  if(moving)player.rotation.y=lerpAngle(player.rotation.y,Math.atan2(dir.x,dir.z),1-Math.exp(-5*dt));
+  animateHumanoid(P,null,moving,false,false,dt);P.rig.rotation.x=-.6;
+  if(!isSeaWater(player.position.x,player.position.z)){swimming=false;waterExhausted=false;P.rig.rotation.x=0;player.position.y=groundY(player.position.x,player.position.z);onGround=true;toast('Back on dry ground.');}
+}
 function updatePlayer(dt) {
+  if (isSeaWater(player.position.x,player.position.z) && player.position.y < .2) return updateSwimming(dt);
+  if (swimming) { swimming=false; waterExhausted=false; P.rig.rotation.x=0; }
   if (sitting) { animateHumanoid(P, 'sit', false, false, true, dt); return; } // frozen in the chair until E is pressed again, but still visibly seated
   playerStun = Math.max(0, playerStun - dt);
   iFrames = Math.max(0, iFrames - dt);
@@ -4626,13 +4667,6 @@ function updatePlayer(dt) {
   const floorY = groundY(player.position.x, player.position.z);
   if (player.position.y <= floorY) { player.position.y = floorY; vy = 0; onGround = true; }
   else if (player.position.y - floorY > 0.2) onGround = false;
-
-  // Real drowning logic: wade into a pond without the Water class and it costs you.
-  const wz = waterZones.find(w => distXZ(player.position, w) < w.r);
-  if (wz && !inCar && charIdx !== 2) {
-    stats.hp -= 18 * dt;
-    if (!drownWarned) { drownWarned = true; toast("You can't swim without the power of Water — get out!"); }
-  } else drownWarned = false;
 
   const pose = action?.pose ?? (playerBlocking ? 'block' : playerStun > 0 ? 'stunned' : null);
   animateHumanoid(P, pose === 'slash' ? 'punchR' : pose, moving && canMove, sprinting, onGround, dt);
@@ -4747,6 +4781,7 @@ function resolveRoadMovement(v, start, dt) {
   }
 }
 function driveVehicle(v, dt) {
+  if (isRoadVehicle(v) && isSeaWater(v.group.position.x,v.group.position.z)) { v.disabled=true;v.health=0;v.speed=0;if(v===driving){exitVehicle(true);toast('Vehicle submerged. Swim to shore.');}return; }
   if (v.kind === 'plane') return flyPlane(v, dt);
   const mine = v === driving;
   if (mine) {
@@ -5100,7 +5135,7 @@ function buyFood(price, energy) {
   stats.gold -= price; stats.hunger = 100; stats.energy = Math.min(100, stats.energy + energy);
   toast('Food purchased. Hunger restored.');
 }
-const townPlaces = buildPlaces({ scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast,
+townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt), playerY:()=>player.position.y, scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast,
   policeReception() { toast(wanted > 0 ? 'An active pursuit is in progress. Lose the pursuing units before returning to reception.' : 'Police reception: no active wanted alert. Public reception and custody viewing are open.'); },
   constructionShift() {
     if (performance.now() < nextConstructionShift) { toast('Next shift available in ' + Math.ceil((nextConstructionShift - performance.now()) / 1000) + ' seconds.'); return; }
@@ -5114,6 +5149,15 @@ const townPlaces = buildPlaces({ scene, box, colliders, camBlockers, planeBlocks
   resume() { requestGameControl(); }
 });
 buildHotbar();
+harbour = buildHarbour({scene,box,colliders,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+  boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
+  returnDock(x,z){player.position.set(x,1.2,z);swimming=false;vy=0;pvel.set(0,0,0);}
+});
+townPlaces.destinations.push({name:'Ashford Port',x:-103,z:170});
+interactables.push({pos:new THREE.Vector3(-153,0,231),r:3,label:'Climb dock ladder',action:()=>{player.position.set(-145,1.2,231);swimming=false;vy=0;toast('Climbed onto the dock.');}});
+// Visible emergency ladder outside the fenced cargo yard.
+for(const x of [-153.5,-152.5])box(.08,3,.08,x,-.2,231,0xd1bc58,false);
+for(let y=-1.5;y<1.2;y+=.35)box(1,.06,.06,-153,y,231,0xd1bc58,false);
 mobileControls = setupMobileControls({
   playing: () => locked && !boardOpen && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
@@ -5171,7 +5215,8 @@ function frame() {
     updateParticles(dt);
   }
   mobileControls?.update();
-  townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar);
+  townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar, reconstructionDays * DAY_LEN, locked ? rawDt : 0);
+  if(locked) harbour.update(reconstructionDays * DAY_LEN, rawDt);
   updateCamera(locked ? rawDt : 0);
   updateWorldLight(locked ? dt : 0);
   updatePops(locked ? rawDt : 0);
