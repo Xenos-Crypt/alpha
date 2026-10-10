@@ -1637,7 +1637,11 @@ const maxHp = () => (origin?.maxHealth ?? 100) + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
 // A roll of 1 drains hunger/energy 50% faster for this profile, forever; a roll of 6 drains 30% slower.
 // This is the one lasting mechanical consequence of the birth roll — everything else from it is flavor text.
-const drainMul = () => origin ? 1.6 - origin.roll * 0.1 : 1;
+// Real consequence for starting homeless (destitute wealth tier, or housing text that
+// says so): hunger/energy drain another 40% faster on top of the roll penalty — sleeping
+// rough is harder than even a poor but housed start.
+const isHomeless = () => origin && (origin.wealthTier === 'destitute' || /no fixed home|homeless|sleeps rough|shelter/i.test(origin.housing || ''));
+const drainMul = () => (origin ? 1.6 - origin.roll * 0.1 : 1) * (isHomeless() ? 1.4 : 1);
 const defMul = () => 1 / (1 + prog.def * 0.06);
 const psyDmg = () => 10 + prog.men * 4;
 const psyCdMax = () => Math.max(4, 9 - prog.men * 0.3);
@@ -1864,7 +1868,8 @@ function loadCityTile(tx, tz) {
     colliders.push(...tileColliders);
     const buildingMesh = group.getObjectByName('buildings');
     if (buildingMesh) camBlockers.push(buildingMesh);
-    const civicEntries = tileCivic.map(c => ({ ...c, x: c.x + CITY_OFFSET.x, z: c.z + CITY_OFFSET.z }));
+    const civicEntries = tileCivic.map(c => ({ ...c, mesh: buildingMesh, group, x: c.x + CITY_OFFSET.x, z: c.z + CITY_OFFSET.z }));
+    for (const c of civicEntries) applyBuildingExterior(c, buildingAppearances[c.id]);
     civicBuildings.push(...civicEntries);
     cityTiles.set(key, { group, colliders: tileColliders, buildingMesh, civicEntries });
   }).catch(() => cityTiles.delete(key));
@@ -2092,6 +2097,36 @@ function flyPlane(v, dt) {
   if (v.prop) v.prop.rotation.z += (5 + v.speed) * dt * 3;
   if (v.exhaust) v.exhaust.scale.setScalar(0.5 + P.throttle);
   if (mine && airborne && Math.random() < 0.6) spawnParticle(at(p, 1.2).addScaledVector(fwdOf(v.group), -v.length * 0.6), randUnit().multiplyScalar(0.5), 0xffffff, 0.25, 0.8);
+}
+
+// ---- Flying ad balloon ----
+const adBalloon = new THREE.Group();
+const adBanner = { canvas: document.createElement('canvas'), tex: null, nextDraw: 0 };
+adBanner.canvas.width = 512; adBanner.canvas.height = 128;
+adBanner.tex = new THREE.CanvasTexture(adBanner.canvas);
+(function buildAdBalloon() {
+  adBalloon.add(new THREE.Mesh(new THREE.SphereGeometry(4, 16, 12), new THREE.MeshStandardMaterial({ color: 0xff5a5a })));
+  const basket = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1, 1.2), new THREE.MeshStandardMaterial({ color: 0x4a3a2a }));
+  basket.position.y = -5.5;
+  adBalloon.add(basket);
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.5), new THREE.MeshBasicMaterial({ map: adBanner.tex, side: THREE.DoubleSide }));
+  banner.position.y = -8;
+  adBalloon.add(banner);
+  scene.add(adBalloon);
+})();
+const AD_MESSAGES = ['VISIT THE CORNER CAFÉ', 'ANOTHERWORLD — YOUR STORY AWAITS', 'FRESH BREAD DAILY', 'JOIN A DUNGEON TODAY', 'NEW ELEMENTS COMING SOON'];
+let adBalloonA = 0;
+function updateAdBalloon(dt) {
+  adBalloonA += dt * 0.04;
+  adBalloon.position.set(Math.cos(adBalloonA) * 150, 70 + Math.sin(adBalloonA * 2) * 8, Math.sin(adBalloonA) * 150);
+  adBalloon.rotation.y = adBalloonA + Math.PI / 2;
+  if (performance.now() < adBanner.nextDraw) return;
+  adBanner.nextDraw = performance.now() + 5000;
+  const ctx = adBanner.canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 512, 128);
+  ctx.fillStyle = '#c0392b'; ctx.font = 'bold 36px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(AD_MESSAGES[Math.floor(Math.random() * AD_MESSAGES.length)], 256, 64);
+  adBanner.tex.needsUpdate = true;
 }
 
 function updatePlanes(dt) {
@@ -3772,7 +3807,10 @@ function exitVehicle(force = false) {
 function interact() {
   if (inCar) return exitVehicle();
   if (action) return;
-  if (inCivicInterior) return leaveCivicBuilding();
+  if (inCivicInterior) {
+    if (sitting || nearChair()) return toggleSit();
+    return leaveCivicBuilding();
+  }
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
   const cb = nearestCivicBuilding();
   if (cb) return enterCivicBuilding(cb);
@@ -3813,6 +3851,7 @@ const CIVIC_THEMES = {
 };
 const DEFAULT_CIVIC_THEME = { wall: 0xe8e4d8, floor: 0xcfc9ba, light: 0xfff4d6 };
 let civicFloor, civicWalls = [], civicLight;
+let civicTvCanvas, civicTvTexture, civicTvT = 0;
 (function buildCivicInterior() {
   civicFloor = box(26, 0.3, 20, CIVIC_OFFSET.x, 0.15, CIVIC_OFFSET.z, 0xcfc9ba);             // floor
   civicWalls.push(box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z - 10, 0xe8e4d8));        // back wall
@@ -3822,12 +3861,77 @@ let civicFloor, civicWalls = [], civicLight;
   civicLight = new THREE.PointLight(0xfff4d6, 1.2, 30);
   civicLight.position.set(CIVIC_OFFSET.x, 5, CIVIC_OFFSET.z);
   scene.add(civicLight);
+  // A chair facing a TV — sit with E, stand with E again. The TV shows a looping
+  // placeholder "channel" (a canvas texture); there's no real video content/streaming
+  // infrastructure, so this is an honest stand-in, not an attempt at real shows.
+  box(0.8, 0.9, 0.8, CIVIC_OFFSET.x - 6, 0.45, CIVIC_OFFSET.z - 2, 0x4a3a2a, false);
+  box(0.8, 0.9, 0.12, CIVIC_OFFSET.x - 6, 0.95, CIVIC_OFFSET.z - 2.4, 0x4a3a2a, false);
+  civicTvCanvas = document.createElement('canvas'); civicTvCanvas.width = 256; civicTvCanvas.height = 160;
+  civicTvTexture = new THREE.CanvasTexture(civicTvCanvas);
+  const tvScreen = mesh(new THREE.PlaneGeometry(2.4, 1.5), new THREE.MeshBasicMaterial({ map: civicTvTexture }));
+  tvScreen.position.set(CIVIC_OFFSET.x - 6, 1.9, CIVIC_OFFSET.z - 8.55);
+  box(2.7, 1.8, 0.15, CIVIC_OFFSET.x - 6, 1.9, CIVIC_OFFSET.z - 8.6, 0x1a1a1a, false);
 })();
+const CIVIC_CHAIR = { x: CIVIC_OFFSET.x - 6, z: CIVIC_OFFSET.z - 2, sitX: CIVIC_OFFSET.x - 6, sitZ: CIVIC_OFFSET.z - 2.9 };
+let sitting = false;
+function updateCivicTv(dt) {
+  if (!civicTvCanvas) return;
+  civicTvT += dt;
+  if (civicTvT < 0.4) return; // redraw a few times a second, not every frame
+  civicTvT = 0;
+  const ctx = civicTvCanvas.getContext('2d');
+  const hue = (performance.now() / 40) % 360;
+  ctx.fillStyle = `hsl(${hue},55%,30%)`; ctx.fillRect(0, 0, 256, 160);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('ANOTHERWORLD TV', 128, 70);
+  ctx.font = '12px sans-serif'; ctx.fillText('Channel 1 — nothing on yet', 128, 92);
+  civicTvTexture.needsUpdate = true;
+}
+function toggleSit() {
+  sitting = !sitting;
+  if (sitting) {
+    player.position.set(CIVIC_CHAIR.sitX, 0, CIVIC_CHAIR.sitZ);
+    player.rotation.y = 0;
+    toast('Sitting. Press E to stand.');
+  } else {
+    toast('Standing up.');
+  }
+}
+function nearChair() { return inCivicInterior && Math.hypot(player.position.x - CIVIC_CHAIR.x, player.position.z - CIVIC_CHAIR.z) < 2.2; }
 function applyCivicTheme(type) {
   const t = CIVIC_THEMES[type] || DEFAULT_CIVIC_THEME;
   civicFloor.material.color.set(t.floor);
   for (const w of civicWalls) w.material.color.set(t.wall);
   civicLight.color.set(t.light);
+}
+// AI appearances survive tile unloading and browser reloads.
+let buildingAppearances = {};
+try { const saved = JSON.parse(localStorage.getItem('anotherworld-building-exteriors') || '{}'); if (saved && typeof saved === 'object' && !Array.isArray(saved)) buildingAppearances = saved; } catch {}
+function applyBuildingExterior(b, exterior, persist = false) {
+  if (!exterior || typeof exterior !== 'object' || !b.mesh) return;
+  const validColor = c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
+  if (!validColor(exterior.facadeColor) || !validColor(exterior.roofColor)) return;
+  const appearance = { facadeColor: exterior.facadeColor, roofColor: exterior.roofColor,
+    signText: typeof exterior.signText === 'string' ? exterior.signText.replace(/[\x00-\x1f]/g, '').slice(0, 40) : b.name.slice(0, 40) };
+  const colors = b.mesh.geometry.getAttribute('color'), normals = b.mesh.geometry.getAttribute('normal');
+  const base = b.mesh.material.color;
+  const tint = hex => { const c = new THREE.Color(hex); c.r /= base.r; c.g /= base.g; c.b /= base.b; return c; };
+  const wall = tint(appearance.facadeColor), roof = tint(appearance.roofColor);
+  for (let i = b.colorStart; i < b.colorStart + b.vertexCount; i++) {
+    const c = normals.getY(i) > 0.5 ? roof : wall; colors.setXYZ(i, c.r, c.g, c.b);
+  }
+  colors.needsUpdate = true;
+  if (b.sign) { b.sign.material.map.dispose(); b.sign.material.dispose(); b.sign.removeFromParent(); b.sign = null; }
+  if (appearance.signText) {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 96;
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#18202c'; ctx.fillRect(0, 0, 512, 96);
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(appearance.signText, 256, 48, 480);
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+    b.sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+    b.sign.position.set(b.x - CITY_OFFSET.x, b.height + 1, b.z - CITY_OFFSET.z); b.sign.scale.set(8, 1.5, 1); b.group.add(b.sign);
+  }
+  if (persist) { buildingAppearances[b.id] = appearance; try { localStorage.setItem('anotherworld-building-exteriors', JSON.stringify(buildingAppearances)); } catch {} }
 }
 function nearestCivicBuilding() {
   let best = null, bestD = 6;
@@ -3843,8 +3947,9 @@ async function enterCivicBuilding(b) {
   $('fade').style.opacity = 1;
   let data = null;
   try {
-    const res = await fetch('/api/civic-interior', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: b.type, name: b.name }) });
-    data = await res.json(); if (data.error) data = null;
+    const res = await fetch('/api/civic-interior', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: b.type, name: b.name }), signal: AbortSignal.timeout(12000) });
+    data = await res.json(); if (!res.ok || data.error) data = null;
+    if (data?.exterior) applyBuildingExterior(b, data.exterior, true);
   } catch {}
   setTimeout(() => {
     inCivicInterior = true;
@@ -3863,6 +3968,7 @@ function leaveCivicBuilding() {
   $('fade').style.opacity = 1;
   setTimeout(() => {
     inCivicInterior = false;
+    sitting = false;
     player.position.copy(civicReturnPos);
     player.position.y = groundY(player.position.x, player.position.z);
     vy = 0;
@@ -4025,6 +4131,7 @@ const DAY_LEN = 300; // seconds per in-game day
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 
 function updatePlayer(dt) {
+  if (sitting) return; // frozen in the chair until E is pressed again
   playerStun = Math.max(0, playerStun - dt);
   iFrames = Math.max(0, iFrames - dt);
   m1Cd = Math.max(0, m1Cd - dt);
@@ -4415,8 +4522,10 @@ function frame() {
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);
+    if (inCivicInterior) updateCivicTv(dt);
     updateVehicles(dt);
     updatePlanes(dt);
+    updateAdBalloon(dt);
     updateShips(dt);
     updateGates(dt);
     updateDungeon(dt);

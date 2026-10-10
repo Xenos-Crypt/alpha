@@ -64,6 +64,13 @@ const CIVIC_AMENITIES = {
   community_centre: 'Community centre', job_centre: 'Job centre', post_office: 'Post office', bank: 'Bank',
 };
 const CIVIC_COLOR = 0xffd166;
+const BUILDING_TYPE_LABEL = {
+  house: 'House', detached: 'House', semidetached_house: 'House', terrace: 'Terraced house', bungalow: 'Bungalow',
+  residential: 'House', apartments: 'Apartment block', dormitory: 'Dormitory', student_accommodation: 'Student flat',
+  retail: 'Shop', commercial: 'Office', office: 'Office', hotel: 'Hotel', industrial: 'Industrial unit', warehouse: 'Warehouse',
+  garage: 'Garage', garages: 'Garages', shed: 'Shed', hut: 'Hut', carport: 'Carport', greenhouse: 'Greenhouse',
+  church: 'Church', yes: 'Building',
+};
 
 /**
  * @param {object} geojson - parsed Overpass Turbo export (buildings tagged `building`, roads tagged `highway`)
@@ -82,7 +89,19 @@ export function buildCityFromGeoJSON(geojson, origin) {
   const group = new THREE.Group();
   group.name = 'osm-city';
 
-  const buildingMat = new THREE.MeshStandardMaterial({ color: 0xb9b2a3, roughness: 0.9, metalness: 0.02 });
+  const buildingMat = new THREE.MeshStandardMaterial({ color: 0xb9b2a3, roughness: 0.9, metalness: 0.02, vertexColors: true });
+  // Real default area character, straight from the actual OSM building tag — not
+  // invented. A hut/shed/garage-heavy block looks visibly rougher than one full of
+  // hotels and offices, without waiting on any AI call. Expressed as absolute colors,
+  // then converted to a multiplier against buildingMat's base color below.
+  const TIER_ABSOLUTE = { rundown: 0x8a8378, industrial: 0x707868, affluent: 0xe8dfc8, ordinary: 0xb9b2a3 };
+  const BUILDING_TIER_BY_TYPE = {
+    hut: 'rundown', shed: 'rundown', garage: 'rundown', garages: 'rundown', greenhouse: 'rundown', silo: 'rundown', carport: 'rundown', roof: 'rundown',
+    industrial: 'industrial', warehouse: 'industrial',
+    hotel: 'affluent', office: 'affluent', commercial: 'affluent', retail: 'affluent', bank: 'affluent',
+  };
+  const tierMultiplier = hex => { const c = new THREE.Color(hex); c.r /= buildingMat.color.r; c.g /= buildingMat.color.g; c.b /= buildingMat.color.b; return c; };
+  const TIER_MULT = Object.fromEntries(Object.entries(TIER_ABSOLUTE).map(([k, v]) => [k, tierMultiplier(v)]));
   // DoubleSide because the ribbon triangle winding faces downward (normals point -Y);
   // this renders correctly from above instead of being backface-culled.
   const roadMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2e, roughness: 1, side: THREE.DoubleSide });
@@ -92,6 +111,7 @@ export function buildCityFromGeoJSON(geojson, origin) {
   const civicMarkerGeo = new THREE.ConeGeometry(1.5, 4, 6);
   const civicMarkerMat = new THREE.MeshStandardMaterial({ color: CIVIC_COLOR, emissive: CIVIC_COLOR, emissiveIntensity: 0.6 });
 
+  let vertexOffset = 0;
   for (const f of features) {
     const props = f.properties || {};
     if (props.building && f.geometry.type === 'Polygon') {
@@ -108,16 +128,31 @@ export function buildCityFromGeoJSON(geojson, origin) {
       geo.deleteAttribute('uv');
       box3.setFromBufferAttribute(geo.getAttribute('position'));
       buildingColliders.push({ minX: box3.min.x, maxX: box3.max.x, minZ: box3.min.z, maxZ: box3.max.z });
+      const vertexCount = geo.getAttribute('position').count;
+      const tier = TIER_MULT[BUILDING_TIER_BY_TYPE[props.building]] || TIER_MULT.ordinary;
+      const colorAttr = new Float32Array(vertexCount * 3);
+      for (let vi = 0; vi < vertexCount; vi++) { colorAttr[vi * 3] = tier.r; colorAttr[vi * 3 + 1] = tier.g; colorAttr[vi * 3 + 2] = tier.b; }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colorAttr, 3));
+      const colorStart = vertexOffset; vertexOffset += vertexCount;
       buildingGeos.push(geo);
 
+      // Every building is enterable now, not just the curated civic ones — "doors to
+      // every building." Only genuinely civic buildings get the glowing marker, so
+      // the city of 50k+ buildings doesn't end up covered in cones.
       const civicLabel = CIVIC_AMENITIES[props.amenity];
+      const genericLabel = BUILDING_TYPE_LABEL[props.building] || 'Building';
+      const cx = (box3.min.x + box3.max.x) / 2, cz = (box3.min.z + box3.max.z) / 2;
       if (civicLabel) {
-        const cx = (box3.min.x + box3.max.x) / 2, cz = (box3.min.z + box3.max.z) / 2;
         const marker = new THREE.Mesh(civicMarkerGeo, civicMarkerMat);
         marker.position.set(cx, box3.max.y + 2.5, cz);
         group.add(marker);
-        civicBuildings.push({ type: props.amenity, label: civicLabel, name: props.name || civicLabel, x: cx, z: cz });
       }
+      civicBuildings.push({
+        type: props.amenity || props.building || 'building', label: civicLabel || genericLabel,
+        name: props.name || civicLabel || genericLabel, civic: !!civicLabel,
+        x: cx, z: cz, id: String(f.id || props['@id'] || (props.amenity || props.building || 'b') + ':' + cx.toFixed(2) + ':' + cz.toFixed(2)),
+        colorStart, vertexCount, height,
+      });
     } else if (props.highway && f.geometry.type === 'LineString') {
       const pts = f.geometry.coordinates.map(([lon, lat]) => project(lon, lat));
       if (pts.length < 2) continue;
