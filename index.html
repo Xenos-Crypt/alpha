@@ -2292,6 +2292,7 @@ const CAPITAL_CX = (CAPITAL_X0 + CAPITAL_X1) / 2, CAPITAL_CZ = (CAPITAL_Z0 + CAP
 for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++) {
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
   if (Math.hypot(x0 - CAPITAL_CX, z0 - CAPITAL_CZ) < 36) continue;   // leave the central plaza for the Capitol itself
+  if (Math.abs(x0 - 220) < 30 && z0 < 740) continue;   // the suspension bridge/landing ramp runs through here — don't build on top of it
   pavement(x0, z0, lawnMat);
   for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
     if (rand() < 0.1) { addTree(x0 + ox, z0 + oz, 1.1); continue; }
