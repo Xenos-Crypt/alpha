@@ -1302,11 +1302,18 @@ function showAuthScreen() {
       if (!email || password.length < 6) { err.textContent = 'Enter an email and a password of at least 6 characters.'; return; }
       btn.disabled = true; btn.textContent = 'Please wait…';
       const { data, error } = mode === 'signup'
-        ? await supabase.auth.signUp({ email, password })
+        ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + '/confirm.html' } })
         : await supabase.auth.signInWithPassword({ email, password });
       btn.disabled = false; btn.textContent = mode === 'signup' ? 'Sign up' : 'Log in';
       if (error) { err.textContent = error.message; return; }
-      if (mode === 'signup' && !data.session) { err.textContent = 'Check your email to confirm your account, then log in.'; return; }
+      if (mode === 'signup' && !data.session) {
+        // Don't make them retype everything: switch straight to the login form, email
+        // already filled in, so coming back to this tab after confirming is one click.
+        setMode('login');
+        $('authEmail').value = email;
+        err.textContent = 'Check your email to confirm your account, then log in here.';
+        return;
+      }
       $('auth').style.display = 'none';
       resolve(data.session);
     });
