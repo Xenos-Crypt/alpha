@@ -1254,10 +1254,16 @@ function makeHumanoid({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes =
 
   mesh(new THREE.CapsuleGeometry(0.24, 0.4, 4, 12), mats.outfit, rig).position.y = 1.27;
   mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.08, 14), 0x3b2a1e, rig).position.y = 1.02;
+  // Face: the old hair sphere (0.265) was bigger than the head itself (0.24) and
+  // wrapped almost all the way around it, which read as an animal mask/hood rather
+  // than hair. Shrunk to sit just on top/back of the head, and added eyebrows + a
+  // mouth so there's an actual face instead of two dots on a blank sphere.
   mesh(new THREE.SphereGeometry(0.24, 20, 16), mats.skin, rig).position.y = 1.82;
-  mesh(new THREE.SphereGeometry(0.265, 20, 16), mats.hair, rig).position.set(0, 1.87, -0.05);
+  mesh(new THREE.SphereGeometry(0.235, 20, 16), mats.hair, rig).position.set(0, 1.9, -0.08);
   mesh(new THREE.BoxGeometry(0.36, 0.09, 0.14), mats.hair, rig).position.set(0, 2.0, 0.14);
   for (const s of [-1, 1]) mesh(new THREE.SphereGeometry(0.035, 8, 6), mats.dark, rig).position.set(s * 0.085, 1.84, 0.215);
+  for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.075, 0.018, 0.02), mats.hair, rig).position.set(s * 0.085, 1.895, 0.218);
+  mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), mats.dark, rig).position.set(0, 1.735, 0.225);
 
   function limb(x, y, len, radius, mat, endMat, endGeo) {
     const pivot = new THREE.Group();
@@ -4587,7 +4593,7 @@ function updateHud(dt) {
   const hours = (dayTime * 24 + 6) % 24;
   const hh = String(Math.floor(hours)).padStart(2, '0'), mm = String(Math.floor(hours % 1 * 60)).padStart(2, '0');
   $('clock').textContent = `Time ${hh}:${mm}  ·  Gold ${stats.gold}`;
-  $('extra').textContent = (inCar ? `Speed ${Math.round(Math.abs(driving.speed) * 3.6)} km/h`
+  $('extra').textContent = (inCar ? `Speed ${Math.round(Math.abs(driving.speed) * 3.6)} km/h${isRoadVehicle(driving) ? ' ? Condition ' + Math.ceil(driving.health ?? 100) + '%' : ''}`
       + (driving.kind === 'plane' ? `  ·  Alt ${Math.round(driving.alt)} m  ·  Throttle ${Math.round(driving.plane.throttle * 100)}%` : '')
     : awaken > 0 ? `AWAKENED ${awaken.toFixed(1)}s` : `Slimes defeated: ${kills}`)
     + (wanted > 0 ? `  ·  WANTED ${Math.ceil(wanted)}s` : '');
