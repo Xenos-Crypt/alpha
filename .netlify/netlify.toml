@@ -38,3 +38,15 @@ force = false
 [redirects.conditions]
 
 [redirects.headers]
+
+[[redirects]]
+from = "http://anotherworld.world/*"
+to = "https://curious-quokka-2202fb.netlify.app/:splat"
+status = 302.0
+force = true
+
+[redirects.query]
+
+[redirects.conditions]
+
+[redirects.headers]

@@ -1289,6 +1289,7 @@ swordGrip.rotation.x = 1.0;
 P.armR.pivot.add(swordGrip);
 mesh(new THREE.BoxGeometry(0.06, 0.04, 1.0), new THREE.MeshStandardMaterial({ color: 0xe6e9ee, metalness: 0.6, roughness: 0.3 }), swordGrip).position.z = 0.55;
 mesh(new THREE.BoxGeometry(0.26, 0.06, 0.06), 0xc9a227, swordGrip).position.z = 0.05;
+swordGrip.visible = false; // nobody starts armed — whether you get a weapon at all depends on your birth roll
 
 const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
 player.position.copy(SPAWN);
@@ -1372,11 +1373,12 @@ async function loadOrCreateProfile(userId) {
     origin = {
       roll: data.roll, family: data.family, backstory: data.backstory, stats: data.stats, perk: data.perk,
       wealthTier: data.wealth_tier || 'working', housing: data.housing || 'A small rented room',
-      startingGold: data.starting_gold ?? 100, maxHealth: data.max_health ?? 100,
+      startingGold: data.starting_gold ?? 100, maxHealth: data.max_health ?? 100, weapon: data.weapon || null,
     };
     prog.points += data.points || 0;
     stats.gold = data.current_gold ?? origin.startingGold;
     stats.hp = maxHp();
+    swordGrip.visible = !!origin.weapon;
     return true; // already born — skip the dice roll
   }
   return false;
@@ -1409,17 +1411,19 @@ function runSpawnScreen(userId, persist) {
         housing: data?.housing || 'A small rented room',
         startingGold: Number.isFinite(data?.startingGold) ? data.startingGold : 100,
         maxHealth: Number.isFinite(data?.maxHealth) ? data.maxHealth : 100,
+        weapon: data?.startingWeapon && data.startingWeapon !== 'none' ? data.startingWeapon : null,
       };
       prog.points += roll;
       stats.gold = origin.startingGold;
       stats.hp = maxHp();
+      swordGrip.visible = !!origin.weapon;
       // Solo play re-rolls a fresh life every time — nothing to save. The one-time,
       // permanent roll (saved to `profiles`) is reserved for hosting/joining a
       // persistent shared world, once that exists.
       if (persist) {
         const { error } = await supabase.from('profiles').insert({
           user_id: userId, roll, family: origin.family, backstory: origin.backstory, stats: origin.stats, perk: origin.perk,
-          wealth_tier: origin.wealthTier, housing: origin.housing, starting_gold: origin.startingGold, max_health: origin.maxHealth,
+          wealth_tier: origin.wealthTier, housing: origin.housing, starting_gold: origin.startingGold, max_health: origin.maxHealth, weapon: origin.weapon,
           points: roll,
         });
         if (error) console.error('Failed to save profile:', error.message);
@@ -1427,7 +1431,7 @@ function runSpawnScreen(userId, persist) {
       $('spawnRoll').textContent = `You rolled a ${roll}`;
       $('spawnFam').textContent = origin.family;
       $('spawnBio').textContent = origin.backstory;
-      $('spawnPerk').textContent = `Perk: ${origin.perk} · ${origin.housing} · Starting gold: ${origin.startingGold}`;
+      $('spawnPerk').textContent = `Perk: ${origin.perk} · ${origin.housing} · Starting gold: ${origin.startingGold} · ${origin.weapon ? 'Weapon: ' + origin.weapon : 'Unarmed'}`;
       $('spawnResult').style.display = 'block';
     });
     $('beginBtn').addEventListener('click', () => { $('spawn').style.display = 'none'; resolve(); });
@@ -1467,7 +1471,8 @@ const psyCdMax = () => Math.max(4, 9 - prog.men * 0.3);
 const speedMul = () => 1 + prog.agi * 0.06;
 // A weak start (low birth-roll confidence) hits for less; a strong one hits harder.
 // confidence 0 -> 0.5x, confidence 55 (no origin yet) -> ~1x, confidence 100 -> 1.5x.
-const attackDmg = () => (6 + prog.str * 3) * (0.5 + (origin?.stats.confidence ?? 55) / 100);
+// Fighting bare-handed (no starting weapon) hits for 35% less than fighting armed.
+const attackDmg = () => (6 + prog.str * 3) * (0.5 + (origin?.stats.confidence ?? 55) / 100) * (origin && !origin.weapon ? 0.65 : 1);
 const S = n => n * (1 + prog.str * 0.1);            // scales skill damage by Strength
 const dmgMul = () => awaken > 0 ? 1.3 : 1;
 

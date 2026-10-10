@@ -12,6 +12,7 @@ create table if not exists profiles (
   starting_gold int default 100,
   max_health int default 100,
   current_gold int,
+  weapon text,
   created_at timestamptz not null default now()
 );
 
@@ -21,6 +22,7 @@ create table if not exists profiles (
 -- alter table profiles add column if not exists starting_gold int default 100;
 -- alter table profiles add column if not exists max_health int default 100;
 -- alter table profiles add column if not exists current_gold int;
+-- alter table profiles add column if not exists weapon text;
 
 alter table profiles enable row level security;
 
