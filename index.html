@@ -4359,7 +4359,13 @@ addEventListener('mousemove', e => {
 });
 addEventListener('mousedown', e => { if (locked && e.button === 0) { mouseHeld = true; m1(); } });
 addEventListener('mouseup', e => { if (e.button === 0) mouseHeld = false; });
-addEventListener('wheel', e => { camDist = clamp(camDist + Math.sign(e.deltaY), 3, 14); });
+addEventListener('wheel', e => {
+  // Only zoom the game camera while actually playing — scrolling over an open
+  // board/panel (the stats board, the travel board, etc.) used to zoom the
+  // camera behind it too, making it look like the view was randomly resizing.
+  if (!locked || boardOpen || freeMouse || document.getElementById('placesTravel')?.hidden === false) return;
+  camDist = clamp(camDist + Math.sign(e.deltaY), 3, 14);
+});
 
 const startEl = $('start');
 startEl.addEventListener('click', () => renderer.domElement.requestPointerLock());

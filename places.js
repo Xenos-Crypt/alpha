@@ -4,6 +4,39 @@ export function buildPlaces(ctx) {
   const { scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast } = ctx;
   const rooms = [], destinations = [];
   const palette = { wall: 0xdad5cb, trim: 0x34495e, floor: 0xb0b1ad, glass: 0x7596a5 };
+  const fences = [], gates = [];
+  const wireTexture = makeTex(128, 128, g => {
+    g.clearRect(0, 0, 128, 128); g.strokeStyle = '#b9c1c5'; g.lineWidth = 3;
+    for (let offset = -128; offset <= 256; offset += 32) {
+      g.beginPath(); g.moveTo(offset, 0); g.lineTo(offset + 128, 128); g.stroke();
+      g.beginPath(); g.moveTo(offset, 0); g.lineTo(offset - 128, 128); g.stroke();
+    }
+  });
+  function fence(x1, z1, x2, z2, height = 2.7) {
+    const length = Math.hypot(x2 - x1, z2 - z1), alongX = Math.abs(x2 - x1) > Math.abs(z2 - z1);
+    if (length < .1) return;
+    const texture = wireTexture.clone(); texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(length / 2, height / 2); texture.needsUpdate = true;
+    const material = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: .35, side: THREE.DoubleSide, roughness: .65 });
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(length, height), material);
+    panel.position.set((x1+x2)/2,height/2,(z1+z2)/2);panel.rotation.y=alongX?0:Math.PI/2;scene.add(panel);
+    const count = Math.ceil(length / 5);
+    for (let i = 0; i <= count; i++) {
+      const x = x1 + (x2-x1)*i/count, z = z1+(z2-z1)*i/count;
+      box(.09,height+.25,.09,x,(height+.25)/2,z,0x59636a,false);
+    }
+    for (const y of [.15,height-.1]) {
+      box(alongX?length:.06,.06,alongX?.06:length,(x1+x2)/2,y,(z1+z2)/2,0x68737a,false);
+    }
+    const barrier={minX:Math.min(x1,x2)-.12,maxX:Math.max(x1,x2)+.12,minZ:Math.min(z1,z2)-.12,maxZ:Math.max(z1,z2)+.12};
+    colliders.push(barrier); planeBlocks.push({...barrier,top:height}); fences.push(barrier);
+  }
+  function fencedYard(name, minX, maxX, minZ, maxZ, gateX, gateWidth = 8, height = 2.7) {
+    fence(minX,minZ,maxX,minZ,height);fence(minX,minZ,minX,maxZ,height);fence(maxX,minZ,maxX,maxZ,height);
+    fence(minX,maxZ,gateX-gateWidth/2,maxZ,height);fence(gateX+gateWidth/2,maxZ,maxX,maxZ,height);
+    gates.push({name,x:gateX,z:maxZ,width:gateWidth});
+    for(const x of [gateX-gateWidth/2,gateX+gateWidth/2])box(.25,height+.5,.25,x,(height+.5)/2,maxZ,0x444f59,false);
+    sign(name,gateX,height+.75,maxZ+.2,Math.min(12,gateWidth+2),'#3d4c43');
+  }
   function sign(text, x, y, z, width = 12, colour = '#15364a') {
     const texture = makeTex(1024, 128, g => {
       g.fillStyle = colour; g.fillRect(0, 0, 1024, 128);
@@ -101,10 +134,9 @@ export function buildPlaces(ctx) {
   desk(430, 58, 'Military visitor reception', () => toast('Visitors must remain in reception. Beyond the checkpoint is restricted.'));
   slab(80, 75, 470, 111, 0x7b8066);
   for (const x of [449, 477, 500]) room('BARRACKS', x, 108, 20, 24, 0x858b74, 4);
-  for (const x of [438, 510]) wall(.15, 3, 75, x, 1.5, 111, 0x4f594d);
-  wall(80, 3, .15, 470, 1.5, 148, 0x4f594d);
-  wall(28, 3, .15, 444, 1.5, 74, 0x4f594d); wall(38, 3, .15, 491, 1.5, 74, 0x4f594d);
-  box(14, .2, .2, 465, 1.1, 74, 0xb8a43d, false);
+  fence(438,74,438,148,3.2); fence(510,74,510,148,3.2); fence(438,148,510,148,3.2);
+  fence(438,74,458,74,3.2); fence(472,74,510,74,3.2);
+  gates.push({name:'Military checkpoint',x:465,z:74,width:14});
   sign('RESTRICTED AREA � AUTHORISED PERSONNEL', 466, 3, 75, 17, '#763529');
   destinations.push({ name: 'Military base', x: 430, z: 78 });
 
@@ -140,6 +172,17 @@ export function buildPlaces(ctx) {
   sign('CONTROL', ax - 162, 17, -11, 7);
   destinations.push({ name: 'Airport aircraft apron', x: ax - 95, z: -25 });
 
+  // Keep public entrances open; fence hazardous yards and secure perimeters.
+  fencedYard('CONSTRUCTION YARD',450,490,-118,-85,470,10,2.4);
+  fencedYard('POLICE STAFF COURTYARD',389,431,-100,-83,410,8,2.8);
+  fencedYard('SUPERMARKET DELIVERIES',568,612,-105,-87,590,10,2.2);
+  fencedYard('MALL LOADING AREA',589,661,6,29,625,12,2.2);
+  fencedYard('AIRPORT PUBLIC ENTRANCE',-740,-510,-250,250,-660,16,3);
+  // Landside terminal and car park are separate from the aircraft apron.
+  fence(-740,60,-651,60,3); fence(-639,60,-568,60,3);
+  gates.push({name:'Airport apron access',x:-645,z:60,width:12});
+  sign('AIRCRAFT APRON ACCESS',-645,3.8,60.2,12,'#634f24');
+
   function openTravel() {
     let panel = document.getElementById('placesTravel');
     if (!panel) { panel = document.createElement('div'); panel.id = 'placesTravel'; panel.style.cssText = 'position:fixed;inset:12% 25%;overflow:auto;background:#14202eef;color:white;padding:24px;z-index:60;border-radius:14px;font:16px system-ui'; document.body.append(panel); }
@@ -152,11 +195,24 @@ export function buildPlaces(ctx) {
     }
     panel.hidden = false; document.exitPointerLock();
   }
-  sign('TOWN TRAVEL � PRESS E', 20, 2, 12, 6);
+  sign('TOWN TRAVEL - PRESS E', 20, 2, 12, 6);
   interactables.push({ pos: new THREE.Vector3(20, 0, 12), r: 2.5, label: 'Open town travel board', action: openTravel });
   for (const d of destinations.filter(d => !d.name.includes('BARRACKS'))) interactables.push({ pos: new THREE.Vector3(d.x + 5, 0, d.z), r: 2.5, label: 'Open town travel board', action: openTravel });
+  // Street name signs at intersections around town, purely decorative — gives streets
+  // a visible identity instead of every block looking the same.
+  const streetNames = ['MAPLE ST', 'OAK AVE', 'ELM ST', 'BIRCH RD', 'CEDAR AVE', 'PINE ST', 'ASH RD', 'WILLOW AVE'];
+  let streetSignIdx = 0;
+  for (let bx = -4; bx <= 4; bx++) {
+    for (let bz = -4; bz <= 4; bz++) {
+      if ((bx + bz) % 2 !== 0) continue; // every other intersection, not literally everywhere
+      const x = bx * 40, z = bz * 40;
+      if (Math.hypot(x, z) < 15) continue; // keep the area right at spawn clear
+      box(0.12, 2.6, 0.12, x + 1.6, 1.3, z + 1.6, 0x4a4a4a, false);
+      sign(streetNames[streetSignIdx++ % streetNames.length], x + 1.6, 2.7, z + 1.6, 4.2, '#1d2e1f');
+    }
+  }
   let restrictedWarned = false;
-  return { destinations, rooms, airportX: ax, update(player, inCar) {
+  return { destinations, rooms, fences, gates, airportX: ax, update(player, inCar) {
     for (const r of rooms) r.roof.visible = inCar || !(Math.abs(player.position.x - r.x) < r.w / 2 && Math.abs(player.position.z - r.z) < r.d / 2);
     const restricted = player.position.x > 438 && player.position.x < 510 && player.position.z > 75 && player.position.z < 148;
     if (restricted && !restrictedWarned) { toast('Restricted military compound: security has been alerted.'); ctx.restrictedEntry(); }
