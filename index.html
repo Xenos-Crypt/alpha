@@ -310,7 +310,7 @@
   </div>
   <div id="stabSound" style="display:none">
     <div class="row"><span>Master volume</span><input type="range" id="volumeSlider" min="0" max="100" value="80"><span id="volumeVal">80%</span></div>
-    <div class="sub">The game doesn't have sound effects or music yet — this is saved for when it does.</div>
+    <div class="sub">Adjust the clock-tower bell volume. Additional sound effects are in development.</div>
   </div>
   <div id="stabGraphics" style="display:none">
     <div class="sub">Resolution / quality</div>
@@ -406,6 +406,7 @@ import { setupMobileControls } from './mobile-controls.js';
 import { buildHarbour } from './harbour.js';
 import { buildTransport } from './transport.js';
 import { buildBridge } from './bridge.js';
+import { buildUrban } from './urban.js';
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -675,7 +676,7 @@ const colliders = [];      // axis-aligned boxes on the ground plane
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
-let harbour = null, townPlaces = null, transport = null, harbourBridge = null;
+let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null;
 const buildings = [];      // every city building, so it can be destroyed
 
 function mesh(geo, color, parent = scene) {
@@ -709,7 +710,7 @@ function collide(p, r) {
       p.x += opts[0][0]; p.z += opts[0][1];
     }
   }
-  if (p.x > -1000 && p.x < 1000) { p.x = clamp(p.x, -900, 900); p.z = clamp(p.z, -650, 800); }   // dungeons live far away at x = 2000; south bound extended for Riverside
+  if (p.x > -1000 && p.x < 1000) { p.x = clamp(p.x, -900, 900); p.z = clamp(p.z, -650, 950); }   // dungeons live far away at x = 2000; south bound extended for Riverside/Capital
   return hit;
 }
 const insideCollider = p => colliders.some(c => p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ);
@@ -718,14 +719,21 @@ const insideCollider = p => colliders.some(c => p.x > c.minX && p.x < c.maxX && 
 const CURB = 0.15;
 const BRIDGE_X = 0, BRIDGE_HALF_W = 7, BRIDGE_Z0 = 160, BRIDGE_Z1 = 654, BRIDGE_Y = CURB + 0.4;
 const RIVERSIDE_Z0 = 640, RIVERSIDE_Z1 = 780, RIVERSIDE_X0 = -80, RIVERSIDE_X1 = 80;
-function groundY(x, z) {
-  if(harbourBridge){const floor=harbourBridge.groundAt(x,z,inCar&&driving?driving.group.position.y:player.position.y);if(floor!=null)return floor;}
+const CAPITAL_X0 = 120, CAPITAL_X1 = 440, CAPITAL_Z0 = 680, CAPITAL_Z1 = 920;
+function groundY(x, z, bodyY = null) {
+  const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
+  const urbanFloor=urban?.groundAt(x,z);if(urbanFloor!=null)return urbanFloor;
+  if(harbourBridge){const floor=harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y));if(floor!=null)return floor;}
   const dockFloor = harbour?.groundAt(x,z); if (dockFloor != null) return dockFloor;
   const terminalFloor = townPlaces?.floorAt(x,z); if (terminalFloor != null) return terminalFloor;
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z > BRIDGE_Z0 - 4 && z < BRIDGE_Z1 + 4) return BRIDGE_Y;   // river bridge deck
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0 && z <= RIVERSIDE_Z1) {   // Riverside, across the bridge
     const lx2 = ((x % 40) + 40) % 40, lz2 = ((z % 40) + 40) % 40;
     return lx2 > 6 && lx2 < 34 && lz2 > 6 && lz2 < 34 ? CURB : 0;
+  }
+  if (x >= CAPITAL_X0 && x <= CAPITAL_X1 && z >= CAPITAL_Z0 && z <= CAPITAL_Z1) {   // Ashford Capital, across the other bridge
+    const lx3 = ((x % 40) + 40) % 40, lz3 = ((z % 40) + 40) % 40;
+    return lx3 > 6 && lx3 < 34 && lz3 > 6 && lz3 < 34 ? CURB : 0;
   }
   if (x >= -300 && x <= 300 && z > 187 && z < 900 && !(x > 18 && x < 22 && z < 206)) return -2;
   if (x > 1000) return 0;                                    // dungeon arena floor
@@ -1065,7 +1073,7 @@ function updatePets(dt) {
       const previous=p.clone();p.addScaledVector(dir,a.speed*dt);if(isSeaWater(p.x,p.z))p.copy(previous);
       a.g.rotation.y = Math.atan2(-dir.z, dir.x);
     }
-    collide(p,.2);p.y = groundY(p.x, p.z);
+    collide(p,.2);p.y = groundY(p.x, p.z, p.y);
   }
 }
 
@@ -2215,17 +2223,60 @@ function signboard(text, x, y, z, width = 10, colour = '#15364a') {
   interactables.push({ pos: new THREE.Vector3(ox, 0, oz - 3.5), r: 2.5, label: 'Check bridge control office',
     action: () => toast('No ships currently require passage — the channel is clear.') });
 }
-// Riverside: a smaller settlement across the bridge, built with the same
-// generators as the main town so it's consistent in style, just smaller.
+// Riverside: a smaller, gated settlement across the bridge for the ultra-rich —
+// built with the same generators as the main town so it's consistent in style,
+// just smaller, fenced off, and with pale stone paving instead of lawn (the
+// green read too much like the sea from a distance).
+const marbleMat = new THREE.MeshStandardMaterial({ color: 0xe4ddc9, roughness: 0.55 });
 for (let cx = -2; cx <= 1; cx++) for (let cz = 16; cz <= 18; cz++) {
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
-  pavement(x0, z0, lawnMat);
+  pavement(x0, z0, marbleMat);
   for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
-    if (rand() < 0.2) { addTree(x0 + ox, z0 + oz, 1.1); continue; }
+    if (rand() < 0.15) { addTree(x0 + ox, z0 + oz, 1.2); continue; }
     addBuilding(x0 + ox, z0 + oz, Math.sign(ox), Math.sign(oz));
   }
 }
-signboard('WELCOME TO RIVERSIDE', BRIDGE_X, BRIDGE_Y + 2.2, RIVERSIDE_Z0 + 6, 12, '#1d2e1f');
+// Perimeter wall with a single gated entrance lined up with the bridge.
+{
+  const gateHalf = 6, wallH = 3, wallMatRiver = 0xcfc6ab;
+  // north wall, split either side of the gate
+  box((RIVERSIDE_X1 - RIVERSIDE_X0) / 2 - gateHalf, wallH, 0.6, (RIVERSIDE_X0 - gateHalf) / 2, wallH / 2, RIVERSIDE_Z0, wallMatRiver);
+  box((RIVERSIDE_X1 - RIVERSIDE_X0) / 2 - gateHalf, wallH, 0.6, (RIVERSIDE_X1 + gateHalf) / 2, wallH / 2, RIVERSIDE_Z0, wallMatRiver);
+  box(0.6, wallH, RIVERSIDE_Z1 - RIVERSIDE_Z0, RIVERSIDE_X0, wallH / 2, (RIVERSIDE_Z0 + RIVERSIDE_Z1) / 2, wallMatRiver);
+  box(0.6, wallH, RIVERSIDE_Z1 - RIVERSIDE_Z0, RIVERSIDE_X1, wallH / 2, (RIVERSIDE_Z0 + RIVERSIDE_Z1) / 2, wallMatRiver);
+  box(RIVERSIDE_X1 - RIVERSIDE_X0, wallH, 0.6, (RIVERSIDE_X0 + RIVERSIDE_X1) / 2, wallH / 2, RIVERSIDE_Z1, wallMatRiver);
+  for (const s of [-1, 1]) box(0.5, wallH + 1, 0.5, s * gateHalf, (wallH + 1) / 2, RIVERSIDE_Z0, 0x8c8162, false);
+}
+signboard('RIVERSIDE ESTATES — PRIVATE', BRIDGE_X, BRIDGE_Y + 2.4, RIVERSIDE_Z0 - 1, 13, '#4a3b1d');
+
+// =====================================================================
+// ASHFORD CAPITAL: reached via the other (previously unconnected) bridge —
+// a full district, bigger than Riverside, built around a central Capitol.
+// =====================================================================
+const CAPITAL_CX = (CAPITAL_X0 + CAPITAL_X1) / 2, CAPITAL_CZ = (CAPITAL_Z0 + CAPITAL_Z1) / 2;
+for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++) {
+  const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
+  if (Math.hypot(x0 - CAPITAL_CX, z0 - CAPITAL_CZ) < 36) continue;   // leave the central plaza for the Capitol itself
+  pavement(x0, z0, lawnMat);
+  for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
+    if (rand() < 0.1) { addTree(x0 + ox, z0 + oz, 1.1); continue; }
+    addBuilding(x0 + ox, z0 + oz, Math.sign(ox), Math.sign(oz));
+  }
+}
+// Central Capitol building — taller and grander than anything addBuilding() would
+// generate way out here, since its auto-height only scales up near the origin.
+{
+  pavement(CAPITAL_CX, CAPITAL_CZ, paveMat);
+  const domeMat = new THREE.MeshStandardMaterial({ color: 0xe8e2cf, roughness: 0.5 });
+  box(26, 16, 20, CAPITAL_CX, 8, CAPITAL_CZ, domeMat);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(7, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
+  dome.position.set(CAPITAL_CX, 16, CAPITAL_CZ); scene.add(dome); camBlockers.push(dome);
+  for (let i = -4; i <= 4; i++) box(1.1, 10, 1.1, CAPITAL_CX + i * 2.4, 5, CAPITAL_CZ - 10.2, 0xf0ead9, false);
+  colliders.push({ minX: CAPITAL_CX - 13, maxX: CAPITAL_CX + 13, minZ: CAPITAL_CZ - 10, maxZ: CAPITAL_CZ + 10 });
+  planeBlocks.push({ minX: CAPITAL_CX - 13, maxX: CAPITAL_CX + 13, minZ: CAPITAL_CZ - 10, maxZ: CAPITAL_CZ + 10, top: 20.5 });
+  signboard('ASHFORD CAPITOL', CAPITAL_CX, 10, CAPITAL_CZ - 10.5, 14, '#2a2516');
+}
+signboard('ASHFORD CAPITAL', CAPITAL_CX, 3, CAPITAL_Z0 + 3, 16, '#1d2e1f');
 
 // =====================================================================
 // REAL-WORLD CITY: Edinburgh, streamed in from pre-tiled OpenStreetMap data.
@@ -2466,7 +2517,7 @@ function flyPlane(v, dt) {
   P.yaw += turn * v.turnRate * dt * (airborne ? 1 : 0.5) * Math.min(1, v.speed / 10);
   P.roll = lerp(P.roll, airborne ? -turn * 0.6 : 0, 1 - Math.exp(-3 * dt));
   // Fly back towards the city if you reach the edge of the map
-  if (Math.abs(p.x) > 880 || Math.abs(p.z) > 630) P.yaw = lerpAngle(P.yaw, Math.atan2(-p.x, -p.z), 1 - Math.exp(-1.5 * dt));
+  if (Math.abs(p.x) > 880 || Math.abs(p.z) > 880) P.yaw = lerpAngle(P.yaw, Math.atan2(-p.x, -p.z), 1 - Math.exp(-1.5 * dt));
 
   const climb = Math.sin(P.pitch) * v.speed * lift * 0.6 - (airborne ? (1 - lift) * 8 : 0);
   v.alt = Math.min(300, v.alt + climb * dt);
@@ -4872,11 +4923,12 @@ let reconstructionDays = 0;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 
 let swimming = false, waterExhausted = false;
-function isSeaWater(x,z) {
-  if(harbourBridge&&harbourBridge.groundAt(x,z,inCar&&driving?driving.group.position.y:player.position.y)!=null)return false;
+function isSeaWater(x,z,bodyY = null) {
+  if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return false;
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0) return false;
+  if (x >= CAPITAL_X0 && x <= CAPITAL_X1 && z >= CAPITAL_Z0) return false;
   return x>=-300&&x<=300&&z>SEA_Z&&z<900&&!(x>18&&x<22&&z<206)&&harbour?.groundAt(x,z)==null;
 }
 function updateSwimming(dt) {
@@ -5049,7 +5101,7 @@ function resolveRoadMovement(v, start, dt) {
 const GEAR_RATIOS = [0.22, 0.42, 0.62, 0.82, 1.0];
 let transmissionAuto = true, gear = 1;
 function driveVehicle(v, dt) {
-  if (isRoadVehicle(v) && isSeaWater(v.group.position.x,v.group.position.z)) { v.disabled=true;v.health=0;v.speed=0;if(v===driving){exitVehicle(true);toast('Vehicle submerged. Swim to shore.');}return; }
+  if (isRoadVehicle(v) && isSeaWater(v.group.position.x,v.group.position.z,v.group.position.y)) { v.disabled=true;v.health=0;v.speed=0;if(v===driving){exitVehicle(true);toast('Vehicle submerged. Swim to shore.');}return; }
   if (v.kind === 'plane') return flyPlane(v, dt);
   const mine = v === driving;
   if (mine) {
@@ -5065,7 +5117,7 @@ function driveVehicle(v, dt) {
   p.x += Math.sin(h) * v.speed * dt;
   p.z += Math.cos(h) * v.speed * dt;
   if (v.kind === 'boat') {   // stays on the water and bobs on the waves
-    const nx = clamp(p.x, -290, 290), nz = clamp(p.z, SEA_Z + 2, 290);
+    const nx = clamp(p.x, -290, 290), nz = clamp(p.z, SEA_Z + 2, 890);
     if (nx !== p.x || nz !== p.z) v.speed *= -0.3;
     p.x = nx; p.z = nz;
     p.y = 0.05 + Math.sin(performance.now() / 400) * 0.08;
@@ -5433,6 +5485,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 // The bridge/Riverside were hand-built directly in this file, not through places.js's
 // room() helper, so they never auto-registered on the travel map like everything else.
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
+townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
@@ -5450,10 +5503,12 @@ const companion=parkPets.filter(a=>a.kind==='dog')[2];
 interactables.push({pos:companion.home.clone(),r:3,label:'Adopt companion dog',action:()=>{if(companion.owner){toast('Your companion dog follows you around town.');return;}companion.owner=player;companion.leash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xa68752}));scene.add(companion.leash);toast('You adopted a dog. Your companion will follow you.');}});
 harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex});
 townPlaces.destinations.push({name:'Harbour bridge',x:220,z:85});
-transport=buildTransport({scene,box,makeTex,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
+transport=buildTransport({scene,box,makeTex,sitSpots,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
  canBoard:()=>!inCar&&!sitting&&!action&&!swimming&&wanted===0,firstPerson:()=>cameraView==='first',board(){action=null;vy=0;pvel.set(0,0,0);},
  carry(pos){player.position.copy(pos);},leave(pos){player.position.copy(pos);player.position.y=groundY(pos.x,pos.z);collide(player.position,.4);vy=0;pvel.set(0,0,0);}
 });
+urban=buildUrban({scene,box,camBlockers,planeBlocks,sitSpots,interactables,makeTex,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,buyFood:()=>buyFood(12,15),destinations:townPlaces.destinations,busStops,busRoute:BUS_ROUTE,vehicles,playerPos:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')||80)/100))});
+transport.update(0);urban.update(dayTime,0);
 mobileControls = setupMobileControls({
   playing: () => locked && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
@@ -5506,6 +5561,7 @@ function frame() {
     updateAdBalloon(dt);
     updateShips(dt);
     transport.update(dt);
+    urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
     updateEnemyShots(dt);

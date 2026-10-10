@@ -24,6 +24,6 @@ export function buildBridge(ctx){
  box(120,.4,100,220,0,745,0x7d906c,false);
  box(24,.08,80,220,.24,760,0x626b70,false);
  const map=makeTex(768,96,g=>{g.fillStyle='#214656';g.fillRect(0,0,768,96);g.fillStyle='#ffffff';g.font='bold 34px sans-serif';g.textAlign='center';g.fillText('ASHFORD HARBOUR BRIDGE',384,60);});
- const sign=new THREE.Mesh(new THREE.PlaneGeometry(12,1.5),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));sign.position.set(220,3,90);sign.rotation.y=Math.PI;scene.add(sign);
+ const sign=new THREE.Mesh(new THREE.PlaneGeometry(12,1.5),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));sign.position.set(220,5.2,90);sign.rotation.y=Math.PI;scene.add(sign);for(const x of [208,232])box(.2,6,.2,x,3,90,0x536675,false);box(24,.15,.2,220,6,90,0x536675,false);
  return {centerX,startZ,endZ,heightAt,groundAt(x,z,y){if(x>=160&&x<=280&&z>=695&&z<=795)return .2;if(Math.abs(x-centerX)<=width/2&&z>=startZ&&z<=endZ){const floor=heightAt(z);if(y>=floor-1)return floor;}return null;}};
 }
