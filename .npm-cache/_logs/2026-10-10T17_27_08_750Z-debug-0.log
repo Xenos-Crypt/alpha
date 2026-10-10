@@ -1,0 +1,34 @@
+0 verbose cli C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.17.0
+2 info using node@v24.19.0
+3 silly config load:file:C:\Users\WINDOWS11\AppData\Local\nvm\v24.19.0\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\WINDOWS11\Documents\game\.npmrc
+5 silly config load:file:C:\Users\WINDOWS11\.npmrc
+6 silly config load:file:C:\nvm4w\nodejs\etc\npmrc
+7 verbose title npm ci
+8 verbose argv "ci" "--ignore-scripts" "--no-audit" "--no-fund" "--cache" ".npm-cache" "--fetch-retries" "0" "--fetch-timeout" "20000"
+9 verbose logfile logs-max:10 dir:C:\Users\WINDOWS11\Documents\game\.npm-cache\_logs\2026-10-10T17_27_08_750Z-
+10 verbose logfile C:\Users\WINDOWS11\Documents\game\.npm-cache\_logs\2026-10-10T17_27_08_750Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+14 silly idealTree buildDeps
+15 silly reify moves {}
+16 http cache three@https://registry.npmjs.org/three/-/three-0.180.0.tgz 1ms (cache hit)
+17 http cache playwright-core@https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz 0ms (cache hit)
+18 silly tarball no local data for three@https://registry.npmjs.org/three/-/three-0.180.0.tgz. Extracting by manifest.
+19 http cache playwright@https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz 0ms (cache hit)
+20 silly tarball no local data for playwright-core@https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz. Extracting by manifest.
+21 silly tarball no local data for playwright@https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz. Extracting by manifest.
+22 http fetch GET 200 https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz 1376ms (cache miss)
+23 http fetch GET 200 https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz 4624ms (cache miss)
+24 http fetch GET 200 https://registry.npmjs.org/three/-/three-0.180.0.tgz 21060ms (cache miss)
+25 silly ADD node_modules/three
+26 silly ADD node_modules/playwright-core
+27 silly ADD node_modules/playwright
+28 verbose cwd C:\Users\WINDOWS11\Documents\game
+29 verbose os Windows_NT 10.0.22631
+30 verbose node v24.19.0
+31 verbose npm  v11.17.0
+32 verbose exit 0
+33 info ok

@@ -965,6 +965,10 @@ for (const [x, z] of [[8, 9], [32, 9], [32, 32], [8, 32]]) addTree(x, z, 1.2);
 // =====================================================================
 const houses = [{ roof: houseRoof, minX: HOME.minX, maxX: HOME.maxX, minZ: HOME.minZ, maxZ: HOME.maxZ }];
 const HOUSE_COLORS = [[0xf6e3c5, 0x8e3b2f], [0xdfe8ef, 0x34495e], [0xf3d6d6, 0x6d2e46], [0xe3f1df, 0x4b6a3a]];
+// Unified sit system: any real seat (house couches, bus stop benches, the civic
+// interior's chair) registers here as {x,z,yaw}. One proximity check + one E
+// handler covers all of them, instead of a separate one-off per location.
+const sitSpots = [];
 function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   const W = 10, D = 8;
   const wm = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
@@ -997,6 +1001,7 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   box(1.2, 0.12, 0.45, x0 - 3, CURB + 0.52, back + face * 0.6, 0xffffff, false);
   box(2.2, 0.45, 0.9, x0 + 2.5, CURB + 0.225, back + face * 0.75, 0x6c5ce7);
   box(2.2, 0.55, 0.25, x0 + 2.5, CURB + 0.6, back + face * 0.35, 0x5b4bd6, false);
+  sitSpots.push({ x: x0 + 2.5, z: back + face * 0.75, yaw: face > 0 ? 0 : Math.PI });
   box(1.4, 0.06, 0.9, x0 + 2.5, CURB + 0.75, z0 + face * 0.6, woodMatPlain);
   box(0.12, 0.72, 0.12, x0 + 2.5, CURB + 0.36, z0 + face * 0.6, woodMatPlain, false);
 
@@ -1771,6 +1776,9 @@ for (const seg of BUS_STOP_SEGS) {
   mesh(new THREE.BoxGeometry(2.4, 0.08, 0.4), woodMatPlain, g).position.set(0, 0.45, -0.2);
   mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.8, 6), poleMat, g).position.set(1.9, 1.4, 0.2);
   mesh(new THREE.BoxGeometry(0.6, 0.45, 0.05), new THREE.MeshStandardMaterial({ map: busSignTex }), g).position.set(1.9, 2.75, 0.2);
+  g.updateMatrixWorld(true);
+  const benchWorld = g.localToWorld(new THREE.Vector3(0, 0.45, -0.2));
+  sitSpots.push({ x: benchWorld.x, z: benchWorld.z, yaw: face });
   busStops.push({ seg, wait: mid.clone().addScaledVector(left, 5.4).setY(CURB), face, waiting: [] });
 }
 
@@ -1868,7 +1876,10 @@ function loadCityTile(tx, tz) {
     colliders.push(...tileColliders);
     const buildingMesh = group.getObjectByName('buildings');
     if (buildingMesh) camBlockers.push(buildingMesh);
-    const civicEntries = tileCivic.map(c => ({ ...c, mesh: buildingMesh, group, x: c.x + CITY_OFFSET.x, z: c.z + CITY_OFFSET.z }));
+    const civicEntries = tileCivic.map(c => ({
+      ...c, mesh: buildingMesh, group, x: c.x + CITY_OFFSET.x, z: c.z + CITY_OFFSET.z,
+      minX: c.minX + CITY_OFFSET.x, maxX: c.maxX + CITY_OFFSET.x, minZ: c.minZ + CITY_OFFSET.z, maxZ: c.maxZ + CITY_OFFSET.z,
+    }));
     for (const c of civicEntries) applyBuildingExterior(c, buildingAppearances[c.id]);
     civicBuildings.push(...civicEntries);
     cityTiles.set(key, { group, colliders: tileColliders, buildingMesh, civicEntries });
@@ -3807,10 +3818,10 @@ function exitVehicle(force = false) {
 function interact() {
   if (inCar) return exitVehicle();
   if (action) return;
-  if (inCivicInterior) {
-    if (sitting || nearChair()) return toggleSit();
-    return leaveCivicBuilding();
-  }
+  if (sitting) return toggleSit(null); // stand up from wherever you're sitting
+  const seat = nearestSitSpot();
+  if (seat) return toggleSit(seat); // any registered seat — house couch, bus bench, or the civic chair
+  if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
   const cb = nearestCivicBuilding();
   if (cb) return enterCivicBuilding(cb);
@@ -3873,8 +3884,8 @@ let civicTvCanvas, civicTvTexture, civicTvT = 0;
   const tvScreen = mesh(new THREE.PlaneGeometry(2.4, 1.5), new THREE.MeshBasicMaterial({ map: civicTvTexture }));
   tvScreen.position.set(CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.55);
   box(2.7, 1.8, 0.15, CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.6, 0x1a1a1a, false);
+  sitSpots.push({ x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, yaw: Math.PI }); // face -Z, toward the TV
 })();
-const CIVIC_CHAIR = { x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, sitX: CIVIC_OFFSET.x, sitZ: CIVIC_OFFSET.z + 2 };
 let sitting = false;
 function updateCivicTv(dt) {
   if (!civicTvCanvas) return;
@@ -3889,17 +3900,25 @@ function updateCivicTv(dt) {
   ctx.font = '12px sans-serif'; ctx.fillText('Channel 1 — nothing on yet', 128, 92);
   civicTvTexture.needsUpdate = true;
 }
-function toggleSit() {
+function nearestSitSpot(maxD = 3) {
+  let best = null, bestD = maxD;
+  for (const s of sitSpots) {
+    const d = Math.hypot(player.position.x - s.x, player.position.z - s.z);
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  return best;
+}
+function toggleSit(spot) {
   sitting = !sitting;
   if (sitting) {
-    player.position.set(CIVIC_CHAIR.sitX, 0, CIVIC_CHAIR.sitZ);
-    player.rotation.y = Math.PI; // face -Z, toward the TV
-    toast('Sitting, watching TV. Press E to stand.');
+    player.position.set(spot.x, 0, spot.z);
+    player.rotation.y = spot.yaw;
+    toast('Sitting. Press E to stand.');
   } else {
+    player.position.y = groundY(player.position.x, player.position.z);
     toast('Standing up.');
   }
 }
-function nearChair() { return inCivicInterior && Math.hypot(player.position.x - CIVIC_CHAIR.x, player.position.z - CIVIC_CHAIR.z) < 3; }
 function applyCivicTheme(type) {
   const t = CIVIC_THEMES[type] || DEFAULT_CIVIC_THEME;
   civicFloor.material.color.set(t.floor);
@@ -3939,7 +3958,16 @@ function applyBuildingExterior(b, exterior, persist = false) {
 function nearestCivicBuilding() {
   let best = null, bestD = 6;
   for (const b of civicBuildings) {
-    const d = Math.hypot(b.x - player.position.x, b.z - player.position.z);
+    // Distance to the footprint's nearest edge, not its centroid — the centroid is
+    // well inside solid walls for anything bigger than a small house, which made
+    // most of the city effectively unenterable (you could never get "close enough").
+    let d;
+    if (b.minX != null) {
+      const cx = clamp(player.position.x, b.minX, b.maxX), cz = clamp(player.position.z, b.minZ, b.maxZ);
+      d = Math.hypot(player.position.x - cx, player.position.z - cz);
+    } else {
+      d = Math.hypot(b.x - player.position.x, b.z - player.position.z);
+    }
     if (d < bestD) { bestD = d; best = b; }
   }
   return best;

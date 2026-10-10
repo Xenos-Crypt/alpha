@@ -178,6 +178,11 @@ export function buildCityFromGeoJSON(geojson, origin) {
         name: props.name || civicLabel || genericLabel, civic: !!civicLabel,
         x: cx, z: cz, id: String(f.id || props['@id'] || (props.amenity || props.building || 'b') + ':' + cx.toFixed(2) + ':' + cz.toFixed(2)),
         colorStart, vertexCount, height, realWorld: true,
+        // The centroid can be well inside the building's own solid walls for
+        // anything bigger than a small house — storing the footprint bounds lets
+        // the "press E to enter" check measure distance to the nearest *edge*
+        // instead, which is actually reachable from outside.
+        minX: box3.min.x, maxX: box3.max.x, minZ: box3.min.z, maxZ: box3.max.z,
       });
     } else if (props.highway && f.geometry.type === 'LineString') {
       const pts = f.geometry.coordinates.map(([lon, lat]) => project(lon, lat));
