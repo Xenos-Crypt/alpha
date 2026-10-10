@@ -7,8 +7,20 @@ create table if not exists profiles (
   stats jsonb not null,
   perk text not null,
   points int not null default 0,
+  wealth_tier text,
+  housing text,
+  starting_gold int default 100,
+  max_health int default 100,
+  current_gold int,
   created_at timestamptz not null default now()
 );
+
+-- Already have the table from before? Run just this part to add the new columns:
+-- alter table profiles add column if not exists wealth_tier text;
+-- alter table profiles add column if not exists housing text;
+-- alter table profiles add column if not exists starting_gold int default 100;
+-- alter table profiles add column if not exists max_health int default 100;
+-- alter table profiles add column if not exists current_gold int;
 
 alter table profiles enable row level security;
 

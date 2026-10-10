@@ -189,7 +189,7 @@
 <div id="hurt"></div>
 <div id="hud">
   <div class="name" id="charName"></div>
-  <div class="label">Health</div><div class="bar"><div id="hpBar" style="background:#ff5e57"></div></div>
+  <div class="label">Health <span id="hpText" style="opacity:.75;font-weight:400"></span></div><div class="bar"><div id="hpBar" style="background:#ff5e57"></div></div>
   <div class="label">Hunger</div><div class="bar"><div id="hungerBar" style="background:#ffb142"></div></div>
   <div class="label">Energy</div><div class="bar"><div id="energyBar" style="background:#34ace0"></div></div>
   <div id="clock"></div>
@@ -1364,8 +1364,14 @@ function showAuthScreen() {
 async function loadOrCreateProfile(userId) {
   const { data } = await supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle();
   if (data) {
-    origin = { roll: data.roll, family: data.family, backstory: data.backstory, stats: data.stats, perk: data.perk };
+    origin = {
+      roll: data.roll, family: data.family, backstory: data.backstory, stats: data.stats, perk: data.perk,
+      wealthTier: data.wealth_tier || 'working', housing: data.housing || 'A small rented room',
+      startingGold: data.starting_gold ?? 100, maxHealth: data.max_health ?? 100,
+    };
     prog.points += data.points || 0;
+    stats.gold = data.current_gold ?? origin.startingGold;
+    stats.hp = maxHp();
     return true; // already born — skip the dice roll
   }
   return false;
@@ -1394,13 +1400,23 @@ function runSpawnScreen(userId) {
         backstory: data?.backstory || 'The details of your birth are lost, but you are here now, and that is what matters.',
         stats: data?.stats || { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
         perk: data?.perk || 'A clean slate',
+        wealthTier: data?.wealthTier || 'working',
+        housing: data?.housing || 'A small rented room',
+        startingGold: Number.isFinite(data?.startingGold) ? data.startingGold : 100,
+        maxHealth: Number.isFinite(data?.maxHealth) ? data.maxHealth : 100,
       };
       prog.points += roll;
-      await supabase.from('profiles').insert({ user_id: userId, ...origin, points: roll });
+      stats.gold = origin.startingGold;
+      stats.hp = maxHp();
+      await supabase.from('profiles').insert({
+        user_id: userId, roll, family: origin.family, backstory: origin.backstory, stats: origin.stats, perk: origin.perk,
+        wealth_tier: origin.wealthTier, housing: origin.housing, starting_gold: origin.startingGold, max_health: origin.maxHealth,
+        points: roll,
+      });
       $('spawnRoll').textContent = `You rolled a ${roll}`;
       $('spawnFam').textContent = origin.family;
       $('spawnBio').textContent = origin.backstory;
-      $('spawnPerk').textContent = 'Perk: ' + origin.perk;
+      $('spawnPerk').textContent = `Perk: ${origin.perk} · ${origin.housing} · Starting gold: ${origin.startingGold}`;
       $('spawnResult').style.display = 'block';
     });
     $('beginBtn').addEventListener('click', () => { $('spawn').style.display = 'none'; resolve(); });
@@ -1430,7 +1446,7 @@ async function boot() {
   $('start').style.display = 'flex';
 }
 boot();
-const maxHp = () => 100 + prog.def * 15;
+const maxHp = () => (origin?.maxHealth ?? 100) + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
 // A roll of 1 drains hunger/energy 50% faster for this profile, forever; a roll of 6 drains 30% slower.
 // This is the one lasting mechanical consequence of the birth roll — everything else from it is flavor text.
@@ -1439,7 +1455,9 @@ const defMul = () => 1 / (1 + prog.def * 0.06);
 const psyDmg = () => 10 + prog.men * 4;
 const psyCdMax = () => Math.max(4, 9 - prog.men * 0.3);
 const speedMul = () => 1 + prog.agi * 0.06;
-const attackDmg = () => 6 + prog.str * 3;
+// A weak start (low birth-roll confidence) hits for less; a strong one hits harder.
+// confidence 0 -> 0.5x, confidence 55 (no origin yet) -> ~1x, confidence 100 -> 1.5x.
+const attackDmg = () => (6 + prog.str * 3) * (0.5 + (origin?.stats.confidence ?? 55) / 100);
 const S = n => n * (1 + prog.str * 0.1);            // scales skill damage by Strength
 const dmgMul = () => awaken > 0 ? 1.3 : 1;
 
@@ -3745,6 +3763,10 @@ function updateNeeds(dt) {
   stats.energy = clamp(stats.energy - 100 / 240 * drainMul() * dt, 0, 100);   // empty after ~4 minutes
   if (stats.hunger === 0 || stats.energy === 0) stats.hp -= 2 * dt;
   else if (stats.hunger > 30) stats.hp += 1 * dt;
+  // A frail birth (very low peace) bleeds health passively, roughly 1/sec at the floor,
+  // tapering off above peace 25 — this is the one stat with a real, constant downside.
+  const peace = origin?.stats.peace ?? 55;
+  if (peace < 25) stats.hp -= (25 - peace) / 25 * dt;
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
     stats.hp = maxHp(); stats.hunger = 60; stats.energy = 60;
@@ -3871,6 +3893,7 @@ function updateHud(dt) {
   const c = characters[charIdx];
   $('charName').textContent = (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level}` + (prog.points ? ' (C)' : '');
   $('hpBar').style.width = clamp(stats.hp / maxHp() * 100, 0, 100) + '%';
+  $('hpText').textContent = `${Math.max(0, Math.round(stats.hp))} / ${maxHp()}`;
   $('hungerBar').style.width = stats.hunger + '%';
   $('energyBar').style.width = stats.energy + '%';
   const hours = (dayTime * 24 + 6) % 24;
