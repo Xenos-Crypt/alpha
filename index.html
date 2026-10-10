@@ -404,6 +404,7 @@ import { buildPlaces } from './places.js';
 import { createReconstruction } from './reconstruction.js';
 import { setupMobileControls } from './mobile-controls.js';
 import { buildHarbour } from './harbour.js';
+import { buildTransport } from './transport.js';
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -673,7 +674,7 @@ const colliders = [];      // axis-aligned boxes on the ground plane
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
-let harbour = null, townPlaces = null;
+let harbour = null, townPlaces = null, transport = null;
 const buildings = [];      // every city building, so it can be destroyed
 
 function mesh(geo, color, parent = scene) {
@@ -1017,35 +1018,51 @@ function updateDucks(dt) {
 const parkPets = [];
 function addPet(kind, x, z) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: kind === 'dog' ? pick([0xc68a4a, 0x6b4a2f, 0xe8e0d0]) : pick([0x333333, 0xe8e0d0, 0xc68a4a]), roughness: 0.9 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, kind === 'dog' ? 0.42 : 0.3, 4, 8), mat);
-  body.rotation.z = Math.PI / 2; body.position.y = 0.22; g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), mat);
-  head.position.set(kind === 'dog' ? 0.32 : 0.24, 0.26, 0); g.add(head);
-  for (const s of [-1, 1]) for (const f of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6), mat);
-    leg.position.set(f * (kind === 'dog' ? 0.16 : 0.11), 0.1, s * 0.09); g.add(leg);
+  const horse = kind === 'horse', s = horse ? 2.6 : 1;
+  const mat = new THREE.MeshStandardMaterial({ color: horse ? pick([0x6b4a2f, 0x2b2017, 0xe8e0d0, 0x4a3524]) : kind === 'dog' ? pick([0xc68a4a, 0x6b4a2f, 0xe8e0d0]) : pick([0x333333, 0xe8e0d0, 0xc68a4a]), roughness: 0.9 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.14 * s, (kind === 'dog' ? 0.42 : kind === 'cat' ? 0.3 : 0.62) * s, 4, 8), mat);
+  body.rotation.z = Math.PI / 2; body.position.y = 0.22 * s; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13 * s, 8, 6), mat);
+  head.position.set((kind === 'dog' ? 0.32 : kind === 'cat' ? 0.24 : 0.5) * s, (horse ? 0.4 : 0.26) * s, 0); g.add(head);
+  if (horse) {   // mane and tail
+    const maneMat = new THREE.MeshStandardMaterial({ color: 0x2b2017, roughness: 0.95 });
+    const mane = new THREE.Mesh(new THREE.BoxGeometry(0.28 * s, 0.1 * s, 0.05 * s), maneMat); mane.position.set(0.12 * s, 0.4 * s, 0); g.add(mane);
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.02 * s, 0.05 * s, 0.35 * s, 6), maneMat); tail.rotation.z = Math.PI / 2.6; tail.position.set(-0.32 * s, 0.22 * s, 0); g.add(tail);
+  }
+  for (const side of [-1, 1]) for (const f of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035 * s, 0.035 * s, (horse ? 0.4 : 0.22) * s, 6), mat);
+    leg.position.set(f * (kind === 'dog' ? 0.16 : kind === 'cat' ? 0.11 : 0.22) * s, (horse ? 0.2 : 0.1) * s, side * 0.09 * s); g.add(leg);
   }
   const home = new THREE.Vector3(x, CURB, z);
   g.position.copy(home);
   scene.add(g);
-  parkPets.push({ g, home, target: home.clone(), speed: 0.8 + rand() * 0.5, waitT: rand() * 3 });
+  parkPets.push({ kind, g, home, target: home.clone(), speed: (horse ? 1.6 : 0.8) + rand() * 0.5, waitT: rand() * 3 });
 }
-addPet('dog', PARK.x - 4, PARK.z - 6);
-addPet('dog', PARK.x + 8, PARK.z + 8);
+addPet('dog', 25, -26);
+addPet('dog', -28, -26);
+addPet('dog', 28, 14);
 addPet('cat', PARK.x - 8, PARK.z + 3);
+addPet('horse', PARK.x + 16, PARK.z - 14);
+addPet('horse', PARK.x - 14, PARK.z - 10);
 function updatePets(dt) {
   for (const a of parkPets) {
     const p = a.g.position;
+    if(a.owner){
+      if(a.owner===player&&(swimming||inCar||transport?.rider)){a.leash.visible=false;a.target.copy(p);continue;}
+      a.leash.visible=true;
+      if(a.owner!==player){a.ownerPhase=(a.ownerPhase||0)+dt*.2;const next=a.home.clone().add(new THREE.Vector3(Math.sin(a.ownerPhase)*3,0,Math.cos(a.ownerPhase)*2));collide(next,.4);next.y=groundY(next.x,next.z);a.owner.rotation.y=Math.atan2(next.x-a.owner.position.x,next.z-a.owner.position.z);a.owner.position.copy(next);animateHumanoid(a.ownerHuman,null,true,false,true,dt);}
+      a.target.copy(a.owner.position).add(new THREE.Vector3(1,0,.7));
+      a.leash.geometry.setFromPoints([a.owner.position.clone().add(new THREE.Vector3(0,.9,0)),p.clone().add(new THREE.Vector3(0,.3,0))]);
+    }
     if (distXZ(p, a.target) < 0.3) {
       a.waitT -= dt;
-      if (a.waitT <= 0) { a.target = a.home.clone().add(new THREE.Vector3((rand() - 0.5) * 8, 0, (rand() - 0.5) * 8)); a.waitT = 2 + rand() * 3; }
+      if (!a.owner && a.waitT <= 0) { a.target = a.home.clone().add(new THREE.Vector3((rand() - 0.5) * 8, 0, (rand() - 0.5) * 8)); a.waitT = 2 + rand() * 3; }
     } else {
       const dir = new THREE.Vector3(a.target.x - p.x, 0, a.target.z - p.z).normalize();
-      p.addScaledVector(dir, a.speed * dt);
-      a.g.rotation.y = Math.atan2(dir.x, dir.z);
+      const previous=p.clone();p.addScaledVector(dir,a.speed*dt);if(isSeaWater(p.x,p.z))p.copy(previous);
+      a.g.rotation.y = Math.atan2(-dir.z, dir.x);
     }
-    p.y = groundY(p.x, p.z);
+    collide(p,.2);p.y = groundY(p.x, p.z);
   }
 }
 
@@ -1056,7 +1073,10 @@ function addButterfly(x, z) {
   scene.add(m);
   butterflies.push({ m, cx: x, cz: z, phase: rand() * 10, h: 0.6 + rand() * 0.4 });
 }
-for (const [ox, oz] of [[-7, -2], [7, 2], [-2, 8], [3, -8]]) addButterfly(PARK.x + ox, PARK.z + oz);
+// Butterflies now roam several hubs around town, not just the park.
+const BUTTERFLY_HUBS = [[PARK.x - 7, PARK.z - 2], [PARK.x + 7, PARK.z + 2], [PARK.x - 2, PARK.z + 8], [PARK.x + 3, PARK.z - 8],
+  [30, 14], [60, 40], [-60, 60], [60, -60], [0, -100]];
+for (const [ox, oz] of BUTTERFLY_HUBS) addButterfly(ox, oz);
 function updateButterflies(dt) {
   for (const b of butterflies) {
     b.phase += dt * 1.5;
@@ -1067,24 +1087,42 @@ function updateButterflies(dt) {
     b.m.rotation.x = Math.sin(b.phase * 6) * 0.6;
   }
 }
+// Bees buzz tightly around the park's flower beds — quicker, jitterier than butterflies.
+const bees = [];
+function addBee(x, z) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshStandardMaterial({ color: 0xf6c80a, roughness: 0.6 }));
+  scene.add(m);
+  bees.push({ m, cx: x, cz: z, phase: rand() * 10, h: 0.5 + rand() * 0.3 });
+}
+for (const [ox, oz] of [[-7, -2], [7, 2], [-2, 8], [3, -8], [-10, 1]]) addBee(PARK.x + ox, PARK.z + oz);
+function updateBees(dt) {
+  for (const b of bees) {
+    b.phase += dt * 5;
+    const x = b.cx + Math.sin(b.phase) * 0.6 + Math.sin(b.phase * 3.3) * 0.15, z = b.cz + Math.cos(b.phase * 1.3) * 0.6;
+    const y = groundY(x, z) + b.h + Math.sin(b.phase * 5) * 0.08;
+    b.m.position.set(x, y, z);
+  }
+}
 // Birds circling over town — there was nothing at all flying overhead before.
 const birds = [];
 function addBird(x, z, h) {
   const m = new THREE.Mesh(new THREE.CircleGeometry(0.18, 3), new THREE.MeshBasicMaterial({ color: 0x2b2b2b, side: THREE.DoubleSide }));
   scene.add(m);
-  birds.push({ m, cx: x, cz: z, r: 14 + rand() * 10, h, phase: rand() * 10, speed: 0.3 + rand() * 0.2 });
+  birds.push({ m, cx: x, cz: z, r: 14 + rand() * 10, h, state:'flying',timer:8+rand()*10,landing:new THREE.Vector3(x,0,z), phase: rand() * 10, speed: 0.3 + rand() * 0.2 });
 }
 for (let i = 0; i < 8; i++) addBird(PARK.x + (rand() - 0.5) * 60, PARK.z + (rand() - 0.5) * 60, 13 + rand() * 6);
 function updateBirds(dt) {
-  for (const b of birds) {
-    b.phase += b.speed * dt;
-    const x = b.cx + Math.cos(b.phase) * b.r, z = b.cz + Math.sin(b.phase) * b.r;
-    b.m.position.set(x, b.h + Math.sin(b.phase * 3) * 0.4, z);
-    b.m.rotation.y = -b.phase;
-    b.m.rotation.x = -Math.PI / 2 + Math.sin(b.phase * 3) * 0.3;
+  for(const b of birds){b.timer-=dt;b.phase+=b.speed*dt;
+    const flight=new THREE.Vector3(b.cx+Math.cos(b.phase)*b.r,b.h+Math.sin(b.phase*3)*.4,b.cz+Math.sin(b.phase)*b.r);
+    if(b.state==='flying'&&b.timer<=0){const x=b.cx+Math.cos(b.phase)*5,z=b.cz+Math.sin(b.phase)*5;if(!insideCollider(new THREE.Vector3(x,0,z))&&!waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)){b.landing.set(x,groundY(x,z)+.12,z);b.state='landing';}else b.timer=3;}
+    if(b.state==='landing'){const d=b.m.position.distanceTo(b.landing);b.m.position.lerp(b.landing,Math.min(1,6*dt/(d||1)));if(d<.2){b.state='landed';b.timer=5+rand()*4;}}
+    else if(b.state==='landed'){b.m.rotation.x=0;if(b.timer<=0||b.m.position.distanceTo(player.position)<2){b.state='taking-off';b.timer=3;}}
+    else if(b.state==='taking-off'){b.m.position.lerp(flight,1-Math.exp(-dt));if(b.timer<=0){b.state='flying';b.timer=12;}}
+    else b.m.position.copy(flight);
+    if(b.state!=='landed'){b.m.rotation.y=-b.phase;b.m.rotation.x=-Math.PI/2+Math.sin(b.phase*9)*.3;}
   }
 }
-function updateParkLife(dt) { updateDucks(dt); updatePets(dt); updateButterflies(dt); updateBirds(dt); }
+function updateParkLife(dt) { updateDucks(dt); updatePets(dt); updateButterflies(dt); updateBees(dt); updateBirds(dt); }
 
 // =====================================================================
 // TRAINING GROUND (sand arena with a fence and a sign)
@@ -3209,7 +3247,7 @@ function aimMelee() {
   return fwdOf(player);
 }
 
-function canAct() { return !swimming && !sitting && !action && !inCar && playerStun <= 0 && locked; }
+function canAct() { return !transport?.rider && !swimming && !sitting && !action && !inCar && playerStun <= 0 && locked; }
 
 // ---- M1: 4-hit combo, the last hit is a heavy knockback with an impact frame ----
 function m1() {
@@ -4321,6 +4359,7 @@ function exitVehicle(force = false) {
   driving = null; inCar = false;
 }
 function interact() {
+  if(transport?.rider) return transport.leave();
   if (inCar) return exitVehicle();
   if (sitting) return toggleSit(null);
   if (action) return; // stand up from wherever you're sitting
@@ -4329,7 +4368,7 @@ function interact() {
   if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
   const service = nearestInteractable();
-  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board')) return service.action();
+  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog')) return service.action();
   const cb = nearestCivicBuilding();
   if (cb) return enterCivicBuilding(cb);
   const g = nearestGate();
@@ -4851,6 +4890,7 @@ function updateSwimming(dt) {
   if(!isSeaWater(player.position.x,player.position.z)){swimming=false;waterExhausted=false;P.rig.rotation.x=0;player.position.y=groundY(player.position.x,player.position.z);onGround=true;toast('Back on dry ground.');}
 }
 function updatePlayer(dt) {
+  if(transport?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if (isSeaWater(player.position.x,player.position.z) && player.position.y < .2) return updateSwimming(dt);
   if (swimming) { swimming=false; waterExhausted=false; P.rig.rotation.x=0; }
   if (sitting) { animateHumanoid(P, 'sit', false, false, true, dt); return; } // frozen in the chair until E is pressed again, but still visibly seated
@@ -5190,6 +5230,7 @@ function updateNeeds(dt) {
   if (peace < 25) stats.hp -= (25 - peace) / 25 * dt;
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
+    transport?.cancel();
     sitting = false; sitReturnPosition = null;
     stats.hp = maxHp(); stats.hunger = 60; stats.energy = 60;
     if (inCar) exitVehicle(true);
@@ -5393,6 +5434,15 @@ interactables.push({pos:new THREE.Vector3(-153,0,231),r:3,label:'Climb dock ladd
 // Visible emergency ladder outside the fenced cargo yard.
 for(const x of [-153.5,-152.5])box(.08,3,.08,x,-.2,231,0xd1bc58,false);
 for(let y=-1.5;y<1.2;y+=.35)box(1,.06,.06,-153,y,231,0xd1bc58,false);
+for(const pet of parkPets.filter(a=>a.kind==='dog').slice(0,2)){
+  const h=makeHumanoid({outfit:0x547b83,hair:0x46382d,pants:0x303f50});pet.ownerHuman=h;pet.owner=h.root;h.root.position.copy(pet.home);pet.leash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0x564638}));scene.add(pet.leash);
+}
+const companion=parkPets.filter(a=>a.kind==='dog')[2];
+interactables.push({pos:companion.home.clone(),r:3,label:'Adopt companion dog',action:()=>{if(companion.owner){toast('Your companion dog follows you around town.');return;}companion.owner=player;companion.leash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xa68752}));scene.add(companion.leash);toast('You adopted a dog. Your companion will follow you.');}});
+transport=buildTransport({scene,box,makeTex,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
+ canBoard:()=>!inCar&&!sitting&&!action&&!swimming&&wanted===0,firstPerson:()=>cameraView==='first',board(){action=null;vy=0;pvel.set(0,0,0);},
+ carry(pos){player.position.copy(pos);},leave(pos){player.position.copy(pos);player.position.y=groundY(pos.x,pos.z);collide(player.position,.4);vy=0;pvel.set(0,0,0);}
+});
 mobileControls = setupMobileControls({
   playing: () => locked && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
@@ -5444,6 +5494,7 @@ function frame() {
     updatePlanes(dt);
     updateAdBalloon(dt);
     updateShips(dt);
+    transport.update(dt);
     updateGates(dt);
     updateDungeon(dt);
     updateEnemyShots(dt);

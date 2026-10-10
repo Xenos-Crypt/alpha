@@ -6,10 +6,10 @@ export function buildTransport(ctx){
  tram.add(.15,2,.15,0,3.4,0,0x434b52);tram.add(6,.1,.1,0,4.4,0,0x434b52);
  for(const [min,max,z]of [[20,590,-4],[-220,100,155]]){for(const offset of [-.8,.8])box(max-min,.07,.07,(min+max)/2,.12,z+offset,0x818b91,false);for(let x=min;x<=max;x+=4)box(.2,.06,2.2,x,.05,z,0x685946,false);}
  services.push({...tram,stops:[20,410,590],z:-4,index:0,direction:1,speed:0,wait:10,doors:true});services.push({...train,stops:[-220,100],z:155,index:0,direction:1,speed:0,wait:12,doors:true});
- for(const s of services)for(const x of s.stops){box(22,.25,4,x,.125,s.z-4,0x9b9d94,false);box(20,.2,4,x,3.4,s.z-4,0x4b636b,false);for(const dx of [-8,8])box(.15,3.4,.15,x+dx,1.7,s.z-5.4,0x4b636b,false);}
+ for(const s of services)for(const x of s.stops){if(ctx.makeTex){const map=ctx.makeTex(512,96,g=>{g.fillStyle='#243949';g.fillRect(0,0,512,96);g.fillStyle='white';g.font='bold 30px sans-serif';g.textAlign='center';g.fillText(s.name.toUpperCase()+' STOP',256,60);});const sign=new THREE.Mesh(new THREE.PlaneGeometry(6,1.1),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));sign.position.set(x,2.7,s.z-5.5);scene.add(sign);}box(22,.25,4,x,.125,s.z-4,0x9b9d94,false);box(20,.2,4,x,3.4,s.z-4,0x4b636b,false);for(const dx of [-8,8])box(.15,3.4,.15,x+dx,1.7,s.z-5.4,0x4b636b,false);}
  const plane=vehicle('Scheduled regional flight',-550,-400,20,0xd8e3e8);plane.g.rotation.y=Math.PI/2;plane.add(3,.2,23,0,1.4,0,0xcedbe1);plane.add(.2,4,3,-8,3,0,0x456b93);plane.g.position.y=60;
  const airport={...plane,state:'approach',timer:0,doors:false,pathIndex:0,passengerPhase:0};
- const people=[];for(let i=0;i<8;i++){const h=makePerson({outfit:[0x8b6353,0x517f6c,0x6e6892][i%3],hair:0x44362b,pants:0x344455});people.push({h,phase:i});}
+ const people=[];for(let i=0;i<8;i++){const h=makePerson({outfit:[0x8b6353,0x517f6c,0x6e6892][i%3],hair:0x44362b,pants:0x344455});h.root.visible=false;people.push({h,phase:i});}
  const transit={services,airport,people,rider:null};
  for(const s of [...services,airport]){const interaction={pos:new THREE.Vector3(),r:4,label:'Board '+s.name,action:()=>{if(transit.rider===s){if(!s.doors){toast('Wait until the vehicle stops and its doors open.');return;}ctx.leave(s.g.position.clone().add(new THREE.Vector3(0,0,-5)));transit.rider=null;return;}if(!s.doors){toast('Wait for arrival and boarding.');return;}if(transit.rider||!ctx.canBoard()){toast('Finish your current action before boarding.');return;}transit.rider=s;ctx.board();toast('Aboard '+s.name+'. Use Interact at a stop to leave.');}};s.interaction=interaction;interactables.push(interaction);}
  function moveTo(s,target,speed,dt){const delta=target.clone().sub(s.g.position),distance=delta.length();if(distance<speed*dt){s.g.position.copy(target);return true;}s.g.position.addScaledVector(delta.normalize(),speed*dt);s.g.rotation.y=Math.atan2(delta.x,delta.z)-Math.PI/2;return false;}
@@ -28,5 +28,5 @@ export function buildTransport(ctx){
   for(const s of [...services,a]){s.interaction.pos.copy(s.g.position).add(new THREE.Vector3(0,0,-3));s.interaction.label=transit.rider===s?'Leave '+s.name:'Board '+s.name;s.g.visible=!(transit.rider===s&&ctx.firstPerson());}
   if(transit.rider)ctx.carry(transit.rider.g.position.clone().add(new THREE.Vector3(0,.7,0)));
  }
- return {...transit,get rider(){return transit.rider;},update,leave(){if(transit.rider)transit.rider.interaction.action();}};
+ return {...transit,cancel(){if(transit.rider){ctx.leave(transit.rider===airport?new THREE.Vector3(-645,0,54):new THREE.Vector3(transit.rider.g.position.x,0,transit.rider.z-5));transit.rider=null;}},get rider(){return transit.rider;},update,leave(){if(transit.rider)transit.rider.interaction.action();}};
 }
