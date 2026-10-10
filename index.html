@@ -407,6 +407,7 @@ import { buildHarbour } from './harbour.js';
 import { buildTransport } from './transport.js';
 import { buildBridge } from './bridge.js';
 import { buildUrban } from './urban.js';
+import { buildSewersAndOffices } from './sewers-offices.js';
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -676,7 +677,7 @@ const colliders = [];      // axis-aligned boxes on the ground plane
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
-let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null;
+let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null;
 const buildings = [];      // every city building, so it can be destroyed
 
 function mesh(geo, color, parent = scene) {
@@ -721,11 +722,15 @@ const BRIDGE_X = 0, BRIDGE_HALF_W = 7, BRIDGE_Z0 = 160, BRIDGE_Z1 = 654, BRIDGE_
 const RIVERSIDE_Z0 = 640, RIVERSIDE_Z1 = 780, RIVERSIDE_X0 = -80, RIVERSIDE_X1 = 80;
 const CAPITAL_X0 = 120, CAPITAL_X1 = 440, CAPITAL_Z0 = 680, CAPITAL_Z1 = 920;
 function groundY(x, z, bodyY = null) {
+  const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
   const urbanFloor=urban?.groundAt(x,z);if(urbanFloor!=null)return urbanFloor;
   if(harbourBridge){const floor=harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y));if(floor!=null)return floor;}
   const dockFloor = harbour?.groundAt(x,z); if (dockFloor != null) return dockFloor;
   const terminalFloor = townPlaces?.floorAt(x,z); if (terminalFloor != null) return terminalFloor;
+  for (const r of stairRamps) {
+    if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.y0 + (z - r.z0) / (r.z1 - r.z0) * (r.y1 - r.y0);
+  }
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z > BRIDGE_Z0 - 4 && z < BRIDGE_Z1 + 4) return BRIDGE_Y;   // river bridge deck
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0 && z <= RIVERSIDE_Z1) {   // Riverside, across the bridge
     const lx2 = ((x % 40) + 40) % 40, lz2 = ((z % 40) + 40) % 40;
@@ -834,6 +839,7 @@ function addTower(x, baseY, z, w, h, d, f, collide) {
 // lived) so addBuilding() below can register every generic building into it too —
 // every building in the game now has a real, enterable door, not just civic ones.
 const civicBuildings = [];
+const stairRamps = []; // exterior fire-escape stairs you can actually walk/climb — see groundY()
 let buildingAddressN = 100;
 function addBuilding(x, z, faceX, faceZ) {
   const centreBoost = Math.max(0, 1 - Math.hypot(x, z) / 130);
@@ -867,16 +873,19 @@ function addBuilding(x, z, faceX, faceZ) {
   const name = (kind === 'apartment' ? buildingAddressN + ' Ashford Apartments' : kind === 'shop' ? buildingAddressN + ' High Street Shop' : buildingAddressN + ' Ashford Offices');
   buildingAddressN += rand() < 0.5 ? 2 : 4;
   civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
-  // Exterior fire-escape staircase up one side, tall buildings only.
+  // Exterior fire-escape staircase up one side, tall buildings only — a real
+  // sloped ramp registered in stairRamps (see groundY) so it's actually climbable,
+  // not just decoration.
   if (tall) {
     const side = faceX || pick([-1, 1]);
-    const sx = x + side * (w / 2 + 0.4);
-    for (let fl = 0; fl < floors; fl++) {
-      const y0 = CURB + fl * 3, flip = fl % 2 === 0 ? 1 : -1;
-      box(0.08, 0.08, 2.6, sx, y0 + 1.5, z + flip * 0.5, 0x4a4f54, false);   // stringer
-      for (let s = 0; s < 9; s++) box(0.9, 0.05, 0.25, sx, y0 + s * 0.33, z + flip * (1.6 - s * 0.33), 0x5c6166, false);
-      box(0.9, 1.1, 1.9, sx, y0 + 0.55, z, 0x4a4f54, false);   // landing
+    const sx = x + side * (w / 2 + 0.5);
+    const rz0 = z - d / 2, rz1 = z + d / 2, ry0 = CURB, ry1 = floors * 3;
+    for (let s = 0; s <= 20; s++) {
+      const t = s / 20, zz = rz0 + t * (rz1 - rz0), yy = ry0 + t * (ry1 - ry0);
+      box(1.0, 0.12, (rz1 - rz0) / 20 + 0.15, sx, yy, zz, 0x5c6166, false);
     }
+    box(0.08, ry1 - ry0, 0.08, sx - side * 0.5, (ry0 + ry1) / 2, (rz0 + rz1) / 2, 0x4a4f54, false);   // rail post
+    stairRamps.push({ x0: sx - 0.6, x1: sx + 0.6, z0: Math.min(rz0, rz1), z1: Math.max(rz0, rz1), y0: ry0, y1: ry1 });
   }
   buildings.push({ x, z, w, d, top, alive: true, meshes: scene.children.slice(firstChild),
                    collider: colliders[firstCollider], blocks: planeBlocks.slice(firstBlock) });
@@ -2303,6 +2312,35 @@ for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++) {
   signboard('ASHFORD CAPITOL', CAPITAL_CX, 10, CAPITAL_CZ - 10.5, 14, '#2a2516');
 }
 signboard('ASHFORD CAPITAL', CAPITAL_CX, 3, CAPITAL_Z0 + 3, 16, '#1d2e1f');
+
+// National Museum, just off the Capitol plaza — guarded relics on display.
+{
+  const mx = CAPITAL_CX - 26, mz = CAPITAL_CZ + 20, mw = 22, md = 16, mh = 5;
+  const wallCol = 0xe6ddc4;
+  box(mw, 0.2, md, mx, 0.1, mz, 0xcdc3a0, false);
+  camBlockers.push(box(mw, mh, 0.4, mx, mh / 2, mz - md / 2, wallCol));   // back wall only — the +z side stays open as the entrance
+  camBlockers.push(box(0.4, mh, md, mx - mw / 2, mh / 2, mz, wallCol));
+  camBlockers.push(box(0.4, mh, md, mx + mw / 2, mh / 2, mz, wallCol));
+  const roof = box(mw + 1, 0.3, md + 1, mx, mh + 0.15, mz, 0xb0a580, false); camBlockers.push(roof);
+  planeBlocks.push({ minX: mx - mw / 2, maxX: mx + mw / 2, minZ: mz - md / 2, maxZ: mz + md / 2, top: mh + 0.3 });
+  colliders.push({ minX: mx - mw / 2, maxX: mx - mw / 2 + 0.4, minZ: mz - md / 2, maxZ: mz + md / 2 },
+    { minX: mx + mw / 2 - 0.4, maxX: mx + mw / 2, minZ: mz - md / 2, maxZ: mz + md / 2 },
+    { minX: mx - mw / 2, maxX: mx + mw / 2, minZ: mz - md / 2, maxZ: mz - md / 2 + 0.4 });
+  // leave the +z side open as the entrance — no back wall collider there
+  signboard('ASHFORD NATIONAL MUSEUM', mx, mh + 0.9, mz + md / 2 + 0.1, 14, '#2a2516');
+  for (const [rx, rz] of [[-6, -3], [0, -3], [6, -3], [-6, 3], [6, 3]]) {
+    const px = mx + rx, pz = mz + rz;
+    box(1, 1, 1, px, 0.5, pz, 0x6d6456, false);
+    const relic = new THREE.Mesh(new THREE.OctahedronGeometry(0.4), new THREE.MeshStandardMaterial({ color: pick([0xffd166, 0xc0a062, 0x8ecae6]), emissive: 0x332200, emissiveIntensity: 0.3, metalness: 0.6, roughness: 0.3 }));
+    relic.position.set(px, 1.25, pz); scene.add(relic);
+    addTask({ dur: 1e9, update: (dt, t) => { relic.rotation.y = t; } });
+    const guard = makeHumanoid({ outfit: 0x2a3a4a, hair: 0x1a1a1a, pants: 0x1c242c });
+    guard.rig.scale.setScalar(0.95);
+    guard.root.position.set(px, 0, pz - 1.6); guard.root.rotation.y = Math.PI;
+    interactables.push({ pos: new THREE.Vector3(px, 0, pz), r: 1.4, label: 'Steal the relic (raises wanted)',
+      action: () => { if (relic.parent) { disposeObj(relic); stats.gold += 150; raiseWanted(100); toast('You grabbed the relic. The guard is calling it in.'); reactBystanders(new THREE.Vector3(px, 0, pz), true); } } });
+  }
+}
 
 // =====================================================================
 // REAL-WORLD CITY: Edinburgh, streamed in from pre-tiled OpenStreetMap data.
@@ -4450,7 +4488,7 @@ function interact() {
   if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
   const service = nearestInteractable();
-  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog')) return service.action();
+  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label.startsWith('Enter sewer manhole'))) return service.action();
   const cb = nearestCivicBuilding();
   if (cb) return enterCivicBuilding(cb);
   const g = nearestGate();
@@ -4834,6 +4872,7 @@ function setLayoutEditMode(on) {
     el.style.cursor = on ? 'grab' : '';
   }
   $('layoutEditBar').style.display = on ? 'flex' : 'none';
+  sewers?.update();
   mobileControls?.update();
 }
 function resetLayout() {
@@ -4989,7 +5028,7 @@ function updatePlayer(dt) {
   const canMove = !action && playerStun <= 0;
   const sprinting = canMove && moving && keys.ShiftLeft && stats.energy > 0 && !playerBlocking;
   if (canMove && moving) {
-    player.position.addScaledVector(dir, (sprinting ? 9 : 5) * speedMul() * (playerBlocking ? 0.35 : 1) * dt);
+    player.position.addScaledVector(dir, (sprinting ? 9 : 5) * (sewers?.movementScale(player.position) ?? 1) * speedMul() * (playerBlocking ? 0.35 : 1) * dt);
     if (!playerBlocking) player.rotation.y = lerpAngle(player.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-12 * dt));
   }
   if (sprinting) stats.energy -= 3 * drainMul() * dt;
@@ -5237,10 +5276,10 @@ function updatePursuit(dt) {
   pursuitBackupCooldown = Math.max(0, pursuitBackupCooldown - dt);
   if (wanted <= 0) return;
   const target = inCar && driving ? driving.group.position : player.position;
-  const seen = !dungeon && !inCivicInterior && vehicles.some(v => v.kind === 'police' && v.ai && !v.disabled && policeCanSee(v, target));
+  const seen = !dungeon && !inCivicInterior && !sewers?.underground && vehicles.some(v => v.kind === 'police' && v.ai && !v.disabled && policeCanSee(v, target));
   if (seen) { policeLastSeen.copy(target); wanted = Math.max(wanted, 30); }
   else wanted = Math.max(0, wanted - dt);
-  if (!dungeon && !inCivicInterior) requestPoliceBackup();
+  if (!dungeon && !inCivicInterior && !sewers?.underground) requestPoliceBackup();
 }
 function policeChase(v, dt) {
   const ai = v.ai, p = v.group.position;
@@ -5314,6 +5353,7 @@ function updateNeeds(dt) {
   if (peace < 25) stats.hp -= (25 - peace) / 25 * dt;
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
+    sewers?.reset();
     transport?.cancel();
     sitting = false; sitReturnPosition = null;
     stats.hp = maxHp(); stats.hunger = 60; stats.energy = 60;
@@ -5385,6 +5425,7 @@ function updateWorldLight(dt) {
   }
   for (const l of lampLights) l.intensity = dungeon ? 40 : glow * 30;
 
+  if(sewers?.underground){top.set(0x111a15);horizon.set(0x111a15);scene.fog.color.set(0x111a15);scene.fog.near=8;scene.fog.far=55;sun.intensity=.03;hemi.intensity=.25;hemi.color.set(0xb5c5aa);sunDisc.visible=moonDisc.visible=false;return;}
   // Inside a dungeon: themed sky, thick fog and torchlight instead of the sun
   if (dungeon) {
     const th = THEMES[dungeon.gate.theme];
@@ -5437,6 +5478,7 @@ function updateCamera(dt) {
     camera.lookAt(target);
   }
 
+  if(sewers?.underground&&cameraView==='third'&&!cine){const eye=player.position.clone().add(new THREE.Vector3(0,1.5,0));const delta=camera.position.clone().sub(eye);if(delta.length()>2.4)camera.position.copy(eye).addScaledVector(delta.normalize(),2.4);camera.position.y=Math.min(3.6,camera.position.y);camera.lookAt(eye);}
   // Screen shake
   if (shake > 0.001) {
     camera.position.add(randUnit().multiplyScalar(shake * 0.5));
@@ -5536,6 +5578,10 @@ transport=buildTransport({scene,box,makeTex,sitSpots,interactables,makePerson:ma
 });
 urban=buildUrban({scene,box,camBlockers,planeBlocks,sitSpots,interactables,makeTex,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,buyFood:()=>buyFood(12,15),destinations:townPlaces.destinations,busStops,busRoute:BUS_ROUTE,vehicles,playerPos:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')||80)/100))});
 transport.update(0);urban.update(dayTime,0);
+sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpots,interactables,makeTex,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,destinations:townPlaces.destinations,playerPos:()=>player.position,
+ canEnter:()=>!inCar&&!transport?.rider&&!sitting&&!action,
+ moveTo(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);yaw=0;}
+});
 mobileControls = setupMobileControls({
   playing: () => locked && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
