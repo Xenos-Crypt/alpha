@@ -23,6 +23,28 @@
            background: rgba(0,0,0,.55); color: #fff; cursor: pointer; text-align: center; z-index: 20; }
   #start h1 { margin: 0 0 8px; font-size: 42px; letter-spacing: .02em; }
 
+  /* Class select: shown once per new life, after the birth roll. */
+  #classSelect { position: fixed; inset: 0; display: none; z-index: 24; background: rgba(5,7,14,.94);
+                 flex-direction: column; align-items: center; justify-content: center; padding: 24px;
+                 font-family: system-ui, sans-serif; color: #fff; text-align: center; }
+  #classSelect h1 { margin: 0 0 4px; font-size: 26px; }
+  #classSelect .sub { opacity: .65; font-size: 13px; margin: 0 0 20px; }
+  .class-grid { display: grid; grid-template-columns: repeat(auto-fill, 110px); gap: 12px; justify-content: center;
+                max-width: 900px; max-height: 60vh; overflow-y: auto; padding: 4px; }
+  .class-card { width: 110px; height: 110px; border-radius: 12px; border: 2px solid rgba(255,255,255,.15);
+                background: rgba(255,255,255,.05); display: flex; flex-direction: column; align-items: center;
+                justify-content: center; gap: 6px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .class-card .ico { font-size: 30px; }
+  .class-card .nm { font-size: 12px; font-weight: 600; }
+  .class-card .st { font-size: 9px; opacity: .6; }
+  .class-card.playable:hover { border-color: #3867d6; background: rgba(56,103,214,.2); }
+  .class-card.selected { border-color: #ffd166; background: rgba(255,209,102,.18); }
+  .class-card.disabled { opacity: .4; cursor: not-allowed; }
+  .class-card .lk { font-size: 16px; }
+  #classConfirm { margin-top: 22px; font: inherit; font-size: 16px; color: #fff; background: #3867d6; border: 0;
+                  border-radius: 10px; padding: 12px 28px; cursor: pointer; }
+  #classConfirm:disabled { background: #444b5a; cursor: default; opacity: .6; }
+
   /* Main menu, shown after login/spawn, before entering the world. The 3D scene
      keeps rendering behind it as a live preview (the render loop never stops). */
   #menu { position: fixed; inset: 0; display: none; z-index: 22; font-family: system-ui, sans-serif;
@@ -236,6 +258,12 @@
   </div>
   <div id="tabSkills" style="display:none"></div>
   <button class="close" id="closeBoard">Close (C)</button>
+</div>
+<div id="classSelect">
+  <h1>Choose Your Element</h1>
+  <p class="sub">Most are still being built — only the ones marked ready can be played right now</p>
+  <div class="class-grid" id="classGrid"></div>
+  <button id="classConfirm" disabled>Begin</button>
 </div>
 <div id="menu">
   <div class="panel">
@@ -1385,6 +1413,61 @@ async function loadOrCreateProfile(userId) {
   return false;
 }
 
+// =====================================================================
+// CLASS SELECT: shown once per new life. Fire and Air are real, built
+// characters (Ember/Gale) with full skill kits. Everything else here is
+// honestly marked "coming soon" — Water and Rock don't have skill kits
+// built yet, and the named specials are locked behind future quests that
+// don't exist in the game yet either.
+// =====================================================================
+const CLASS_DEFS = [
+  { key: 'fire', name: 'Fire', icon: '🔥', playable: true, charIndex: 0 },
+  { key: 'water', name: 'Water', icon: '💧' },
+  { key: 'air', name: 'Air', icon: '💨', playable: true, charIndex: 1 },
+  { key: 'rock', name: 'Rock', icon: '🪨' },
+  { key: 'poison', name: 'Poison', icon: '☠️', locked: true },
+  { key: 'lightning', name: 'Lightning', icon: '⚡', locked: true },
+  { key: 'thunder', name: 'Thunder', icon: '🌩️', locked: true },
+  { key: 'metal', name: 'Metal', icon: '⚙️', locked: true },
+  { key: 'blood', name: 'Blood', icon: '🩸', locked: true },
+  { key: 'void', name: 'Void', icon: '🕳️', locked: true },
+  { key: 'light', name: 'Light', icon: '✨', locked: true },
+  { key: 'darkness', name: 'Darkness', icon: '🌑', locked: true },
+  { key: 'time', name: 'Time', icon: '⏳', locked: true },
+  ...Array.from({ length: 10 }, (_, i) => ({ key: 'soon' + i, name: '???', icon: '❔' })),
+];
+function showClassSelect() {
+  return new Promise(resolve => {
+    $('classSelect').style.display = 'flex';
+    const grid = $('classGrid');
+    grid.innerHTML = CLASS_DEFS.map((c, i) => `
+      <div class="class-card ${c.playable ? 'playable' : 'disabled'}" data-i="${i}">
+        ${c.locked ? '<div class="lk">🔒</div>' : `<div class="ico">${c.icon}</div>`}
+        <div class="nm">${c.name}</div>
+        <div class="st">${c.playable ? 'Ready' : c.locked ? 'Locked' : 'Coming soon'}</div>
+      </div>`).join('');
+    let selected = null;
+    grid.querySelectorAll('.class-card').forEach(card => card.addEventListener('click', () => {
+      const def = CLASS_DEFS[Number(card.dataset.i)];
+      if (!def.playable) { toast(def.locked ? `${def.name} is locked — complete a future quest to unlock it.` : `${def.name} isn't built yet — coming soon.`); return; }
+      grid.querySelectorAll('.class-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selected = def;
+      $('classConfirm').disabled = false;
+    }));
+    $('classConfirm').onclick = () => {
+      if (!selected) return;
+      charIdx = selected.charIndex;
+      const c = characters[charIdx];
+      P.mats.outfit.color.set(c.color);
+      P.mats.hair.color.set(c.hair);
+      buildHotbar();
+      $('classSelect').style.display = 'none';
+      resolve();
+    };
+  });
+}
+
 function runSpawnScreen(userId, persist) {
   return new Promise(resolve => {
     $('spawn').style.display = 'flex';
@@ -1435,7 +1518,7 @@ function runSpawnScreen(userId, persist) {
       $('spawnPerk').textContent = `Perk: ${origin.perk} · ${origin.housing} · Starting gold: ${origin.startingGold} · ${origin.weapon ? 'Weapon: ' + origin.weapon : 'Unarmed'}`;
       $('spawnResult').style.display = 'block';
     });
-    $('beginBtn').addEventListener('click', () => { $('spawn').style.display = 'none'; resolve(); });
+    $('beginBtn').addEventListener('click', () => { $('spawn').style.display = 'none'; showClassSelect().then(resolve); });
   });
 }
 
@@ -1452,7 +1535,7 @@ function saveSolo() {
   if (!soloMode || !soloUserId) return;
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
-      origin, prog, gold: stats.gold,
+      origin, prog, gold: stats.gold, charIdx,
       pos: { x: player.position.x, y: player.position.y, z: player.position.z }, yaw,
     }));
   } catch {}
@@ -1463,6 +1546,13 @@ function applySoloSave(save) {
   stats.gold = save.gold ?? 0;
   stats.hp = maxHp();
   swordGrip.visible = !!origin.weapon;
+  if (Number.isInteger(save.charIdx) && characters[save.charIdx]) {
+    charIdx = save.charIdx;
+    const c = characters[charIdx];
+    P.mats.outfit.color.set(c.color);
+    P.mats.hair.color.set(c.hair);
+    buildHotbar();
+  }
   if (save.pos) player.position.set(save.pos.x, save.pos.y, save.pos.z);
   if (typeof save.yaw === 'number') yaw = save.yaw;
 }
