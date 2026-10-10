@@ -234,8 +234,11 @@ export function buildPlaces(ctx) {
       if ((bx + bz) % 2 !== 0) continue; // every other intersection, not literally everywhere
       const x = bx * 40, z = bz * 40;
       if (Math.hypot(x, z) < 15) continue; // keep the area right at spawn clear
-      box(0.12, 2.6, 0.12, x + 1.6, 1.3, z + 1.6, 0x4a4a4a, false);
-      sign(streetNames[streetSignIdx++ % streetNames.length], x + 1.6, 2.7, z + 1.6, 4.2, '#1d2e1f');
+      // Pavement starts 6 units out from the intersection corner (road is the first
+      // 6m); posting the sign at 1.6 put it in the middle of the road where cars
+      // drive through it. 8 puts it safely on the pavement near the corner building.
+      box(0.12, 2.6, 0.12, x + 8, 1.3, z + 8, 0x4a4a4a, false);
+      sign(streetNames[streetSignIdx++ % streetNames.length], x + 8, 2.7, z + 8, 4.2, '#1d2e1f');
     }
   }
   let restrictedWarned = false;
