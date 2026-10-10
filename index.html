@@ -183,6 +183,25 @@
   #board button:disabled { background: #444b5a; cursor: default; opacity: .6; }
   #board .close { width: 100%; margin-top: 12px; background: #2f3542; }
 
+  /* Settings (controls / sound / graphics) */
+  #settingsBtn { position: fixed; right: 16px; top: 16px; z-index: 12; color: #fff; font: 12px system-ui, sans-serif;
+                 background: rgba(10, 14, 24, .55); border: 1px solid rgba(255,255,255,.18); border-radius: 10px;
+                 padding: 7px 12px; cursor: pointer; }
+  #settingsBtn:hover { background: rgba(10, 14, 24, .8); }
+  #settingsPanel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 40px);
+           overflow-y: auto; box-sizing: border-box; color: #fff; background: rgba(14, 18, 30, .94); border: 1px solid rgba(255,255,255,.12);
+           border-radius: 16px; padding: 18px 22px; display: none; z-index: 16; font: 13px/1.6 system-ui, sans-serif; }
+  #settingsPanel h2 { margin: 0 0 12px; font-size: 20px; }
+  #settingsPanel .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  #settingsPanel .tab { flex: 1; font: inherit; color: #fff; background: #2f3542; border: 0; border-radius: 8px; padding: 8px; cursor: pointer; }
+  #settingsPanel .tab.active { background: #3867d6; }
+  #settingsPanel .row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }
+  #settingsPanel .sub { opacity: .7; font-size: 12px; margin-bottom: 4px; }
+  #settingsPanel input[type=range] { flex: 1; }
+  #settingsPanel button.opt { font: inherit; color: #fff; background: #2f3542; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; flex: 1; }
+  #settingsPanel button.opt.active { background: #3867d6; }
+  #settingsPanel button.close { font: inherit; width: 100%; margin-top: 14px; color: #fff; background: #2f3542; border: 0; border-radius: 8px; padding: 8px; cursor: pointer; }
+
   /* Crosshair, world alert, gate tooltip, boss bar */
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
                background: rgba(255,255,255,.85); box-shadow: 0 0 0 1.5px rgba(0,0,0,.5); pointer-events: none; }
@@ -229,19 +248,7 @@
   <div id="clock"></div>
   <div id="extra"></div>
 </div>
-<div id="help">
-  <b>Controls</b><br>
-  WASD: move / drive &nbsp;·&nbsp; Mouse: look<br>
-  Shift: sprint &nbsp;·&nbsp; Space: jump<br>
-  Left click (hold): M1 combo<br>
-  1 2 3 4: skills &nbsp;·&nbsp; G: ultimate<br>
-  Q: dash &nbsp;·&nbsp; F (hold): block<br>
-  R: psychic grip &nbsp;·&nbsp; T: switch character<br>
-  E: interact / drive / steal vehicles<br>
-  C: stats &amp; skills<br>
-  Look at a gate: see its rank &amp; danger<br>
-  L: lock / unlock mouse &nbsp;·&nbsp; Esc: pause
-</div>
+<div id="settingsBtn">⚙ Settings</div>
 <div id="crosshair"></div>
 <div id="mouseHint">Mouse unlocked · press L to lock it again</div>
 <div id="sitPrompt"><span class="kbd">E</span><span id="sitPromptText">Sit</span></div>
@@ -266,6 +273,40 @@
   </div>
   <div id="tabSkills" style="display:none"></div>
   <button class="close" id="closeBoard">Close (C)</button>
+</div>
+<div id="settingsPanel">
+  <h2>Settings</h2>
+  <div class="tabs">
+    <button class="tab active" data-stab="controls">Controls</button>
+    <button class="tab" data-stab="sound">Sound</button>
+    <button class="tab" data-stab="graphics">Graphics</button>
+  </div>
+  <div id="stabControls">
+    WASD: move / drive &nbsp;·&nbsp; Mouse: look<br>
+    Shift: sprint &nbsp;·&nbsp; Space: jump<br>
+    Left click (hold): M1 combo<br>
+    1 2 3 4: skills &nbsp;·&nbsp; G: ultimate<br>
+    Q: dash &nbsp;·&nbsp; F (hold): block<br>
+    R: psychic grip &nbsp;·&nbsp; T: switch character<br>
+    E: interact / drive / steal vehicles<br>
+    C: stats &amp; skills<br>
+    Look at a gate: see its rank &amp; danger<br>
+    L: lock / unlock mouse &nbsp;·&nbsp; Esc: pause
+  </div>
+  <div id="stabSound" style="display:none">
+    <div class="row"><span>Master volume</span><input type="range" id="volumeSlider" min="0" max="100" value="80"><span id="volumeVal">80%</span></div>
+    <div class="sub">The game doesn't have sound effects or music yet — this is saved for when it does.</div>
+  </div>
+  <div id="stabGraphics" style="display:none">
+    <div class="sub">Resolution / quality</div>
+    <div class="row">
+      <button class="opt" data-gfx="low">Low</button>
+      <button class="opt" data-gfx="medium">Medium</button>
+      <button class="opt" data-gfx="high">High</button>
+    </div>
+    <div class="sub">Lower settings reduce render resolution and turn off shadows for better performance.</div>
+  </div>
+  <button class="close" id="closeSettings">Close</button>
 </div>
 <div id="classSelect">
   <h1>Choose Your Elements</h1>
@@ -373,6 +414,18 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 document.body.prepend(renderer.domElement);
+
+// Graphics quality (resolution/shadows) — set from the Settings panel, saved across sessions.
+const GFX_PRESETS = { low: { pr: 0.75, shadows: false }, medium: { pr: touchDevice ? 1 : 1.25, shadows: true }, high: { pr: touchDevice ? 1 : 1.5, shadows: true } };
+let gfxQuality = GFX_PRESETS[localStorage.getItem('gfxQuality')] ? localStorage.getItem('gfxQuality') : 'medium';
+function setGraphicsQuality(level) {
+  gfxQuality = GFX_PRESETS[level] ? level : 'medium';
+  const p = GFX_PRESETS[gfxQuality];
+  renderer.setPixelRatio(Math.min(devicePixelRatio, p.pr));
+  renderer.shadowMap.enabled = p.shadows;
+  localStorage.setItem('gfxQuality', gfxQuality);
+}
+setGraphicsQuality(gfxQuality);
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xcfe8ff, 90, 280);
@@ -4425,6 +4478,7 @@ function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style
 
 function toggleBoard(open) {
   if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
+  if (open && settingsOpen) { settingsOpen = false; $('settingsPanel').style.display = 'none'; }
   boardOpen = open;
   $('board').style.display = open ? 'block' : 'none';
   if (open) {
@@ -4436,6 +4490,36 @@ function toggleBoard(open) {
   }
 }
 $('closeBoard').addEventListener('click', () => toggleBoard(false));
+
+// =====================================================================
+// SETTINGS (controls / sound / graphics)
+// =====================================================================
+let settingsOpen = false, settingsTab = 'controls';
+function renderSettings() {
+  document.querySelectorAll('#settingsPanel .tab').forEach(b => b.classList.toggle('active', b.dataset.stab === settingsTab));
+  $('stabControls').style.display = settingsTab === 'controls' ? '' : 'none';
+  $('stabSound').style.display = settingsTab === 'sound' ? '' : 'none';
+  $('stabGraphics').style.display = settingsTab === 'graphics' ? '' : 'none';
+  document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.classList.toggle('active', b.dataset.gfx === gfxQuality));
+}
+function toggleSettings(open) {
+  if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
+  if (open && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
+  settingsOpen = open;
+  $('settingsPanel').style.display = open ? 'block' : 'none';
+  if (open) { renderSettings(); document.exitPointerLock(); locked = false; }
+  else requestGameControl();
+}
+document.querySelectorAll('#settingsPanel .tab').forEach(b => b.addEventListener('click', () => { settingsTab = b.dataset.stab; renderSettings(); }));
+document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
+$('settingsBtn').addEventListener('click', () => toggleSettings(true));
+$('closeSettings').addEventListener('click', () => toggleSettings(false));
+const savedVolume = localStorage.getItem('masterVolume');
+if (savedVolume != null) { $('volumeSlider').value = savedVolume; $('volumeVal').textContent = savedVolume + '%'; }
+$('volumeSlider').addEventListener('input', e => {
+  $('volumeVal').textContent = e.target.value + '%';
+  localStorage.setItem('masterVolume', e.target.value);
+});
 
 // L toggles the mouse: locked = mouse turns the camera; free = normal cursor, game keeps running
 let freeMouse = false;
@@ -4490,7 +4574,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || boardOpen ? 'none' : 'flex';
+  startEl.style.display = locked || boardOpen || settingsOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
