@@ -830,6 +830,11 @@ function addTower(x, baseY, z, w, h, d, f, collide) {
   return baseY + h + 0.4;
 }
 
+// Declared here (rather than down by the Edinburgh/civic code, where it originally
+// lived) so addBuilding() below can register every generic building into it too —
+// every building in the game now has a real, enterable door, not just civic ones.
+const civicBuildings = [];
+let buildingAddressN = 100;
 function addBuilding(x, z, faceX, faceZ) {
   const centreBoost = Math.max(0, 1 - Math.hypot(x, z) / 130);
   const floors = 2 + Math.floor(rand() * rand() * 10 + centreBoost * rand() * 10);
@@ -851,6 +856,27 @@ function addBuilding(x, z, faceX, faceZ) {
   if (floors <= 6 && rand() < 0.6) {
     const aw = box(w * 0.7, 0.12, 1.4, x, CURB + 3.2, z + faceZ * (d / 2 + 0.7), AWNING_COLORS[Math.floor(rand() * AWNING_COLORS.length)], false);
     aw.rotation.x = faceZ * 0.18;
+  }
+  // A real door on the street-facing side — enterable with E, using the same shared
+  // interior pocket every civic building already uses (not a unique hand-built
+  // interior per building, but a genuinely enterable one rather than a flat wall).
+  const doorZ = z + faceZ * (d / 2 - 0.03);
+  box(1.5, 2.3, 0.1, x, CURB + 1.15, doorZ, 0x241f1a, false);
+  box(1.7, 0.15, 0.2, x, CURB + 2.35, doorZ, 0x3a332b, false);   // lintel
+  const kind = pick(['apartment', 'shop', 'office']);
+  const name = (kind === 'apartment' ? buildingAddressN + ' Ashford Apartments' : kind === 'shop' ? buildingAddressN + ' High Street Shop' : buildingAddressN + ' Ashford Offices');
+  buildingAddressN += rand() < 0.5 ? 2 : 4;
+  civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  // Exterior fire-escape staircase up one side, tall buildings only.
+  if (tall) {
+    const side = faceX || pick([-1, 1]);
+    const sx = x + side * (w / 2 + 0.4);
+    for (let fl = 0; fl < floors; fl++) {
+      const y0 = CURB + fl * 3, flip = fl % 2 === 0 ? 1 : -1;
+      box(0.08, 0.08, 2.6, sx, y0 + 1.5, z + flip * 0.5, 0x4a4f54, false);   // stringer
+      for (let s = 0; s < 9; s++) box(0.9, 0.05, 0.25, sx, y0 + s * 0.33, z + flip * (1.6 - s * 0.33), 0x5c6166, false);
+      box(0.9, 1.1, 1.9, sx, y0 + 0.55, z, 0x4a4f54, false);   // landing
+    }
   }
   buildings.push({ x, z, w, d, top, alive: true, meshes: scene.children.slice(firstChild),
                    collider: colliders[firstCollider], blocks: planeBlocks.slice(firstBlock) });
@@ -2298,7 +2324,8 @@ if (CITY_ENABLED) fetch('./assets/map/tiles/manifest.json').then(r => r.json()).
   console.log(`Edinburgh manifest loaded: ${m.tiles.length} tiles, ${m.tileSize}m each`);
 }).catch(e => console.warn('City manifest failed to load:', e.message));
 
-const civicBuildings = []; // real police/hospital/courthouse/etc, flat list across all loaded tiles — see enterCivicBuilding()
+// civicBuildings itself is declared up near addBuilding() so generic buildings can
+// register into it too (see there for why).
 // Hand-placed hospital — guaranteed to exist even with the OSM city (which also
 // has real hospitals) disabled. Ambulances stage from here and return here.
 let HOSPITAL_POS = null;
