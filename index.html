@@ -128,6 +128,11 @@
   .slot.small { width: 52px; height: 52px; }
   .slot.ult { width: 78px; height: 78px; border-color: rgba(255, 200, 80, .5); }
   .slot.ready { box-shadow: 0 0 16px 3px var(--glow); border-color: var(--glow); }
+  .slot.locked { opacity: .45; }
+  .slot.locked .icon, .slot.locked .sname { visibility: hidden; }
+  .slot .lock { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; font-size: 16px; }
+  .slot.locked .lock { display: flex; }
+  .slot .lock .lvl { font-size: 9px; margin-top: 2px; }
 
   /* Board (stats + skills) */
   #board { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 40px);
@@ -1377,7 +1382,7 @@ async function loadOrCreateProfile(userId) {
   return false;
 }
 
-function runSpawnScreen(userId) {
+function runSpawnScreen(userId, persist) {
   return new Promise(resolve => {
     $('spawn').style.display = 'flex';
     $('start').style.display = 'none';
@@ -1408,11 +1413,17 @@ function runSpawnScreen(userId) {
       prog.points += roll;
       stats.gold = origin.startingGold;
       stats.hp = maxHp();
-      await supabase.from('profiles').insert({
-        user_id: userId, roll, family: origin.family, backstory: origin.backstory, stats: origin.stats, perk: origin.perk,
-        wealth_tier: origin.wealthTier, housing: origin.housing, starting_gold: origin.startingGold, max_health: origin.maxHealth,
-        points: roll,
-      });
+      // Solo play re-rolls a fresh life every time — nothing to save. The one-time,
+      // permanent roll (saved to `profiles`) is reserved for hosting/joining a
+      // persistent shared world, once that exists.
+      if (persist) {
+        const { error } = await supabase.from('profiles').insert({
+          user_id: userId, roll, family: origin.family, backstory: origin.backstory, stats: origin.stats, perk: origin.perk,
+          wealth_tier: origin.wealthTier, housing: origin.housing, starting_gold: origin.startingGold, max_health: origin.maxHealth,
+          points: roll,
+        });
+        if (error) console.error('Failed to save profile:', error.message);
+      }
       $('spawnRoll').textContent = `You rolled a ${roll}`;
       $('spawnFam').textContent = origin.family;
       $('spawnBio').textContent = origin.backstory;
@@ -1426,7 +1437,7 @@ function runSpawnScreen(userId) {
 function showMenu() {
   return new Promise(resolve => {
     $('menu').style.display = 'block';
-    $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(); };
+    $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve('offline'); };
     $('menuHost').onclick = () => toast('Hosting a game is still in development — check back soon.');
     $('menuJoin').onclick = () => toast('Joining a game is still in development — check back soon.');
     $('menuCreate').onclick = () => toast('Creating your own content is still in development — check back soon.');
@@ -1440,9 +1451,8 @@ async function boot() {
   const { data: { session } } = await supabase.auth.getSession();
   const activeSession = session || await showAuthScreen();
   supabase.from('logins').insert({ user_id: activeSession.user.id });
-  const bornAlready = await loadOrCreateProfile(activeSession.user.id);
-  if (!bornAlready) await runSpawnScreen(activeSession.user.id);
-  await showMenu();
+  const mode = await showMenu();
+  if (mode === 'offline') await runSpawnScreen(activeSession.user.id, false); // fresh life every time, nothing saved
   $('start').style.display = 'flex';
 }
 boot();
@@ -2513,9 +2523,15 @@ function dash() {
   } });
 }
 
+// New characters only have the basic M1/dash/block — the 4 elemental skills and
+// the ultimate unlock progressively as you level up, instead of all being available
+// from the very first second of a brand-new life.
+const SKILL_UNLOCK_LEVEL = [1, 2, 3, 4];
+const ULT_UNLOCK_LEVEL = 5;
 function useSkill(i) {
   const c = characters[charIdx];
   if (!canAct() || c.cds[i] > 0) return;
+  if (prog.level < SKILL_UNLOCK_LEVEL[i]) { toast(`${c.skills[i].name} unlocks at level ${SKILL_UNLOCK_LEVEL[i]}`); return; }
   c.cds[i] = c.skills[i].cd;
   callout(c.skills[i].name.toUpperCase(), c.fx);
   c.skills[i].run();
@@ -2523,6 +2539,7 @@ function useSkill(i) {
 function useUlt() {
   const c = characters[charIdx];
   if (!canAct()) return;
+  if (prog.level < ULT_UNLOCK_LEVEL) { toast(`${c.ult.name} unlocks at level ${ULT_UNLOCK_LEVEL}`); return; }
   if (stats.ult < 100) { toast(`Ultimate not ready (${Math.floor(stats.ult)}%). Land hits to charge it.`); return; }
   stats.ult = 0;
   c.ult.run();
@@ -3464,12 +3481,13 @@ document.querySelectorAll('#board .tab').forEach(b => b.addEventListener('click'
 let slotEls = [];
 function buildHotbar() {
   const c = characters[charIdx];
-  const slot = (key, s, cls = '') => `<div class="slot ${cls}" style="--glow:${hex(c.fx)}"><div class="icon">${s.icon}</div>
-    <div class="sname">${s.name}</div><div class="key">${key}</div><div class="cd"></div><div class="cdt"></div></div>`;
+  const slot = (key, s, cls = '', lvl = 0) => `<div class="slot ${cls}" style="--glow:${hex(c.fx)}"><div class="icon">${s.icon}</div>
+    <div class="sname">${s.name}</div><div class="key">${key}</div><div class="cd"></div><div class="cdt"></div>
+    <div class="lock">🔒<span class="lvl">Lv ${lvl}</span></div></div>`;
   $('hotbar').innerHTML = slot('Q', { icon: '➤', name: 'Dash' }, 'small')
     + slot('R', { icon: '🧠', name: 'Psychic' }, 'small')
-    + c.skills.map((s, i) => slot(i + 1, s)).join('')
-    + slot('G', c.ult, 'ult');
+    + c.skills.map((s, i) => slot(i + 1, s, '', SKILL_UNLOCK_LEVEL[i])).join('')
+    + slot('G', c.ult, 'ult', ULT_UNLOCK_LEVEL);
   slotEls = [...$('hotbar').children].map(el => ({ el, cd: el.querySelector('.cd'), cdt: el.querySelector('.cdt') }));
 }
 function updateHotbar() {
@@ -3480,7 +3498,8 @@ function updateHotbar() {
   };
   set(slotEls[0], dashCd, 1.5);
   set(slotEls[1], psyCd, psyCdMax());
-  c.skills.forEach((s, i) => set(slotEls[i + 2], c.cds[i], s.cd));
+  c.skills.forEach((s, i) => { set(slotEls[i + 2], c.cds[i], s.cd); slotEls[i + 2].el.classList.toggle('locked', prog.level < SKILL_UNLOCK_LEVEL[i]); });
+  slotEls[slotEls.length - 1].el.classList.toggle('locked', prog.level < ULT_UNLOCK_LEVEL);
   const u = slotEls[slotEls.length - 1];
   u.cd.style.height = (100 - stats.ult) + '%';
   u.cdt.textContent = stats.ult < 100 ? Math.floor(stats.ult) + '%' : '';
