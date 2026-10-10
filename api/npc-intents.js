@@ -1,4 +1,4 @@
-const{INTENT_SYSTEM,callOpenAI,sanitizeIntentResidents,requireKey,withApi}=require('./_lib.cjs');
+const{INTENT_SYSTEM,callOpenAI,sanitizeIntentResidents,requireKey,withApi}=require('./_lib');
 
 async function generateIntents(body){
   const key=requireKey();

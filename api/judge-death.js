@@ -1,4 +1,4 @@
-const{JUDGE_SYSTEM,callOpenAI,sanitizePlayer,cleanText,requireKey,withApi}=require('./_lib.cjs');
+const{JUDGE_SYSTEM,callOpenAI,sanitizePlayer,cleanText,requireKey,withApi}=require('./_lib');
 
 async function judgeDeath(body){
   const key=requireKey();

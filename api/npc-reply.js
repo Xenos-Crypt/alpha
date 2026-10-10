@@ -1,4 +1,4 @@
-const{NPC_SYSTEM,callOpenAI,sanitizeNpc,sanitizePlayer,cleanText,requireKey,withApi}=require('./_lib.cjs');
+const{NPC_SYSTEM,callOpenAI,sanitizeNpc,sanitizePlayer,cleanText,requireKey,withApi}=require('./_lib');
 
 async function npcReply(body){
   const key=requireKey();

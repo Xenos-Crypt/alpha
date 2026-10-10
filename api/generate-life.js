@@ -1,4 +1,4 @@
-const{LIFE_SYSTEM,callOpenAIWithSearch,requireKey,withApi,pickFamilyStructure}=require('./_lib.cjs');
+const{LIFE_SYSTEM,callOpenAIWithSearch,requireKey,withApi,pickFamilyStructure}=require('./_lib');
 
 async function generateLife(body){
   const key=requireKey();
