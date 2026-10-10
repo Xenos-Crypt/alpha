@@ -3829,6 +3829,11 @@ function interact() {
   if (sitting) return toggleSit(null); // stand up from wherever you're sitting
   const seat = nearestSitSpot();
   if (seat) return toggleSit(seat); // any registered seat — house couch, bus bench, or the civic chair
+  if (sitSpots.length) { // TEMP DEBUG: tell us why no seat matched, instead of silently falling through
+    let closest = Infinity;
+    for (const s of sitSpots) closest = Math.min(closest, Math.hypot(player.position.x - s.x, player.position.z - s.z));
+    if (closest < 15) toast(`No seat in range — nearest is ${closest.toFixed(1)}m away (${sitSpots.length} seats registered)`);
+  }
   if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
   const cb = nearestCivicBuilding();
