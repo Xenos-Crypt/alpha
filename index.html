@@ -38,7 +38,11 @@
   .class-card .nm { font-size: 12px; font-weight: 600; }
   .class-card .st { font-size: 9px; opacity: .6; }
   .class-card.playable:hover { border-color: #3867d6; background: rgba(56,103,214,.2); }
-  .class-card.selected { border-color: #ffd166; background: rgba(255,209,102,.18); }
+  .class-card.selected-primary { border-color: #ffd166; background: rgba(255,209,102,.18); }
+  .class-card.selected-secondary { border-color: #3867d6; background: rgba(56,103,214,.25); }
+  .class-card .role { font-size: 9px; font-weight: 700; margin-top: 2px; }
+  .class-card.selected-primary .role { color: #ffd166; }
+  .class-card.selected-secondary .role { color: #74b9ff; }
   .class-card.disabled { opacity: .4; cursor: not-allowed; }
   .class-card .lk { font-size: 16px; }
   #classConfirm { margin-top: 22px; font: inherit; font-size: 16px; color: #fff; background: #3867d6; border: 0;
@@ -260,8 +264,8 @@
   <button class="close" id="closeBoard">Close (C)</button>
 </div>
 <div id="classSelect">
-  <h1>Choose Your Element</h1>
-  <p class="sub">Most are still being built — only the ones marked ready can be played right now</p>
+  <h1>Choose Your Elements</h1>
+  <p class="sub" id="classSub">Pick a primary element, then a secondary — you can switch between the two in-game with T. Most are still being built; only ones marked ready can be picked.</p>
   <div class="class-grid" id="classGrid"></div>
   <button id="classConfirm" disabled>Begin</button>
 </div>
@@ -1326,6 +1330,7 @@ const characters = [
   },
 ];
 let charIdx = 0;
+let unlockedCharIndices = [0, 1]; // the primary/secondary pair chosen at class select; T switches only within this pair
 
 // =====================================================================
 // PLAYER
@@ -1466,18 +1471,32 @@ function showClassSelect() {
         <div class="nm">${c.name}</div>
         <div class="st">${c.playable ? 'Ready' : c.locked ? 'Locked' : 'Coming soon'}</div>
       </div>`).join('');
-    let selected = null;
+    let primary = null, secondary = null;
+    const refresh = () => {
+      grid.querySelectorAll('.class-card').forEach(card => {
+        const def = CLASS_DEFS[Number(card.dataset.i)];
+        card.classList.toggle('selected-primary', def === primary);
+        card.classList.toggle('selected-secondary', def === secondary);
+      });
+      $('classSub').textContent = !primary ? 'Pick a primary element, then a secondary — you can switch between the two in-game with T. Most are still being built; only ones marked ready can be picked.'
+        : !secondary ? `Primary: ${primary.name}. Now pick a secondary element.` : `Primary: ${primary.name} · Secondary: ${secondary.name}`;
+      $('classConfirm').disabled = !(primary && secondary);
+    };
     grid.querySelectorAll('.class-card').forEach(card => card.addEventListener('click', () => {
       const def = CLASS_DEFS[Number(card.dataset.i)];
       if (!def.playable) { toast(def.locked ? `${def.name} is locked — complete a future quest to unlock it.` : `${def.name} isn't built yet — coming soon.`); return; }
-      grid.querySelectorAll('.class-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      selected = def;
-      $('classConfirm').disabled = false;
+      if (def === primary) { primary = secondary; secondary = null; }
+      else if (def === secondary) { secondary = null; }
+      else if (!primary) { primary = def; }
+      else if (!secondary) { secondary = def; }
+      else { primary = def; secondary = null; } // both already picked — start over with this as the new primary
+      refresh();
     }));
+    refresh();
     $('classConfirm').onclick = () => {
-      if (!selected) return;
-      charIdx = selected.charIndex;
+      if (!primary || !secondary) return;
+      unlockedCharIndices = [primary.charIndex, secondary.charIndex];
+      charIdx = primary.charIndex;
       const c = characters[charIdx];
       P.mats.outfit.color.set(c.color);
       P.mats.hair.color.set(c.hair);
@@ -1555,7 +1574,7 @@ function saveSolo() {
   if (!soloMode || !soloUserId) return;
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
-      origin, prog, gold: stats.gold, charIdx,
+      origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
       pos: { x: player.position.x, y: player.position.y, z: player.position.z }, yaw,
     }));
   } catch {}
@@ -1566,6 +1585,7 @@ function applySoloSave(save) {
   stats.gold = save.gold ?? 0;
   stats.hp = maxHp();
   swordGrip.visible = !!origin.weapon;
+  if (Array.isArray(save.unlockedCharIndices) && save.unlockedCharIndices.length === 2) unlockedCharIndices = save.unlockedCharIndices;
   if (Number.isInteger(save.charIdx) && characters[save.charIdx]) {
     charIdx = save.charIdx;
     const c = characters[charIdx];
@@ -3662,7 +3682,8 @@ function updateDungeon(dt) {
 // =====================================================================
 function switchChar() {
   if (!canAct()) return;
-  charIdx = (charIdx + 1) % characters.length;
+  const pos = unlockedCharIndices.indexOf(charIdx);
+  charIdx = unlockedCharIndices[(pos + 1) % unlockedCharIndices.length];
   const c = characters[charIdx];
   P.mats.outfit.color.set(c.color);
   P.mats.hair.color.set(c.hair);
