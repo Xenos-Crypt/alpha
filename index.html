@@ -981,9 +981,10 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
   const isHome = cx === 0 && cz === 0, isPark = cx === -1 && cz === 0, isTraining = cx === 1 && cz === 0;
   const isResidential = cz === -1 && (cx === 0 || cx === -1);
+  const isPoliceCell = cx === 2 && cz === 0;   // downtown police post — see buildDowntownPolice()
   pavement(x0, z0, isHome || isPark || isResidential ? lawnMat : isTraining ? sandMat : null);
   if (isResidential) residentialCells.push([x0, z0]);
-  if (isHome || isPark || isTraining || isResidential) continue;
+  if (isHome || isPark || isTraining || isResidential || isPoliceCell) continue;
   for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
     if (rand() < 0.12) {   // small plaza instead of a building
       addTree(x0 + ox, z0 + oz, 1.1);
@@ -2437,6 +2438,20 @@ let HOSPITAL_POS = null;
     const ff = makeHumanoid({ outfit: 0xcc3b2c, hair: 0x2a1c12, pants: 0x2a2a2a });
     ff.root.position.set(x + fx, 0, z + fz); ff.root.rotation.y = Math.PI;
   }
+})();
+// Downtown police post, right in the city near home/park — the original full
+// precinct (reception, holding cells, courtyard) stays out at the industrial
+// cluster, but a visible, enterable police presence belongs inside the city too.
+(function buildDowntownPolice() {
+  const x = 100, z = 20, w = 18, d = 16, h = 7;
+  box(w, h, d, x, h / 2, z, 0xd7dde6);
+  box(w + 0.6, 0.6, d + 0.6, x, h + 0.3, z, 0x8c94a0);
+  box(1.6, 0.35, 0.12, x, h - 1.5, z - d / 2 - 0.1, 0x3867d6, false);
+  colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  civicBuildings.push({ type: 'police', name: 'Ashford Downtown Police Post', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  const v = makeVehicle('police', 0xf5f6fa);
+  v.group.position.set(x + w / 2 + 6, 0, z); v.group.rotation.y = -Math.PI / 2;
+  v.ai = { from: nearestNode(v.group.position), to: [0, 0], prev: null, s: 0, cruise: 12, parked: true, stopTimer: 0, stopped: false, chasing: false, blockedT: 0, ignoreT: 0, ramCd: 0 };
 })();
 
 function loadCityTile(tx, tz) {
@@ -5116,7 +5131,21 @@ function updatePlayer(dt) {
   player.position.y += vy * dt;
   collide(player.position, 0.4);
   const floorY = groundY(player.position.x, player.position.z);
-  if (player.position.y <= floorY) { player.position.y = floorY; vy = 0; onGround = true; }
+  if (player.position.y <= floorY) {
+    // Fall damage: only kicks in past a safe landing speed (roughly a two-storey
+    // drop), so normal jumps/stairs/ledges never hurt — just real falls.
+    if (!onGround && vy < -14 && iFrames <= 0 && !isSeaWater(player.position.x, player.position.z)) {
+      const fallDmg = Math.round((-vy - 14) * 2.2) * defMul();
+      if (fallDmg > 0) {
+        stats.hp -= fallDmg;
+        popText(at(player.position, 2.2), Math.round(fallDmg), 'taken');
+        $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 150);
+        shake = Math.max(shake, Math.min(0.5, fallDmg / 60));
+        playerStun = Math.max(playerStun, 0.3);
+      }
+    }
+    player.position.y = floorY; vy = 0; onGround = true;
+  }
   else if (player.position.y - floorY > 0.2) onGround = false;
 
   const pose = action?.pose ?? (playerBlocking ? 'block' : playerStun > 0 ? 'stunned' : null);
