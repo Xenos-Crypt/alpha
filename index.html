@@ -188,6 +188,9 @@
                background: rgba(255,255,255,.85); box-shadow: 0 0 0 1.5px rgba(0,0,0,.5); pointer-events: none; }
   #mouseHint { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); display: none; color: #fff; font-size: 13px;
                background: rgba(10, 14, 24, .7); padding: 5px 12px; border-radius: 14px; pointer-events: none; }
+  #sitPrompt { position: fixed; left: 50%; bottom: 20%; transform: translateX(-50%); display: none; color: #fff; font-size: 15px;
+               background: rgba(10, 14, 24, .75); padding: 8px 16px; border-radius: 20px; pointer-events: none; font-family: system-ui, sans-serif; }
+  #sitPrompt .kbd { display: inline-block; background: rgba(255,255,255,.2); border-radius: 4px; padding: 1px 7px; margin-right: 6px; font-weight: 700; }
   #alert { position: fixed; left: 50%; top: 12px; transform: translate(-50%, -160%); transition: transform .45s; width: max-content;
            max-width: min(560px, calc(100vw - 32px)); background: rgba(20, 6, 6, .9); border: 2px solid #ff5c5c; border-radius: 12px;
            color: #fff; padding: 10px 18px; text-align: center; font-size: 14px; z-index: 8; pointer-events: none; }
@@ -241,6 +244,7 @@
 </div>
 <div id="crosshair"></div>
 <div id="mouseHint">Mouse unlocked · press L to lock it again</div>
+<div id="sitPrompt"><span class="kbd">E</span><span id="sitPromptText">Sit</span></div>
 <div id="alert"></div>
 <div id="gateTip"></div>
 <div id="bossbar"><div class="bname"></div><div class="btrack"><div class="bfill"></div></div></div>
@@ -1008,7 +1012,7 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   interactables.push({ pos: new THREE.Vector3(x0 - 3, 0, back + face * 1.8), r: 2.4, label: 'Sleep', action: sleep });
   box(2.2, 0.45, 0.9, x0 + 2.5, CURB + 0.225, back + face * 0.75, 0x6c5ce7, false); // non-colliding so the player can actually walk up to sit on it
   box(2.2, 0.55, 0.25, x0 + 2.5, CURB + 0.6, back + face * 0.35, 0x5b4bd6, false);
-  sitSpots.push({ x: x0 + 2.5, z: back + face * 0.75, yaw: face > 0 ? 0 : Math.PI });
+  sitSpots.push({ x: x0 + 2.5, z: back + face * 0.75, yaw: face > 0 ? 0 : Math.PI, y: -0.3, label: 'Sit on couch' });
   box(1.4, 0.06, 0.9, x0 + 2.5, CURB + 0.75, z0 + face * 0.6, woodMatPlain);
   box(0.12, 0.72, 0.12, x0 + 2.5, CURB + 0.36, z0 + face * 0.6, woodMatPlain, false);
   box(0.7, 1.5, 0.6, x0 + 4.3, CURB + 0.75, back + face * 0.6, 0xe8eef2, false);
@@ -1788,7 +1792,7 @@ for (const seg of BUS_STOP_SEGS) {
   mesh(new THREE.BoxGeometry(0.6, 0.45, 0.05), new THREE.MeshStandardMaterial({ map: busSignTex }), g).position.set(1.9, 2.75, 0.2);
   g.updateMatrixWorld(true);
   const benchWorld = g.localToWorld(new THREE.Vector3(0, 0.45, -0.2));
-  sitSpots.push({ x: benchWorld.x, z: benchWorld.z, yaw: face });
+  sitSpots.push({ x: benchWorld.x, z: benchWorld.z, yaw: face, y: -0.08, label: 'Sit on bench' });
   busStops.push({ seg, wait: mid.clone().addScaledVector(left, 5.4).setY(CURB), face, waiting: [] });
 }
 
@@ -3897,7 +3901,7 @@ let civicTvCanvas, civicTvTexture, civicTvT = 0;
   const tvScreen = mesh(new THREE.PlaneGeometry(2.4, 1.5), new THREE.MeshBasicMaterial({ map: civicTvTexture }));
   tvScreen.position.set(CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.55);
   box(2.7, 1.8, 0.15, CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.6, 0x1a1a1a, false);
-  sitSpots.push({ x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, yaw: Math.PI }); // face -Z, toward the TV
+  sitSpots.push({ x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, yaw: Math.PI, y: -0.3, label: 'Sit and watch TV' }); // face -Z, toward the TV
 })();
 let sitting = false;
 function updateCivicTv(dt) {
@@ -3924,13 +3928,19 @@ function nearestSitSpot(maxD = 3) {
 function toggleSit(spot) {
   sitting = !sitting;
   if (sitting) {
-    player.position.set(spot.x, -0.3, spot.z); // sink into the seat a bit so it doesn't look like standing with bent legs
+    player.position.set(spot.x, spot.y ?? -0.3, spot.z); // per-seat height — a wooden bench sinks much less than a couch
     player.rotation.y = spot.yaw;
     toast('Sitting. Press E to stand.');
   } else {
     player.position.y = groundY(player.position.x, player.position.z);
     toast('Standing up.');
   }
+}
+function updateSitPrompt() {
+  if (sitting) { $('sitPromptText').textContent = 'Stand up'; $('sitPrompt').style.display = 'block'; return; }
+  const seat = nearestSitSpot();
+  if (seat) { $('sitPromptText').textContent = seat.label || 'Sit'; $('sitPrompt').style.display = 'block'; }
+  else $('sitPrompt').style.display = 'none';
 }
 function applyCivicTheme(type) {
   const t = CIVIC_THEMES[type] || DEFAULT_CIVIC_THEME;
@@ -4567,6 +4577,7 @@ function frame() {
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);
     if (inCivicInterior) updateCivicTv(dt);
+    updateSitPrompt();
     updateVehicles(dt);
     updatePlanes(dt);
     updateAdBalloon(dt);
