@@ -1271,6 +1271,7 @@ const POSES = {
   block:    { aL: [-1.5, -0.7], aR: [-1.5, 0.7],  lL: 0.15, lR: -0.15 },
   windup:   { aL: [-1.2, 0.1],  aR: [0.8, -0.3],  lL: 0.3,  lR: -0.4 },
   stunned:  { aL: [0.3, 0.6],   aR: [0.3, -0.6],  lL: 0.1,  lR: -0.1 },
+  sit:      { aL: [-0.15, 0.08], aR: [0.15, -0.08], lL: 1.35, lR: 1.35 },
 };
 function animateHumanoid(h, pose, moving, sprinting, grounded, dt) {
   const k = 1 - Math.exp(-22 * dt);
@@ -3913,7 +3914,7 @@ function nearestSitSpot(maxD = 3) {
 function toggleSit(spot) {
   sitting = !sitting;
   if (sitting) {
-    player.position.set(spot.x, 0, spot.z);
+    player.position.set(spot.x, -0.3, spot.z); // sink into the seat a bit so it doesn't look like standing with bent legs
     player.rotation.y = spot.yaw;
     toast('Sitting. Press E to stand.');
   } else {
@@ -4164,7 +4165,7 @@ const DAY_LEN = 300; // seconds per in-game day
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 
 function updatePlayer(dt) {
-  if (sitting) return; // frozen in the chair until E is pressed again
+  if (sitting) { animateHumanoid(P, 'sit', false, false, true, dt); return; } // frozen in the chair until E is pressed again, but still visibly seated
   playerStun = Math.max(0, playerStun - dt);
   iFrames = Math.max(0, iFrames - dt);
   m1Cd = Math.max(0, m1Cd - dt);
