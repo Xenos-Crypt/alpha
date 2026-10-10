@@ -3864,15 +3864,17 @@ let civicTvCanvas, civicTvTexture, civicTvT = 0;
   // A chair facing a TV — sit with E, stand with E again. The TV shows a looping
   // placeholder "channel" (a canvas texture); there's no real video content/streaming
   // infrastructure, so this is an honest stand-in, not an attempt at real shows.
-  box(0.8, 0.9, 0.8, CIVIC_OFFSET.x - 6, 0.45, CIVIC_OFFSET.z - 2, 0x4a3a2a, false);
-  box(0.8, 0.9, 0.12, CIVIC_OFFSET.x - 6, 0.95, CIVIC_OFFSET.z - 2.4, 0x4a3a2a, false);
+  // Positioned directly on the path from the spawn point (z+8, facing -Z) so you
+  // walk straight toward the chair and TV instead of having to go find them.
+  box(0.8, 0.9, 0.8, CIVIC_OFFSET.x, 0.45, CIVIC_OFFSET.z + 2, 0x4a3a2a, false);
+  box(0.8, 0.9, 0.12, CIVIC_OFFSET.x, 0.95, CIVIC_OFFSET.z + 2.4, 0x4a3a2a, false); // backrest, behind the seat (toward the entrance, away from the TV)
   civicTvCanvas = document.createElement('canvas'); civicTvCanvas.width = 256; civicTvCanvas.height = 160;
   civicTvTexture = new THREE.CanvasTexture(civicTvCanvas);
   const tvScreen = mesh(new THREE.PlaneGeometry(2.4, 1.5), new THREE.MeshBasicMaterial({ map: civicTvTexture }));
-  tvScreen.position.set(CIVIC_OFFSET.x - 6, 1.9, CIVIC_OFFSET.z - 8.55);
-  box(2.7, 1.8, 0.15, CIVIC_OFFSET.x - 6, 1.9, CIVIC_OFFSET.z - 8.6, 0x1a1a1a, false);
+  tvScreen.position.set(CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.55);
+  box(2.7, 1.8, 0.15, CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.6, 0x1a1a1a, false);
 })();
-const CIVIC_CHAIR = { x: CIVIC_OFFSET.x - 6, z: CIVIC_OFFSET.z - 2, sitX: CIVIC_OFFSET.x - 6, sitZ: CIVIC_OFFSET.z - 2.9 };
+const CIVIC_CHAIR = { x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, sitX: CIVIC_OFFSET.x, sitZ: CIVIC_OFFSET.z + 2 };
 let sitting = false;
 function updateCivicTv(dt) {
   if (!civicTvCanvas) return;
@@ -3891,13 +3893,13 @@ function toggleSit() {
   sitting = !sitting;
   if (sitting) {
     player.position.set(CIVIC_CHAIR.sitX, 0, CIVIC_CHAIR.sitZ);
-    player.rotation.y = 0;
-    toast('Sitting. Press E to stand.');
+    player.rotation.y = Math.PI; // face -Z, toward the TV
+    toast('Sitting, watching TV. Press E to stand.');
   } else {
     toast('Standing up.');
   }
 }
-function nearChair() { return inCivicInterior && Math.hypot(player.position.x - CIVIC_CHAIR.x, player.position.z - CIVIC_CHAIR.z) < 2.2; }
+function nearChair() { return inCivicInterior && Math.hypot(player.position.x - CIVIC_CHAIR.x, player.position.z - CIVIC_CHAIR.z) < 3; }
 function applyCivicTheme(type) {
   const t = CIVIC_THEMES[type] || DEFAULT_CIVIC_THEME;
   civicFloor.material.color.set(t.floor);
@@ -3962,7 +3964,7 @@ async function enterCivicBuilding(b) {
     callout(b.name.toUpperCase(), 0xffd166, true);
     const desc = data?.description || `You step into ${b.name}, but it's hard to make out much more right now.`;
     const staff = data?.staff?.length ? ' Staff here: ' + data.staff.map(s => `${s.name} (${s.role})`).join(', ') + '.' : '';
-    toast(desc + staff);
+    toast(desc + staff + ' There’s a chair by a TV straight ahead — walk up and press E to sit.');
   }, 650);
 }
 function leaveCivicBuilding() {
