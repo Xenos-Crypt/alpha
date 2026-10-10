@@ -1,67 +1,70 @@
-export function setupMobileControls(ctx) {
-  const mobile = matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0;
-  if (!mobile) return { mobile: false, update() {}, reset() {} };
-  document.body.classList.add('mobile-game');
-  const style=document.createElement('style');style.textContent=`
-  .mobile-game{overscroll-behavior:none}.mobile-game canvas{touch-action:none}
-  #mobileControls{position:fixed;inset:0;z-index:25;pointer-events:none;display:none;user-select:none;-webkit-user-select:none}
-  #mobileLook{position:absolute;inset:0 0 0 45%;pointer-events:auto;touch-action:none}
-  #mobileStick{position:absolute;left:max(22px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));width:clamp(88px,27vh,116px);height:clamp(88px,27vh,116px);border:2px solid #ffffff70;border-radius:50%;background:#15223570;pointer-events:auto;touch-action:none}
-  #mobileThumb{position:absolute;left:calc(50% - 22px);top:calc(50% - 22px);width:44px;height:44px;border-radius:50%;background:#ffffffa0;pointer-events:none}
-  #mobileButtons{position:absolute;right:max(16px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,clamp(44px,7vw,54px));gap:clamp(4px,1.4vh,7px)}
-  #mobileControls button{pointer-events:auto;touch-action:none;border:1px solid #ffffff70;background:#142235c9;color:white;border-radius:12px;min-height:clamp(36px,11vh,44px);font:600 11px system-ui;padding:5px}
-  #mobileControls button:active{background:#526b92}
-  #mobileTop{position:absolute;right:max(16px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));display:flex;gap:8px}
-  #rotatePhone{position:fixed;inset:0;z-index:100;background:#101c2b;display:flex;align-items:center;justify-content:center;flex-direction:column;color:white;text-align:center;padding:24px;font:20px system-ui}
-  #rotatePhone[hidden]{display:none}#rotatePhone p{font-size:15px;max-width:300px;color:#b9cbdc}
-  .mobile-game #settingsBtn,.mobile-game #hotbar,.mobile-game #mouseHint{display:none!important}
-  .mobile-game #settingsPanel{max-height:85%;width:min(480px,80vw)}
-  .mobile-game #hud{left:max(8px,env(safe-area-inset-left));top:8px;padding:6px 8px;font-size:10px;max-width:160px}
-  .mobile-game #hud .bar{width:120px;height:5px;margin:2px 0 3px}.mobile-game #hud .name{font-size:11px;margin-bottom:3px}
-  .mobile-game #toast{font-size:14px;white-space:normal;width:65%;text-align:center;top:18%}
-  .mobile-game #prompt,.mobile-game #sitPrompt{bottom:36%;font-size:12px}
-  .mobile-game #board{max-height:85%;width:min(480px,80vw)}
-  .mobile-game #placesTravel{inset:5% 12%!important}
-  .mobile-game #menu .panel{overflow-y:auto}.mobile-game #spawn{overflow:auto;padding:10px;box-sizing:border-box}
-  `;document.head.append(style);
-  const rotate=document.createElement('div');rotate.id='rotatePhone';rotate.innerHTML='<strong>Rotate your phone sideways</strong><p>Play in landscape. Use the left stick to move and drag the right side to look around.</p>';document.body.append(rotate);
-  const root=document.createElement('div');root.id='mobileControls';root.innerHTML='<div id="mobileLook"></div><div id="mobileStick" aria-label="Movement joystick"><div id="mobileThumb"></div></div><div id="mobileButtons"></div><div id="mobileTop"></div>';document.body.append(root);
-  const stick=root.querySelector('#mobileStick'),thumb=root.querySelector('#mobileThumb'),look=root.querySelector('#mobileLook');
-  let stickPointer=null,lookPointer=null,lastX=0,lastY=0;
-  const held=new Map(), controlClicks=new Set();
-  document.addEventListener('click',e=>{if(controlClicks.has(e.pointerId)){controlClicks.delete(e.pointerId);e.preventDefault();e.stopImmediatePropagation();}},true);
-  function clearMove(){for(const key of ['KeyW','KeyS','KeyA','KeyD'])ctx.key(key,false);thumb.style.transform='';stickPointer=null;}
-  function reset(){clearMove();lookPointer=null;for(const release of held.values())release();held.clear();ctx.attack(false);}
-  function active(){return viewport().width>viewport().height&&ctx.playing();}
-  function move(e){if(e.pointerId!==stickPointer)return;const r=stick.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,length=Math.hypot(dx,dy),scale=Math.min(1,40/(length||1));thumb.style.transform='translate('+dx*scale+'px,'+dy*scale+'px)';ctx.key('KeyA',dx<-12);ctx.key('KeyD',dx>12);ctx.key('KeyW',dy<-12);ctx.key('KeyS',dy>12);}
-  stick.addEventListener('pointerdown',e=>{if(!active()||stickPointer!==null)return;e.preventDefault();stickPointer=e.pointerId;stick.setPointerCapture(e.pointerId);move(e);});stick.addEventListener('pointermove',move);
-  for(const type of ['pointerup','pointercancel','lostpointercapture'])stick.addEventListener(type,e=>{if(e.pointerId===stickPointer)clearMove();});
-  look.addEventListener('pointerdown',e=>{if(!active()||lookPointer!==null)return;e.preventDefault();lookPointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;look.setPointerCapture(e.pointerId);});
-  look.addEventListener('pointermove',e=>{if(e.pointerId!==lookPointer||!active())return;ctx.look(e.clientX-lastX,e.clientY-lastY);lastX=e.clientX;lastY=e.clientY;});
-  for(const type of ['pointerup','pointercancel','lostpointercapture'])look.addEventListener(type,e=>{if(e.pointerId===lookPointer)lookPointer=null;});
-  function button(label,action,release,parent=root.querySelector('#mobileButtons')){
-    const b=document.createElement('button');b.textContent=label;b.setAttribute('aria-label',label);parent.append(b);
-    b.addEventListener('pointerdown',e=>{if(!active())return;e.preventDefault();controlClicks.add(e.pointerId);setTimeout(()=>controlClicks.delete(e.pointerId),750);b.setPointerCapture(e.pointerId);if(release)held.set(e.pointerId,release);action();});
-    for(const type of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(type,e=>{const fn=held.get(e.pointerId);if(fn){held.delete(e.pointerId);fn();}});return b;
-  }
-  button('Interact',ctx.interact);button('Attack',()=>ctx.attack(true),()=>ctx.attack(false));button('Jump / Climb',()=>ctx.key('Space',true),()=>ctx.key('Space',false));button('Run / Dive',()=>ctx.key('ShiftLeft',true),()=>ctx.key('ShiftLeft',false));
-  button('Dash',ctx.dash);button('Psychic',ctx.psychic);button('Block',()=>ctx.key('KeyF',true),()=>ctx.key('KeyF',false));button('Switch',ctx.switchCharacter);
-  for(let i=0;i<4;i++)button('Power '+(i+1),()=>ctx.skill(i));button('Ultimate',ctx.ultimate);
-  button('Stats',()=>{reset();ctx.board();},null,root.querySelector('#mobileTop'));
-  button('Settings',()=>{reset();ctx.settings();},null,root.querySelector('#mobileTop'));
-  button('Pause',()=>{reset();ctx.pause();},null,root.querySelector('#mobileTop'));
-  function viewport(){return window.visualViewport||{width:innerWidth,height:innerHeight,offsetLeft:0,offsetTop:0};}
-  function update(){
-    const v=viewport();document.documentElement.style.setProperty('--visible-height',v.height+'px');
-    for(const el of [root,rotate]){el.style.width=v.width+'px';el.style.height=v.height+'px';el.style.left=(v.offsetLeft||0)+'px';el.style.top=(v.offsetTop||0)+'px';el.style.boxSizing='border-box';}
-    const portrait=v.height>=v.width;
-    const onboarding=['auth','menu','spawn','classSelect'].some(id=>{const el=document.getElementById(id);return el&&getComputedStyle(el).display!=='none';});
-    rotate.hidden=!portrait||onboarding;
-    if(portrait&&ctx.playing()){reset();ctx.pause();}
-    const editing=ctx.editingLayout?.();root.style.display=!portrait&&(ctx.playing()||editing)?'block':'none';
-    if(!ctx.playing()&&!editing)reset();
-  }
-  addEventListener('resize',update);window.visualViewport?.addEventListener('resize',update);window.visualViewport?.addEventListener('scroll',update);
-  addEventListener('blur',()=>{reset();ctx.pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden){reset();ctx.pause();}});update();
-  return {mobile:true,update,reset};
+import {CONTROL_DEFAULTS} from './control-preferences.js';
+const icons={punch:'<path d="M6 12V8h3V5h3v1h3v2h3v8l-4 5H8l-4-6v-4z"/>',run:'<circle cx="15" cy="4" r="2"/><path d="m13 8-4 5 5 3-2 6m1-14 4 4 4 1M9 13l-5 5M6 10l5-2"/>',swap:'<path d="M3 7h16l-4-4m4 4-4 4M21 17H5l4-4m-4 4 4 4"/>',power:'<circle cx="12" cy="6" r="2"/><path d="M12 9v7m-6-7 6 3 6-3M12 16l-4 5m4-5 4 5M3 3l3 3m15-3-3 3M2 15h3m17 0h-3"/>',info:'<circle cx="12" cy="12" r="10"/><path d="M12 10v7m0-11v1"/>',up:'<path d="m5 11 7-7 7 7M12 4v17"/>',down:'<path d="m5 13 7 7 7-7M12 3v17"/>',left:'<path d="m11 5-7 7 7 7M4 12h17"/>',right:'<path d="m13 5 7 7-7 7M3 12h17"/>'};
+function svg(name){return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+icons[name]+'</svg>';}
+export function setupMobileControls(ctx){
+ const mobile=matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0;if(!mobile)return {mobile:false,update(){},reset(){}};
+ document.body.classList.add('mobile-game');
+ const style=document.createElement('style');style.textContent=`
+ .mobile-game{overscroll-behavior:none}.mobile-game canvas{touch-action:none}
+ #mobileControls{position:fixed;inset:0;z-index:25;pointer-events:none;display:none;user-select:none;-webkit-user-select:none}
+ #mobileLook{position:absolute;inset:0 0 0 40%;pointer-events:auto;touch-action:none}
+ #mobileStick{position:absolute;left:max(22px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));width:clamp(88px,27vh,116px);height:clamp(88px,27vh,116px);border:2px solid #ffffff70;border-radius:50%;background:#15223570;pointer-events:auto;touch-action:none}
+ #mobileThumb{position:absolute;left:calc(50% - 22px);top:calc(50% - 22px);width:44px;height:44px;border-radius:50%;background:#ffffffa0;pointer-events:none}
+ #mobileControls button{pointer-events:auto;touch-action:none;border:1px solid #ffffff70;background:#142235d9;color:white;border-radius:10px;min-width:42px;min-height:40px;font:600 11px system-ui;padding:5px}
+ #mobileControls button svg{width:25px;height:25px;display:block;margin:auto}#mobileControls button:active,#mobileRun.is-on{background:#526b92}
+ #mobileActions{position:absolute;right:88px;bottom:16px;display:grid;grid-template-columns:repeat(2,48px);gap:5px}
+ #mobileSkills{position:absolute;right:16px;bottom:142px;display:flex;gap:5px}#mobileSkills button{width:44px;height:46px}
+ #mobileControls.skills-center #mobileSkills{right:auto;left:50%;transform:translateX(-50%);bottom:77px}
+ #mobilePunch{position:absolute;right:16px;bottom:16px;width:62px;height:62px;border-radius:50%!important}
+ #mobileUltimate{position:absolute;right:16px;bottom:88px;width:60px;height:46px;overflow:hidden;border-color:var(--element)!important}
+ #mobileUltimate.ready{color:var(--element);box-shadow:0 0 18px var(--element);background:#283c52}
+ #mobileUltimate.ultimate-bar{width:115px;right:16px;bottom:92px;background:linear-gradient(90deg,var(--element) var(--charge),#142235 0)}
+ #mobileSpecial{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:54px;height:48px}#mobileSpecial.locked{border-style:dashed;opacity:.7}
+ #mobileSwitch{position:absolute;left:50%;top:10px;transform:translateX(-50%);width:46px;height:44px}
+ #mobileGateInfo{position:absolute;left:calc(50% + 58px);top:10px;width:44px;height:44px}
+ #mobileTop{position:absolute;right:max(12px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));display:flex;gap:5px}
+ #mobileRun{position:absolute;right:176px;bottom:115px;width:48px}#mobileControls.run-toggle #mobileRun{right:auto;left:55px;bottom:145px}
+ #mobileDirections{position:absolute;left:22px;bottom:20px;display:grid;grid-template-columns:repeat(3,44px);gap:5px}#mobileDirections button{height:44px}#mobileForward{grid-column:2}#mobileLeft{grid-row:2;grid-column:1}#mobileBackward{grid-row:2;grid-column:2}#mobileRight{grid-row:2;grid-column:3}
+ #mobileGears{position:absolute;left:50%;bottom:36px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;color:white;font:700 14px system-ui}
+ #rotatePhone{position:fixed;inset:0;z-index:100;background:#101c2b;display:flex;align-items:center;justify-content:center;flex-direction:column;color:white;text-align:center;padding:24px;font:20px system-ui}#rotatePhone[hidden]{display:none}#rotatePhone p{font-size:15px;color:#b9cbdc;max-width:300px}
+ #mobileGatePanel{position:fixed;inset:12% 24%;z-index:65;background:#142535;color:white;padding:20px;overflow:auto;border:1px solid #759faf;border-radius:14px}#mobileGatePanel[hidden]{display:none}
+ .mobile-game #settingsBtn,.mobile-game #hotbar,.mobile-game #mouseHint,.mobile-game #gateTip{display:none!important}
+ .mobile-game #settingsPanel{max-height:85%;width:min(500px,85vw)}.mobile-game #hud{left:max(8px,env(safe-area-inset-left));top:8px;padding:6px 8px;font-size:10px;max-width:160px}.mobile-game #hud .bar{width:120px;height:5px;margin:2px 0 3px}.mobile-game #hud .name{font-size:11px;margin-bottom:3px}
+ .mobile-game #toast{font-size:14px;white-space:normal;width:65%;text-align:center;top:18%}.mobile-game #prompt,.mobile-game #sitPrompt{bottom:36%;font-size:12px}.mobile-game #board{max-height:85%;width:min(480px,80vw)}.mobile-game #placesTravel{inset:5% 12%!important}.mobile-game #menu .panel{overflow-y:auto}.mobile-game #spawn{overflow:auto;padding:10px;box-sizing:border-box}
+ #mobileControls [hidden]{display:none!important}
+ `;document.head.append(style);
+ const root=document.createElement('div');root.id='mobileControls';root.innerHTML='<div id="mobileLook"></div><div id="mobileStick" data-mobile-control aria-label="Movement joystick"><div id="mobileThumb"></div></div><div id="mobileDirections"></div><div id="mobileActions"></div><div id="mobileSkills"></div><div id="mobileTop"></div><div id="mobileGears"><span id="mobileGearValue"></span></div>';document.body.append(root);
+ const rotate=document.createElement('div');rotate.id='rotatePhone';rotate.innerHTML='<strong>Rotate your phone sideways</strong><p>Play in landscape. Move on the left and drag the right side to look.</p>';document.body.append(rotate);
+ const info=document.createElement('div');info.id='mobileGatePanel';info.hidden=true;document.body.append(info);
+ const stick=root.querySelector('#mobileStick'),thumb=root.querySelector('#mobileThumb'),look=root.querySelector('#mobileLook');let stickPointer=null,lookPointer=null,lastX=0,lastY=0,sprinting=false;
+ const held=new Map(),clicks=new Set(),buttons={};const preferences=()=>({...CONTROL_DEFAULTS,...ctx.preferences?.()});const state=()=>ctx.state?.()||{};
+ function viewport(){return window.visualViewport||{width:innerWidth,height:innerHeight,offsetLeft:0,offsetTop:0};}
+ function active(){return viewport().width>viewport().height&&ctx.playing()&&!ctx.editingLayout?.();}
+ function clearMove(){for(const code of ['KeyW','KeyS','KeyA','KeyD'])ctx.key(code,false);thumb.style.transform='';stickPointer=null;}
+ function reset(){clearMove();lookPointer=null;sprinting=false;ctx.key('ShiftLeft',false);ctx.key('Space',false);ctx.key('KeyF',false);for(const fn of held.values())fn();held.clear();ctx.attack(false);}
+ document.addEventListener('click',e=>{if(clicks.has(e.pointerId)){clicks.delete(e.pointerId);e.preventDefault();e.stopImmediatePropagation();}},true);
+ function move(e){if(e.pointerId!==stickPointer)return;const r=stick.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,d=Math.hypot(dx,dy),scale=Math.min(1,40/(d||1));thumb.style.transform='translate('+dx*scale+'px,'+dy*scale+'px)';ctx.key('KeyA',dx<-12);ctx.key('KeyD',dx>12);ctx.key('KeyW',dy<-12);ctx.key('KeyS',dy>12);}
+ stick.addEventListener('pointerdown',e=>{if(!active()||stickPointer!==null)return;e.preventDefault();stickPointer=e.pointerId;stick.setPointerCapture(e.pointerId);move(e);});stick.addEventListener('pointermove',move);
+ for(const type of ['pointerup','pointercancel','lostpointercapture'])stick.addEventListener(type,e=>{if(e.pointerId===stickPointer)clearMove();});
+ look.addEventListener('pointerdown',e=>{if(!active()||lookPointer!==null)return;e.preventDefault();lookPointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;look.setPointerCapture(e.pointerId);});look.addEventListener('pointermove',e=>{if(e.pointerId!==lookPointer||!active())return;ctx.look(e.clientX-lastX,e.clientY-lastY);lastX=e.clientX;lastY=e.clientY;});for(const type of ['pointerup','pointercancel','lostpointercapture'])look.addEventListener(type,e=>{if(e.pointerId===lookPointer)lookPointer=null;});
+ function button(id,label,action,release,parent=root,icon=null){const b=document.createElement('button');b.id=id;b.dataset.mobileControl='';b.setAttribute('aria-label',label);b.title=label;b.innerHTML=icon?svg(icon)+'<span>'+label+'</span>':label;parent.append(b);buttons[id]=b;b.addEventListener('pointerdown',e=>{if(!active())return;e.preventDefault();clicks.add(e.pointerId);setTimeout(()=>clicks.delete(e.pointerId),750);b.setPointerCapture(e.pointerId);if(release)held.set(e.pointerId,release);action();});for(const type of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(type,e=>{const fn=held.get(e.pointerId);if(fn){held.delete(e.pointerId);fn();}});return b;}
+ const actions=root.querySelector('#mobileActions'),skills=root.querySelector('#mobileSkills'),top=root.querySelector('#mobileTop'),directions=root.querySelector('#mobileDirections'),gears=root.querySelector('#mobileGears');
+ button('mobileInteract','Interact',ctx.interact,null,actions);button('mobileJump','Jump / Climb',()=>ctx.key('Space',true),()=>ctx.key('Space',false),actions);button('mobileDash','Dash',ctx.dash,null,actions);button('mobileBlock','Block',()=>ctx.key('KeyF',true),()=>ctx.key('KeyF',false),actions);
+ button('mobilePunch','Punch',()=>ctx.attack(true),()=>ctx.attack(false),root,'punch');button('mobileSwitch','Switch',ctx.switchCharacter,null,root,'swap');button('mobileSpecial','SP',ctx.psychic,null,root);
+ button('mobileUltimate','Ultimate',ctx.ultimate,null,root,'power');
+ button('mobileRun','Run',()=>{if(preferences().mobileRun==='toggle'&&!state().driving){sprinting=!sprinting;ctx.key('ShiftLeft',sprinting);}else ctx.key('ShiftLeft',true);},()=>{if(preferences().mobileRun!=='toggle'||state().driving)ctx.key('ShiftLeft',false);},root,'run');
+ for(let i=0;i<4;i++)button('mobilePower'+(i+1),'Power '+(i+1),()=>ctx.skill(i),null,skills);
+ for(const [id,label,code,icon]of [['mobileForward','Forward','KeyW','up'],['mobileBackward','Backward / Brake','KeyS','down'],['mobileLeft','Left','KeyA','left'],['mobileRight','Right','KeyD','right']])button(id,label,()=>ctx.key(code,true),()=>ctx.key(code,false),directions,icon);
+ button('mobileGearDown','Gear down',()=>ctx.shiftGear?.(-1),null,gears,'down');button('mobileGearUp','Gear up',()=>ctx.shiftGear?.(1),null,gears,'up');
+ button('mobileStats','Stats',()=>{reset();ctx.board();},null,top);button('mobileSettings','Settings',()=>{reset();ctx.settings();},null,top);button('mobilePause','Pause',()=>{reset();ctx.pause();},null,top);
+ button('mobileGateInfo','Gate info',()=>{const html=ctx.gateInfo?.();if(!html)return;info.innerHTML=html;const close=document.createElement('button');close.textContent='Close';close.style.cssText='padding:10px;margin-top:12px';close.onclick=()=>{info.hidden=true;ctx.resume?.();};info.append(close);info.hidden=false;reset();ctx.pause();},null,root,'info');
+ let config='';
+ function update(){const v=viewport(),p=preferences(),s=state();document.documentElement.style.setProperty('--visible-height',v.height+'px');for(const el of [root,rotate]){el.style.width=v.width+'px';el.style.height=v.height+'px';el.style.left=(v.offsetLeft||0)+'px';el.style.top=(v.offsetTop||0)+'px';el.style.boxSizing='border-box';}
+ const portrait=v.height>=v.width,onboarding=['auth','menu','spawn','classSelect'].some(id=>{const el=document.getElementById(id);return el&&getComputedStyle(el).display!=='none';});rotate.hidden=!portrait||onboarding;if(portrait&&ctx.playing()){reset();ctx.pause();}const editing=ctx.editingLayout?.();root.style.display=!portrait&&(ctx.playing()||editing)?'block':'none';if(!ctx.playing()&&!editing)reset();
+ const next=JSON.stringify([p,s.driving,s.carMovement,s.manual]);if(next!==config){reset();config=next;root.classList.toggle('skills-center',p.mobileSkills==='center');root.classList.toggle('run-toggle',p.mobileRun==='toggle');const movement=s.driving?(s.carMovement||p.carMovement):p.mobileMovement;stick.hidden=movement==='buttons';directions.hidden=movement!=='buttons';}
+ const road=s.driving&&s.vehicleKind!=='plane'&&s.vehicleKind!=='boat';skills.hidden=!!s.driving;for(const id of ['mobilePunch','mobileDash','mobileBlock','mobileSwitch','mobileSpecial','mobileUltimate'])buttons[id].hidden=!!s.driving;buttons.mobileJump.hidden=road;buttons.mobileRun.hidden=road;gears.hidden=!(road&&s.manual);root.querySelector('#mobileGearValue').textContent='GEAR '+(s.gear||1);
+ buttons.mobileSpecial.classList.toggle('locked',!s.specialUnlocked);buttons.mobileSpecial.title=s.specialUnlocked?'Special ability':'Empty special slot: complete special training';
+ const ultimate=buttons.mobileUltimate,charge=Math.max(0,Math.min(100,s.ultimate||0));ultimate.classList.toggle('ultimate-bar',p.mobileUltimate==='bar');ultimate.classList.toggle('ready',charge===100);ultimate.style.setProperty('--element',s.color||'#8de1ce');ultimate.style.setProperty('--charge',charge+'%');ultimate.querySelector('span').textContent='ULT '+Math.floor(charge)+'%';buttons.mobileRun.classList.toggle('is-on',sprinting);buttons.mobileGateInfo.hidden=!s.gateAvailable;
+ }
+ addEventListener('resize',()=>{update();ctx.layoutChanged?.();});window.visualViewport?.addEventListener('resize',update);window.visualViewport?.addEventListener('scroll',update);addEventListener('blur',()=>{reset();ctx.pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden){reset();ctx.pause();}});update();return {mobile:true,update,reset,root};
 }

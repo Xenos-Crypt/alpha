@@ -287,7 +287,7 @@
     <button class="tab" data-stab="graphics">Graphics</button>
     <button class="tab" data-stab="view">View</button>
   </div>
-  <div id="stabControls">
+  <div id="stabControls"><div id="controlChoices"></div>
     WASD: move / drive &nbsp;·&nbsp; Mouse: look<br>
     Shift: sprint &nbsp;·&nbsp; Space: jump<br>
     Left click (hold): M1 combo<br>
@@ -408,6 +408,11 @@ import { buildTransport } from './transport.js';
 import { buildBridge } from './bridge.js';
 import { buildUrban } from './urban.js';
 import { buildSewersAndOffices } from './sewers-offices.js';
+import {loadControlPreferences,movementKey,buildControlSettings} from './control-preferences.js';
+const controlPrefs=loadControlPreferences();
+let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
+let specialTrainingKills=Math.min(5,Math.max(0,Number(localStorage.getItem('specialTrainingKills'))||0));
+let activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -2418,6 +2423,21 @@ let HOSPITAL_POS = null;
   civicBuildings.push({ type: 'hospital', name: 'St. Mary General Hospital', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
   HOSPITAL_POS = new THREE.Vector3(x, 0, z - d / 2 - 6);
 })();
+// Hand-placed fire station, next door to the hospital — firefighters standing by.
+(function buildFireStation() {
+  const x = -160, z = -200, w = 18, d = 14, h = 8;
+  box(w, h, d, x, h / 2, z, 0xc0392b);
+  box(w + 0.6, 0.6, d + 0.6, x, h + 0.3, z, 0x8e2a20);
+  box(4.5, 5, 0.2, x, 2.5, z - d / 2 - 0.05, 0x2a2a2a, false); // bay door
+  colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  civicBuildings.push({ type: 'fire_station', name: 'Ashford Fire Station', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  const truck = makeVehicle('car', 0xc0392b);
+  truck.group.position.set(x, 0, z - d / 2 - 6); truck.group.rotation.y = Math.PI; truck.ai = { from: nearestNode(truck.group.position), to: [0, 0], prev: null, s: 0, cruise: 10, parked: true, stopTimer: 0, stopped: false, chasing: false, blockedT: 0, ignoreT: 0, ramCd: 0 };
+  for (const [fx, fz] of [[-2, -8], [2, -8]]) {
+    const ff = makeHumanoid({ outfit: 0xcc3b2c, hair: 0x2a1c12, pants: 0x2a2a2a });
+    ff.root.position.set(x + fx, 0, z + fz); ff.root.rotation.y = Math.PI;
+  }
+})();
 
 function loadCityTile(tx, tz) {
   const key = `${tx}_${tz}`;
@@ -2762,12 +2782,13 @@ function applyHit(e, h) {
   stats.ult = Math.min(100, stats.ult + dmg * 0.6 * (1 + prog.men * 0.08));
   registerCombo(dmg);
   // The big screen-flash/shake was firing on every heavy hit regardless of target,
-  // which meant routine kills against trivial slimes felt as disruptive as a boss
-  // kill. Reserve the full flash for real enemies; slimes get the lighter version.
-  if (h.heavy && e.kind !== 'slime') impactFrame(h.impact ?? 1);
+  // which made routine kills feel as disruptive as a boss fight. Kills (any kind)
+  // never get the full flash now, even though the kill counter/combo still count.
+  const killingBlow = e.hp <= 0;
+  if (h.heavy && e.kind !== 'slime' && !killingBlow) impactFrame(h.impact ?? 1);
   else { hitStop = Math.max(hitStop, 0.035); shake = Math.max(shake, 0.08); }
 
-  if (e.hp <= 0) killEnemy(e);
+  if (killingBlow) killEnemy(e);
   return true;
 }
 
@@ -2783,6 +2804,7 @@ function killEnemy(e) {
     e.respawn = 10;
     e.root.visible = false;
     kills++;
+    if(!specialUnlocked){specialTrainingKills=Math.min(5,specialTrainingKills+1);localStorage.setItem('specialTrainingKills',String(specialTrainingKills));}
     gainXp(25);
   } else if (e.kind === 'monster') {
     e.respawn = Infinity;   // dungeon monsters stay dead
@@ -3535,7 +3557,7 @@ const PSY = [0xb388ff, 0x7c4dff, 0xe1bee7, 0xffffff];
 let psyCd = 0;
 function psychicGrip() {
   if (!canAct() || psyCd > 0) return;
-  if (prog.level < PSYCHIC_UNLOCK_LEVEL) { toast(`Psychic Grip unlocks at level ${PSYCHIC_UNLOCK_LEVEL}`); return; }
+  if (!specialUnlocked) { toast('Special slot is empty. Defeat 5 slimes, then claim your ability at the training-ground board.'); return; }
   const f = aimForward();
   const range = 9 + prog.men * 0.6, maxTargets = 2 + Math.floor(prog.men / 2);
   const grabbed = enemies.filter(e => {
@@ -4053,6 +4075,7 @@ function gateInfoHtml(g) {
 }
 const nearestGate = () => inCar ? null : gates.find(g => distXZ(g.pos, player.position) < 3.5);
 
+let inspectedGate=null;
 const gateRay = new THREE.Raycaster();
 const SCREEN_CENTER = new THREE.Vector2(0, 0);
 function updateGates(dt) {
@@ -4076,6 +4099,7 @@ function updateGates(dt) {
     gateRay.far = 90;
     shown = gateRay.intersectObjects(gates.map(g => g.disc), false)[0]?.object.userData.gate;
   }
+  inspectedGate=shown;
   const html = shown ? gateInfoHtml(shown) : '';
   if (html !== lastTip) { $('gateTip').innerHTML = html; $('gateTip').style.display = html ? 'block' : 'none'; lastTip = html; }
 }
@@ -4495,6 +4519,7 @@ function enterVehicle(v) {
     if (v.kind !== 'boat') raiseWanted(v.kind === 'police' ? 120 : 25);
     if (v.kind === 'police') { requestPoliceBackup(); toast('Police car stolen! Backup is pursuing you.'); }
   }
+  activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};transmissionAuto=activeDrivingControls.drivingMode==='automatic';gear=1;
   driving = v; inCar = true; action = null;
   if(cameraView==='first'){yaw=v.group.rotation.y+Math.PI;pitch=0;}
   player.visible = false;
@@ -4530,7 +4555,7 @@ function interact() {
   if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
   const service = nearestInteractable();
-  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label.startsWith('Enter sewer manhole'))) return service.action();
+  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole'))) return service.action();
   const cb = nearestCivicBuilding();
   if (cb) return enterCivicBuilding(cb);
   const g = nearestGate();
@@ -4762,8 +4787,7 @@ function renderBoard() {
   html += skillRow('Click', { icon: '⚔️', name: 'M1 Combo', desc: 'Hold or tap for a 4-hit combo. The 4th hit sends enemies flying.', dmg: `${attackDmg()} ×3 + ${Math.round(attackDmg() * 1.8)}` });
   html += skillRow('Q', { icon: '➤', name: 'Dash', desc: 'Quick dash in the direction you are moving. Brief invincibility.', dmg: '0' }, ' · Cooldown 1.5s');
   html += skillRow('F', { icon: '🛡️', name: 'Block', desc: 'Hold to block hits from the front (80% less damage). Guard-break moves go through.', dmg: '0' });
-  html += skillRow('R', { icon: '🧠', name: 'Psychic Grip', desc: 'Lift enemies or people in front of you with your mind, then hurl them. Throwing them into a wall deals bonus damage. Scales with Mental.', dmg: `${psyDmg()} + wall slam` },
-    ` · Cooldown ${psyCdMax().toFixed(1)}s · Grabs up to ${2 + Math.floor(prog.men / 2)}`);
+  html += skillRow('R', { icon: 'SP', name: specialUnlocked ? 'Psychic Grip' : 'Empty special slot', desc: specialUnlocked ? 'Lift nearby targets and throw them. Scales with Mental.' : 'Defeat 5 slimes and claim your special ability at the training-ground board. Progress: '+specialTrainingKills+'/5.', dmg: specialUnlocked ? String(psyDmg()) : '0' });
   for (const c of characters) {
     html += `<div class="charHead" style="color:${hex(c.fx)}">${c.name}${c === characters[charIdx] ? ' (active)' : ''}</div>`;
     c.skills.forEach((s, i) => { html += skillRow(i + 1, s, ` · Cooldown ${s.cd}s`); });
@@ -4793,7 +4817,7 @@ function updateHotbar() {
   };
   set(slotEls[0], dashCd, 1.5);
   set(slotEls[1], psyCd, psyCdMax());
-  slotEls[1].el.classList.toggle('locked', prog.level < PSYCHIC_UNLOCK_LEVEL);
+  slotEls[1].el.classList.toggle('locked', !specialUnlocked);slotEls[1].el.querySelector('.lvl').textContent=specialUnlocked?'':'Quest';
   c.skills.forEach((s, i) => { set(slotEls[i + 2], c.cds[i], s.cd); slotEls[i + 2].el.classList.toggle('locked', prog.level < SKILL_UNLOCK_LEVEL[i]); });
   slotEls[slotEls.length - 1].el.classList.toggle('locked', prog.level < ULT_UNLOCK_LEVEL);
   const u = slotEls[slotEls.length - 1];
@@ -4965,7 +4989,10 @@ function setFreeMouse(on) {
 }
 
 addEventListener('keydown', e => {
-  keys[e.code] = true;
+  if(e.target.closest?.('input,textarea,select,[contenteditable=true]'))return;
+  if(e.code==='KeyS'&&!e.ctrlKey&&!e.metaKey&&(controlPrefs.desktopMovement==='arrows'||e.shiftKey)){if(!e.repeat&&(locked||settingsOpen||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
+  const movement=movementKey(e.code,controlPrefs.desktopMovement);if(movement)keys[movement]=true;
+  if(e.code.startsWith('Arrow'))e.preventDefault();
   if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   if (e.code === 'KeyC' && (locked || boardOpen)) { toggleBoard(!boardOpen); return; }
@@ -4978,13 +5005,13 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyG') useUlt();
   if (e.code === 'KeyM') { player.position.set(CITY_OFFSET.x, player.position.y, CITY_OFFSET.z); toast('Teleported to Edinburgh (testing only)'); } // temporary test-only fast travel to the real-world map patch
   if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) useSkill(Number(e.code.slice(5)) - 1);
-  if (e.code === 'KeyN' && inCar && isRoadVehicle(driving)) { transmissionAuto = !transmissionAuto; gear = 1; toast(transmissionAuto ? 'Automatic transmission' : 'Manual transmission — Z/X to shift'); }
+  if (e.code === 'KeyN' && inCar && isRoadVehicle(driving)) { toast('Choose transmission in Settings before entering your next vehicle.'); }
   if (!transmissionAuto && inCar && isRoadVehicle(driving)) {
     if (e.code === 'KeyZ') { gear = Math.min(5, gear + 1); toast('Gear ' + gear); }
     if (e.code === 'KeyX') { gear = Math.max(1, gear - 1); toast('Gear ' + gear); }
   }
 });
-addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('keyup', e => {const code=movementKey(e.code,controlPrefs.desktopMovement);if(code)keys[code]=false;});
 // Switching windows/tabs never fires keyup for whatever was held, so a movement
 // key can get stuck "down" forever. Clear all held keys the moment focus leaves.
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseHeld = false; });
@@ -5207,7 +5234,8 @@ function resolveRoadMovement(v, start, dt) {
 // Manual/automatic transmission: in manual, top speed is capped by the current
 // gear until you shift up (Z) or down (X); N toggles between the two.
 const GEAR_RATIOS = [0.22, 0.42, 0.62, 0.82, 1.0];
-let transmissionAuto = true, gear = 1;
+let transmissionAuto = controlPrefs.drivingMode==='automatic', gear = 1;
+function shiftGear(direction){if(inCar&&!transmissionAuto&&isRoadVehicle(driving)){gear=clamp(gear+direction,1,5);toast('Gear '+gear);}}
 function driveVehicle(v, dt) {
   if (isRoadVehicle(v) && isSeaWater(v.group.position.x,v.group.position.z,v.group.position.y)) { v.disabled=true;v.health=0;v.speed=0;if(v===driving){exitVehicle(true);toast('Vehicle submerged. Swim to shore.');}return; }
   if (v.kind === 'plane') return flyPlane(v, dt);
@@ -5624,6 +5652,8 @@ sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpo
  canEnter:()=>!inCar&&!transport?.rider&&!sitting&&!action,
  moveTo(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);yaw=0;}
 });
+interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 slimes. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
+buildControlSettings($('controlChoices'),controlPrefs,matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0,()=>{for(const key in keys)keys[key]=false;mobileControls?.reset();mobileControls?.update();applyLayout();});
 mobileControls = setupMobileControls({
   playing: () => locked && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
@@ -5631,6 +5661,9 @@ mobileControls = setupMobileControls({
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
   attack: down => { mouseHeld = down; if (down) m1(); },
   board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame,
+  preferences:()=>controlPrefs,
+  state:()=>({driving:inCar,vehicleKind:driving?.kind,carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
+  shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
 applyLayout();
