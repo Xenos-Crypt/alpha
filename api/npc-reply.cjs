@@ -1,4 +1,4 @@
-const{NPC_SYSTEM,callOpenAI,sanitizeNpc,sanitizePlayer,cleanText,requireKey,withApi}=require('./_lib');
+const{NPC_SYSTEM,callOpenAI,sanitizeNpc,sanitizePlayer,cleanText,requireKey,withApi}=require('./_lib.cjs');
 
 async function npcReply(body){
   const key=requireKey();
@@ -9,4 +9,4 @@ async function npcReply(body){
   return callOpenAI(key,NPC_SYSTEM+'\nYou are continuing an ongoing conversation; the prior turns below are real memory the NPC has of this player — refer back to them naturally when relevant.',[...historyMessages,{role:'user',content:userText}]);
 }
 
-exports.handler=withApi(npcReply);
+module.exports=withApi(npcReply);

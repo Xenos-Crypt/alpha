@@ -1,7 +1,7 @@
 // Re-exports the shared system prompts / sanitizers / OpenAI caller from
 // api/_lib.js (written for Vercel's req/res convention) and adds a Netlify
 // Functions-flavored wrapper (event/context -> {statusCode, body}) instead.
-const shared = require('../../api/_lib');
+const shared = require('../../api/_lib.cjs');
 const { rateLimited } = (() => {
   const buckets = new Map();
   return {

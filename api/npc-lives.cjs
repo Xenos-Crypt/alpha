@@ -1,4 +1,4 @@
-const{RESIDENT_LIFE_SYSTEM,callOpenAI,sanitizeResidentList,requireKey,withApi}=require('./_lib');
+const{RESIDENT_LIFE_SYSTEM,callOpenAI,sanitizeResidentList,requireKey,withApi}=require('./_lib.cjs');
 
 async function generateResidentLives(body){
   const key=requireKey();
@@ -9,4 +9,4 @@ async function generateResidentLives(body){
   return data;
 }
 
-exports.handler=withApi(generateResidentLives);
+module.exports=withApi(generateResidentLives);

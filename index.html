@@ -240,7 +240,8 @@
 <div id="menu">
   <div class="panel">
     <h1>Another World</h1>
-    <button id="menuOffline"><b>Offline mode</b><span class="sub">Play solo, no one else around</span></button>
+    <button id="menuOffline"><b id="menuOfflineLabel">Offline mode</b><span class="sub" id="menuOfflineSub">Play solo, no one else around</span></button>
+    <button id="menuNewGame" style="display:none"><b>New game</b><span class="sub">Start over — your saved progress will be erased</span></button>
     <button id="menuHost"><b>Host game</b><span class="sub">Start a game others can join — coming soon</span></button>
     <button id="menuJoin"><b>Join game</b><span class="sub">Enter a code or browse open games — coming soon</span></button>
     <button id="menuCreate"><b>Create game</b><span class="sub">Add your own content — coming soon</span></button>
@@ -1438,10 +1439,44 @@ function runSpawnScreen(userId, persist) {
   });
 }
 
-function showMenu() {
+// =====================================================================
+// SOLO SAVE: localStorage, keyed per account, so "Offline mode" remembers
+// your life (origin, level, gold, position) across reloads instead of
+// re-rolling every time. "New game" explicitly wipes it and rolls fresh.
+// =====================================================================
+let soloMode = false, soloUserId = null, soloSaveTimer = 0;
+const soloSaveKey = userId => 'aw_solo_save_' + userId;
+function loadSolo(userId) { try { const raw = localStorage.getItem(soloSaveKey(userId)); return raw ? JSON.parse(raw) : null; } catch { return null; } }
+function clearSolo(userId) { try { localStorage.removeItem(soloSaveKey(userId)); } catch {} }
+function saveSolo() {
+  if (!soloMode || !soloUserId) return;
+  try {
+    localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
+      origin, prog, gold: stats.gold,
+      pos: { x: player.position.x, y: player.position.y, z: player.position.z }, yaw,
+    }));
+  } catch {}
+}
+function applySoloSave(save) {
+  origin = save.origin;
+  Object.assign(prog, save.prog);
+  stats.gold = save.gold ?? 0;
+  stats.hp = maxHp();
+  swordGrip.visible = !!origin.weapon;
+  if (save.pos) player.position.set(save.pos.x, save.pos.y, save.pos.z);
+  if (typeof save.yaw === 'number') yaw = save.yaw;
+}
+
+function showMenu(hasSave) {
   return new Promise(resolve => {
     $('menu').style.display = 'block';
-    $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve('offline'); };
+    if (hasSave) {
+      $('menuOfflineLabel').textContent = 'Continue';
+      $('menuOfflineSub').textContent = 'Pick up where you left off';
+      $('menuNewGame').style.display = '';
+    }
+    $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
+    $('menuNewGame').onclick = () => { $('menu').style.display = 'none'; resolve('new'); };
     $('menuHost').onclick = () => toast('Hosting a game is still in development — check back soon.');
     $('menuJoin').onclick = () => toast('Joining a game is still in development — check back soon.');
     $('menuCreate').onclick = () => toast('Creating your own content is still in development — check back soon.');
@@ -1455,8 +1490,16 @@ async function boot() {
   const { data: { session } } = await supabase.auth.getSession();
   const activeSession = session || await showAuthScreen();
   supabase.from('logins').insert({ user_id: activeSession.user.id });
-  const mode = await showMenu();
-  if (mode === 'offline') await runSpawnScreen(activeSession.user.id, false); // fresh life every time, nothing saved
+  const existingSave = loadSolo(activeSession.user.id);
+  const mode = await showMenu(!!existingSave);
+  if (mode === 'continue') {
+    applySoloSave(existingSave);
+  } else if (mode === 'new') {
+    clearSolo(activeSession.user.id);
+    await runSpawnScreen(activeSession.user.id, false);
+  }
+  if (mode === 'continue' || mode === 'new') { soloMode = true; soloUserId = activeSession.user.id; }
+  window.addEventListener('beforeunload', saveSolo);
   $('start').style.display = 'flex';
 }
 boot();
@@ -3629,6 +3672,9 @@ addEventListener('keydown', e => {
   if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) useSkill(Number(e.code.slice(5)) - 1);
 });
 addEventListener('keyup', e => keys[e.code] = false);
+// Switching windows/tabs never fires keyup for whatever was held, so a movement
+// key can get stuck "down" forever. Clear all held keys the moment focus leaves.
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseHeld = false; });
 addEventListener('mousemove', e => {
   if (!locked || cine || freeMouse) return;
   yaw -= e.movementX * 0.0025;
@@ -4051,6 +4097,8 @@ function frame() {
     wanted = Math.max(0, wanted - dt);
     updateNeeds(dt);
     if (!inCar) updatePlayer(dt);
+    soloSaveTimer += dt;
+    if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);
     updateVehicles(dt);
     updatePlanes(dt);
