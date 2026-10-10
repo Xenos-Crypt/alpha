@@ -6,10 +6,10 @@ export function setupMobileControls(ctx) {
   .mobile-game{overscroll-behavior:none}.mobile-game canvas{touch-action:none}
   #mobileControls{position:fixed;inset:0;z-index:25;pointer-events:none;display:none;user-select:none;-webkit-user-select:none}
   #mobileLook{position:absolute;inset:0 0 0 45%;pointer-events:auto;touch-action:none}
-  #mobileStick{position:absolute;left:max(22px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));width:116px;height:116px;border:2px solid #ffffff70;border-radius:50%;background:#15223570;pointer-events:auto;touch-action:none}
-  #mobileThumb{position:absolute;left:34px;top:34px;width:44px;height:44px;border-radius:50%;background:#ffffffa0;pointer-events:none}
-  #mobileButtons{position:absolute;right:max(16px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,54px);gap:7px}
-  #mobileControls button{pointer-events:auto;touch-action:none;border:1px solid #ffffff70;background:#142235c9;color:white;border-radius:12px;min-height:44px;font:600 11px system-ui;padding:5px}
+  #mobileStick{position:absolute;left:max(22px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));width:clamp(88px,27vh,116px);height:clamp(88px,27vh,116px);border:2px solid #ffffff70;border-radius:50%;background:#15223570;pointer-events:auto;touch-action:none}
+  #mobileThumb{position:absolute;left:calc(50% - 22px);top:calc(50% - 22px);width:44px;height:44px;border-radius:50%;background:#ffffffa0;pointer-events:none}
+  #mobileButtons{position:absolute;right:max(16px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,clamp(44px,7vw,54px));gap:clamp(4px,1.4vh,7px)}
+  #mobileControls button{pointer-events:auto;touch-action:none;border:1px solid #ffffff70;background:#142235c9;color:white;border-radius:12px;min-height:clamp(36px,11vh,44px);font:600 11px system-ui;padding:5px}
   #mobileControls button:active{background:#526b92}
   #mobileTop{position:absolute;right:max(16px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));display:flex;gap:8px}
   #rotatePhone{position:fixed;inset:0;z-index:100;background:#101c2b;display:flex;align-items:center;justify-content:center;flex-direction:column;color:white;text-align:center;padding:24px;font:20px system-ui}
@@ -32,7 +32,7 @@ export function setupMobileControls(ctx) {
   document.addEventListener('click',e=>{if(controlClicks.has(e.pointerId)){controlClicks.delete(e.pointerId);e.preventDefault();e.stopImmediatePropagation();}},true);
   function clearMove(){for(const key of ['KeyW','KeyS','KeyA','KeyD'])ctx.key(key,false);thumb.style.transform='';stickPointer=null;}
   function reset(){clearMove();lookPointer=null;for(const release of held.values())release();held.clear();ctx.attack(false);}
-  function active(){return innerWidth>innerHeight&&ctx.playing();}
+  function active(){return viewport().width>viewport().height&&ctx.playing();}
   function move(e){if(e.pointerId!==stickPointer)return;const r=stick.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,length=Math.hypot(dx,dy),scale=Math.min(1,40/(length||1));thumb.style.transform='translate('+dx*scale+'px,'+dy*scale+'px)';ctx.key('KeyA',dx<-12);ctx.key('KeyD',dx>12);ctx.key('KeyW',dy<-12);ctx.key('KeyS',dy>12);}
   stick.addEventListener('pointerdown',e=>{if(!active()||stickPointer!==null)return;e.preventDefault();stickPointer=e.pointerId;stick.setPointerCapture(e.pointerId);move(e);});stick.addEventListener('pointermove',move);
   for(const type of ['pointerup','pointercancel','lostpointercapture'])stick.addEventListener(type,e=>{if(e.pointerId===stickPointer)clearMove();});
@@ -50,7 +50,18 @@ export function setupMobileControls(ctx) {
   button('Stats',()=>{reset();ctx.board();},null,root.querySelector('#mobileTop'));
   button('Settings',()=>{reset();ctx.settings();},null,root.querySelector('#mobileTop'));
   button('Pause',()=>{reset();ctx.pause();},null,root.querySelector('#mobileTop'));
-  function update(){const portrait=innerHeight>=innerWidth;rotate.hidden=!portrait;if(portrait&&ctx.playing()){reset();ctx.pause();}const editing=ctx.editingLayout?.();root.style.display=!portrait&&(ctx.playing()||editing)?'block':'none';if(!ctx.playing()&&!editing)reset();}
-  addEventListener('resize',update);addEventListener('blur',()=>{reset();ctx.pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden){reset();ctx.pause();}});update();
+  function viewport(){return window.visualViewport||{width:innerWidth,height:innerHeight,offsetLeft:0,offsetTop:0};}
+  function update(){
+    const v=viewport();document.documentElement.style.setProperty('--visible-height',v.height+'px');
+    for(const el of [root,rotate]){el.style.width=v.width+'px';el.style.height=v.height+'px';el.style.left=(v.offsetLeft||0)+'px';el.style.top=(v.offsetTop||0)+'px';el.style.boxSizing='border-box';}
+    const portrait=v.height>=v.width;
+    const onboarding=['auth','menu','spawn','classSelect'].some(id=>{const el=document.getElementById(id);return el&&getComputedStyle(el).display!=='none';});
+    rotate.hidden=!portrait||onboarding;
+    if(portrait&&ctx.playing()){reset();ctx.pause();}
+    const editing=ctx.editingLayout?.();root.style.display=!portrait&&(ctx.playing()||editing)?'block':'none';
+    if(!ctx.playing()&&!editing)reset();
+  }
+  addEventListener('resize',update);window.visualViewport?.addEventListener('resize',update);window.visualViewport?.addEventListener('scroll',update);
+  addEventListener('blur',()=>{reset();ctx.pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden){reset();ctx.pause();}});update();
   return {mobile:true,update,reset};
 }
