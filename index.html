@@ -2584,7 +2584,8 @@ function dash() {
 // New characters only have the basic M1/dash/block — the 4 elemental skills and
 // the ultimate unlock progressively as you level up, instead of all being available
 // from the very first second of a brand-new life.
-const SKILL_UNLOCK_LEVEL = [1, 2, 3, 4];
+const SKILL_UNLOCK_LEVEL = [2, 2, 3, 4];
+const PSYCHIC_UNLOCK_LEVEL = 2;
 const ULT_UNLOCK_LEVEL = 5;
 function useSkill(i) {
   const c = characters[charIdx];
@@ -2652,6 +2653,7 @@ const PSY = [0xb388ff, 0x7c4dff, 0xe1bee7, 0xffffff];
 let psyCd = 0;
 function psychicGrip() {
   if (!canAct() || psyCd > 0) return;
+  if (prog.level < PSYCHIC_UNLOCK_LEVEL) { toast(`Psychic Grip unlocks at level ${PSYCHIC_UNLOCK_LEVEL}`); return; }
   const f = aimForward();
   const range = 9 + prog.men * 0.6, maxTargets = 2 + Math.floor(prog.men / 2);
   const grabbed = enemies.filter(e => {
@@ -3506,16 +3508,43 @@ function interact() {
 // =====================================================================
 const CIVIC_OFFSET = new THREE.Vector3(-5000, 0, 0);
 let inCivicInterior = false, civicReturnPos = null;
+// One shared room, but its colors are retinted per building type on entry (see
+// enterCivicBuilding) so a hospital, police station and library don't all look
+// identical — a cheap stand-in for genuinely unique interiors per building.
+const CIVIC_THEMES = {
+  police: { wall: 0xd7dde6, floor: 0x9aa7b8, light: 0xdbe8ff },
+  hospital: { wall: 0xf5fbf8, floor: 0xd8ecE4, light: 0xffffff },
+  clinic: { wall: 0xf5fbf8, floor: 0xd8ecE4, light: 0xffffff },
+  doctors: { wall: 0xf5fbf8, floor: 0xd8ecE4, light: 0xffffff },
+  courthouse: { wall: 0xe9e2d0, floor: 0xb9ac8c, light: 0xfff3d6 },
+  townhall: { wall: 0xe9e2d0, floor: 0xb9ac8c, light: 0xfff3d6 },
+  library: { wall: 0xe3d2b4, floor: 0x8a6a46, light: 0xffecc2 },
+  school: { wall: 0xfff3cf, floor: 0xe0c468, light: 0xfff6d9 },
+  university: { wall: 0xfff3cf, floor: 0xe0c468, light: 0xfff6d9 },
+  fire_station: { wall: 0xf2d3d0, floor: 0x9e3b35, light: 0xffe3df },
+  community_centre: { wall: 0xdcefe3, floor: 0x7fbf9a, light: 0xeafff2 },
+  job_centre: { wall: 0xdfe4ef, floor: 0x8c97b8, light: 0xeef1ff },
+  post_office: { wall: 0xf2e3d0, floor: 0xc98c3b, light: 0xfff0d9 },
+  bank: { wall: 0xeef0e4, floor: 0x5c6e4a, light: 0xfaffea },
+};
+const DEFAULT_CIVIC_THEME = { wall: 0xe8e4d8, floor: 0xcfc9ba, light: 0xfff4d6 };
+let civicFloor, civicWalls = [], civicLight;
 (function buildCivicInterior() {
-  box(26, 0.3, 20, CIVIC_OFFSET.x, 0.15, CIVIC_OFFSET.z, 0xcfc9ba);             // floor
-  box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z - 10, 0xe8e4d8);            // back wall
-  box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z + 10, 0xe8e4d8);            // front wall (with a gap for the door, see below)
-  box(0.4, 6, 20, CIVIC_OFFSET.x - 13, 3, CIVIC_OFFSET.z, 0xe8e4d8);
-  box(0.4, 6, 20, CIVIC_OFFSET.x + 13, 3, CIVIC_OFFSET.z, 0xe8e4d8);
-  const light = new THREE.PointLight(0xfff4d6, 1.2, 30);
-  light.position.set(CIVIC_OFFSET.x, 5, CIVIC_OFFSET.z);
-  scene.add(light);
+  civicFloor = box(26, 0.3, 20, CIVIC_OFFSET.x, 0.15, CIVIC_OFFSET.z, 0xcfc9ba);             // floor
+  civicWalls.push(box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z - 10, 0xe8e4d8));        // back wall
+  civicWalls.push(box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z + 10, 0xe8e4d8));        // front wall
+  civicWalls.push(box(0.4, 6, 20, CIVIC_OFFSET.x - 13, 3, CIVIC_OFFSET.z, 0xe8e4d8));
+  civicWalls.push(box(0.4, 6, 20, CIVIC_OFFSET.x + 13, 3, CIVIC_OFFSET.z, 0xe8e4d8));
+  civicLight = new THREE.PointLight(0xfff4d6, 1.2, 30);
+  civicLight.position.set(CIVIC_OFFSET.x, 5, CIVIC_OFFSET.z);
+  scene.add(civicLight);
 })();
+function applyCivicTheme(type) {
+  const t = CIVIC_THEMES[type] || DEFAULT_CIVIC_THEME;
+  civicFloor.material.color.set(t.floor);
+  for (const w of civicWalls) w.material.color.set(t.wall);
+  civicLight.color.set(t.light);
+}
 function nearestCivicBuilding() {
   let best = null, bestD = 6;
   for (const b of civicBuildings) {
@@ -3535,6 +3564,7 @@ async function enterCivicBuilding(b) {
   } catch {}
   setTimeout(() => {
     inCivicInterior = true;
+    applyCivicTheme(b.type);
     player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8);
     player.rotation.y = Math.PI;
     yaw = 0; vy = 0; pvel.set(0, 0, 0);
@@ -3605,7 +3635,7 @@ function buildHotbar() {
     <div class="sname">${s.name}</div><div class="key">${key}</div><div class="cd"></div><div class="cdt"></div>
     <div class="lock">🔒<span class="lvl">Lv ${lvl}</span></div></div>`;
   $('hotbar').innerHTML = slot('Q', { icon: '➤', name: 'Dash' }, 'small')
-    + slot('R', { icon: '🧠', name: 'Psychic' }, 'small')
+    + slot('R', { icon: '🧠', name: 'Psychic' }, 'small', PSYCHIC_UNLOCK_LEVEL)
     + c.skills.map((s, i) => slot(i + 1, s, '', SKILL_UNLOCK_LEVEL[i])).join('')
     + slot('G', c.ult, 'ult', ULT_UNLOCK_LEVEL);
   slotEls = [...$('hotbar').children].map(el => ({ el, cd: el.querySelector('.cd'), cdt: el.querySelector('.cdt') }));
@@ -3618,6 +3648,7 @@ function updateHotbar() {
   };
   set(slotEls[0], dashCd, 1.5);
   set(slotEls[1], psyCd, psyCdMax());
+  slotEls[1].el.classList.toggle('locked', prog.level < PSYCHIC_UNLOCK_LEVEL);
   c.skills.forEach((s, i) => { set(slotEls[i + 2], c.cds[i], s.cd); slotEls[i + 2].el.classList.toggle('locked', prog.level < SKILL_UNLOCK_LEVEL[i]); });
   slotEls[slotEls.length - 1].el.classList.toggle('locked', prog.level < ULT_UNLOCK_LEVEL);
   const u = slotEls[slotEls.length - 1];
