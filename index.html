@@ -1304,6 +1304,26 @@ const characters = [
     ],
     ult: { name: 'Tempest Sovereign', icon: '🌀', dmg: '6/tick + 40', desc: 'Cinematic giant tornado that drags in everything around you.', run: galeUlt },
   },
+  {
+    name: 'Tide (Hydro)', color: 0x2a7ab8, hair: 0x0c2f4a, fx: 0x5fc9f3, jump: 9, cds: [0, 0, 0, 0],
+    skills: [
+      { name: 'Tide Dash', icon: '🌊', cd: 5, dmg: '14', desc: 'Dash through enemies in a rush of water, pulling them along.', run: tideDash },
+      { name: 'Geyser Burst', icon: '⛲', cd: 7, dmg: '18', desc: 'Erupting geyser launches enemies skyward. Breaks guard.', run: tideGeyser },
+      { name: 'Water Jet Barrage', icon: '💦', cd: 8, dmg: '3 × 11', desc: 'Fire three piercing jets of pressurized water where you aim.', run: tideJets },
+      { name: 'Tsunami Slam', icon: '🌀', cd: 10, dmg: '30', desc: 'Leap and crash down in a wave of water. Breaks guard.', run: tideTsunami },
+    ],
+    ult: { name: 'Tidal Sovereign', icon: '🌊', dmg: '60', desc: 'Cinematic tidal explosion, then +30% damage for 10 seconds.', run: tideUlt },
+  },
+  {
+    name: 'Terra (Geo)', color: 0x8a6a46, hair: 0x3a2b1a, fx: 0xb8a88a, jump: 8, cds: [0, 0, 0, 0],
+    skills: [
+      { name: 'Boulder Charge', icon: '🪨', cd: 5, dmg: '15', desc: 'Charge through enemies like a rolling boulder.', run: terraCharge },
+      { name: 'Stone Fist', icon: '👊', cd: 7, dmg: '19', desc: 'Earthen uppercut that launches enemies skyward. Breaks guard.', run: terraFist },
+      { name: 'Rock Barrage', icon: '🌑', cd: 8, dmg: '3 × 12', desc: 'Hurl three heavy stones where you aim.', run: terraBarrage },
+      { name: 'Ground Pound', icon: '⛰️', cd: 10, dmg: '32', desc: 'Leap and slam down with crushing force. Breaks guard.', run: terraPound },
+    ],
+    ult: { name: 'Terra Sovereign', icon: '🗿', dmg: '62', desc: 'Cinematic earthquake explosion, then +30% damage for 10 seconds.', run: terraUlt },
+  },
 ];
 let charIdx = 0;
 
@@ -1422,9 +1442,9 @@ async function loadOrCreateProfile(userId) {
 // =====================================================================
 const CLASS_DEFS = [
   { key: 'fire', name: 'Fire', icon: '🔥', playable: true, charIndex: 0 },
-  { key: 'water', name: 'Water', icon: '💧' },
+  { key: 'water', name: 'Water', icon: '💧', playable: true, charIndex: 2 },
   { key: 'air', name: 'Air', icon: '💨', playable: true, charIndex: 1 },
-  { key: 'rock', name: 'Rock', icon: '🪨' },
+  { key: 'rock', name: 'Rock', icon: '🪨', playable: true, charIndex: 3 },
   { key: 'poison', name: 'Poison', icon: '☠️', locked: true },
   { key: 'lightning', name: 'Lightning', icon: '⚡', locked: true },
   { key: 'thunder', name: 'Thunder', icon: '🌩️', locked: true },
@@ -2986,6 +3006,156 @@ function galeUlt() {
     impactFrame(1.3);
     fxRing(pos, 0x9fffe6, 16, 0.6);
     spawnTornado(pos, { dur: 3.5, pullR: 16, scale: 2.2, tickDmg: S(6), burstDmg: S(40), burstImpact: 1.5, color: 0x9fffe6 });
+  } });
+}
+
+// ---- Water (Tide) ----
+const WATER = [0x2a7ab8, 0x5fc9f3, 0xaee6ff, 0xffffff];
+function tideDash() {
+  const f = aimForward();
+  iFrames = 0.35;
+  startAction({ name: 'Tide Dash', dur: 0.35, pose: 'dash', update(dt, t, a) {
+    player.position.addScaledVector(f, 27 * dt);
+    for (let i = 0; i < 3; i++) spawnParticle(at(player.position, 0.3 + Math.random() * 1.5), randUnit().multiplyScalar(1.5).addScaledVector(f, -4), pick(WATER), 0.2, 0.5, -1);
+    hitAround(player.position, 1.8, a.hits, { dmg: S(14), kb: 7, up: 3, stun: 0.9 });
+  }, end() { fxRing(player.position, 0x5fc9f3, 3, 0.35); } });
+}
+function tideGeyser() {
+  const f = aimForward();
+  startAction({ name: 'Geyser Burst', dur: 0.6, pose: 'uppercut', update(dt, t, a) {
+    if (t < 0.12) { player.position.addScaledVector(f, 8 * dt); return; }
+    if (a.fired) return;
+    a.fired = true;
+    vy = 11; onGround = false;
+    hitCone(player.position, f, 3.2, 0.2, a.hits, { dmg: S(18), kb: 2, up: 17, stun: 1.5, heavy: true, impact: 0.8, guardBreak: true });
+    const spot = player.position.clone().addScaledVector(f, 1.5);
+    fxPillar(spot, 0x2a7ab8, 1.1, 10, 0.5);
+    burst(at(spot, 0.5), 30, WATER, 6, 0.25, 0.7, -5, 8);
+  } });
+}
+function tideJets() {
+  const f = aimForward();
+  startAction({ name: 'Water Jet Barrage', dur: 0.85, update(dt, t, a) {
+    a.pose = Math.floor(t / 0.25) % 2 ? 'punchL' : 'punchR';
+    [0.1, 0.35, 0.6].forEach((when, i) => {
+      if (t < when || a['f' + i]) return;
+      a['f' + i] = true;
+      const dir = f.clone().applyAxisAngle(UP, (i - 1) * 0.1);
+      fireProjectile({ from: at(player.position, 1.3).addScaledVector(dir, 0.8), dir, speed: 34, range: 30, color: 0x5fc9f3, size: 0.3,
+        explode: { r: 2.4, dmg: S(11), kb: 7, up: 3, stun: 0.7 } });
+    });
+  } });
+}
+function tideTsunami() {
+  const f = aimForward();
+  vy = 15; onGround = false;
+  startAction({ name: 'Tsunami Slam', dur: 2.0, pose: 'slam', update(dt, t, a) {
+    for (let i = 0; i < (a.diving ? 5 : 2); i++) spawnParticle(at(player.position, Math.random() * 1.8), randUnit().multiplyScalar(1.5), pick(WATER), 0.3, 0.5, -2);
+    if (!a.diving) {
+      player.position.addScaledVector(f, 7 * dt);
+      if (t > 0.45) { a.diving = true; vy = -42; }
+    } else {
+      player.position.addScaledVector(f, 10 * dt);
+      if (onGround) { a.done = true; slamImpact(player.position.clone(), 0x2a7ab8, 6, S(30)); }
+    }
+  } });
+}
+function tideUlt() {
+  startCinematic(1.1, 'TIDAL SOVEREIGN', 0x2a7ab8);
+  startAction({ name: 'ult', dur: 1.5, pose: 'charge', noGravity: true, superArmor: true, update(dt, t, a) {
+    if (t < 1.1) {
+      vy = 0;
+      player.position.y = lerp(player.position.y, groundY(player.position.x, player.position.z) + 1.2, 1 - Math.exp(-3 * dt));
+      for (let i = 0; i < 4; i++) {
+        const off = randUnit().multiplyScalar(3);
+        spawnParticle(at(player.position, 1).add(off), off.clone().multiplyScalar(-2.5), pick(WATER), 0.2, 0.4);
+      }
+      return;
+    }
+    if (a.boom) return;
+    a.boom = true;
+    const pos = player.position.clone();
+    pos.y = groundY(pos.x, pos.z);
+    impactFrame(1.6);
+    hitAround(pos, 12, null, { dmg: S(60), from: pos, kb: 20, up: 12, stun: 2, heavy: true, impact: 1.6, guardBreak: true }, 6);
+    fxSphere(at(pos, 1), 0x2a7ab8, 12, 0.6);
+    fxPillar(pos, 0x5fc9f3, 3.5, 40, 0.8);
+    fxRing(pos, 0x2a7ab8, 14, 0.6); fxRing(pos, 0xffffff, 9, 0.4);
+  } });
+}
+
+// ---- Rock (Terra) ----
+const ROCKC = [0x8a6a46, 0xb8a88a, 0x6b6157, 0xd8c9a8];
+function terraCharge() {
+  const f = aimForward();
+  iFrames = 0.35;
+  startAction({ name: 'Boulder Charge', dur: 0.35, pose: 'dash', update(dt, t, a) {
+    player.position.addScaledVector(f, 24 * dt);
+    for (let i = 0; i < 3; i++) spawnParticle(at(player.position, 0.3 + Math.random() * 1.5), randUnit().multiplyScalar(1.5).addScaledVector(f, -4), pick(ROCKC), 0.25, 0.5, -3);
+    hitAround(player.position, 1.9, a.hits, { dmg: S(15), kb: 9, up: 2, stun: 1.0 });
+  }, end() { fxRing(player.position, 0xb8a88a, 3, 0.35); } });
+}
+function terraFist() {
+  const f = aimForward();
+  startAction({ name: 'Stone Fist', dur: 0.6, pose: 'uppercut', update(dt, t, a) {
+    if (t < 0.12) { player.position.addScaledVector(f, 8 * dt); return; }
+    if (a.fired) return;
+    a.fired = true;
+    vy = 9; onGround = false;
+    hitCone(player.position, f, 3.2, 0.2, a.hits, { dmg: S(19), kb: 4, up: 14, stun: 1.6, heavy: true, impact: 0.9, guardBreak: true });
+    const spot = player.position.clone().addScaledVector(f, 1.5);
+    fxPillar(spot, 0x6b6157, 1.1, 8, 0.5);
+    burst(at(spot, 0.5), 30, ROCKC, 6, 0.25, 0.7, -6, 8);
+  } });
+}
+function terraBarrage() {
+  const f = aimForward();
+  startAction({ name: 'Rock Barrage', dur: 0.85, update(dt, t, a) {
+    a.pose = Math.floor(t / 0.25) % 2 ? 'punchL' : 'punchR';
+    [0.1, 0.35, 0.6].forEach((when, i) => {
+      if (t < when || a['f' + i]) return;
+      a['f' + i] = true;
+      const dir = f.clone().applyAxisAngle(UP, (i - 1) * 0.1);
+      fireProjectile({ from: at(player.position, 1.3).addScaledVector(dir, 0.8), dir, speed: 28, range: 28, color: 0x8a6a46, size: 0.4,
+        explode: { r: 2.6, dmg: S(12), kb: 8, up: 2, stun: 0.8 } });
+    });
+  } });
+}
+function terraPound() {
+  const f = aimForward();
+  vy = 14; onGround = false;
+  startAction({ name: 'Ground Pound', dur: 2.0, pose: 'slam', update(dt, t, a) {
+    for (let i = 0; i < (a.diving ? 5 : 2); i++) spawnParticle(at(player.position, Math.random() * 1.8), randUnit().multiplyScalar(1.5), pick(ROCKC), 0.3, 0.5, -3);
+    if (!a.diving) {
+      player.position.addScaledVector(f, 7 * dt);
+      if (t > 0.45) { a.diving = true; vy = -44; }
+    } else {
+      player.position.addScaledVector(f, 9 * dt);
+      if (onGround) { a.done = true; slamImpact(player.position.clone(), 0x8a6a46, 6.5, S(32)); }
+    }
+  } });
+}
+function terraUlt() {
+  startCinematic(1.1, 'TERRA SOVEREIGN', 0x8a6a46);
+  startAction({ name: 'ult', dur: 1.5, pose: 'charge', noGravity: true, superArmor: true, update(dt, t, a) {
+    if (t < 1.1) {
+      vy = 0;
+      player.position.y = lerp(player.position.y, groundY(player.position.x, player.position.z) + 1.2, 1 - Math.exp(-3 * dt));
+      for (let i = 0; i < 4; i++) {
+        const off = randUnit().multiplyScalar(3);
+        spawnParticle(at(player.position, 1).add(off), off.clone().multiplyScalar(-2.5), pick(ROCKC), 0.2, 0.4);
+      }
+      return;
+    }
+    if (a.boom) return;
+    a.boom = true;
+    const pos = player.position.clone();
+    pos.y = groundY(pos.x, pos.z);
+    impactFrame(1.6);
+    hitAround(pos, 13, null, { dmg: S(62), from: pos, kb: 24, up: 10, stun: 2.2, heavy: true, impact: 1.6, guardBreak: true }, 6);
+    fxSphere(at(pos, 1), 0x8a6a46, 12, 0.6);
+    fxPillar(pos, 0xb8a88a, 3.5, 40, 0.8);
+    fxRing(pos, 0x8a6a46, 14, 0.6); fxRing(pos, 0xffffff, 9, 0.4);
   } });
 }
 
