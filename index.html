@@ -320,6 +320,7 @@
 
 <script type="module">
 import * as THREE from 'three';
+import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physics.js';
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
 
@@ -1288,7 +1289,7 @@ const POSES = {
   block:    { aL: [-1.5, -0.7], aR: [-1.5, 0.7],  lL: 0.15, lR: -0.15 },
   windup:   { aL: [-1.2, 0.1],  aR: [0.8, -0.3],  lL: 0.3,  lR: -0.4 },
   stunned:  { aL: [0.3, 0.6],   aR: [0.3, -0.6],  lL: 0.1,  lR: -0.1 },
-  sit:      { aL: [-0.15, 0.08], aR: [0.15, -0.08], lL: 1.35, lR: 1.35 },
+  sit:      { aL: [-0.15, 0.08], aR: [0.15, -0.08], lL: -1.35, lR: -1.35 }, // negative = forward (see comment above); positive bent them backward, hidden behind the torso
 };
 function animateHumanoid(h, pose, moving, sprinting, grounded, dt) {
   const k = 1 - Math.exp(-22 * dt);
@@ -2626,14 +2627,7 @@ function updateEnemies(dt) {
     }
     for (const m of e.flashMats) m.emissive.setRGB(e.flash + e.glow * 0.9, e.flash * 0.9, e.flash * 0.9);
 
-    for (const v of vehicles) {   // run over by your car (or a chasing police car)
-      if (e.carCd > 0 || Math.abs(v.speed) < 6 || !(v === driving || v.ai?.chasing)) continue;
-      if (distXZ(e.root.position, v.group.position) > (v.kind === 'bus' ? 3.2 : v.kind === 'plane' ? 3.5 : 2.2)) continue;
-      if (Math.abs(e.root.position.y - v.group.position.y) > 3) continue;
-      e.carCd = 1;
-      applyHit(e, { dmg: e.kind === 'slime' ? 999 : 35, from: v.group.position, kb: Math.abs(v.speed) * 0.8, up: 8, stun: 1.5,
-                    heavy: true, impact: 0.6, police: v !== driving });
-    }
+
   }
 }
 
@@ -3780,7 +3774,7 @@ const nearestInteractable = () => interactables.find(it => distXZ(player.positio
 function nearestVehicle() {
   let best = null, bd = 3.6;
   for (const v of vehicles) {
-    if (v.crashed) continue;
+    if (v.crashed || v.disabled) continue;
     const d = distXZ(player.position, v.group.position) - (v.kind === 'bus' ? 2.5 : v.kind === 'boat' ? 1.5 : v.kind === 'plane' ? 3 : 0);
     if (d < bd) { bd = d; best = v; }
   }
@@ -3791,6 +3785,7 @@ function raiseWanted(t = 45) {
   wanted = Math.max(wanted, t);
 }
 function enterVehicle(v) {
+  if (v.disabled) { toast('This vehicle is wrecked. Choose another car.'); return; }
   if (v.ai) {   // carjacking: the driver jumps out and runs, passengers flee
     const driver = peds.find(e => e.alive && !e.hidden && e.ped.state === 'wander' && distXZ(e.root.position, player.position) > 60);
     if (driver && v.kind !== 'boat') {
@@ -4240,6 +4235,80 @@ function updatePlayer(dt) {
 const busDoor = v => v.group.localToWorld(new THREE.Vector3(2.0, 0, v.length / 2 - 1.5)).setY(CURB);
 
 // A vehicle you are driving, or one that is parked
+const isRoadVehicle = v => ['car', 'police', 'bus'].includes(v.kind);
+function vehicleVelocity(v) { return { x: Math.sin(v.group.rotation.y) * v.speed, z: Math.cos(v.group.rotation.y) * v.speed }; }
+function damageVehicle(v, deltaSpeed, point) {
+  if (!isRoadVehicle(v)) return;
+  const damage = impactDamage(deltaSpeed);
+  if (damage <= 0) return;
+  v.health = Math.max(0, (v.health ?? 100) - damage);
+  v.crashCooldown = 0.3;
+  if (deltaSpeed > 5) burst(at(point, 0.7), Math.min(25, Math.ceil(deltaSpeed)), [0xffc266, 0x777777], 5, 0.08, 0.3, 8, 1);
+  if (v === driving) {
+    stats.hp = Math.max(0, stats.hp - impactDamage(deltaSpeed, 0.12));
+    shake = Math.max(shake, Math.min(0.8, deltaSpeed / 35));
+    toast('Crash! Vehicle condition: ' + Math.ceil(v.health) + '%');
+  }
+  if (v.health === 0) {
+    v.disabled = true; v.speed = 0;
+    if (v === driving) { exitVehicle(true); toast('Your vehicle is wrecked.'); }
+    if (v.passengers?.length) {
+      for (const e of v.passengers) { e.hidden = false; e.root.visible = true; e.root.position.copy(v.group.position); collide(e.root.position, e.radius); e.ped.state = 'panic'; e.ped.panicT = 8; }
+      v.passengers = [];
+    }
+  }
+}
+function resolveRoadMovement(v, start, dt) {
+  if (!isRoadVehicle(v)) return;
+  const p = v.group.position, destination = p.clone();
+  const steps = Math.max(1, Math.ceil(start.distanceTo(destination) / 0.3));
+  const velocity = vehicleVelocity(v);
+  p.copy(start);
+  for (let i = 1; i <= steps; i++) {
+    p.lerpVectors(start, destination, i / steps);
+    const attempted = p.clone();
+    if (collide(p, v.radius)) {
+      const normal = p.clone().sub(attempted).setY(0).normalize();
+      const normalSpeed = Math.max(0, -(velocity.x * normal.x + velocity.z * normal.z));
+      if (normalSpeed > 0) {
+        if (!v.crashCooldown) damageVehicle(v, normalSpeed * 1.08, p);
+        const tangent = { x: velocity.x + normal.x * normalSpeed, z: velocity.z + normal.z * normalSpeed };
+        const h = v.group.rotation.y;
+        v.speed = (tangent.x * Math.sin(h) + tangent.z * Math.cos(h)) - Math.sign(v.speed) * normalSpeed * 0.08;
+      }
+      break;
+    }
+  }
+  const speed = Math.hypot(velocity.x, velocity.z);
+  for (const e of enemies) {
+    if (!e.alive || e.hidden || e.carCd > 0 || speed < 2 || Math.abs(e.root.position.y - p.y) > 2) continue;
+    if (segmentDistance(e.root.position, start, p) > v.radius * 0.65 + e.radius) continue;
+    const relativeSpeed = Math.hypot(velocity.x - e.vel.x, velocity.z - e.vel.z);
+    e.carCd = 1.2;
+    applyHit(e, { dmg: impactDamage(relativeSpeed, 0.65), from: e.root.position.clone().sub(new THREE.Vector3(velocity.x, 0, velocity.z)), kb: Math.min(22, relativeSpeed * 0.8), up: Math.min(6, relativeSpeed * 0.2), stun: Math.min(3, relativeSpeed * 0.12), heavy: true, impact: 0.4, police: v !== driving });
+    v.speed *= 0.92;
+    if (v === driving && e.kind === 'npc') raiseWanted(60);
+  }
+  for (const other of vehicles) {
+    if (other === v || !isRoadVehicle(other)) continue;
+    const min = (v.radius + other.radius) * 0.75;
+    if (segmentDistance(other.group.position, start, p) >= min) continue;
+    let normal = (p.distanceTo(other.group.position) < min ? p : start).clone().sub(other.group.position).setY(0);
+    if (normal.lengthSq() < 0.001) normal = start.clone().sub(other.group.position).setY(0);
+    if (normal.lengthSq() < 0.001) normal.set(1, 0, 0);
+    normal.normalize();
+    const av = vehicleVelocity(v), bv = vehicleVelocity(other);
+    const hit = collisionImpulse(av, bv, normal, v.kind === 'bus' ? 12000 : 1500, other.kind === 'bus' ? 12000 : 1500);
+    p.copy(other.group.position).addScaledVector(normal, min + 0.01);
+    if (hit.impulse > 0) {
+      v.speed += hit.aDelta * (normal.x * Math.sin(v.group.rotation.y) + normal.z * Math.cos(v.group.rotation.y));
+      other.speed -= hit.bDelta * (normal.x * Math.sin(other.group.rotation.y) + normal.z * Math.cos(other.group.rotation.y));
+      if (!v.crashCooldown) damageVehicle(v, hit.aDelta, p);
+      if (!other.crashCooldown) damageVehicle(other, hit.bDelta, other.group.position);
+      if (other.ai) other.ai.stopTimer = 2;
+    }
+  }
+}
 function driveVehicle(v, dt) {
   if (v.kind === 'plane') return flyPlane(v, dt);
   const mine = v === driving;
@@ -4262,17 +4331,6 @@ function driveVehicle(v, dt) {
     v.group.rotation.x = -Math.min(0.15, Math.abs(v.speed) * 0.006);
     if (mine && Math.abs(v.speed) > 4) spawnParticle(p.clone().add(new THREE.Vector3(-Math.sin(h) * 2.8, 0.2, -Math.cos(h) * 2.8)), randUnit().multiplyScalar(1.5).setY(1.5), 0xffffff, 0.2, 0.6, 4);
     return;
-  }
-  if (collide(p, v.radius)) v.speed *= -0.3;
-  if (mine) for (const o of vehicles) {   // bump into other vehicles
-    if (o === v) continue;
-    const d = distXZ(p, o.group.position), min = (v.radius + o.radius) * 0.7;
-    if (d < min && d > 0.01) {
-      p.x += (p.x - o.group.position.x) / d * (min - d);
-      p.z += (p.z - o.group.position.z) / d * (min - d);
-      if (Math.abs(v.speed) > 8) shake = Math.max(shake, 0.3);
-      v.speed *= -0.3;
-    }
   }
   p.y = lerp(p.y, groundY(p.x, p.z), 1 - Math.exp(-20 * dt));
   for (const w of v.wheels) w.rotation.x += v.speed * dt / 0.4;
@@ -4339,12 +4397,12 @@ function policeChase(v, dt) {
   const h = v.group.rotation.y;
   p.x += Math.sin(h) * v.speed * dt;
   p.z += Math.cos(h) * v.speed * dt;
-  if (collide(p, v.radius)) v.speed *= 0.5;
+  // Road collisions are resolved centrally after movement.
   p.y = groundY(p.x, p.z);
   for (const w of v.wheels) w.rotation.x += v.speed * dt / 0.4;
   if (d < 3 && ai.ramCd <= 0) {
     ai.ramCd = 1.5;
-    if (inCar) { driving.speed *= 0.3; shake = Math.max(shake, 0.4); }
+    if (inCar) { /* Central collision response handles vehicle impacts. */ }
     else hurtPlayer(10, p, 12);
   }
 }
@@ -4368,6 +4426,9 @@ function busArrive(v, stop) {
 
 function updateVehicles(dt) {
   for (const v of vehicles) {
+    if (v.disabled) { v.speed = 0; continue; }
+    v.crashCooldown = Math.max(0, (v.crashCooldown || 0) - dt);
+    const roadStart = v.group.position.clone();
     if (v === driving || !v.ai) driveVehicle(v, dt);
     else if (v.kind === 'police' && wanted > 0 && !dungeon) policeChase(v, dt);
     else {
@@ -4380,6 +4441,7 @@ function updateVehicles(dt) {
       }
       trafficDrive(v, dt);
     }
+    resolveRoadMovement(v, roadStart, dt);
   }
 }
 

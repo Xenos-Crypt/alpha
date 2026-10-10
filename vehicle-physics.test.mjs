@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {impactDamage,segmentDistance,collisionImpulse} from './vehicle-physics.js';
+assert.equal(impactDamage(1),0);
+assert(impactDamage(20)>impactDamage(10)*4);
+assert.equal(segmentDistance({x:0,z:10},{x:0,z:0},{x:0,z:20}),0);
+assert.equal(collisionImpulse({x:0,z:-10},{x:0,z:0},{x:0,z:1},1500,1500).aDelta,5.4);
+assert.equal(collisionImpulse({x:0,z:10},{x:0,z:0},{x:0,z:1},1500,1500).impulse,0);
+const heavy=collisionImpulse({x:0,z:-20},{x:0,z:0},{x:0,z:1},1500,12000);
+assert(heavy.aDelta>heavy.bDelta);
+console.log('PASS: impact severity, swept contact, momentum response, separating contact and vehicle mass');
