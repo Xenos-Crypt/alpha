@@ -43,15 +43,29 @@ function coordRings(geometry) {
   return [];
 }
 
+function positiveMeasure(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!/^\d+(?:\.\d+)?\s*(?:m|metres|meters|ft|feet|')?$/i.test(text)) return null;
+  const n = parseFloat(text) * (/ft|feet|'$/i.test(text) ? 0.3048 : 1);
+  return n > 0 && n <= 500 ? n : null;
+}
 function estimateHeight(props) {
-  if (props.height) { const h = parseFloat(props.height); if (Number.isFinite(h)) return h; }
-  if (props['building:levels']) { const lv = parseFloat(props['building:levels']); if (Number.isFinite(lv)) return lv * 3.2; }
-  // No height data: vary by building type so a city block doesn't look uniform.
-  const tall = ['apartments', 'commercial', 'office', 'hotel'];
-  const short = ['garage', 'garages', 'shed', 'hut', 'depot'];
-  if (short.includes(props.building)) return 3 + Math.random() * 2;
-  if (tall.includes(props.building)) return 14 + Math.random() * 16;
-  return 7 + Math.random() * 6; // ordinary house/residential default
+  const measured = positiveMeasure(props.height);
+  if (measured) return measured;
+  const levels = positiveMeasure(props['building:levels']);
+  if (levels) return Math.min(500, levels * 3.2 + (positiveMeasure(props['roof:height']) || 0));
+  // Missing survey data: stable approximations, never random on tile reload.
+  if (['garage', 'garages', 'shed', 'hut', 'carport'].includes(props.building)) return 3.2;
+  if (props.building === 'bungalow') return 4.5;
+  if (['apartments', 'commercial', 'office', 'hotel'].includes(props.building)) return 16;
+  return 9.6;
+}
+const MATERIAL_COLOURS = { brick: '#9c6653', stone: '#b8ad97', sandstone: '#b8ad97', limestone: '#d1c9b5', concrete: '#a8a7a1', plaster: '#ddd6c8', wood: '#89705a', timber: '#89705a', glass: '#819ba4', metal: '#879298', slate: '#50565e', tiles: '#92644e', roof_tiles: '#92644e', asphalt: '#55565a' };
+function recordedColour(colour, material, fallback) {
+  const value = typeof colour === 'string' ? colour.trim().toLowerCase() : '';
+  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(value) || Object.hasOwn(THREE.Color.NAMES, value)) return new THREE.Color(value);
+  return new THREE.Color(MATERIAL_COLOURS[String(material || '').toLowerCase()] || fallback);
 }
 
 const ROAD_WIDTH = { motorway: 10, trunk: 9, primary: 8, secondary: 7, tertiary: 6, residential: 5.5, service: 3.5, footway: 1.8, path: 1.2 };
@@ -84,24 +98,13 @@ const BUILDING_TYPE_LABEL = {
  * split back into per-building boxes afterward.
  */
 export function buildCityFromGeoJSON(geojson, origin) {
-  const features = geojson.features;
+  const features = geojson.features.flatMap(f => f.properties?.building && f.geometry?.type === 'MultiPolygon'
+    ? f.geometry.coordinates.map((coordinates, i) => ({ ...f, id: String(f.id || f.properties['@id'] || 'building') + ':' + i, geometry: { type: 'Polygon', coordinates } })) : [f]);
   const { project, bounds } = makeProjector(features, origin);
   const group = new THREE.Group();
   group.name = 'osm-city';
 
   const buildingMat = new THREE.MeshStandardMaterial({ color: 0xb9b2a3, roughness: 0.9, metalness: 0.02, vertexColors: true });
-  // Real default area character, straight from the actual OSM building tag — not
-  // invented. A hut/shed/garage-heavy block looks visibly rougher than one full of
-  // hotels and offices, without waiting on any AI call. Expressed as absolute colors,
-  // then converted to a multiplier against buildingMat's base color below.
-  const TIER_ABSOLUTE = { rundown: 0x8a8378, industrial: 0x707868, affluent: 0xe8dfc8, ordinary: 0xb9b2a3 };
-  const BUILDING_TIER_BY_TYPE = {
-    hut: 'rundown', shed: 'rundown', garage: 'rundown', garages: 'rundown', greenhouse: 'rundown', silo: 'rundown', carport: 'rundown', roof: 'rundown',
-    industrial: 'industrial', warehouse: 'industrial',
-    hotel: 'affluent', office: 'affluent', commercial: 'affluent', retail: 'affluent', bank: 'affluent',
-  };
-  const tierMultiplier = hex => { const c = new THREE.Color(hex); c.r /= buildingMat.color.r; c.g /= buildingMat.color.g; c.b /= buildingMat.color.b; return c; };
-  const TIER_MULT = Object.fromEntries(Object.entries(TIER_ABSOLUTE).map(([k, v]) => [k, tierMultiplier(v)]));
   // DoubleSide because the ribbon triangle winding faces downward (normals point -Y);
   // this renders correctly from above instead of being backface-culled.
   const roadMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2e, roughness: 1, side: THREE.DoubleSide });
@@ -122,16 +125,39 @@ export function buildCityFromGeoJSON(geojson, origin) {
       // negating up front cancels that out so building footprints land exactly where
       // the (unrotated) road ribbons expect them, instead of mirrored across Z.
       const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
+      for (const hole of f.geometry.coordinates.slice(1)) {
+        if (hole.length >= 4) shape.holes.push(new THREE.Path(hole.slice(0, -1).map(([lon, lat]) => { const [x, z] = project(lon, lat); return new THREE.Vector2(x, -z); })));
+      }
       const height = estimateHeight(props);
       const geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
       geo.rotateX(-Math.PI / 2); // extrude along Y (up), shape was authored in XZ
+      // Tagged pitched roofs: raise the roof surface within the actual footprint.
+      const roofShape = props['roof:shape'];
+      if (roofShape === 'skillion') {
+        const positions = geo.getAttribute('position');
+        box3.setFromBufferAttribute(positions);
+        const w = box3.max.x - box3.min.x, d = box3.max.z - box3.min.z;
+        const roofHeight = Math.min(height * 0.45, positiveMeasure(props['roof:height']) || Math.min(w, d) * 0.25);
+        const eaves = height - roofHeight;
+        const alongX = props['roof:orientation'] === 'across' ? w >= d : w < d;
+        for (let i = 0; i < positions.count; i++) {
+          if (positions.getY(i) < height - 0.001) continue;
+          const u = (positions.getX(i) - box3.min.x) / (w || 1), v = (positions.getZ(i) - box3.min.z) / (d || 1);
+          // Skillion is exactly representable on the footprint; pitched profiles
+          // require ridge vertices, so only apply to topologically suitable roofs.
+          if (roofShape === 'skillion') positions.setY(i, eaves + roofHeight * (alongX ? u : v));
+        }
+        geo.computeVertexNormals();
+      }
       geo.deleteAttribute('uv');
       box3.setFromBufferAttribute(geo.getAttribute('position'));
       buildingColliders.push({ minX: box3.min.x, maxX: box3.max.x, minZ: box3.min.z, maxZ: box3.max.z });
       const vertexCount = geo.getAttribute('position').count;
-      const tier = TIER_MULT[BUILDING_TIER_BY_TYPE[props.building]] || TIER_MULT.ordinary;
+      const wall = recordedColour(props['building:colour'], props['building:material'], '#b9b2a3');
+      const roof = recordedColour(props['roof:colour'], props['roof:material'], '#62666b');
+      const normals = geo.getAttribute('normal');
       const colorAttr = new Float32Array(vertexCount * 3);
-      for (let vi = 0; vi < vertexCount; vi++) { colorAttr[vi * 3] = tier.r; colorAttr[vi * 3 + 1] = tier.g; colorAttr[vi * 3 + 2] = tier.b; }
+      for (let vi = 0; vi < vertexCount; vi++) { const c = normals.getY(vi) > 0.5 ? roof : wall; colorAttr[vi * 3] = c.r / buildingMat.color.r; colorAttr[vi * 3 + 1] = c.g / buildingMat.color.g; colorAttr[vi * 3 + 2] = c.b / buildingMat.color.b; }
       geo.setAttribute('color', new THREE.Float32BufferAttribute(colorAttr, 3));
       const colorStart = vertexOffset; vertexOffset += vertexCount;
       buildingGeos.push(geo);
@@ -151,7 +177,7 @@ export function buildCityFromGeoJSON(geojson, origin) {
         type: props.amenity || props.building || 'building', label: civicLabel || genericLabel,
         name: props.name || civicLabel || genericLabel, civic: !!civicLabel,
         x: cx, z: cz, id: String(f.id || props['@id'] || (props.amenity || props.building || 'b') + ':' + cx.toFixed(2) + ':' + cz.toFixed(2)),
-        colorStart, vertexCount, height,
+        colorStart, vertexCount, height, realWorld: true,
       });
     } else if (props.highway && f.geometry.type === 'LineString') {
       const pts = f.geometry.coordinates.map(([lon, lat]) => project(lon, lat));

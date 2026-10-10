@@ -3908,7 +3908,8 @@ function applyCivicTheme(type) {
 let buildingAppearances = {};
 try { const saved = JSON.parse(localStorage.getItem('anotherworld-building-exteriors') || '{}'); if (saved && typeof saved === 'object' && !Array.isArray(saved)) buildingAppearances = saved; } catch {}
 function applyBuildingExterior(b, exterior, persist = false) {
-  if (!exterior || typeof exterior !== 'object' || !b.mesh) return;
+  // Real map buildings keep their recorded appearance, including on reload.
+  if (b.realWorld || !exterior || typeof exterior !== 'object' || !b.mesh) return;
   const validColor = c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
   if (!validColor(exterior.facadeColor) || !validColor(exterior.roofColor)) return;
   const appearance = { facadeColor: exterior.facadeColor, roofColor: exterior.roofColor,
