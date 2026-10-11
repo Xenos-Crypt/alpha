@@ -329,7 +329,11 @@
 <div id="menu">
   <div class="panel">
     <h1>Another World</h1>
-    <button id="menuOffline"><b id="menuOfflineLabel">Offline mode</b><span class="sub" id="menuOfflineSub">Play solo, no one else around</span></button>
+    <div style="position:relative"><button id="menuOffline"><b id="menuOfflineLabel">Offline mode</b><span class="sub" id="menuOfflineSub">Play solo, no one else around</span></button>
+      <button id="offlineInfoBtn" type="button" aria-label="How offline mode works" title="How offline mode works" style="position:absolute;right:10px;top:10px;width:26px;height:26px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(0,0,0,.35);color:#fff;font:700 13px system-ui;cursor:pointer;line-height:1">ⓘ</button></div>
+    <div id="offlineInfoBox" style="display:none;margin:-6px 0 8px;padding:12px 14px;border-radius:10px;background:rgba(20,24,38,.9);border:1px solid rgba(255,255,255,.18);color:#dbe7ef;font-size:12px;line-height:1.5">
+      <strong>How offline mode actually works:</strong> the first time you open this game, you need an internet connection — there's no way around that part. While you're online, the game quietly saves itself on your device. After that, as long as you don't clear your browser's data, you can open it again with <strong>zero</strong> connection — but you have to open it from a <strong>bookmark</strong>, your browser <strong>history</strong>, or an icon you <strong>added to your home screen</strong>. Searching for it (Google, etc.) won't work offline, since the search itself needs internet. Offline play is solo guest play only — progress saves on this device, and signing in, hosting and joining all need a connection.
+    </div>
     <button id="menuNewGame" style="display:none"><b>New game</b><span class="sub">Start over — your saved progress will be erased</span></button>
     <button id="menuHost"><b>Host game</b><span class="sub">Choose a spawn city, room access and player limit</span></button>
     <button id="menuJoin"><b>Join game</b><span class="sub">Browse public rooms or enter a five-digit code</span></button>

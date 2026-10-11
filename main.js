@@ -1995,6 +1995,7 @@ function showMenu(hasSave) {
       $('menuNewGame').style.display = '';
     }
     $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
+    $('offlineInfoBtn').onclick = (e) => { e.stopPropagation(); const box = $('offlineInfoBox'); box.style.display = box.style.display === 'none' ? 'block' : 'none'; };
     $('menuNewGame').onclick = () => { $('menu').style.display = 'none'; resolve('new'); };
     $('menuHost').onclick = () => hosting.show('host',()=>{ $('menu').style.display='none'; resolve('host'); });
     $('menuJoin').onclick = () => hosting.show('join',()=>{ $('menu').style.display='none'; resolve('join'); });
