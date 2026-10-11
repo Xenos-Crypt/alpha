@@ -5,3 +5,4 @@ test-results/
 .vercel
 .env*
 .npm-cache/
+.smoke-test.cjs
