@@ -731,6 +731,7 @@ const CAPITAL_X0 = 120, CAPITAL_X1 = 440, CAPITAL_Z0 = 680, CAPITAL_Z1 = 920;
 const GAP0 = 400, GAP1 = 416, GAP_JUMP_SPEED = 18;
 let bridgeLeafNorth = null, bridgeLeafSouth = null, bridgeLiftAngle = 0, bridgeLiftState = 'down', bridgeLiftT = 20;
 const bridgePostLights = [], bridgeWarnStrips = [];
+const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 function groundY(x, z, bodyY = null) {
   const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
@@ -751,6 +752,7 @@ function groundY(x, z, bodyY = null) {
     const lx3 = ((x % 40) + 40) % 40, lz3 = ((z % 40) + 40) % 40;
     return lx3 > 6 && lx3 < 34 && lz3 > 6 && lz3 < 34 ? CURB : 0;
   }
+  if (Math.hypot(x - ISLAND.x, z - ISLAND.z) < ISLAND_R) return CURB;   // Driftwood Island, out in the sea
   if (x >= -300 && x <= 300 && z > 187 && z < 900 && !(x > 18 && x < 22 && z < 206)) return -2;
   if (x > 1000) return 0;                                    // dungeon arena floor
   if (x > 18 && x < 22 && z > 164 && z < 206) return CURB;   // harbour pier
@@ -2681,6 +2683,76 @@ function makeBoat() {
 }
 const boat = makeBoat();
 boat.group.position.set(PIER.x + 4, 0, 195);
+
+// =====================================================================
+// DRIFTWOOD ISLAND: a small island out in the sea, plus a public ferry
+// running between it and the harbour pier (board/leave like a bus).
+// =====================================================================
+{
+  const sand = new THREE.Mesh(new THREE.CircleGeometry(ISLAND_R, 32), sandMat);
+  sand.rotation.x = -Math.PI / 2; sand.position.set(ISLAND.x, CURB + 0.02, ISLAND.z); scene.add(sand);
+  for (let i = 0; i < 10; i++) {
+    const a = rand() * Math.PI * 2, r = rand() * (ISLAND_R - 4);
+    const px = ISLAND.x + Math.cos(a) * r, pz = ISLAND.z + Math.sin(a) * r;
+    const trunk = mesh(new THREE.CylinderGeometry(0.18, 0.26, 4.5, 6), 0x8a6b45);
+    trunk.position.set(px, CURB + 2.25, pz); trunk.rotation.z = (rand() - 0.5) * 0.25;
+    for (let f = 0; f < 6; f++) {
+      const frond = mesh(new THREE.ConeGeometry(0.35, 2.6, 4), 0x2f8f4a);
+      frond.position.set(px, CURB + 4.6, pz);
+      frond.rotation.set(Math.PI / 2.3, 0, (f / 6) * Math.PI * 2);
+    }
+    colliders.push({ minX: px - 0.3, maxX: px + 0.3, minZ: pz - 0.3, maxZ: pz + 0.3 });
+  }
+  box(3, 0.3, 10, ISLAND.x, CURB + 0.15, ISLAND.z - ISLAND_R - 4, woodMatPlain, false);
+  signboard('DRIFTWOOD ISLAND', ISLAND.x, CURB + 3, ISLAND.z - ISLAND_R - 10, 12, '#1d4a3a');
+  addBench(ISLAND.x + 4, ISLAND.z, Math.PI / 2);
+
+  const ferry = makeBoat();
+  const ferryDockA = new THREE.Vector3(PIER.x + 4, 0, 192), ferryDockB = new THREE.Vector3(ISLAND.x, 0, ISLAND.z - ISLAND_R - 8);
+  ferry.group.position.copy(ferryDockA);
+  const ferryState = { at: 'A', doors: true, wait: 6 };
+  const ferryInteract = { pos: ferryDockA.clone(), r: 3, label: 'Board the ferry to Driftwood Island', action: () => {
+    if (riding || inCar || sitting) { toast("Finish what you're doing first."); return; }
+    if (ferryRider) { ctxLeaveFerry(); return; }
+    if (!ferryState.doors) { toast('Wait for the ferry to dock.'); return; }
+    boardFerry();
+  } };
+  interactables.push(ferryInteract);
+  let ferryRider = null;
+  function boardFerry() {
+    ferryRider = player.position.clone();
+    player.visible = false;
+    ferryInteract.label = 'Leave the ferry';
+  }
+  function ctxLeaveFerry() {
+    const dock = ferryState.at === 'A' ? ferryDockA : ferryDockB;
+    player.position.set(dock.x + 3, 0, dock.z);
+    player.position.y = groundY(player.position.x, player.position.z);
+    player.visible = true;
+    ferryRider = null;
+    ferryInteract.label = 'Board the ferry to Driftwood Island';
+  }
+  addTask({ dur: 1e9, update(dt) {
+    ferryInteract.pos.copy(ferry.group.position);
+    if (ferryRider) player.position.set(ferry.group.position.x, groundY(ferry.group.position.x, ferry.group.position.z), ferry.group.position.z);
+    if (ferryState.doors) {
+      ferryState.wait -= dt;
+      if (ferryState.wait <= 0) { ferryState.doors = false; }
+      return;
+    }
+    const target = ferryState.at === 'A' ? ferryDockB : ferryDockA;
+    const delta = target.clone().sub(ferry.group.position), dist = delta.length();
+    if (dist < 1) {
+      ferry.group.position.copy(target);
+      ferryState.at = ferryState.at === 'A' ? 'B' : 'A';
+      ferryState.doors = true; ferryState.wait = 8;
+      if (ferryRider) ctxLeaveFerry();
+      return;
+    }
+    ferry.group.position.addScaledVector(delta.normalize(), 9 * dt);
+    ferry.group.rotation.y = Math.atan2(delta.x, delta.z) - Math.PI / 2;
+  } });
+}
 
 // =====================================================================
 // AIRFIELD + FLYABLE PLANES (west of the city)
@@ -5237,6 +5309,7 @@ function isSeaWater(x,z,bodyY = null) {
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return z >= GAP0 && z <= GAP1 && bridgeLiftAngle > 0.08;
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0) return false;
   if (x >= CAPITAL_X0 && x <= CAPITAL_X1 && z >= CAPITAL_Z0) return false;
+  if (Math.hypot(x - ISLAND.x, z - ISLAND.z) < ISLAND_R) return false;
   return x>=-300&&x<=300&&z>SEA_Z&&z<900&&!(x>18&&x<22&&z<206)&&harbour?.groundAt(x,z)==null;
 }
 function updateSwimming(dt) {
