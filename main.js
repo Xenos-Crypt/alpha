@@ -302,6 +302,8 @@ const sitSpots = [];
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
+const mountains = [];       // {x,z,r,h} cone-shaped peaks — groundY() ramps elevation up their slope so they're real climbable terrain
+const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford Cave tunnel+chamber footprint, kept flat despite sitting inside a mountain's radius
 let spaceCentre = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
 const buildings = [];      // every city building, so it can be destroyed
@@ -381,6 +383,12 @@ function groundY(x, z, bodyY = null) {
   if (x >= -300 && x <= 300 && z > 187 && z < 900 && !(x > 18 && x < 22 && z < 206)) return -2;
   if (x > 1000) return 0;                                    // dungeon arena floor
   if (x > 18 && x < 22 && z > 164 && z < 206) return CURB;   // harbour pier
+  if (x >= CAVE_BOUNDS.x0 && x <= CAVE_BOUNDS.x1 && z >= CAVE_BOUNDS.z0 && z <= CAVE_BOUNDS.z1) return 0;   // hollowed out of the massif below, stays flat
+  if (mountains.length) {
+    let peakY = -1;
+    for (const m of mountains) { const d = Math.hypot(x - m.x, z - m.z); if (d < m.r) peakY = Math.max(peakY, m.h * (1 - d / m.r)); }
+    if (peakY >= 0) return peakY;
+  }
   if (Math.abs(x) > 160 || Math.abs(z) > 160) return 0;
   const lx = ((x % 40) + 40) % 40, lz = ((z % 40) + 40) % 40;
   return lx > 8 && lx < 32 && lz > 8 && lz < 32 ? CURB : 0;   // roads widened from 10m to ~12m
@@ -389,8 +397,11 @@ function groundY(x, z, bodyY = null) {
 // =====================================================================
 // GROUND, ROADS, PAVEMENTS
 // =====================================================================
-const groundTex = grassTex.clone(); groundTex.repeat.set(150, 150); groundTex.needsUpdate = true;
-const ground = mesh(new THREE.PlaneGeometry(1800, 1300), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+// Was 1800x1300 (z: -650..650) — the mountains/forest (z up to ~950) and Ashford
+// Capital (z up to 920) both sit past that far edge, so the ground mesh just
+// stopped short of them and you'd see empty void under part of the terrain.
+const groundTex = grassTex.clone(); groundTex.repeat.set(150, 215); groundTex.needsUpdate = true;
+const ground = mesh(new THREE.PlaneGeometry(1800, 2100), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
 ground.rotation.x = -Math.PI / 2;
 ground.castShadow = false;
 
@@ -2349,22 +2360,53 @@ addBridgeCommuter(0xe17055, [new THREE.Vector3(220, 0, 60), new THREE.Vector3(22
 
 // =====================================================================
 // MOUNTAINS: a backdrop range west of Riverside/the Capital, close enough to
-// actually be visible through the fog. Decorative scenery, not climbable
-// terrain — solid obstacles (colliders) rather than real walkable slopes.
+// actually be visible through the fog. Real climbable terrain — groundY()
+// ramps elevation up each cone's slope (see the `mountains` loop in there),
+// matching the cone mesh exactly, so there's nothing to collide with on the
+// way up; only the hand-built cave massif below gets real wall colliders.
 // =====================================================================
 {
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x6b6659, roughness: 1 });
   const snowMat = new THREE.MeshStandardMaterial({ color: 0xf2f3f0, roughness: 0.85 });
   for (let i = 0; i < 14; i++) {
     const x = -320 - rand() * 160, z = 600 + rand() * 340;   // kept west of x=-300 so it's never over the open water
-    const h = 40 + rand() * 70, r = 28 + rand() * 24;
+    const h = 26 + rand() * 30, r = 48 + rand() * 42;        // gentle enough height:radius ratio to actually walk up
     const peak = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), rockMat);
     peak.position.set(x, h / 2, z); peak.rotation.y = rand() * Math.PI; scene.add(peak); camBlockers.push(peak);
     const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.4, h * 0.3, 7), snowMat);
     cap.position.set(x, h - h * 0.15, z); cap.rotation.y = peak.rotation.y; scene.add(cap);
-    colliders.push({ minX: x - r * 0.7, maxX: x + r * 0.7, minZ: z - r * 0.7, maxZ: z + r * 0.7 });
+    mountains.push({ x, z, r, h });
   }
   signboard('ASHFORD HIGHLANDS', -310, 5, 660, 14, '#2a2f33');
+
+  // A real cave, dug into its own fixed rock massif rather than one of the
+  // random decorative peaks above. A short tunnel (wall colliders either
+  // side, open floor) leads back to a lit chamber with glowing crystals.
+  const cvX = -400, cvZ = 760, mouthW = 4.4, tunnelLen = 18, chamberR = 9;
+  // The massif the entrance is cut into — tall enough to read as a real hillside.
+  mountains.push({ x: cvX, z: cvZ + 14, r: 60, h: 46 });
+  const massif = new THREE.Mesh(new THREE.ConeGeometry(60, 46, 8), rockMat);
+  massif.position.set(cvX, 23, cvZ + 14); scene.add(massif); camBlockers.push(massif);
+  // Tunnel walls: two long rock slabs either side of the mouth, colliding so
+  // the only way in (or out) is straight through the gap between them.
+  for (const s of [-1, 1]) {
+    box(1.6, 6, tunnelLen, cvX + s * (mouthW / 2 + 0.8), 3, cvZ + tunnelLen / 2, rockMat, true);
+  }
+  box(mouthW + 3.2, 0.6, tunnelLen + 1, cvX, 6.1, cvZ + tunnelLen / 2, rockMat, false);   // tunnel roof, visual only
+  const crystalMat = new THREE.MeshStandardMaterial({ color: 0x6fc9e8, emissive: 0x2a9fd6, emissiveIntensity: 0.8, roughness: 0.3 });
+  const chamberZ = cvZ + tunnelLen + chamberR * 1.3;   // comfortable clearance past the tunnel mouth before any scattered wall can appear
+  for (let i = 0; i < 10; i++) {
+    const a = rand() * Math.PI * 2, rr = chamberR * (0.5 + rand() * 0.5), wallH = 7 + rand() * 4;
+    box(5 + rand() * 4, wallH, 5 + rand() * 4, cvX + Math.cos(a) * rr, wallH / 2, chamberZ + Math.sin(a) * rr, rockMat, true);
+  }
+  for (let i = 0; i < 6; i++) {
+    const crystal = new THREE.Mesh(new THREE.ConeGeometry(0.3 + rand() * 0.3, 1.4 + rand() * 1.2, 5), crystalMat);
+    crystal.position.set(cvX + (rand() - 0.5) * chamberR, 0.6, chamberZ + (rand() - 0.5) * chamberR);
+    crystal.rotation.z = (rand() - 0.5) * 0.4;
+    scene.add(crystal);
+  }
+  const caveLight = new THREE.PointLight(0x5fc0ff, 2.2, 24, 2); caveLight.position.set(cvX, 3, chamberZ); scene.add(caveLight);
+  signboard('ASHFORD CAVE', cvX, 4.5, cvZ - 1.5, 10, '#1a2a33');
   // Forest at the foot of the mountains — a real start on the "forest with
   // bats/insects" request, not just two trees for show.
   for (let i = 0; i < 45; i++) addTree(-320 - rand() * 170, 590 + rand() * 360, 0.9 + rand() * 0.6);
