@@ -1010,8 +1010,8 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
 // STREET LAMPS (instanced so hundreds cost almost nothing)
 // =====================================================================
 const lampSpots = [];
-const LAMP_OFFSETS = [[-14.3, -14.3], [14.3, -14.3], [-14.3, 14.3], [14.3, 14.3],
-  [-5, -14.3], [5, -14.3], [-5, 14.3], [5, 14.3], [-14.3, -5], [-14.3, 5], [14.3, -5], [14.3, 5]];
+const LAMP_OFFSETS = [[-13, -13], [13, -13], [-13, 13], [13, 13],
+  [-5, -13], [5, -13], [-5, 13], [5, 13], [-13, -5], [-13, 5], [13, -5], [13, 5]];
 for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++)
   for (const [ox, oz] of LAMP_OFFSETS) lampSpots.push(new THREE.Vector3(cx * 40 + 20 + ox, 0, cz * 40 + 20 + oz));
 // Riverside and the Capital are outside the main town grid and had no lamps at
@@ -3443,7 +3443,7 @@ const PED_OUTFITS = [0x2e86de, 0xe17055, 0x6c5ce7, 0x00b894, 0xfdcb6e, 0xd63031,
 const PED_HAIR = [0x2d1b0e, 0x4a2c17, 0x111111, 0xc8a165, 0x8e3b1f, 0xdddddd];
 const PED_SKIN = [0xffdcc0, 0xf1c27d, 0xc68642, 0x8d5524, 0xe0ac69];
 const PED_PANTS = [0x2d3142, 0x34495e, 0x1e272e, 0x6d4c41, 0x2f3640];
-const SIDE = 14.6;
+const SIDE = 13;
 const HIDDEN = new THREE.Vector3(9999, -500, 9999);
 const cornerPos = n => new THREE.Vector3(n.bx * 40 + 20 + n.sx * SIDE, CURB, n.bz * 40 + 20 + n.sz * SIDE);
 // Block-grid bounds pedestrians are allowed to wander within. Main town is the
