@@ -735,7 +735,6 @@ function groundY(x, z, bodyY = null) {
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
   const urbanFloor=urban?.groundAt(x,z);if(urbanFloor!=null)return urbanFloor;
   if(harbourBridge){const floor=harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y));if(floor!=null)return floor;}
-  const regionFloor=regionalEnvironment?.groundAt(x,z);if(regionFloor!=null)return regionFloor;
   const dockFloor = harbour?.groundAt(x,z); if (dockFloor != null) return dockFloor;
   const terminalFloor = townPlaces?.floorAt(x,z); if (terminalFloor != null) return terminalFloor;
   for (const r of stairRamps) {
@@ -743,6 +742,7 @@ function groundY(x, z, bodyY = null) {
   }
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z >= GAP0 && z <= GAP1 && bridgeLiftAngle > 0.08) return -2;   // bridge is open — only a fast "jump" (see driveVehicle) clears it
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z > BRIDGE_Z0 - 4 && z < BRIDGE_Z1 + 4) return BRIDGE_Y;   // river bridge deck
+  const regionFloor=regionalEnvironment?.groundAt(x,z);if(regionFloor!=null)return regionFloor;
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0 && z <= RIVERSIDE_Z1) {   // Riverside, across the bridge
     const lx2 = ((x % 40) + 40) % 40, lz2 = ((z % 40) + 40) % 40;
     return lx2 > 6 && lx2 < 34 && lz2 > 6 && lz2 < 34 ? CURB : 0;
@@ -2314,7 +2314,7 @@ function makeVehicle(kind, color) {
     mesh(new THREE.BoxGeometry(2.02, 0.12, 4.22), 0x1e3799, g).position.y = 0.7;
   }
   const v = { kind, group: g, wheels, speed: 0, radius: isBus ? 2.6 : 1.8, length: L,
-              maxSpeed: isBus ? 16 : kind === 'police' ? 36 : 30, ai: null, passengers: isBus ? [] : null };
+              maxSpeed: isBus ? 24 : kind === 'police' ? 85 : 75, ai: null, passengers: isBus ? [] : null };
   vehicles.push(v);
   return v;
 }
@@ -2587,6 +2587,26 @@ function addBridgeCommuter(color, waypoints, speed) {
 }
 addBridgeCommuter(0x2e86de, [new THREE.Vector3(0, 0, 150), new THREE.Vector3(0, 0, 630)], 10);
 addBridgeCommuter(0xe17055, [new THREE.Vector3(220, 0, 60), new THREE.Vector3(220, 0, 680)], 10);
+
+// =====================================================================
+// MOUNTAINS: a backdrop range west of Riverside/the Capital, close enough to
+// actually be visible through the fog. Decorative scenery, not climbable
+// terrain — solid obstacles (colliders) rather than real walkable slopes.
+// =====================================================================
+{
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x6b6659, roughness: 1 });
+  const snowMat = new THREE.MeshStandardMaterial({ color: 0xf2f3f0, roughness: 0.85 });
+  for (let i = 0; i < 14; i++) {
+    const x = -320 - rand() * 160, z = 600 + rand() * 340;   // kept west of x=-300 so it's never over the open water
+    const h = 40 + rand() * 70, r = 28 + rand() * 24;
+    const peak = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), rockMat);
+    peak.position.set(x, h / 2, z); peak.rotation.y = rand() * Math.PI; scene.add(peak); camBlockers.push(peak);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.4, h * 0.3, 7), snowMat);
+    cap.position.set(x, h - h * 0.15, z); cap.rotation.y = peak.rotation.y; scene.add(cap);
+    colliders.push({ minX: x - r * 0.7, maxX: x + r * 0.7, minZ: z - r * 0.7, maxZ: z + r * 0.7 });
+  }
+  signboard('ASHFORD HIGHLANDS', -310, 5, 660, 14, '#2a2f33');
+}
 for (let cx = -1; cx <= 0; cx++) for (let cz = 16; cz <= 17; cz++) addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
 for (let cx = 5; cx <= 8; cx += 3) for (let cz = 18; cz <= 21; cz += 3) addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
 
@@ -5386,19 +5406,28 @@ let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
 $('weatherBadge').textContent = '☀️ Clear';
+const WEATHER_CYCLE = ['clear', 'rain', 'clear', 'snow'];
+const WEATHER_LABEL = { clear: '☀️ Clear', rain: '🌧️ Raining', snow: '❄️ Snowing' };
 function updateWeather(dt) {
   weatherT -= dt;
   if (weatherT <= 0) {
-    weatherState = weatherState === 'clear' ? 'rain' : 'clear';
-    weatherT = weatherState === 'rain' ? 45 + rand() * 45 : 100 + rand() * 140;
-    toast(weatherState === 'rain' ? 'Rain is moving in.' : 'The rain has cleared up.');
-    $('weatherBadge').textContent = weatherState === 'rain' ? '🌧️ Raining' : '☀️ Clear';
+    const next = WEATHER_CYCLE[(WEATHER_CYCLE.indexOf(weatherState) + 1) % WEATHER_CYCLE.length];
+    weatherState = next;
+    weatherT = next === 'clear' ? 90 + rand() * 120 : next === 'snow' ? 50 + rand() * 40 : 45 + rand() * 45;
+    toast(next === 'clear' ? 'The weather has cleared up.' : next === 'snow' ? 'Snow is starting to fall.' : 'Rain is moving in.');
+    $('weatherBadge').textContent = WEATHER_LABEL[weatherState];
+    if (weatherState === 'snow') toast('Roads are icy — cars handle looser, and trams/buses have paused service.');
   }
-  if (weatherState === 'rain' && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
+  // Trams/buses/trains pause during snow rather than sliding around on ice --
+  // forcing a perpetual "doors open, waiting" state is the only hook available
+  // from here without reaching into transport.js's own update loop.
+  if (weatherState === 'snow') for (const s of transport?.services ?? []) { s.doors = true; s.wait = 2; }
+  if ((weatherState === 'rain' || weatherState === 'snow') && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
     for (let i = 0; i < 6; i++) {
       const a = rand() * Math.PI * 2, r = rand() * 16;
       const x = player.position.x + Math.cos(a) * r, z = player.position.z + Math.sin(a) * r;
-      spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3(0, -14, 0), 0x9fc3e0, 0.05, 0.7, -14);
+      if (weatherState === 'snow') spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3((Math.random() - 0.5), -2.5, (Math.random() - 0.5)), 0xffffff, 0.07, 1.6, -2.5);
+      else spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3(0, -14, 0), 0x9fc3e0, 0.05, 0.7, -14);
     }
   }
 }
@@ -5666,13 +5695,14 @@ function driveVehicle(v, dt) {
   }
   if (v.kind === 'plane') return flyPlane(v, dt);
   const mine = v === driving;
+  const icy = isRoadVehicle(v) && weatherState === 'snow';   // less grip: slower to slow down, looser steering — cars can slide
   if (mine) {
     if (keys.KeyW) v.speed += (v.kind === 'bus' ? 9 : 18) * dt;
     if (keys.KeyS) v.speed -= 24 * dt;
     const steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
-    v.group.rotation.y += steer * (v.kind === 'bus' ? 1.1 : 1.8) * dt * Math.min(1, Math.abs(v.speed) / 8) * Math.sign(v.speed);
+    v.group.rotation.y += steer * (v.kind === 'bus' ? 1.1 : 1.8) * (icy ? 0.5 : 1) * dt * Math.min(1, Math.abs(v.speed) / 8) * Math.sign(v.speed);
   }
-  v.speed *= Math.max(0, 1 - (mine && (keys.KeyW || keys.KeyS) ? 0.3 : 1.5) * dt);
+  v.speed *= Math.max(0, 1 - (mine && (keys.KeyW || keys.KeyS) ? 0.3 : 1.5) * (icy ? 0.3 : 1) * dt);
   const topSpeed = mine && !transmissionAuto && isRoadVehicle(v) ? v.maxSpeed * GEAR_RATIOS[gear - 1] : v.maxSpeed;
   v.speed = clamp(v.speed, -8, topSpeed);
   const h = v.group.rotation.y, p = v.group.position;
@@ -5922,7 +5952,7 @@ function updateWorldLight(dt) {
   if (lampTimer <= 0) {
     lampTimer = 0.5;
     (dungeon ? torchSpots : lampSpots.filter((_, i) => !lampBroken[i])).map(p => ({ p, d: distXZ(p, focus) })).sort((x, y) => x.d - y.d).slice(0, lampLights.length)
-      .forEach((n, i) => lampLights[i].position.set(n.p.x, dungeon ? n.p.y : CURB + 4, n.p.z));
+      .forEach((n, i) => lampLights[i].position.set(n.p.x, dungeon ? n.p.y : n.p.y + 4, n.p.z));
   }
   for (const l of lampLights) l.intensity = dungeon ? 40 : glow * 30;
 
@@ -6086,7 +6116,7 @@ sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpo
 });
 interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 enemies. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
 buildControlSettings($('controlChoices'),controlPrefs,matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0,()=>{for(const key in keys)keys[key]=false;mobileControls?.reset();mobileControls?.update();applyLayout();});
-regionalEnvironment=buildRegionalEnvironment({scene,box,makeTex,addTrafficLight,addBird,insideCollider});
+regionalEnvironment=buildRegionalEnvironment({scene,box,makeTex,addTrafficLight,addBird,insideCollider,addLampSpot:(x,y,z)=>lampSpots.push(new THREE.Vector3(x,y,z))});
 metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex,toast,groundY,
  canEnter:()=>!inCar&&!transport?.rider&&!metro?.rider&&!riding&&!sitting&&!action,
  playerPos:()=>player.position,firstPerson:()=>cameraView==='first',
@@ -6101,7 +6131,7 @@ mobileControls = setupMobileControls({
   attack: down => { mouseHeld = down; if (down) m1(); },
   board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame,
   preferences:()=>controlPrefs,
-  state:()=>({driving:inCar,vehicleKind:driving?.kind,carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
+  state:()=>({driving:inCar||!!metro?.rider||!!transport?.rider,passenger:!!metro?.rider||!!transport?.rider,vehicleKind:driving?.kind||(metro?.rider?'subway':transport?.rider?'transit':undefined),carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
