@@ -250,6 +250,7 @@
   <div class="label">Hunger</div><div class="bar"><div id="hungerBar" style="background:#ffb142"></div></div>
   <div class="label">Energy</div><div class="bar"><div id="energyBar" style="background:#34ace0"></div></div>
   <div id="clock"></div>
+  <div id="weatherBadge" style="opacity:.85"></div>
   <div id="extra"></div>
 </div>
 <div id="settingsBtn">⚙ Settings</div>
@@ -1016,20 +1017,32 @@ const TL_MAT = { red: new THREE.MeshStandardMaterial({ color: 0x2a0a0a, emissive
   amber: new THREE.MeshStandardMaterial({ color: 0x2a1c0a, emissive: 0xffaa20, emissiveIntensity: 0 }),
   green: new THREE.MeshStandardMaterial({ color: 0x0a2a10, emissive: 0x20ff50, emissiveIntensity: 0 }) };
 function addTrafficLight(x, z, faceY) {
-  box(0.09, 3.2, 0.09, x, 1.6, z, 0x2b2f33, false);
-  const head = new THREE.Group(); head.position.set(x, 3.2, z); head.rotation.y = faceY; scene.add(head);
-  mesh(new THREE.BoxGeometry(0.4, 0.9, 0.3), 0x1a1c1e, head);
+  box(0.14, 5, 0.14, x, 2.5, z, 0x2b2f33, false);   // taller mast — more visible from a distance/while driving
+  const head = new THREE.Group(); head.position.set(x, 5, z); head.rotation.y = faceY; scene.add(head);
+  mesh(new THREE.BoxGeometry(0.55, 1.3, 0.4), 0x1a1c1e, head);
   const lamps = {};
   let i = 0;
   for (const key of ['red', 'amber', 'green']) {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(0.11, 12), TL_MAT[key]);
-    m.position.set(0, 0.28 - i * 0.28, 0.16); head.add(m); lamps[key] = m.material; i++;
+    const m = new THREE.Mesh(new THREE.CircleGeometry(0.17, 14), TL_MAT[key]);
+    m.position.set(0, 0.4 - i * 0.4, 0.21); head.add(m); lamps[key] = m.material; i++;
   }
   trafficLights.push({ phase: rand() * 6, lamps });
 }
+// A handful of roundabouts instead of light-controlled intersections.
+const ROUNDABOUT_CELLS = new Set(['0,0', '-2,-2', '2,2', '-2,2']);
 for (let cx = -3; cx < 4; cx++) for (let cz = -3; cz < 4; cz++) {
-  if (rand() < 0.5) continue;   // not every single intersection — keeps it from feeling mechanical
+  if (ROUNDABOUT_CELLS.has(cx + ',' + cz)) continue;   // roundabouts replace lights at a few intersections
   addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
+}
+for (const key of ROUNDABOUT_CELLS) {
+  const [cx, cz] = key.split(',').map(Number);
+  const x = cx * 40, z = cz * 40;
+  const island = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.5, 0.3, 24), curbMat);
+  island.position.set(x, 0.15, z); scene.add(island);
+  const grass = new THREE.Mesh(new THREE.CircleGeometry(4, 24), lawnMat);
+  grass.rotation.x = -Math.PI / 2; grass.position.set(x, 0.32, z); scene.add(grass);
+  addTree(x, z, 1.3);
+  colliders.push({ minX: x - 4, maxX: x + 4, minZ: z - 4, maxZ: z + 4 });
 }
 function updateTrafficLights(dt) {
   for (const t of trafficLights) {
@@ -5306,12 +5319,14 @@ let reconstructionDays = 0;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
+$('weatherBadge').textContent = '☀️ Clear';
 function updateWeather(dt) {
   weatherT -= dt;
   if (weatherT <= 0) {
     weatherState = weatherState === 'clear' ? 'rain' : 'clear';
     weatherT = weatherState === 'rain' ? 45 + rand() * 45 : 100 + rand() * 140;
     toast(weatherState === 'rain' ? 'Rain is moving in.' : 'The rain has cleared up.');
+    $('weatherBadge').textContent = weatherState === 'rain' ? '🌧️ Raining' : '☀️ Clear';
   }
   if (weatherState === 'rain' && Math.random() < 0.9) {
     for (let i = 0; i < 6; i++) {
@@ -5563,7 +5578,7 @@ function driveVehicle(v, dt) {
     return;
   }
   const jumpingGap = isRoadVehicle(v) && p.x > BRIDGE_X - BRIDGE_HALF_W && p.x < BRIDGE_X + BRIDGE_HALF_W && p.z >= GAP0 && p.z <= GAP1 && bridgeLiftAngle > 0.08 && Math.abs(v.speed) >= GAP_JUMP_SPEED;
-  p.y = lerp(p.y, jumpingGap ? BRIDGE_Y : groundY(p.x, p.z), 1 - Math.exp(-20 * dt));
+  p.y = lerp(p.y, jumpingGap ? BRIDGE_Y : groundY(p.x, p.z, p.y), 1 - Math.exp(-20 * dt));
   for (const w of v.wheels) w.rotation.x += v.speed * dt / 0.4;
 }
 
@@ -5967,7 +5982,7 @@ mobileControls = setupMobileControls({
   attack: down => { mouseHeld = down; if (down) m1(); },
   board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame,
   preferences:()=>controlPrefs,
-  state:()=>({driving:inCar,vehicleKind:driving?.kind,carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
+  state:()=>({driving:inCar,vehicleKind:driving?.kind,carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });

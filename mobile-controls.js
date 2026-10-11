@@ -18,7 +18,7 @@ export function setupMobileControls(ctx){
  #mobilePunch{position:absolute;right:16px;bottom:16px;width:62px;height:62px;border-radius:50%!important}
  #mobileUltimate{position:absolute;right:16px;bottom:88px;width:60px;height:46px;overflow:hidden;border-color:var(--element)!important}
  #mobileUltimate.ready{color:var(--element);box-shadow:0 0 18px var(--element);background:#283c52}
- #mobileUltimate.ultimate-bar{width:115px;right:16px;bottom:92px;background:linear-gradient(90deg,var(--element) var(--charge),#142235 0)}
+ #mobileUltimate.ultimate-bar{width:115px;right:16px;bottom:204px;background:linear-gradient(90deg,var(--element) var(--charge),#142235 0)}
  #mobileSpecial{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:54px;height:48px}#mobileSpecial.locked{border-style:dashed;opacity:.7}
  #mobileSwitch{position:absolute;left:50%;top:10px;transform:translateX(-50%);width:46px;height:44px}
  #mobileGateInfo{position:absolute;left:calc(50% + 58px);top:10px;width:44px;height:44px}
@@ -65,7 +65,7 @@ export function setupMobileControls(ctx){
  const next=JSON.stringify([p,s.driving,s.carMovement,s.manual]);if(next!==config){reset();config=next;root.classList.toggle('skills-center',p.mobileSkills==='center');root.classList.toggle('run-toggle',p.mobileRun==='toggle');const movement=s.driving?(s.carMovement||p.carMovement):p.mobileMovement;stick.hidden=movement==='buttons';directions.hidden=movement!=='buttons';}
  const road=s.driving&&s.vehicleKind!=='plane'&&s.vehicleKind!=='boat';skills.hidden=!!s.driving;for(const id of ['mobilePunch','mobileDash','mobileBlock','mobileSwitch','mobileSpecial','mobileUltimate'])buttons[id].hidden=!!s.driving;buttons.mobileJump.hidden=road;buttons.mobileRun.hidden=road;gears.hidden=!(road&&s.manual);root.querySelector('#mobileGearValue').textContent='GEAR '+(s.gear||1);
  buttons.mobileSpecial.classList.toggle('locked',!s.specialUnlocked);buttons.mobileSpecial.title=s.specialUnlocked?'Special ability':'Empty special slot: complete special training';
- const ultimate=buttons.mobileUltimate,charge=Math.max(0,Math.min(100,s.ultimate||0));ultimate.classList.toggle('ultimate-bar',p.mobileUltimate==='bar');ultimate.classList.toggle('ready',charge===100);ultimate.style.setProperty('--element',s.color||'#8de1ce');ultimate.style.setProperty('--charge',charge+'%');ultimate.querySelector('span').textContent='ULT '+Math.floor(charge)+'%';buttons.mobileRun.classList.toggle('is-on',sprinting);buttons.mobileGateInfo.hidden=!s.gateAvailable;
+ const ultimate=buttons.mobileUltimate,charge=Math.max(0,Math.min(100,s.ultimate||0));ultimate.classList.toggle('ultimate-bar',p.mobileUltimate==='bar');ultimate.classList.toggle('ready',charge===100&&s.ultimateUnlocked!==false);ultimate.title=s.ultimateUnlocked===false?'Ultimate is level-locked':'Ultimate';ultimate.style.setProperty('--element',s.color||'#8de1ce');ultimate.style.setProperty('--charge',charge+'%');ultimate.querySelector('span').textContent=s.ultimateUnlocked===false?'LOCKED':'ULT '+Math.floor(charge)+'%';buttons.mobileRun.classList.toggle('is-on',sprinting);buttons.mobileGateInfo.hidden=!s.gateAvailable;
  }
  addEventListener('resize',()=>{update();ctx.layoutChanged?.();});window.visualViewport?.addEventListener('resize',update);window.visualViewport?.addEventListener('scroll',update);addEventListener('blur',()=>{reset();ctx.pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden){reset();ctx.pause();}});update();return {mobile:true,update,reset,root};
 }
