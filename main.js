@@ -1,3 +1,5 @@
+import {buildCapitalServices} from './capital-services.js';
+import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
 import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physics.js';
 import { buildPlaces } from './places.js';
@@ -300,6 +302,7 @@ const sitSpots = [];
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
+let spaceCentre = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
 const buildings = [];      // every city building, so it can be destroyed
 
@@ -352,6 +355,7 @@ const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[[0,0],[-80,-80],[80,80],[-80,80]];
 function groundY(x, z, bodyY = null) {
+  const spaceFloor=spaceCentre?.groundAt(x,z,bodyY??player.position.y);if(spaceFloor!=null)return spaceFloor;
   if(ROUNDABOUT_CENTRES.some(([cx,cz])=>Math.hypot(x-cx,z-cz)<9.5))return .17;
   const metroFloor=metro?.groundAt(x,z);if(metroFloor!=null)return metroFloor;
   const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
@@ -2014,6 +2018,9 @@ const tyreGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
 const hubGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.32, 10);
 const sirenRed = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff0000, emissiveIntensity: 0 });
 const sirenBlue = new THREE.MeshStandardMaterial({ color: 0x000055, emissive: 0x2060ff, emissiveIntensity: 0 });
+const ambRed = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff0000, emissiveIntensity: 0 });
+const ambWhite = new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xffffff, emissiveIntensity: 0 });
+const ambCrossMat = new THREE.MeshStandardMaterial({ color: 0xe84118, roughness: 0.5 });
 
 function makeVehicle(kind, color) {
   const g = new THREE.Group();
@@ -2051,8 +2058,20 @@ function makeVehicle(kind, color) {
     mesh(new THREE.BoxGeometry(0.5, 0.15, 0.3), sirenBlue, g).position.set(-0.3, 1.6, -0.25);
     mesh(new THREE.BoxGeometry(2.02, 0.12, 4.22), 0x1e3799, g).position.y = 0.7;
   }
+  if (kind === 'ambulance') {
+    mesh(new THREE.BoxGeometry(0.5, 0.15, 0.9), ambRed, g).position.set(0.3, 1.6, -0.25);
+    mesh(new THREE.BoxGeometry(0.5, 0.15, 0.9), ambWhite, g).position.set(-0.3, 1.6, -0.25);
+    for (const s of [-1, 1]) {
+      const cross = new THREE.Group(); cross.position.set(s * (W / 2 + 0.005), 0.75, -0.25);
+      cross.rotation.y = s * Math.PI / 2;
+      mesh(new THREE.BoxGeometry(0.2, 0.7, 0.02), ambCrossMat, cross);
+      mesh(new THREE.BoxGeometry(0.7, 0.2, 0.02), ambCrossMat, cross);
+      g.add(cross);
+    }
+    mesh(new THREE.BoxGeometry(2.02, 0.12, 2.2), 0xcc2b2b, g).position.set(0, 0.7, -L / 2 + 1.1);
+  }
   const v = { kind, group: g, wheels, speed: 0, radius: isBus ? 2.6 : 1.8, length: L,
-              maxSpeed: isBus ? 24 : kind === 'police' ? 85 : 75, ai: null, passengers: isBus ? [] : null };
+              maxSpeed: isBus ? 24 : kind === 'police' || kind === 'ambulance' ? 85 : 75, ai: null, passengers: isBus ? [] : null };
   vehicles.push(v);
   return v;
 }
@@ -2273,6 +2292,7 @@ signboard('RIVERSIDE ESTATES — PRIVATE', BRIDGE_X, BRIDGE_Y + 2.4, RIVERSIDE_Z
 const CAPITAL_CX = (CAPITAL_X0 + CAPITAL_X1) / 2, CAPITAL_CZ = (CAPITAL_Z0 + CAPITAL_Z1) / 2;
 for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++) {
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
+  if ([340,380].includes(x0) && [740,780,860].includes(z0)) continue;
   if (Math.hypot(x0 - CAPITAL_CX, z0 - CAPITAL_CZ) < 36) continue;   // leave the central plaza for the Capitol itself
   if (Math.abs(x0 - 220) < 55 && z0 < 740) continue;   // keep a real clear plaza at the bridge's mouth, not houses pressed right up against it
   pavement(x0, z0, lawnMat);
@@ -2435,11 +2455,12 @@ if (CITY_ENABLED) fetch('./assets/map/tiles/manifest.json').then(r => r.json()).
 // has real hospitals) disabled. Ambulances stage from here and return here.
 let HOSPITAL_POS = null;
 (function buildHospital() {
-  const x = -200, z = -200, w = 20, d = 16, h = 10;
-  box(w, h, d, x, h / 2, z, 0xf5fbf8);
-  box(w + 0.6, 0.6, d + 0.6, x, h + 0.3, z, 0xd8ecE4);
-  box(1.6, 0.35, 0.12, x, h * 0.6, z - d / 2 - 0.1, 0xe84118, false); // red cross
-  box(0.35, 1.6, 0.12, x, h * 0.6, z - d / 2 - 0.1, 0xe84118, false);
+  const x = -200, z = -200, w = 20, d = 16, floors = 8, h = floors * 3;
+  const f = facades[2]; // clinical off-white facade
+  addTower(x, CURB, z, w, h, d, f, true);
+  // Red cross, lit up, high on the tower face so it reads from a distance.
+  box(2.4, 0.5, 0.15, x, h * 0.82, z - d / 2 - 0.1, 0xe84118, false);
+  box(0.5, 2.4, 0.15, x, h * 0.82, z - d / 2 - 0.1, 0xe84118, false);
   colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
   civicBuildings.push({ type: 'hospital', name: 'St. Mary General Hospital', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
   HOSPITAL_POS = new THREE.Vector3(x, 0, z - d / 2 - 6);
@@ -3240,7 +3261,7 @@ function dispatchAmbulance(victim) {
   if (!HOSPITAL_POS || victim.ped.ambulanceDispatched) return;
   victim.ped.ambulanceDispatched = true;
   const dest = victim.root.position.clone();
-  const amb = makeVehicle('car', 0xffffff);
+  const amb = makeVehicle('ambulance', 0xffffff);
   amb.ai = null;
   amb.group.position.copy(HOSPITAL_POS); amb.group.position.y = 0;
   toast('An ambulance has been dispatched to the scene.');
@@ -3265,7 +3286,7 @@ function dispatchAmbulance(victim) {
 function dispatchDeathAmbulance(e) {
   if (!HOSPITAL_POS) return;
   const dest = e.root.position.clone();
-  const amb = makeVehicle('car', 0xffffff);
+  const amb = makeVehicle('ambulance', 0xffffff);
   amb.ai = null;
   amb.group.position.copy(HOSPITAL_POS); amb.group.position.y = 0;
   const st = { phase: 1, exit: HOSPITAL_POS.clone() };
@@ -5562,7 +5583,7 @@ function resolveRoadMovement(v, start, dt) {
     if (v === driving && e.kind === 'npc') raiseWanted(60);
   }
   for (const other of vehicles) {
-    if (other === v || !isRoadVehicle(other)) continue;
+    if (other === v || !isRoadVehicle(other) || other.bridgeFlight || Math.abs(other.group.position.y-p.y)>2) continue;
     const min = (v.radius + other.radius) * 0.75;
     if (segmentDistance(other.group.position, start, p) >= min) continue;
     let normal = (p.distanceTo(other.group.position) < min ? p : start).clone().sub(other.group.position).setY(0);
@@ -5580,6 +5601,23 @@ function resolveRoadMovement(v, start, dt) {
       if (other.ai) other.ai.stopTimer = 2;
     }
   }
+}
+function resolveRailCollision(v,start){
+ if(!isRoadVehicle(v)||v.bridgeFlight||!transport)return;
+ for(const rail of transport.services){
+ const p=v.group.position,r=rail.g.position,half=rail.name==='Train'?16:9;
+ if(Math.abs(p.y-r.y)>2)continue;
+ const steps=Math.max(1,Math.ceil(start.distanceTo(p)/.3));
+ for(let i=0;i<=steps;i++){
+ const q=start.clone().lerp(p,i/steps),dx=q.x-r.x,dz=q.z-r.z;
+ if(Math.abs(dx)>half+v.radius||Math.abs(dz)>1.5+v.radius)continue;
+ const side=Math.sign(dz)||Math.sign(start.z-r.z)||1;
+ const vel=vehicleVelocity(v),relative=Math.hypot(vel.x-(rail.velocityX||0),vel.z);
+ p.copy(q);p.z=r.z+side*(1.5+v.radius+.05);
+ if(!v.crashCooldown)damageVehicle(v,relative,p);
+ v.speed=0;if(v.ai)v.ai.stopTimer=3;rail.collisionStop=3;rail.speed=0;return;
+ }
+ }
 }
 // Manual/automatic transmission: in manual, top speed is capped by the current
 // gear until you shift up (Z) or down (X); N toggles between the two.
@@ -5677,7 +5715,7 @@ function trafficDrive(v, dt) {
     if (ai.route) { ai.routeIdx = (ai.routeIdx + 1) % ai.route.length; ai.to = ai.route[(ai.routeIdx + 1) % ai.route.length]; }
     else ai.to = nextNode(ai.from, ai.prev);
     f = laneFrame(ai);
-  } else f.pos = f.A.clone().addScaledVector(f.dir, ai.s).addScaledVector(f.left, LANE);
+  } else f = laneFrame(ai);
 
   const p = v.group.position, k = 1 - Math.exp(-6 * dt);   // smoothing makes the turns look natural
   p.x = lerp(p.x, f.pos.x, k);
@@ -5784,6 +5822,7 @@ function updateVehicles(dt) {
       trafficDrive(v, dt);
     }
     resolveRoadMovement(v, roadStart, dt);
+    resolveRailCollision(v,roadStart);
   }
 }
 
@@ -5871,6 +5910,9 @@ function updateWorldLight(dt) {
   const flash = wanted > 0 ? Math.floor(performance.now() / 180) % 2 : -1;   // police sirens
   sirenRed.emissiveIntensity = flash === 0 ? 4 : 0;
   sirenBlue.emissiveIntensity = flash === 1 ? 4 : 0;
+  const ambFlash = Math.floor(performance.now() / 150) % 2;   // ambulance light bar, always on while responding
+  ambRed.emissiveIntensity = ambFlash === 0 ? 4 : 0;
+  ambWhite.emissiveIntensity = ambFlash === 1 ? 4 : 0;
 
   lampTimer -= dt;
   if (lampTimer <= 0) {
@@ -6003,6 +6045,8 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 // room() helper, so they never auto-registered on the travel map like everything else.
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
+buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,destinations:townPlaces.destinations});
+spaceCentre=buildSpaceCentre({playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
@@ -6101,7 +6145,9 @@ function frame() {
     updatePlanes(dt);
     updateAdBalloon(dt);
     updateShips(dt);
+    spaceCentre?.update();
     transport.update(dt);
+    for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
     metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);
     urban.update(dayTime,dt);
     updateGates(dt);
