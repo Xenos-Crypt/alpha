@@ -2292,6 +2292,7 @@ signboard('RIVERSIDE ESTATES — PRIVATE', BRIDGE_X, BRIDGE_Y + 2.4, RIVERSIDE_Z
 const CAPITAL_CX = (CAPITAL_X0 + CAPITAL_X1) / 2, CAPITAL_CZ = (CAPITAL_Z0 + CAPITAL_Z1) / 2;
 for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++) {
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
+  if(x0===420&&[700,740].includes(z0))continue;
   if ([340,380].includes(x0) && [740,780,860].includes(z0)) continue;
   if (Math.hypot(x0 - CAPITAL_CX, z0 - CAPITAL_CZ) < 36) continue;   // leave the central plaza for the Capitol itself
   if (Math.abs(x0 - 220) < 55 && z0 < 740) continue;   // keep a real clear plaza at the bridge's mouth, not houses pressed right up against it
@@ -2482,16 +2483,57 @@ const firefighters = [];
     firefighters.push({ h: ff, home: new THREE.Vector3(x + fx, 0, z + fz), state: 'idle', fire: null, waitT: 0 });
   }
 })();
-// Downtown police post, right in the city near home/park — the original full
-// precinct (reception, holding cells, courtyard) stays out at the industrial
-// cluster, but a visible, enterable police presence belongs inside the city too.
+// Chain-link perimeter fence: posts + rails + a faint mesh "fabric" plane along
+// each edge, plus two short angled barbed-wire strands on every post. `gate`
+// (optional) leaves a gap in one edge for a vehicle/pedestrian entrance.
+const fenceWireMat = new THREE.MeshStandardMaterial({ color: 0x8a949e, transparent: true, opacity: 0.3, side: THREE.DoubleSide, roughness: 0.6 });
+function fenceRect(x0, x1, z0, z1, { postSpacing = 4, h = 2.6, gate = null } = {}) {
+  const edges = [
+    { a0: x0, a1: x1, fixed: z0, axis: 'x', side: 'z0' },
+    { a0: x0, a1: x1, fixed: z1, axis: 'x', side: 'z1' },
+    { a0: z0, a1: z1, fixed: x0, axis: 'z', side: 'x0' },
+    { a0: z0, a1: z1, fixed: x1, axis: 'z', side: 'x1' },
+  ];
+  for (const e of edges) {
+    const n = Math.max(2, Math.round((e.a1 - e.a0) / postSpacing));
+    for (let i = 0; i <= n; i++) {
+      const t = e.a0 + (e.a1 - e.a0) * i / n;
+      if (gate && gate.side === e.side && t > gate.from && t < gate.to) continue; // gap for the gate
+      const px = e.axis === 'x' ? t : e.fixed, pz = e.axis === 'x' ? e.fixed : t;
+      box(0.12, h, 0.12, px, h / 2, pz, 0x333333, false);
+      for (const a of [0.5, -0.5]) { const b = box(0.55, 0.05, 0.05, px, h + 0.06, pz, 0x1a1a1a, false); b.rotation.y = a; }
+    }
+    const midx = e.axis === 'x' ? (e.a0 + e.a1) / 2 : e.fixed, midz = e.axis === 'x' ? e.fixed : (e.a0 + e.a1) / 2, len = e.a1 - e.a0;
+    for (const ry of [0.5, 1.4, 2.3]) {
+      if (e.axis === 'x') box(len, 0.04, 0.04, midx, ry, midz, 0x3a3a3a, false);
+      else box(0.04, 0.04, len, midx, ry, midz, 0x3a3a3a, false);
+    }
+    const fab = mesh(new THREE.PlaneGeometry(len, h), fenceWireMat); fab.castShadow = false; fab.receiveShadow = false;
+    fab.position.set(midx, h / 2, midz); if (e.axis === 'z') fab.rotation.y = Math.PI / 2;
+    if (gate && gate.side === e.side) { // two short gate wings + pillars either side of the opening
+      const gc0 = gate.from, gc1 = gate.to;
+      for (const gc of [gc0, gc1]) box(0.3, h + 0.4, 0.3, e.axis === 'x' ? gc : e.fixed, (h + 0.4) / 2, e.axis === 'x' ? e.fixed : gc, 0x1b1b1b, false);
+    }
+  }
+}
+function buildWatchtower(x, z) {
+  const legH = 7, topY = legH, platW = 3.2;
+  for (const [ox, oz] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]]) box(0.25, legH, 0.25, x + ox, legH / 2, z + oz, 0x4a4a4a, false);
+  box(platW, 0.3, platW, x, topY + 0.15, z, 0x55595e);
+  for (const [ox, oz] of [[-platW / 2, 0], [platW / 2, 0], [0, -platW / 2], [0, platW / 2]]) box(0.1, 1.1, 0.1, x + ox, topY + 0.85, z + oz, 0x333333, false);
+  box(platW + 0.3, 1.6, platW + 0.3, x, topY + 1.9, z, 0x3a3f45, false);
+  box(platW - 0.3, 0.12, platW - 0.3, x, topY + 2.75, z, 0x2a2e33, false);
+  colliders.push({ minX: x - 1.5, maxX: x + 1.5, minZ: z - 1.5, maxZ: z + 1.5 });
+}
+// Downtown police posts, right in the city near home/park — now proper 2-storey
+// stations with a small fenced-in compound each, like a scaled-down version of
+// the main Headquarters below.
 function buildDowntownPolice(x, z, name) {
-  const w = 18, d = 16, h = 7;
-  box(w, h, d, x, h / 2, z, 0xd7dde6);
-  box(w + 0.6, 0.6, d + 0.6, x, h + 0.3, z, 0x8c94a0);
+  const w = 18, d = 16, floors = 2, h = floors * 3;
+  addTower(x, CURB, z, w, h, d, facades[3], true);
   box(1.6, 0.35, 0.12, x, h - 1.5, z - d / 2 - 0.1, 0x3867d6, false);
-  colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
   civicBuildings.push({ type: 'police', name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  fenceRect(x - w / 2 - 6, x + w / 2 + 6, z - d / 2 - 6, z + d / 2 + 10, { h: 2.4, gate: { side: 'z1', from: x - 3, to: x + 3 } });
   const v = makeVehicle('police', 0xf5f6fa);
   v.group.position.set(x + w / 2 + 6, 0, z); v.group.rotation.y = -Math.PI / 2;
   v.ai = { from: nearestNode(v.group.position), to: [0, 0], prev: null, s: 0, cruise: 12, parked: true, stopTimer: 0, stopped: false, chasing: false, blockedT: 0, ignoreT: 0, ramCd: 0 };
@@ -2499,6 +2541,112 @@ function buildDowntownPolice(x, z, name) {
 buildDowntownPolice(100, 20, 'Ashford Downtown Police Post — Central');
 buildDowntownPolice(-140, 60, 'Ashford Downtown Police Post — West');
 buildDowntownPolice(100, -140, 'Ashford Downtown Police Post — South');
+
+// =====================================================================
+// POLICE HEADQUARTERS: a full 4-storey HQ + attached prison, west of the
+// hospital/fire station. Canteen wing, prison reception, a receptionist,
+// watchtowers, a gated high fence topped with barbed wire, parked cruisers,
+// guards patrolling the perimeter, and prisoners wandering the rec yard.
+// =====================================================================
+const hqPeople = [];
+(function buildPoliceHQ() {
+  const hx = -260, hz = -200;
+  const x0 = hx - 34, x1 = hx + 34, z0 = hz - 26, z1 = hz + 30;
+
+  // Main HQ tower — 4 storeys.
+  const mw = 26, md = 18, floors = 4, mh = floors * 3;
+  const mx = hx, mz = hz - 10;
+  addTower(mx, CURB, mz, mw, mh, md, facades[3], true);
+  box(2, 0.6, 0.15, mx, mh - 2, mz - md / 2 - 0.1, 0x3867d6, false);
+  signboard('ASHFORD POLICE HEADQUARTERS', mx, mh + 1.4, mz - md / 2 - 0.1, 22, '#162a4d');
+  civicBuildings.push({ type: 'police', name: 'Ashford Police Headquarters', x: mx, z: mz, minX: mx - mw / 2, maxX: mx + mw / 2, minZ: mz - md / 2, maxZ: mz + md / 2 });
+
+  // Canteen wing, attached to the HQ's east side.
+  const cw = 11, cd = 9, ch = 4, cx = mx + mw / 2 + cw / 2, cz = mz;
+  box(cw, ch, cd, cx, ch / 2, cz, 0xd7c9a8);
+  box(cw + 0.4, 0.4, cd + 0.4, cx, ch + 0.2, cz, 0x9a8a68);
+  colliders.push({ minX: cx - cw / 2, maxX: cx + cw / 2, minZ: cz - cd / 2, maxZ: cz + cd / 2 });
+  signboard('CANTEEN', cx, ch + 0.9, cz + cd / 2 + 0.1, 8, '#4a3b1d');
+  civicBuildings.push({ type: 'police', name: 'Police HQ Canteen', x: cx, z: cz, minX: cx - cw / 2, maxX: cx + cw / 2, minZ: cz - cd / 2, maxZ: cz + cd / 2 });
+  for (const [bx, bz] of [[-3, 0], [3, 0]]) { addBench(cx + bx, cz + cd / 2 + 3, Math.PI); }
+
+  // Prison reception, near the gate — a receptionist staffs the front desk.
+  const rw = 14, rd = 10, rh = 5, rx = hx, rz = hz + 14;
+  box(rw, rh, rd, rx, rh / 2, rz, 0xb9c0c8);
+  box(rw + 0.4, 0.4, rd + 0.4, rx, rh + 0.2, rz, 0x7c838c);
+  colliders.push({ minX: rx - rw / 2, maxX: rx + rw / 2, minZ: rz - rd / 2, maxZ: rz + rd / 2 });
+  signboard('PRISON RECEPTION', rx, rh + 0.9, rz - rd / 2 - 0.1, 14, '#162a4d');
+  civicBuildings.push({ type: 'police', name: 'Police HQ — Prison Reception', x: rx, z: rz, minX: rx - rw / 2, maxX: rx + rw / 2, minZ: rz - rd / 2, maxZ: rz + rd / 2 });
+  box(1.4, 0.8, 0.5, rx, 0.4, rz - rd / 2 - 1.2, 0x5a4530, false); // front desk, just outside the door
+  const receptionist = makeHumanoid({ outfit: 0x2a3a4a, hair: 0x3a2a1a, pants: 0x1c242c });
+  receptionist.root.position.set(rx, 0, rz - rd / 2 - 1.8); receptionist.root.rotation.y = Math.PI;
+
+  // Outdoor rec yard between reception and the main tower — a basketball hoop for prisoners.
+  const yardCX = hx, yardCZ = hz + 2;
+  box(14, 0.08, 10, yardCX, 0.04, yardCZ, 0x6b6e73, false);
+  box(0.18, 3.2, 0.18, yardCX, 1.6, yardCZ - 5, 0x3a3a3a, false);
+  box(1.4, 0.08, 0.9, yardCX, 3.1, yardCZ - 5, 0xe8e8e8, false);
+  const hoop = mesh(new THREE.TorusGeometry(0.4, 0.04, 8, 16), 0xff6b35); hoop.position.set(yardCX, 2.75, yardCZ - 4.6); hoop.rotation.x = Math.PI / 2;
+
+  // Watchtowers at the yard's back corners.
+  buildWatchtower(x0 + 3, z0 + 3);
+  buildWatchtower(x1 - 3, z0 + 3);
+
+  // High perimeter fence with barbed wire, gated at the south (street) side.
+  fenceRect(x0, x1, z0, z1, { h: 3.2, postSpacing: 4.5, gate: { side: 'z1', from: hx - 5, to: hx + 5 } });
+
+  // Parked police cruisers just inside the gate.
+  for (const [vx, vz, rot] of [[hx - 10, hz + 24, Math.PI], [hx + 2, hz + 24, Math.PI], [hx + 14, hz + 24, Math.PI]]) {
+    const v = makeVehicle('police', 0xf5f6fa);
+    v.group.position.set(vx, 0, vz); v.group.rotation.y = rot; v.ai = null;
+  }
+
+  // Guards patrolling a loop just inside the fence line.
+  const patrolLoop = [[x0 + 5, z0 + 5], [x1 - 5, z0 + 5], [x1 - 5, z1 - 5], [x0 + 5, z1 - 5]];
+  for (let i = 0; i < 5; i++) {
+    const h = makeHumanoid({ outfit: 0x2a3a4a, hair: pick([0x1a1a1a, 0x3a2a1a, 0x222]), pants: 0x1c242c });
+    const wp = i % patrolLoop.length;
+    h.root.position.set(patrolLoop[wp][0], 0, patrolLoop[wp][1]);
+    hqPeople.push({ h, kind: 'guard', wp, speed: 2.1 + Math.random() * 0.4 });
+  }
+
+  // Prisoners wandering the rec yard, orange jumpsuits.
+  for (let i = 0; i < 8; i++) {
+    const h = makeHumanoid({ outfit: 0xff7a1a, hair: pick([0x1a1a1a, 0x5a4a3a, 0x2a2a2a]), pants: 0xff7a1a, shoes: 0x2a2a2a });
+    h.root.position.set(yardCX + (Math.random() - 0.5) * 12, 0, yardCZ + (Math.random() - 0.5) * 8);
+    hqPeople.push({ h, kind: 'prisoner', target: null, speed: 1.1 + Math.random() * 0.5, waitT: Math.random() * 3,
+      bounds: { x0: yardCX - 7, x1: yardCX + 7, z0: yardCZ - 5, z1: yardCZ + 5 } });
+  }
+
+  // More guards milling around the yard and gate, keeping order.
+  for (let i = 0; i < 4; i++) {
+    const h = makeHumanoid({ outfit: 0x2a3a4a, hair: pick([0x1a1a1a, 0x3a2a1a]), pants: 0x1c242c });
+    h.root.position.set(yardCX + (Math.random() - 0.5) * 10, 0, yardCZ + (Math.random() - 0.5) * 6);
+    hqPeople.push({ h, kind: 'yardGuard', target: null, speed: 1.4, waitT: Math.random() * 3,
+      bounds: { x0: yardCX - 8, x1: yardCX + 8, z0: yardCZ - 6, z1: yardCZ + 6 } });
+  }
+
+  addTask({ dur: 1e9, update(dt) {
+    for (const p of hqPeople) {
+      const pos = p.h.root.position;
+      if (p.kind === 'guard') {
+        const t = patrolLoop[p.wp];
+        const dir = new THREE.Vector3(t[0] - pos.x, 0, t[1] - pos.z), dist = dir.length();
+        if (dist < 1.2) { p.wp = (p.wp + 1) % patrolLoop.length; }
+        else { dir.normalize(); pos.addScaledVector(dir, p.speed * dt); p.h.root.rotation.y = Math.atan2(dir.x, dir.z); animateHumanoid(p.h, null, true, false, true, dt); }
+      } else {
+        if (!p.target || pos.distanceTo(p.target) < 0.6) {
+          if (p.waitT > 0) { p.waitT -= dt; animateHumanoid(p.h, null, false, false, true, dt); pos.y = groundY(pos.x, pos.z); continue; }
+          p.target = new THREE.Vector3(p.bounds.x0 + Math.random() * (p.bounds.x1 - p.bounds.x0), 0, p.bounds.z0 + Math.random() * (p.bounds.z1 - p.bounds.z0));
+          p.waitT = 1 + Math.random() * 3;
+        }
+        const dir = new THREE.Vector3(p.target.x - pos.x, 0, p.target.z - pos.z).normalize();
+        pos.addScaledVector(dir, p.speed * dt); p.h.root.rotation.y = Math.atan2(dir.x, dir.z); animateHumanoid(p.h, null, true, false, true, dt);
+      }
+      pos.y = groundY(pos.x, pos.z);
+    }
+  } });
+})();
 
 // Ashford School — the building + playground only; the student population is
 // added later, once the pedestrian system (addPedPopulation) exists.
@@ -3683,7 +3831,7 @@ function aimMelee() {
   return fwdOf(player);
 }
 
-function canAct() { return !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
+function canAct() { return !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
 
 // ---- M1: 4-hit combo, the last hit is a heavy knockback with an impact frame ----
 function m1() {
@@ -4835,6 +4983,7 @@ function updateRiding(dt) {
 // one thing while E actually does another (they were two separately
 // maintained priority lists before, and had drifted out of sync).
 function resolveInteractTarget() {
+  if(spaceCentre?.rider)return {label:spaceCentre.state==='landed'?'Leave rocket':spaceCentre.state==='countdown'?'Abort launch':'Rocket flight in progress',action:()=>spaceCentre.interact()};
   if (metro?.rider) return { label: 'Leave the subway', action: () => metro.leave() };
   if (riding) return { label: 'Dismount', action: dismountHorse };
   if (transport?.rider) return { label: 'Leave', action: () => transport.leave() };
@@ -5424,6 +5573,7 @@ function updateSwimming(dt) {
   if(!isSeaWater(player.position.x,player.position.z)){swimming=false;waterExhausted=false;P.rig.rotation.x=0;player.position.y=groundY(player.position.x,player.position.z);onGround=true;toast('Back on dry ground.');}
 }
 function updatePlayer(dt) {
+  if(spaceCentre?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(metro?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(transport?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if (isSeaWater(player.position.x,player.position.z) && player.position.y < .2) return updateSwimming(dt);
@@ -6046,7 +6196,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
 buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,destinations:townPlaces.destinations});
-spaceCentre=buildSpaceCentre({playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
+spaceCentre=buildSpaceCentre({makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
@@ -6091,7 +6241,7 @@ mobileControls = setupMobileControls({
   attack: down => { mouseHeld = down; if (down) m1(); },
   board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame,
   preferences:()=>controlPrefs,
-  state:()=>({driving:inCar||!!metro?.rider||!!transport?.rider,passenger:!!metro?.rider||!!transport?.rider,vehicleKind:driving?.kind||(metro?.rider?'subway':transport?.rider?'transit':undefined),carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
+  state:()=>({driving:inCar||!!metro?.rider||!!transport?.rider,passenger:!!spaceCentre?.rider||!!metro?.rider||!!transport?.rider,vehicleKind:driving?.kind||(metro?.rider?'subway':transport?.rider?'transit':undefined),carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
@@ -6145,7 +6295,7 @@ function frame() {
     updatePlanes(dt);
     updateAdBalloon(dt);
     updateShips(dt);
-    spaceCentre?.update();
+    spaceCentre?.update(dt);
     transport.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
     metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);
