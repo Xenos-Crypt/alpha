@@ -287,24 +287,11 @@
     <button class="tab" data-stab="graphics">Graphics</button>
     <button class="tab" data-stab="view">View</button>
   </div>
-  <div id="stabControls"><div id="controlChoices"></div>
-    WASD: move / drive &nbsp;·&nbsp; Mouse: look<br>
-    Shift: sprint &nbsp;·&nbsp; Space: jump<br>
-    Left click (hold): M1 combo<br>
-    1 2 3 4: skills &nbsp;·&nbsp; G: ultimate<br>
-    Q: dash &nbsp;·&nbsp; F (hold): block<br>
-    R: psychic grip &nbsp;·&nbsp; T: switch character<br>
-    E: interact / drive / steal vehicles<br>
-    C: stats &amp; skills<br>
-    Look at a gate: see its rank &amp; danger<br>
-    L: lock / unlock mouse &nbsp;·&nbsp; Esc: pause<br>
-    While driving — N: toggle manual/automatic transmission &nbsp;·&nbsp; Z / X: shift gear up/down (manual only)<br>
-    On a horse — WASD: move / steer &nbsp;·&nbsp; Shift: gallop &nbsp;·&nbsp; E: dismount
-    <div class="row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px">
+  <div id="stabControls"><div id="controlChoices"></div>    <div class="row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px">
       <button class="opt" id="layoutEditBtn">Move controls</button>
       <button class="opt" id="layoutResetBtn">Reset layout</button>
     </div>
-    <div class="sub">Drag the health/stats box or the skill bar anywhere on screen, then press Done.</div>
+    <div class="sub">Move each control individually, including Settings. Press Done to save your layout.</div>
     <div class="row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px">
       <button class="opt" id="signOutBtn">Sign out</button>
     </div>
@@ -5088,7 +5075,7 @@ function buildHotbar() {
     <div class="sname">${s.name}</div><div class="key">${key}</div><div class="cd"></div><div class="cdt"></div>
     <div class="lock">🔒<span class="lvl">Lv ${lvl}</span></div></div>`;
   $('hotbar').innerHTML = slot('Q', { icon: '➤', name: 'Dash' }, 'small')
-    + slot('R', { icon: '🧠', name: 'Psychic' }, 'small', PSYCHIC_UNLOCK_LEVEL)
+    + slot('R', { icon: 'SP', name: specialUnlocked ? 'Psychic' : 'Empty special' }, 'small')
     + c.skills.map((s, i) => slot(i + 1, s, '', SKILL_UNLOCK_LEVEL[i])).join('')
     + slot('G', c.ult, 'ult', ULT_UNLOCK_LEVEL);
   slotEls = [...$('hotbar').children].map(el => ({ el, cd: el.querySelector('.cd'), cdt: el.querySelector('.cdt') }));
@@ -5121,7 +5108,7 @@ function requestGameControl() {
     if (innerHeight >= innerWidth) return;
     locked = true; boardOpen = false; settingsOpen = false; $('board').style.display = 'none'; $('settingsPanel').style.display = 'none'; $('start').style.display = 'none';
     mobileControls.update();
-  } else renderer.domElement.requestPointerLock();
+  } else requestGameControl();
 }
 function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style.display = boardOpen || settingsOpen ? 'none' : 'flex'; }
 
@@ -5161,7 +5148,7 @@ function toggleSettings(open) {
   if (open && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   settingsOpen = open;
   $('settingsPanel').style.display = open ? 'block' : 'none';
-  if (open) { renderSettings(); document.exitPointerLock(); locked = false; }
+  if (open) { mobileControls?.reset();for(const code in keys)keys[code]=false;renderSettings(); document.exitPointerLock(); locked = false; }
   else requestGameControl();
 }
 document.querySelectorAll('#settingsPanel .tab').forEach(b => b.addEventListener('click', () => { settingsTab = b.dataset.stab; renderSettings(); }));
@@ -5180,70 +5167,23 @@ $('volumeSlider').addEventListener('input', e => {
 // CUSTOM LAYOUT: drag the HUD/hotbar (desktop) or joystick/buttons (mobile)
 // anywhere on screen; positions persist in localStorage.
 // =====================================================================
-const DRAG_IDS = ['hud', 'hotbar', 'mobileStick', 'mobileButtons', 'mobileTop'];
 let layoutEditMode = false;
-const loadLayout = () => { try { return JSON.parse(localStorage.getItem('uiLayout') || '{}'); } catch { return {}; } };
-const saveLayoutPos = (id, left, top) => { const L = loadLayout(); L[id] = { left, top }; localStorage.setItem('uiLayout', JSON.stringify(L)); };
-function applyLayout() {
-  const L = loadLayout();
-  for (const id of DRAG_IDS) {
-    const el = document.getElementById(id), pos = L[id];
-    if (el && pos) { el.style.left = pos.left + 'px'; el.style.top = pos.top + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.transform = 'none'; }
-  }
+function dragIds(){return mobileControls?.mobile?['hud',...document.querySelectorAll('[data-mobile-control]')].map(el=>typeof el==='string'?el:el.id):['hud','hotbar','settingsBtn'];}
+function layoutKey(){return mobileControls?.mobile?'phoneControlLayout-v2':'desktopControlLayout-v2';}
+const loadLayout=()=>{try{return JSON.parse(localStorage.getItem(layoutKey())||'{}');}catch{return {};}};
+function saveLayoutPos(id,left,top){const L=loadLayout(),el=document.getElementById(id),width=visualViewport?.width||innerWidth,height=visualViewport?.height||innerHeight;L[id]={left:left/Math.max(1,width-el.offsetWidth),top:top/Math.max(1,height-el.offsetHeight)};localStorage.setItem(layoutKey(),JSON.stringify(L));}
+function applyLayout(){const L=loadLayout(),width=visualViewport?.width||innerWidth,height=visualViewport?.height||innerHeight;for(const id of dragIds()){const el=document.getElementById(id),pos=L[id];if(el&&pos){el.style.position='fixed';el.style.left=clamp(pos.left,0,1)*Math.max(0,width-el.offsetWidth)+'px';el.style.top=clamp(pos.top,0,1)*Math.max(0,height-el.offsetHeight)+'px';el.style.right='auto';el.style.bottom='auto';el.style.transform='none';}}}
+function makeDraggable(el){if(!el||el.dataset.dragBound)return;el.dataset.dragBound='1';let dragging=false,offX=0,offY=0;
+ el.addEventListener('pointerdown',e=>{if(!layoutEditMode)return;e.preventDefault();e.stopImmediatePropagation();dragging=true;el.setPointerCapture(e.pointerId);const r=el.getBoundingClientRect();offX=e.clientX-r.left;offY=e.clientY-r.top;},true);
+ el.addEventListener('pointermove',e=>{if(!dragging)return;e.preventDefault();e.stopImmediatePropagation();const width=visualViewport?.width||innerWidth,height=visualViewport?.height||innerHeight;el.style.position='fixed';el.style.left=clamp(e.clientX-offX,0,width-el.offsetWidth)+'px';el.style.top=clamp(e.clientY-offY,0,height-el.offsetHeight)+'px';el.style.right='auto';el.style.bottom='auto';el.style.transform='none';},true);
+ const end=e=>{if(!dragging)return;dragging=false;e.stopImmediatePropagation();const r=el.getBoundingClientRect();saveLayoutPos(el.id,r.left,r.top);};el.addEventListener('pointerup',end,true);el.addEventListener('pointercancel',end,true);
 }
-function makeDraggable(el) {
-  if (!el || el.dataset.dragBound) return;
-  el.dataset.dragBound = '1';
-  let dragging = false, offX = 0, offY = 0;
-  el.addEventListener('pointerdown', e => {
-    if (!layoutEditMode) return;
-    e.preventDefault(); e.stopPropagation();
-    dragging = true; el.setPointerCapture(e.pointerId);
-    const r = el.getBoundingClientRect();
-    offX = e.clientX - r.left; offY = e.clientY - r.top;
-  });
-  el.addEventListener('pointermove', e => {
-    if (!dragging) return;
-    const left = clamp(e.clientX - offX, 0, innerWidth - el.offsetWidth);
-    const top = clamp(e.clientY - offY, 0, innerHeight - el.offsetHeight);
-    el.style.left = left + 'px'; el.style.top = top + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.transform = 'none';
-  });
-  const end = e => { if (!dragging) return; dragging = false; const r = el.getBoundingClientRect(); saveLayoutPos(el.id, r.left, r.top); };
-  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
-}
-function setLayoutEditMode(on) {
-  layoutEditMode = on;
-  for (const id of DRAG_IDS) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    makeDraggable(el);
-    el.style.pointerEvents = on ? 'auto' : '';
-    el.style.outline = on ? '2px dashed #ffd166' : '';
-    el.style.cursor = on ? 'grab' : '';
-  }
-  $('layoutEditBar').style.display = on ? 'flex' : 'none';
-  sewers?.update();
-  mobileControls?.update();
-}
-function resetLayout() {
-  localStorage.removeItem('uiLayout');
-  for (const id of DRAG_IDS) {
-    const el = document.getElementById(id);
-    if (el) { el.style.left = ''; el.style.top = ''; el.style.right = ''; el.style.bottom = ''; el.style.transform = ''; }
-  }
-  toast('Layout reset to default.');
-}
-$('layoutEditBtn').addEventListener('click', () => {
-  settingsOpen = false; $('settingsPanel').style.display = 'none';
-  setFreeMouse(true);
-  setLayoutEditMode(true);
-});
-$('layoutResetBtn').addEventListener('click', resetLayout);
-$('signOutBtn').addEventListener('click', () => { if (confirm('Sign out? Your progress is saved on this device.')) signOutAndReload(); });
-$('layoutDoneBtn').addEventListener('click', () => {
-  setLayoutEditMode(false);
-  setFreeMouse(false);
-});
+function setLayoutEditMode(on){layoutEditMode=on;mobileControls?.reset();for(const id of dragIds()){const el=document.getElementById(id);if(!el)continue;makeDraggable(el);el.style.pointerEvents=on?'auto':'';el.style.outline=on?'2px dashed #ffd166':'';el.style.cursor=on?'grab':'';}$('layoutEditBar').style.display=on?'flex':'none';mobileControls?.update();}
+function resetLayout(){localStorage.removeItem(layoutKey());for(const id of dragIds()){const el=document.getElementById(id);if(el)for(const prop of ['left','top','right','bottom','transform','position'])el.style[prop]='';}mobileControls?.update();toast('Control positions reset.');}
+$('layoutEditBtn').addEventListener('click',()=>{settingsOpen=false;$('settingsPanel').style.display='none';if(mobileControls?.mobile){locked=false;}else{freeMouse=true;locked=false;document.exitPointerLock();}setLayoutEditMode(true);});
+$('layoutResetBtn').addEventListener('click',resetLayout);
+$('signOutBtn').addEventListener('click',()=>{if(confirm('Sign out?'))signOutAndReload();});
+$('layoutDoneBtn').addEventListener('click',()=>{setLayoutEditMode(false);freeMouse=false;requestGameControl();});
 
 // =====================================================================
 // WAYPOINTS: the travel board sets a waypoint and an on-screen compass arrow
@@ -5254,7 +5194,12 @@ function setWaypoint(d) { waypoint = { x: d.x, z: d.z, name: d.name }; toast('Wa
 function updateWaypoint() {
   const el = $('waypointArrow');
   if (!waypoint) { el.style.display = 'none'; return; }
-  const dx = waypoint.x - player.position.x, dz = waypoint.z - player.position.z, dist = Math.hypot(dx, dz);
+  // player.position freezes at wherever it was when you got in a vehicle (or
+  // mounted a horse) -- the vehicle/horse itself is what actually moves, so use
+  // that position for distance/direction while driving/riding, or the waypoint
+  // reads as stuck no matter how far you travel.
+  const pos = inCar && driving ? driving.group.position : riding ? riding.g.position : player.position;
+  const dx = waypoint.x - pos.x, dz = waypoint.z - pos.z, dist = Math.hypot(dx, dz);
   if (dist < 5) { toast("You've arrived at " + waypoint.name + '.'); waypoint = null; el.style.display = 'none'; return; }
   el.style.display = 'flex';
   const rel = angleDiff(yaw, Math.atan2(dx, dz));
