@@ -2047,7 +2047,24 @@ function showClassSelect() {
   });
 }
 
+// Turned off while the OpenAI account has no credits (every roll was silently
+// falling back to the same static text, which read as "the AI stopped
+// working"). Revisit this properly when building the real game — for now,
+// new characters just start with a plain, fixed baseline, no dice, no API call.
+const DICE_ENABLED = false;
 function runSpawnScreen(userId, persist) {
+  if (!DICE_ENABLED) {
+    origin = {
+      roll: null, family: null, backstory: null,
+      stats: { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
+      perk: null, wealthTier: 'working', housing: 'A small rented room',
+      startingGold: 150, maxHealth: 100, weapon: null,
+    };
+    stats.gold = origin.startingGold;
+    stats.hp = maxHp();
+    swordGrip.visible = false;
+    return showClassSelect();
+  }
   return new Promise(resolve => {
     $('spawn').style.display = 'flex';
     $('start').style.display = 'none';
@@ -3041,7 +3058,7 @@ function killEnemy(e) {
   e.stun = 0;
   // Counts toward the special-ability training quest (used to be slime-only, but
   // slimes were removed from the world — any real kill counts now).
-  if (!specialUnlocked) { specialTrainingKills = Math.min(5, specialTrainingKills + 1); localStorage.setItem('specialTrainingKills', String(specialTrainingKills)); }
+  if (!specialUnlocked && e.kind !== 'npc') { specialTrainingKills = Math.min(5, specialTrainingKills + 1); localStorage.setItem('specialTrainingKills', String(specialTrainingKills)); }
   if (e.kind === 'slime') {
     e.respawn = 10;
     e.root.visible = false;
@@ -5104,11 +5121,12 @@ const keys = {};
 let locked = false, yaw = Math.PI, pitch = 0.3, camDist = 6;
 let mobileControls = null;
 function requestGameControl() {
+  for(const code in keys)keys[code]=false;mouseHeld=false;
   if (mobileControls?.mobile) {
     if (innerHeight >= innerWidth) return;
     locked = true; boardOpen = false; settingsOpen = false; $('board').style.display = 'none'; $('settingsPanel').style.display = 'none'; $('start').style.display = 'none';
-    mobileControls.update();
-  } else requestGameControl();
+    mobileControls.update();applyLayout();
+  } else renderer.domElement.requestPointerLock();
 }
 function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style.display = boardOpen || settingsOpen ? 'none' : 'flex'; }
 
@@ -5172,14 +5190,15 @@ function dragIds(){return mobileControls?.mobile?['hud',...document.querySelecto
 function layoutKey(){return mobileControls?.mobile?'phoneControlLayout-v2':'desktopControlLayout-v2';}
 const loadLayout=()=>{try{return JSON.parse(localStorage.getItem(layoutKey())||'{}');}catch{return {};}};
 function saveLayoutPos(id,left,top){const L=loadLayout(),el=document.getElementById(id),width=visualViewport?.width||innerWidth,height=visualViewport?.height||innerHeight;L[id]={left:left/Math.max(1,width-el.offsetWidth),top:top/Math.max(1,height-el.offsetHeight)};localStorage.setItem(layoutKey(),JSON.stringify(L));}
-function applyLayout(){const L=loadLayout(),width=visualViewport?.width||innerWidth,height=visualViewport?.height||innerHeight;for(const id of dragIds()){const el=document.getElementById(id),pos=L[id];if(el&&pos){el.style.position='fixed';el.style.left=clamp(pos.left,0,1)*Math.max(0,width-el.offsetWidth)+'px';el.style.top=clamp(pos.top,0,1)*Math.max(0,height-el.offsetHeight)+'px';el.style.right='auto';el.style.bottom='auto';el.style.transform='none';}}}
+function reserveControlSpace(el){if(!['mobileTop','mobileActions','mobileSkills','mobileDirections','mobileGears'].includes(el.parentElement?.id)||document.querySelector('[data-placeholder="'+el.id+'"]'))return;const r=el.getBoundingClientRect(),css=getComputedStyle(el),space=document.createElement('span');space.dataset.placeholder=el.id;space.style.cssText='display:block;visibility:hidden;pointer-events:none;flex-shrink:0;width:'+r.width+'px;height:'+r.height+'px';space.style.gridArea=css.gridArea;el.before(space);}
+function applyLayout(){const L=loadLayout(),width=visualViewport?.width||innerWidth,height=visualViewport?.height||innerHeight;for(const id of dragIds()){const el=document.getElementById(id),pos=L[id];if(el&&pos&&el.getClientRects().length){reserveControlSpace(el);el.style.position='fixed';el.style.left=clamp(pos.left,0,1)*Math.max(0,width-el.offsetWidth)+'px';el.style.top=clamp(pos.top,0,1)*Math.max(0,height-el.offsetHeight)+'px';el.style.right='auto';el.style.bottom='auto';el.style.transform='none';}}}
 function makeDraggable(el){if(!el||el.dataset.dragBound)return;el.dataset.dragBound='1';let dragging=false,offX=0,offY=0;
  el.addEventListener('pointerdown',e=>{if(!layoutEditMode)return;e.preventDefault();e.stopImmediatePropagation();dragging=true;el.setPointerCapture(e.pointerId);const r=el.getBoundingClientRect();offX=e.clientX-r.left;offY=e.clientY-r.top;},true);
- el.addEventListener('pointermove',e=>{if(!dragging)return;e.preventDefault();e.stopImmediatePropagation();const width=visualViewport?.width||innerWidth,height=visualViewport?.height||innerHeight;el.style.position='fixed';el.style.left=clamp(e.clientX-offX,0,width-el.offsetWidth)+'px';el.style.top=clamp(e.clientY-offY,0,height-el.offsetHeight)+'px';el.style.right='auto';el.style.bottom='auto';el.style.transform='none';},true);
+ el.addEventListener('pointermove',e=>{if(!dragging)return;e.preventDefault();e.stopImmediatePropagation();const width=visualViewport?.width||innerWidth,height=visualViewport?.height||innerHeight;reserveControlSpace(el);el.style.position='fixed';el.style.left=clamp(e.clientX-offX,0,width-el.offsetWidth)+'px';el.style.top=clamp(e.clientY-offY,0,height-el.offsetHeight)+'px';el.style.right='auto';el.style.bottom='auto';el.style.transform='none';},true);
  const end=e=>{if(!dragging)return;dragging=false;e.stopImmediatePropagation();const r=el.getBoundingClientRect();saveLayoutPos(el.id,r.left,r.top);};el.addEventListener('pointerup',end,true);el.addEventListener('pointercancel',end,true);
 }
 function setLayoutEditMode(on){layoutEditMode=on;mobileControls?.reset();for(const id of dragIds()){const el=document.getElementById(id);if(!el)continue;makeDraggable(el);el.style.pointerEvents=on?'auto':'';el.style.outline=on?'2px dashed #ffd166':'';el.style.cursor=on?'grab':'';}$('layoutEditBar').style.display=on?'flex':'none';mobileControls?.update();}
-function resetLayout(){localStorage.removeItem(layoutKey());for(const id of dragIds()){const el=document.getElementById(id);if(el)for(const prop of ['left','top','right','bottom','transform','position'])el.style[prop]='';}mobileControls?.update();toast('Control positions reset.');}
+function resetLayout(){localStorage.removeItem(layoutKey());document.querySelectorAll('[data-placeholder]').forEach(el=>el.remove());for(const id of dragIds()){const el=document.getElementById(id);if(el)for(const prop of ['left','top','right','bottom','transform','position'])el.style[prop]='';}mobileControls?.update();toast('Control positions reset.');}
 $('layoutEditBtn').addEventListener('click',()=>{settingsOpen=false;$('settingsPanel').style.display='none';if(mobileControls?.mobile){locked=false;}else{freeMouse=true;locked=false;document.exitPointerLock();}setLayoutEditMode(true);});
 $('layoutResetBtn').addEventListener('click',resetLayout);
 $('signOutBtn').addEventListener('click',()=>{if(confirm('Sign out?'))signOutAndReload();});
@@ -5222,7 +5241,7 @@ addEventListener('keydown', e => {
   if(e.code==='KeyS'&&!e.ctrlKey&&!e.metaKey&&(controlPrefs.desktopMovement==='arrows'||e.shiftKey)){if(!e.repeat&&(locked||settingsOpen||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
   const movement=movementKey(e.code,controlPrefs.desktopMovement);if(movement)keys[movement]=true;
   if(e.code.startsWith('Arrow'))e.preventDefault();
-  if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
+  if (locked && ['Space', 'Tab'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   if (e.code === 'KeyC' && (locked || boardOpen)) { toggleBoard(!boardOpen); return; }
   if (e.code === 'KeyL' && locked && !boardOpen) { setFreeMouse(!freeMouse); return; }
