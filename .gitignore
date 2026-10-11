@@ -6,3 +6,5 @@ test-results/
 .env*
 .npm-cache/
 .smoke-test.cjs
+dist/
+wasm-physics/target/
