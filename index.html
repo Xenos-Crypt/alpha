@@ -2077,7 +2077,9 @@ function showAuthScreen() {
 }
 
 async function signOutAndReload() {
-  localStorage.removeItem('guestId'); // guests get a fresh identity next time, same as logging out
+  // Guest progress is saved under guestId — clearing it here (as earlier code
+  // did) orphaned that save permanently, since a guest has no account to log
+  // back into and reclaim it. Leave it alone so "Continue" still finds it.
   try { await supabase.auth.signOut(); } catch {}
   location.reload();
 }
@@ -3943,6 +3945,11 @@ buildTaxi();
 // Hit everything within r of center. Returns how many were hit.
 function hitAround(center, r, hits, h, maxDy = 3) {
   breakLampsNear(center, r);
+  if (charIdx === 2) {   // Water — any attack/skill near a fire puts it out
+    for (const fire of activeFires.slice()) {
+      if (distXZ(fire.pos, center) < r + 2.5) { fire.task.t = fire.task.dur; toast('You put out the fire.'); }
+    }
+  }
   let n = hitVehicles(center, r, hits, h, maxDy);
   for (const a of parkPets) {   // dogs/cats/horses weren't attackable at all before — now they are
     if (!a.alive || a.ridden) continue;
@@ -5671,6 +5678,17 @@ function updateWeather(dt) {
 // Firefighters respond to active fires (buildings/vehicles burning) instead of
 // just standing by the station forever — they walk over, work it for a bit,
 // then actually put it out early and head back.
+// Touching fire burns you unless you're the Fire character (immune to your
+// own element, same as real-world logic for everyone else).
+let fireBurnWarned = false;
+function updateFireDamage(dt) {
+  if (charIdx === 0 || inCar) { fireBurnWarned = false; return; }
+  const nearFire = activeFires.some(f => distXZ(f.pos, player.position) < 2.2);
+  if (nearFire) {
+    stats.hp -= 12 * dt * defMul();
+    if (!fireBurnWarned) { fireBurnWarned = true; toast("You're burning! Get away from the fire."); }
+  } else fireBurnWarned = false;
+}
 function updateFirefighters(dt) {
   for (const f of firefighters) {
     const p = f.h.root.position;
@@ -6415,6 +6433,7 @@ function frame() {
     updateTrafficLights(dt);
     updateWeather(dt);
     updateFirefighters(dt);
+    updateFireDamage(dt);
     updateBats(dt);
     updateForestInsects(dt);
     updatePlanes(dt);
