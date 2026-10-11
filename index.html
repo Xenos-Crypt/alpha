@@ -680,6 +680,13 @@ const facades = FACADE_STYLES.map(s => {
 // WORLD HELPERS
 // =====================================================================
 const colliders = [];      // axis-aligned boxes on the ground plane
+// Declared here (not down by updateTasks(), where it conceptually lives) because
+// addBuilding()'s CCTV cameras call addTask() during the very first world-building
+// pass, long before the code near updateTasks() would otherwise run.
+const tasks = [];
+// Same story: addPet()'s horses register a "Ride the horse" interactable during
+// the very first world-building pass too, long before this would otherwise exist.
+const interactables = [];
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
@@ -1423,10 +1430,10 @@ const sitSpots = [
 ];
 // Same idea for sleep/eat spots — originally only the one starting house had a
 // working bed+fridge; every procedural house gets one now too.
-const interactables = [
+interactables.push(
   { pos: bed.position, r: 2.4, label: 'Sleep', action: sleep },
   { pos: fridge.position, r: 1.9, label: 'Eat from fridge', action: eat },
-];
+);
 function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   const W = 10, D = 8;
   const wm = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
@@ -1588,7 +1595,6 @@ function updateParticles(dt) {
 }
 
 // Tasks: anything that runs for a while (effects, tornadoes...). update(dt, t, task), end(task)
-const tasks = [];
 function addTask(t) { tasks.push(Object.assign({ t: 0 }, t)); }
 function updateTasks(dt) {
   for (let i = tasks.length - 1; i >= 0; i--) {
