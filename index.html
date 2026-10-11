@@ -2557,6 +2557,26 @@ function addFlatRoad(x0, x1, z0, z1) {
 }
 addFlatRoad(RIVERSIDE_X0, RIVERSIDE_X1, RIVERSIDE_Z0, RIVERSIDE_Z1);
 addFlatRoad(CAPITAL_X0, CAPITAL_X1, CAPITAL_Z0, CAPITAL_Z1);
+// A few scripted cars looping back and forth across each bridge, so the roads
+// between districts don't sit completely empty. Not part of the full traffic
+// AI/node graph (that doesn't know about the bridges) -- these just drive a
+// fixed back-and-forth route.
+function addBridgeCommuter(color, waypoints, speed) {
+  const v = makeVehicle('car', color);
+  v.group.position.copy(waypoints[0]);
+  v.ai = null;
+  const st = { i: 1 };
+  addTask({ dur: 1e9, update(dt) {
+    const target = waypoints[st.i], p = v.group.position;
+    const dir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z), d = dir.length();
+    if (d < 2) { st.i = (st.i + 1) % waypoints.length; return; }
+    dir.normalize(); p.addScaledVector(dir, speed * dt);
+    v.group.rotation.y = lerpAngle(v.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
+    p.y = groundY(p.x, p.z);
+  } });
+}
+addBridgeCommuter(0x2e86de, [new THREE.Vector3(0, 0, 150), new THREE.Vector3(0, 0, 630)], 10);
+addBridgeCommuter(0xe17055, [new THREE.Vector3(220, 0, 60), new THREE.Vector3(220, 0, 680)], 10);
 for (let cx = -1; cx <= 0; cx++) for (let cz = 16; cz <= 17; cz++) addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
 for (let cx = 5; cx <= 8; cx += 3) for (let cz = 18; cz <= 21; cz += 3) addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
 
@@ -3336,29 +3356,40 @@ const PED_PANTS = [0x2d3142, 0x34495e, 0x1e272e, 0x6d4c41, 0x2f3640];
 const SIDE = 14.6;
 const HIDDEN = new THREE.Vector3(9999, -500, 9999);
 const cornerPos = n => new THREE.Vector3(n.bx * 40 + 20 + n.sx * SIDE, CURB, n.bz * 40 + 20 + n.sz * SIDE);
-const randomCorner = () => ({ bx: -4 + Math.floor(Math.random() * 8), bz: -4 + Math.floor(Math.random() * 8), sx: pick([-1, 1]), sz: pick([-1, 1]) });
-function nearestCorner(p) {
-  const bx = clamp(Math.floor(p.x / 40), -4, 3), bz = clamp(Math.floor(p.z / 40), -4, 3);
+// Block-grid bounds pedestrians are allowed to wander within. Main town is the
+// original/default; Riverside and the Capital get their own so their peds don't
+// try to wander into the water between districts.
+const MAIN_BOUNDS = { bx0: -4, bx1: 3, bz0: -4, bz1: 3 };
+const RIVERSIDE_BOUNDS = { bx0: -2, bx1: 1, bz0: 16, bz1: 18 };
+const CAPITAL_BOUNDS = { bx0: 3, bx1: 10, bz0: 17, bz1: 22 };
+const randomCorner = (b = MAIN_BOUNDS) => ({ bx: b.bx0 + Math.floor(Math.random() * (b.bx1 - b.bx0 + 1)), bz: b.bz0 + Math.floor(Math.random() * (b.bz1 - b.bz0 + 1)), sx: pick([-1, 1]), sz: pick([-1, 1]) });
+function nearestCorner(p, b = MAIN_BOUNDS) {
+  const bx = clamp(Math.floor(p.x / 40), b.bx0, b.bx1), bz = clamp(Math.floor(p.z / 40), b.bz0, b.bz1);
   return { bx, bz, sx: p.x >= bx * 40 + 20 ? 1 : -1, sz: p.z >= bz * 40 + 20 ? 1 : -1 };
 }
-function nextCorner(n, prev) {
+function nextCorner(n, prev, b = MAIN_BOUNDS) {
   const opts = [{ ...n, sx: -n.sx }, { ...n, sz: -n.sz }];                                   // walk along the block
-  if (n.bx + n.sx >= -4 && n.bx + n.sx <= 3) opts.push({ bx: n.bx + n.sx, bz: n.bz, sx: -n.sx, sz: n.sz }); // cross the road
-  if (n.bz + n.sz >= -4 && n.bz + n.sz <= 3) opts.push({ bx: n.bx, bz: n.bz + n.sz, sx: n.sx, sz: -n.sz });
-  const same = (a, b) => b && a.bx === b.bx && a.bz === b.bz && a.sx === b.sx && a.sz === b.sz;
+  if (n.bx + n.sx >= b.bx0 && n.bx + n.sx <= b.bx1) opts.push({ bx: n.bx + n.sx, bz: n.bz, sx: -n.sx, sz: n.sz }); // cross the road
+  if (n.bz + n.sz >= b.bz0 && n.bz + n.sz <= b.bz1) opts.push({ bx: n.bx, bz: n.bz + n.sz, sx: n.sx, sz: -n.sz });
+  const same = (a, b2) => b2 && a.bx === b2.bx && a.bz === b2.bz && a.sx === b2.sx && a.sz === b2.sz;
   const f = opts.filter(o => !same(o, prev));
   return pick(f.length ? f : opts);
 }
 
 const peds = [];
-for (let i = 0; i < 34; i++) {
-  const h = makeHumanoid({ outfit: pick(PED_OUTFITS), hair: pick(PED_HAIR), skin: pick(PED_SKIN), pants: pick(PED_PANTS) });
-  h.rig.scale.setScalar(0.82 + Math.random() * 0.14);
-  const start = randomCorner(), next = nextCorner(start, null);
-  h.root.position.lerpVectors(cornerPos(start), cornerPos(next), Math.random());
-  peds.push(makeEnemy({ kind: 'npc', h, root: h.root, radius: 0.35, height: 1.9, maxHp: 50, flashMats: h.flashMats,
-    ped: { state: 'wander', node: next, prev: start, target: cornerPos(next), speed: 1.2 + Math.random() * 0.6, panicT: 0, waitT: 0, stop: null, bus: null } }));
+function addPedPopulation(count, bounds) {
+  for (let i = 0; i < count; i++) {
+    const h = makeHumanoid({ outfit: pick(PED_OUTFITS), hair: pick(PED_HAIR), skin: pick(PED_SKIN), pants: pick(PED_PANTS) });
+    h.rig.scale.setScalar(0.82 + Math.random() * 0.14);
+    const start = randomCorner(bounds), next = nextCorner(start, null, bounds);
+    h.root.position.lerpVectors(cornerPos(start), cornerPos(next), Math.random());
+    peds.push(makeEnemy({ kind: 'npc', h, root: h.root, radius: 0.35, height: 1.9, maxHp: 50, flashMats: h.flashMats,
+      ped: { state: 'wander', node: next, prev: start, target: cornerPos(next), speed: 1.2 + Math.random() * 0.6, panicT: 0, waitT: 0, stop: null, bus: null, bounds } }));
+  }
 }
+addPedPopulation(34, MAIN_BOUNDS);
+addPedPopulation(10, RIVERSIDE_BOUNDS);
+addPedPopulation(18, CAPITAL_BOUNDS);
 
 // Bystanders react to nearby violence/explosions like real people would instead
 // of only the directly-hit ped panicking: close by, people flee; a bit further
@@ -3425,19 +3456,19 @@ function updatePed(e, dt) {
       animateHumanoid(e.h, 'phone', false, false, e.onGround, dt);
       if (s.reactT <= 0) {
         if (s.state === 'call') raiseWanted(30);
-        s.state = 'wander'; s.node = nearestCorner(p); s.prev = null; s.target = cornerPos(s.node);
+        s.state = 'wander'; s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node);
       }
       break;
     }
     case 'cpr': {
       const victim = s.cprTarget;
-      if (!victim || !victim.alive || victim.ped.state !== 'down') { s.state = 'wander'; s.node = nearestCorner(p); s.prev = null; s.target = cornerPos(s.node); break; }
+      if (!victim || !victim.alive || victim.ped.state !== 'down') { s.state = 'wander'; s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node); break; }
       const vp = victim.root.position;
       if (distXZ(p, vp) > 1.2) { moving = walkTowards(e, vp, 2, dt); animateHumanoid(e.h, null, moving, false, e.onGround, dt); break; }
       s.cprT = (s.cprT || 0) + dt;
       animateHumanoid(e.h, 'cpr', false, false, e.onGround, dt);
       if (s.cprT > 6 && !victim.ped.ambulanceDispatched) dispatchAmbulance(victim);
-      if (victim.ped.state === 'rescued') { s.state = 'wander'; s.node = nearestCorner(p); s.prev = null; s.target = cornerPos(s.node); }
+      if (victim.ped.state === 'rescued') { s.state = 'wander'; s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node); }
       break;
     }
     case 'panic': {
@@ -3446,7 +3477,7 @@ function updatePed(e, dt) {
       if (away.lengthSq() < 0.01) away.set(1, 0, 0);
       speed = 5.5;
       moving = walkTowards(e, p.clone().addScaledVector(away.normalize(), 3), speed, dt);
-      if (s.panicT <= 0) { s.state = 'wander'; s.node = nearestCorner(p); s.prev = null; s.target = cornerPos(s.node); }
+      if (s.panicT <= 0) { s.state = 'wander'; s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node); }
       break;
     }
     case 'wander':
@@ -3460,7 +3491,7 @@ function updatePed(e, dt) {
           stop.waiting.push(e);
           s.target = stop.wait.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 0, (Math.random() - 0.5) * 1.5));
         } else {
-          const n = nextCorner(s.node, s.prev);
+          const n = nextCorner(s.node, s.prev, s.bounds);
           s.prev = s.node; s.node = n; s.target = cornerPos(n);
         }
       }
@@ -3470,7 +3501,7 @@ function updatePed(e, dt) {
       e.root.rotation.y = lerpAngle(e.root.rotation.y, s.stop.face, 1 - Math.exp(-4 * dt));
       if (s.waitT > 70) {   // gave up on the bus
         s.stop.waiting = s.stop.waiting.filter(x => x !== e);
-        s.state = 'wander'; s.node = nearestCorner(p); s.prev = null; s.target = cornerPos(s.node);
+        s.state = 'wander'; s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node);
       }
       break;
     case 'boarding': {
