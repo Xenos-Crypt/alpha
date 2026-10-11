@@ -1,3 +1,4 @@
+import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
@@ -1649,6 +1650,8 @@ function toggleInventory(open) {
 
 const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
 player.position.copy(SPAWN);
+const DEFAULT_SPAWN=SPAWN.clone();
+const hosting=createHosting({client:supabase,toast,setSpawn(city){SPAWN.set(city.x,groundY(city.x,city.z),city.z);},resetSpawn(){SPAWN.copy(DEFAULT_SPAWN);}});
 
 let vy = 0, onGround = true;
 const pvel = new THREE.Vector3();          // knockback velocity
@@ -1947,8 +1950,8 @@ function showMenu(hasSave) {
     }
     $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
     $('menuNewGame').onclick = () => { $('menu').style.display = 'none'; resolve('new'); };
-    $('menuHost').onclick = () => toast('Hosting a game is still in development — check back soon.');
-    $('menuJoin').onclick = () => toast('Joining a game is still in development — check back soon.');
+    $('menuHost').onclick = () => hosting.show('host',()=>{ $('menu').style.display='none'; resolve('host'); });
+    $('menuJoin').onclick = () => hosting.show('join',()=>{ $('menu').style.display='none'; resolve('join'); });
     $('menuCreate').onclick = () => toast('Creating your own content is still in development — check back soon.');
     $('menuContact').onclick = () => { $('contactModal').style.display = 'flex'; };
     $('contactClose').onclick = () => { $('contactModal').style.display = 'none'; };
@@ -1969,6 +1972,7 @@ async function boot() {
     clearSolo(activeSession.user.id);
     await runSpawnScreen(activeSession.user.id, false);
   }
+  if(mode==='host'||mode==='join'){await runSpawnScreen(activeSession.user.id,true);player.position.copy(SPAWN);}
   if (mode === 'continue' || mode === 'new') { soloMode = true; soloUserId = activeSession.user.id; }
   window.addEventListener('beforeunload', saveSolo);
   $('start').style.display = 'flex';
@@ -2409,7 +2413,7 @@ addBridgeCommuter(0xe17055, [new THREE.Vector3(220, 0, 60), new THREE.Vector3(22
   signboard('ASHFORD CAVE', cvX, 4.5, cvZ - 1.5, 10, '#1a2a33');
   // Forest at the foot of the mountains — a real start on the "forest with
   // bats/insects" request, not just two trees for show.
-  for (let i = 0; i < 45; i++) addTree(-320 - rand() * 170, 590 + rand() * 360, 0.9 + rand() * 0.6);
+  for (let i = 0; i < 160; i++) addTree(-320 - rand() * 170, 590 + rand() * 360, 0.55 + rand() * rand() * 2.1);
 }
 const bats = [];
 function addBat(x, z) {
@@ -3160,6 +3164,13 @@ function killEnemy(e) {
     e.root.visible = false;
     kills++;
     gainXp(25);
+  } else if (e.kind === 'wildlife') {
+    e.respawn = e.animal === 'lion' ? 45 : 25;
+    e.root.visible = false;
+    const gold = e.animal === 'lion' ? 20 : 6;
+    stats.gold += gold;
+    popText(at(e.root.position, e.height + 0.6), `+${gold} gold`, 'info');
+    gainXp(e.animal === 'lion' ? 30 : 12);
   } else if (e.kind === 'monster') {
     e.respawn = Infinity;   // dungeon monsters stay dead
     e.root.visible = false;
@@ -3253,6 +3264,71 @@ for (let i = 0; i < (SLIMES_ENABLED ? 8 : 0); i++) {
   scene.add(root);
   makeEnemy({ kind: 'slime', labelName: 'Slime', root, body, radius: 0.7, height: 1.2, maxHp: 40, home, hop: rand() * 6, touchCd: 0, flashMats: [mat] });
 }
+
+// ---- Wildlife: lions and snakes out in the mountains/forest ----
+const WILDLIFE_DEFS = {
+  lion: { scale: 1, maxHp: 90, chase: 22, speed: 4.4, dmg: 12, kb: 9, colors: [0xc9962f, 0xb8841f], maneColor: 0x6b3e1a },
+  snake: { scale: 1, maxHp: 22, chase: 8, speed: 1.9, dmg: 5, kb: 4, colors: [0x5a7a3a, 0x3f5c2a], maneColor: null },
+};
+function addWildlife(kind, x, z) {
+  const def = WILDLIFE_DEFS[kind];
+  const home = new THREE.Vector3(x, CURB, z);
+  const root = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: pick(def.colors), roughness: 0.85 });
+  const flashMats = [mat];
+  let body;
+  if (kind === 'lion') {
+    body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 1.0, 4, 10), mat);
+    body.rotation.z = Math.PI / 2; body.position.y = 0.55;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 10, 8), mat);
+    head.position.set(0.85, 0.65, 0); body.add(head);
+    const maneMat = new THREE.MeshStandardMaterial({ color: def.maneColor, roughness: 1 });
+    const mane = new THREE.Mesh(new THREE.SphereGeometry(0.46, 10, 8), maneMat);
+    mane.position.set(0.82, 0.62, 0); mane.scale.set(0.8, 1, 1); body.add(mane);
+    flashMats.push(maneMat);
+    for (const [lx, side] of [[0.5, -1], [0.5, 1], [-0.5, -1], [-0.5, 1]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.55, 6), mat);
+      leg.position.set(lx, -0.45, side * 0.3); body.add(leg);
+    }
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.8, 5), mat);
+    tail.position.set(-0.85, 0.2, 0); tail.rotation.z = Math.PI / 2.6; body.add(tail);
+    root.add(body);
+  } else {
+    body = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 1.4, 4, 8), mat);
+    body.rotation.z = Math.PI / 2; body.position.y = 0.18; root.add(body);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.38, 6), mat);
+    head.rotation.z = -Math.PI / 2; head.position.set(0.9, 0.18, 0); root.add(head);
+  }
+  root.position.copy(home);
+  scene.add(root);
+  makeEnemy({ kind: 'wildlife', animal: kind, labelName: kind === 'lion' ? 'Lion' : 'Snake', root, body, radius: kind === 'lion' ? 0.7 : 0.4,
+    height: kind === 'lion' ? 1.2 : 0.5, maxHp: def.maxHp, home, touchCd: 0, phase: rand() * 10, flashMats });
+}
+function updateWildlife(e, dt) {
+  const def = WILDLIFE_DEFS[e.animal], p = e.root.position;
+  const dist = distXZ(p, player.position);
+  let mx = 0, mz = 0;
+  e.phase += dt * (e.animal === 'lion' ? 4 : 3);
+  if (e.stun <= 0 && e.onGround) {
+    if (!inCar && dist < def.chase && dist > 0.9) { mx = (player.position.x - p.x) / dist * def.speed; mz = (player.position.z - p.z) / dist * def.speed; }
+    else { const dh = distXZ(p, e.home); if (dh > 2) { mx = (e.home.x - p.x) / dh * (def.speed * 0.5); mz = (e.home.z - p.z) / dh * (def.speed * 0.5); } }
+  }
+  if (mx || mz) {
+    p.x += mx * dt; p.z += mz * dt;
+    collide(p, e.radius);
+    e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(mx, mz), 1 - Math.exp(-8 * dt));
+  }
+  if (e.animal === 'snake') e.root.rotation.z = (mx || mz) ? Math.sin(e.phase) * 0.35 : 0;   // slither wiggle while moving
+  else if (e.body) e.body.position.y = 0.55 + Math.abs(Math.sin(e.phase)) * (mx || mz ? 0.1 : 0);
+  p.y = groundY(p.x, p.z);
+  e.touchCd -= dt;
+  if (!inCar && e.stun <= 0 && dist < (e.animal === 'lion' ? 1.6 : 1.1) && Math.abs(p.y - player.position.y) < 1.5 && e.touchCd <= 0) {
+    hurtPlayer(def.dmg, p, def.kb);
+    e.touchCd = e.animal === 'lion' ? 1.2 : 1.6;
+  }
+}
+for (let i = 0; i < 6; i++) addWildlife('lion', -320 - rand() * 170, 590 + rand() * 360);
+for (let i = 0; i < 10; i++) addWildlife('snake', -320 - rand() * 170, 590 + rand() * 360);
 
 // ---- Training dummies ----
 function makeDummy(kind, name, spot, look, maxHp) {
@@ -3614,6 +3690,7 @@ function updateEnemies(dt) {
 
     enemyPhysics(e, dt);
     if (e.kind === 'slime') updateSlime(e, dt);
+    else if (e.kind === 'wildlife') updateWildlife(e, dt);
     else if (e.kind === 'standing') updateStanding(e, dt);
     else if (e.kind === 'defence') updateDefence(e, dt);
     else if (e.kind === 'npc') updatePed(e, dt);
@@ -5365,7 +5442,7 @@ function renderSettings() {
 function toggleSettings(open) {
   if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
   if (open && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
-  settingsOpen = open;
+  settingsOpen = open;hosting.settingsVisible(open);
   $('settingsPanel').style.display = open ? 'block' : 'none';
   if (open) { mobileControls?.reset();for(const code in keys)keys[code]=false;renderSettings(); document.exitPointerLock(); locked = false; }
   else requestGameControl();
@@ -5453,6 +5530,7 @@ function setFreeMouse(on) {
 
 addEventListener('keydown', e => {
   if(e.target.closest?.('input,textarea,select,[contenteditable=true]'))return;
+  if(e.code==='KeyP'&&!e.ctrlKey&&!e.metaKey){if(!e.repeat&&(locked||settingsOpen||hosting.open||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
   if(e.code==='KeyS'&&!e.ctrlKey&&!e.metaKey&&(controlPrefs.desktopMovement==='arrows'||e.shiftKey)){if(!e.repeat&&(locked||settingsOpen||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
   const movement=movementKey(e.code,controlPrefs.desktopMovement);if(movement)keys[movement]=true;
   if(e.code.startsWith('Arrow'))e.preventDefault();
@@ -5495,7 +5573,13 @@ addEventListener('wheel', e => {
 });
 
 const startEl = $('start');
-startEl.addEventListener('click', () => renderer.domElement.requestPointerLock());
+// Was calling renderer.domElement.requestPointerLock() directly — iOS Safari has
+// never implemented the Pointer Lock API at all, so that method doesn't exist
+// there and calling it threw, leaving the "Click to play"/"Paused" overlay stuck
+// on screen forever with no way to actually start or resume. requestGameControl()
+// already has the correct mobile-safe branch (used everywhere else this needs
+// to happen); the raw overlay just wasn't wired to it.
+startEl.addEventListener('click', () => requestGameControl());
 document.addEventListener('pointerlockchange', () => {
   if (mobileControls?.mobile) return;
   const pointerOn = document.pointerLockElement === renderer.domElement;
@@ -6046,7 +6130,7 @@ function updateNeeds(dt) {
     if (dungeon) leaveDungeon();
     action = null;
     player.position.copy(SPAWN);
-    toast('You fainted and woke up at home.');
+    toast(hosting.room?'You respawned in '+hosting.room.city+'.':'You fainted and woke up at home.');
   }
 }
 
