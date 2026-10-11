@@ -397,6 +397,8 @@ import { buildTransport } from './transport.js';
 import { buildBridge } from './bridge.js';
 import { buildUrban } from './urban.js';
 import { buildSewersAndOffices } from './sewers-offices.js';
+import {buildRegionalEnvironment} from './regional-environment.js';
+import {buildMetro} from './metro.js';
 import {loadControlPreferences,movementKey,buildControlSettings} from './control-preferences.js';
 const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
@@ -678,7 +680,7 @@ const interactables = [];
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
-let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null;
+let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
 const buildings = [];      // every city building, so it can be destroyed
 
 function mesh(geo, color, parent = scene) {
@@ -728,10 +730,12 @@ let bridgeLeafNorth = null, bridgeLeafSouth = null, bridgeLiftAngle = 0, bridgeL
 const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 function groundY(x, z, bodyY = null) {
+  const metroFloor=metro?.groundAt(x,z);if(metroFloor!=null)return metroFloor;
   const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
   const urbanFloor=urban?.groundAt(x,z);if(urbanFloor!=null)return urbanFloor;
   if(harbourBridge){const floor=harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y));if(floor!=null)return floor;}
+  const regionFloor=regionalEnvironment?.groundAt(x,z);if(regionFloor!=null)return regionFloor;
   const dockFloor = harbour?.groundAt(x,z); if (dockFloor != null) return dockFloor;
   const terminalFloor = townPlaces?.floorAt(x,z); if (terminalFloor != null) return terminalFloor;
   for (const r of stairRamps) {
@@ -1030,7 +1034,7 @@ function addTrafficLight(x, z, faceY) {
   const lamps = {};
   let i = 0;
   for (const key of ['red', 'amber', 'green']) {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(0.17, 14), TL_MAT[key]);
+    const m = new THREE.Mesh(new THREE.CircleGeometry(0.17, 14), TL_MAT[key].clone());
     m.position.set(0, 0.4 - i * 0.4, 0.21); head.add(m); lamps[key] = m.material; i++;
   }
   trafficLights.push({ phase: rand() * 6, lamps });
@@ -1693,8 +1697,11 @@ function scorchMark(pos, r) {
   return m;
 }
 // Sustained fire/smoke plume that slowly dies down but leaves the scorch mark behind for good.
+// Active fires firefighters can respond to and put out early.
+const activeFires = [];
 function burnFor(pos, dur, spread = 1) {
-  addTask({ dur, update: (dt, t) => {
+  const fire = { pos, claimed: false, task: null };
+  const task = { dur, update: (dt, t) => {
     const k = t / dur, intensity = 1 - k * 0.7; // flames die down but don't fully vanish till the end
     if (Math.random() < intensity) spawnParticle(
       new THREE.Vector3(pos.x + (Math.random() - 0.5) * spread, pos.y + 0.3, pos.z + (Math.random() - 0.5) * spread),
@@ -1703,7 +1710,10 @@ function burnFor(pos, dur, spread = 1) {
     if (Math.random() < 0.4 * intensity) spawnParticle(
       new THREE.Vector3(pos.x + (Math.random() - 0.5) * spread * 1.4, pos.y + 0.5, pos.z + (Math.random() - 0.5) * spread * 1.4),
       new THREE.Vector3((Math.random() - 0.5), 3 + Math.random() * 2.5, (Math.random() - 0.5)), pick([0x555555, 0x3d3d3d]), 0.5, 2.5, -0.3);
-  } });
+  }, end: () => { const i = activeFires.indexOf(fire); if (i >= 0) activeFires.splice(i, 1); } };
+  fire.task = task;
+  activeFires.push(fire);
+  addTask(task);
 }
 function fxSwoosh(pos, dir, color, flip) {
   const g = new THREE.Group();
@@ -2645,6 +2655,7 @@ let HOSPITAL_POS = null;
   HOSPITAL_POS = new THREE.Vector3(x, 0, z - d / 2 - 6);
 })();
 // Hand-placed fire station, next door to the hospital — firefighters standing by.
+const firefighters = [];
 (function buildFireStation() {
   const x = -160, z = -200, w = 18, d = 14, h = 8;
   box(w, h, d, x, h / 2, z, 0xc0392b);
@@ -2657,6 +2668,7 @@ let HOSPITAL_POS = null;
   for (const [fx, fz] of [[-2, -8], [2, -8]]) {
     const ff = makeHumanoid({ outfit: 0xcc3b2c, hair: 0x2a1c12, pants: 0x2a2a2a });
     ff.root.position.set(x + fx, 0, z + fz); ff.root.rotation.y = Math.PI;
+    firefighters.push({ h: ff, home: new THREE.Vector3(x + fx, 0, z + fz), state: 'idle', fire: null, waitT: 0 });
   }
 })();
 // Downtown police post, right in the city near home/park — the original full
@@ -3752,7 +3764,7 @@ function aimMelee() {
   return fwdOf(player);
 }
 
-function canAct() { return !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
+function canAct() { return !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
 
 // ---- M1: 4-hit combo, the last hit is a heavy knockback with an impact frame ----
 function m1() {
@@ -4856,7 +4868,10 @@ function exitVehicle(force = false) {
     return;
   }
   if (v.kind === 'boat') {   // step off onto the pier
-    player.position.set(PIER.x, CURB, PIER.z - 2);
+    const island=regionalEnvironment?.islands.find(i=>Math.hypot(v.group.position.x-i.x,v.group.position.z-i.z)<i.r+14);
+    if(island)player.position.set(island.x,.2,island.z-island.r+2);
+    else if(Math.hypot(v.group.position.x-ISLAND.x,v.group.position.z-ISLAND.z)<ISLAND_R+14)player.position.set(ISLAND.x,CURB,ISLAND.z-ISLAND_R+2);
+    else player.position.copy(v.group.position).add(new THREE.Vector3(2,.2,0));
   } else {
     const side = v.kind === 'bus' ? 2.4 : v.kind === 'plane' ? 4 : 2;
     player.position.set(v.group.position.x + Math.cos(h) * side, 0, v.group.position.z - Math.sin(h) * side);
@@ -4896,6 +4911,7 @@ function updateRiding(dt) {
   player.rotation.y = g.rotation.y;
 }
 function interact() {
+  if(metro?.rider)return metro.leave();
   if (riding) return dismountHorse();
   if(transport?.rider) return transport.leave();
   if (inCar) return exitVehicle();
@@ -4906,7 +4922,7 @@ function interact() {
   if (inCivicInterior) return leaveCivicBuilding();
   if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
   const service = nearestInteractable();
-  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole'))) return service.action();
+  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway'))) return service.action();
   const cb = nearestCivicBuilding();
   if (cb) return enterCivicBuilding(cb);
   const g = nearestGate();
@@ -5378,7 +5394,7 @@ function updateWeather(dt) {
     toast(weatherState === 'rain' ? 'Rain is moving in.' : 'The rain has cleared up.');
     $('weatherBadge').textContent = weatherState === 'rain' ? '🌧️ Raining' : '☀️ Clear';
   }
-  if (weatherState === 'rain' && Math.random() < 0.9) {
+  if (weatherState === 'rain' && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
     for (let i = 0; i < 6; i++) {
       const a = rand() * Math.PI * 2, r = rand() * 16;
       const x = player.position.x + Math.cos(a) * r, z = player.position.z + Math.sin(a) * r;
@@ -5387,8 +5403,37 @@ function updateWeather(dt) {
   }
 }
 
+// Firefighters respond to active fires (buildings/vehicles burning) instead of
+// just standing by the station forever — they walk over, work it for a bit,
+// then actually put it out early and head back.
+function updateFirefighters(dt) {
+  for (const f of firefighters) {
+    const p = f.h.root.position;
+    if (f.state === 'idle') {
+      const target = activeFires.find(fire => !fire.claimed);
+      if (target) { target.claimed = true; f.fire = target; f.state = 'responding'; }
+    } else if (f.state === 'responding') {
+      if (!activeFires.includes(f.fire)) { f.state = 'idle'; f.fire = null; continue; }   // fire burned out on its own
+      const dir = new THREE.Vector3(f.fire.pos.x - p.x, 0, f.fire.pos.z - p.z);
+      if (dir.length() < 1.5) { f.state = 'working'; f.waitT = 5; }
+      else { dir.normalize(); p.addScaledVector(dir, 2.5 * dt); f.h.root.rotation.y = Math.atan2(dir.x, dir.z); animateHumanoid(f.h, null, true, false, true, dt); }
+    } else if (f.state === 'working') {
+      f.waitT -= dt;
+      if (f.waitT <= 0) {
+        if (activeFires.includes(f.fire)) f.fire.task.t = f.fire.task.dur;   // force the fire's task to end now
+        f.state = 'returning';
+      }
+    } else if (f.state === 'returning') {
+      const dir = new THREE.Vector3(f.home.x - p.x, 0, f.home.z - p.z);
+      if (dir.length() < 0.5) { f.state = 'idle'; f.fire = null; f.h.root.rotation.y = Math.PI; }
+      else { dir.normalize(); p.addScaledVector(dir, 2.5 * dt); f.h.root.rotation.y = Math.atan2(dir.x, dir.z); animateHumanoid(f.h, null, true, false, true, dt); }
+    }
+    p.y = groundY(p.x, p.z);
+  }
+}
 let swimming = false, waterExhausted = false;
 function isSeaWater(x,z,bodyY = null) {
+  if(regionalEnvironment?.groundAt(x,z)!=null)return false;
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return z >= GAP0 && z <= GAP1 && bridgeLiftAngle > 0.08;
@@ -5413,6 +5458,7 @@ function updateSwimming(dt) {
   if(!isSeaWater(player.position.x,player.position.z)){swimming=false;waterExhausted=false;P.rig.rotation.x=0;player.position.y=groundY(player.position.x,player.position.z);onGround=true;toast('Back on dry ground.');}
 }
 function updatePlayer(dt) {
+  if(metro?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(transport?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if (isSeaWater(player.position.x,player.position.z) && player.position.y < .2) return updateSwimming(dt);
   if (swimming) { swimming=false; waterExhausted=false; P.rig.rotation.x=0; }
@@ -5487,6 +5533,7 @@ function damageVehicle(v, deltaSpeed, point) {
   v.health = Math.max(0, (v.health ?? 100) - damage);
   v.crashCooldown = 0.3;
   if (deltaSpeed > 5) burst(at(point, 0.7), Math.min(25, Math.ceil(deltaSpeed)), [0xffc266, 0x777777], 5, 0.08, 0.3, 8, 1);
+  if (deltaSpeed > 8) breakLampsNear(point, 1.5);   // ram a lamp post hard enough and it goes down
   if (v === driving) {
     stats.hp = Math.max(0, stats.hp - impactDamage(deltaSpeed, 0.12));
     shake = Math.max(shake, Math.min(0.8, deltaSpeed / 35));
@@ -5498,6 +5545,19 @@ function damageVehicle(v, deltaSpeed, point) {
     if (v.passengers?.length) {
       for (const e of v.passengers) { e.hidden = false; e.root.visible = true; e.root.position.copy(v.group.position); collide(e.root.position, e.radius); e.ped.state = 'panic'; e.ped.panicT = 8; }
       v.passengers = [];
+    }
+    // A wrecked-by-collision car used to just sit there inert forever. Give it
+    // the same charred/burning/towed treatment as an explosion, minus the blast.
+    if (!v.exploded) {
+      v.exploded = true;
+      v.group.traverse(obj => {
+        if (!obj.isMesh) return;
+        const darken = material => { const m = material.clone(); m.color?.set(0x292727); m.emissive?.set(0); return m; };
+        obj.material = Array.isArray(obj.material) ? obj.material.map(darken) : darken(obj.material);
+      });
+      scorchMark(v.group.position, (v.radius ?? 2) * 2);
+      burnFor(at(v.group.position, 0.8), 30, 1.2);
+      setTimeout(() => dispatchTowTruck(v), 20000);
     }
   }
 }
@@ -5713,10 +5773,10 @@ function updatePursuit(dt) {
   pursuitBackupCooldown = Math.max(0, pursuitBackupCooldown - dt);
   if (wanted <= 0) return;
   const target = inCar && driving ? driving.group.position : player.position;
-  const seen = !dungeon && !inCivicInterior && !sewers?.underground && vehicles.some(v => v.kind === 'police' && v.ai && !v.disabled && policeCanSee(v, target));
+  const seen = !dungeon && !inCivicInterior && !sewers?.underground && !metro?.underground && vehicles.some(v => v.kind === 'police' && v.ai && !v.disabled && policeCanSee(v, target));
   if (seen) { policeLastSeen.copy(target); wanted = Math.max(wanted, 30); }
   else wanted = Math.max(0, wanted - dt);
-  if (!dungeon && !inCivicInterior && !sewers?.underground) requestPoliceBackup();
+  if (!dungeon && !inCivicInterior && !sewers?.underground && !metro?.underground) requestPoliceBackup();
 }
 function policeChase(v, dt) {
   const ai = v.ai, p = v.group.position;
@@ -5790,6 +5850,7 @@ function updateNeeds(dt) {
   if (peace < 25) stats.hp -= (25 - peace) / 25 * dt;
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
+    metro?.reset();
     sewers?.reset();
     transport?.cancel();
     sitting = false; sitReturnPosition = null;
@@ -5865,6 +5926,7 @@ function updateWorldLight(dt) {
   }
   for (const l of lampLights) l.intensity = dungeon ? 40 : glow * 30;
 
+  if(metro?.underground){top.set(0x102535);horizon.set(0x102535);scene.fog.color.set(0x102535);scene.fog.near=12;scene.fog.far=90;sun.intensity=.02;hemi.intensity=.35;hemi.color.set(0xa9c9d9);sunDisc.visible=moonDisc.visible=false;return;}
   if(sewers?.underground){top.set(0x111a15);horizon.set(0x111a15);scene.fog.color.set(0x111a15);scene.fog.near=8;scene.fog.far=55;sun.intensity=.03;hemi.intensity=.25;hemi.color.set(0xb5c5aa);sunDisc.visible=moonDisc.visible=false;return;}
   // Inside a dungeon: themed sky, thick fog and torchlight instead of the sun
   if (dungeon) {
@@ -5918,7 +5980,7 @@ function updateCamera(dt) {
     camera.lookAt(target);
   }
 
-  if(sewers?.underground&&cameraView==='third'&&!cine){const eye=player.position.clone().add(new THREE.Vector3(0,1.5,0));const delta=camera.position.clone().sub(eye);if(delta.length()>2.4)camera.position.copy(eye).addScaledVector(delta.normalize(),2.4);camera.position.y=Math.min(3.6,camera.position.y);camera.lookAt(eye);}
+  if((sewers?.underground||metro?.underground)&&cameraView==='third'&&!cine){const eye=player.position.clone().add(new THREE.Vector3(0,1.5,0));const delta=camera.position.clone().sub(eye);if(delta.length()>2.4)camera.position.copy(eye).addScaledVector(delta.normalize(),2.4);camera.position.y=Math.min(3.6,camera.position.y);camera.lookAt(eye);}
   // Screen shake
   if (shake > 0.001) {
     camera.position.add(randUnit().multiplyScalar(shake * 0.5));
@@ -6024,6 +6086,13 @@ sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpo
 });
 interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 enemies. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
 buildControlSettings($('controlChoices'),controlPrefs,matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0,()=>{for(const key in keys)keys[key]=false;mobileControls?.reset();mobileControls?.update();applyLayout();});
+regionalEnvironment=buildRegionalEnvironment({scene,box,makeTex,addTrafficLight,addBird,insideCollider});
+metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex,toast,groundY,
+ canEnter:()=>!inCar&&!transport?.rider&&!metro?.rider&&!riding&&!sitting&&!action,
+ playerPos:()=>player.position,firstPerson:()=>cameraView==='first',
+ move(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);},
+ prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
+});metro.update(0,0);
 mobileControls = setupMobileControls({
   playing: () => locked && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
@@ -6079,10 +6148,12 @@ function frame() {
     updateBridgeLift(dt);
     updateTrafficLights(dt);
     updateWeather(dt);
+    updateFirefighters(dt);
     updatePlanes(dt);
     updateAdBalloon(dt);
     updateShips(dt);
     transport.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
