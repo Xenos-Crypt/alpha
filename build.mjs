@@ -31,3 +31,11 @@ await copyFile(
   fileURLToPath(new URL('./wasm-physics/pkg/wasm_physics_bg.wasm', import.meta.url)),
   fileURLToPath(new URL('./dist/wasm_physics_bg.wasm', import.meta.url)),
 );
+
+// Give each offline build its own cache; updates cannot mix old and new assets.
+const {createHash}=await import('node:crypto');
+const {readFile,writeFile}=await import('node:fs/promises');
+const hash=createHash('sha256');
+for(const file of ['index.html','responsive-ui.css','offline.js','dist/bundle.js','dist/wasm_physics_bg.wasm'])hash.update(await readFile(file));
+const worker=await readFile('service-worker.js','utf8');
+await writeFile('service-worker.js',worker.replace(/const CACHE='[^']+';/,"const CACHE='another-world-offline-"+hash.digest('hex').slice(0,16)+"';"));

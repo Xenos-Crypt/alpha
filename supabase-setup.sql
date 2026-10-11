@@ -119,3 +119,45 @@ returns jsonb language sql security definer set search_path=public as $$
 $$;
 revoke all on function public.host_game_room(text,text,integer),public.join_game_room(text),public.stop_game_room(text),public.leave_game_room(text),public.list_public_game_rooms() from public,anon;
 grant execute on function public.host_game_room(text,text,integer),public.join_game_room(text),public.stop_game_room(text),public.leave_game_room(text),public.list_public_game_rooms() to authenticated;
+
+-- Usernames: lets people log in with a username instead of their email, and
+-- guarantees no two accounts can share one. Apply this section too.
+create table if not exists public.usernames (
+  username_lower text primary key check (char_length(username_lower) between 1 and 24),
+  username text not null,
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.usernames enable row level security;
+-- No direct policies: reads go through email_for_username() below (so anon
+-- can resolve a username to an email to log in with, without being able to
+-- list/scrape every username), writes happen only via the trigger.
+
+-- Fires on every new signup; claims the username they typed (from signUp's
+-- options.data.username) atomically with account creation. If someone else
+-- already has it, this insert's unique-constraint violation rolls back the
+-- whole signup, and the client sees a clear "username already taken" error.
+create or replace function public.handle_new_user_username()
+returns trigger language plpgsql security definer set search_path=public as $$
+declare chosen text := trim(new.raw_user_meta_data->>'username');
+begin
+  if chosen is not null and length(chosen) > 0 then
+    insert into public.usernames(username_lower, username, user_id) values (lower(chosen), chosen, new.id);
+  end if;
+  return new;
+end $$;
+drop trigger if exists on_auth_user_created_username on auth.users;
+create trigger on_auth_user_created_username
+  after insert on auth.users
+  for each row execute function public.handle_new_user_username();
+
+-- Called pre-login (no session yet) to turn "username" into the email
+-- signInWithPassword actually needs. Returns null if there's no match —
+-- never raises, so it can't be used to brute-force-confirm an email exists
+-- any faster than just trying to log in with it would.
+create or replace function public.email_for_username(p_username text)
+returns text language sql security definer set search_path=public as $$
+  select u.email from public.usernames un join auth.users u on u.id = un.user_id where un.username_lower = lower(trim(p_username));
+$$;
+revoke all on function public.email_for_username(text) from public,authenticated;
+grant execute on function public.email_for_username(text) to anon,authenticated;

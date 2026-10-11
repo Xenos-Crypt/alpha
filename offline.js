@@ -1,0 +1,5 @@
+const status=document.createElement('p');status.id='offlineStatus';status.className='sub';status.setAttribute('role','status');document.querySelector('#stabControls').append(status);
+let ready=false;
+function update(){status.textContent=ready?(navigator.onLine?'Offline play ready. Solo progress saves on this device.':'You are offline. Solo play and local saves are available.'):'Preparing offline play. Open the game online once to download it.';}
+addEventListener('online',update);addEventListener('offline',update);update();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./service-worker.js').then(async()=>{const registration=await navigator.serviceWorker.ready;const channel=new MessageChannel();channel.port1.onmessage=event=>{ready=event.data.ready;update();channel.port1.close();};(registration.active||navigator.serviceWorker.controller)?.postMessage('OFFLINE_READY',[channel.port2]);}).catch(()=>{status.textContent='Offline download unavailable. Retry while connected.';});}else status.textContent='This browser cannot store the game for offline loading.';

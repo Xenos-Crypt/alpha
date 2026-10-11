@@ -360,14 +360,18 @@
       <h1 id="authTitle">Start your story</h1>
       <p id="authSubtitle">Create your account, discover your beginnings, then step into the world.</p>
       <form id="authForm">
-        <label for="authEmail">Email address</label><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" required>
-        <label for="authPass">Password</label><input id="authPass" type="password" placeholder="At least 6 characters" autocomplete="new-password" minlength="6" required>
+        <label for="authUsername" id="authUsernameLabel">Username</label><input id="authUsername" type="text" placeholder="What should we call you?" autocomplete="nickname" maxlength="24">
+        <label for="authGender" id="authGenderLabel">Gender</label><select id="authGender"><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select>
+        <label for="authEmail" id="authEmailLabel">Email address</label><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" required>
+        <label for="authPass">Password</label><input id="authPass" type="password" placeholder="Make up a password you'll remember — don't reuse your email password" autocomplete="new-password" minlength="6" required>
         <button id="authBtn" type="submit">Create account</button>
       </form>
+      <button id="authForgot" type="button" style="display:none;background:transparent;border:0;margin-top:4px;text-decoration:underline;opacity:.8;cursor:pointer;padding:4px">Forgot password?</button>
       <button id="authSwitch" type="button">Already have an account? Log in</button>
       <button id="authGuest" type="button" style="background:transparent;border:1px solid rgba(255,255,255,.25);margin-top:8px">Play as guest — no account needed</button>
       <button id="authContact" type="button" style="background:transparent;border:0;margin-top:10px;text-decoration:underline;opacity:.75;cursor:pointer">Contact support</button>
       <div id="authError" role="status" aria-live="polite"></div>
+      <div id="authConfirmBanner" style="display:none;margin-top:12px;padding:12px 14px;border-radius:10px;background:rgba(255,77,77,.14);border:2px solid #ff4d4d;color:#ff4d4d;font-weight:800;font-size:19px;text-align:center;line-height:1.35">📧 GO TO YOUR EMAIL AND CONFIRM</div>
       <p class="auth-note">You may need to confirm your email before entering. On a phone, rotate sideways when you're ready to play.</p>
       <p class="auth-note">Guest play saves progress only on this device/browser — sign up to keep it anywhere.</p>
     </section>
@@ -391,6 +395,7 @@
 </div>
 <div id="start"><h1>Open World Starter</h1><p>Click to play</p></div>
 
+<script type="module" src="./offline.js"></script>
 <script type="module" src="./dist/bundle.js"></script>
 </body>
 </html>

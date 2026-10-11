@@ -1693,17 +1693,36 @@ function showAuthScreen() {
     $('auth').style.display = 'flex';
     $('start').style.display = 'none';
     let mode = 'signup';
-    const title = $('authTitle'), btn = $('authBtn'), switchEl = $('authSwitch'), err = $('authError');
+    const title = $('authTitle'), btn = $('authBtn'), switchEl = $('authSwitch'), err = $('authError'), confirmBanner = $('authConfirmBanner'), forgot = $('authForgot');
     function setMode(m) {
       mode = m;
+      confirmBanner.style.display = 'none';
       title.textContent = m === 'signup' ? 'Start your story' : 'Welcome back';
       $('authPass').autocomplete = m === 'signup' ? 'new-password' : 'current-password';
       $('authSubtitle').textContent = m === 'signup' ? 'Create your account, discover your beginnings, then step into the world.' : 'Log in to your account and step back into Ashford.';
       btn.textContent = m === 'signup' ? 'Create account' : 'Continue your story';
       switchEl.textContent = m === 'signup' ? 'Already have an account? Log in' : "Don't have an account? Sign up";
+      // Signup still needs a real email (for confirmation); login accepts either, since
+      // a username already uniquely resolves to one account via email_for_username().
+      $('authEmailLabel').textContent = m === 'signup' ? 'Email address' : 'Username or email';
+      $('authEmail').type = m === 'signup' ? 'email' : 'text';
+      $('authEmail').placeholder = m === 'signup' ? 'you@example.com' : 'Your username or email';
+      $('authEmail').autocomplete = m === 'signup' ? 'email' : 'username';
+      // Username/gender only matter at signup; forgot-password only matters when logging in.
+      for (const id of ['authUsernameLabel', 'authUsername', 'authGenderLabel', 'authGender']) $(id).style.display = m === 'signup' ? '' : 'none';
+      forgot.style.display = m === 'login' ? 'block' : 'none';
     }
     setMode('signup');
     switchEl.addEventListener('click', () => setMode(mode === 'signup' ? 'login' : 'signup'));
+    // Login accepts a username or an email in the same box. A real email always logs
+    // in directly; anything else is looked up via email_for_username() first.
+    async function resolveLoginEmail(value) {
+      if (value.includes('@')) return { email: value };
+      const { data, error } = await supabase.rpc('email_for_username', { p_username: value });
+      if (error) return { error: 'Username login needs the usernames SQL section applied in Supabase.' };
+      if (!data) return { error: 'No account found with that username.' };
+      return { email: data };
+    }
     $('authGuest').addEventListener('click', () => {
       let guestId = localStorage.getItem('guestId');
       if (!guestId) { guestId = 'guest-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('guestId', guestId); }
@@ -1712,17 +1731,43 @@ function showAuthScreen() {
     });
     $('authContact').addEventListener('click', () => { $('contactModal').style.display = 'flex'; });
     $('contactClose').onclick = () => { $('contactModal').style.display = 'none'; };   // wired here too since showMenu() (which also sets this) hasn't run yet pre-login
+    forgot.addEventListener('click', async () => {
+      const typed = $('authEmail').value.trim();
+      err.textContent = '';
+      if (!typed) { err.textContent = 'Type your username or email above first, then tap "Forgot password?" again.'; return; }
+      forgot.disabled = true; const label = forgot.textContent; forgot.textContent = 'Sending…';
+      try {
+        const resolved = await resolveLoginEmail(typed);
+        if (resolved.error) { err.textContent = resolved.error; }
+        else {
+          const { error } = await supabase.auth.resetPasswordForEmail(resolved.email, { redirectTo: location.origin + '/reset-password.html' });
+          err.textContent = error ? error.message : '';
+          confirmBanner.textContent = '📧 CHECK YOUR EMAIL FOR A RESET LINK';
+          confirmBanner.style.display = error ? 'none' : 'block';
+        }
+      } catch { err.textContent = 'Could not connect. Check your connection and try again.'; }
+      forgot.disabled = false; forgot.textContent = label;
+    });
     $('authForm').addEventListener('submit', async e => {
       e.preventDefault();
       if (btn.disabled) return;
-      const email = $('authEmail').value.trim(), password = $('authPass').value;
-      err.textContent = '';
-      if (!email || password.length < 6) { err.textContent = 'Enter an email and a password of at least 6 characters.'; return; }
+      const typed = $('authEmail').value.trim(), password = $('authPass').value;
+      const username = $('authUsername').value.trim(), gender = $('authGender').value;
+      err.textContent = ''; confirmBanner.style.display = 'none';
+      if (!typed || password.length < 6) { err.textContent = mode === 'signup' ? 'Enter an email and a password of at least 6 characters.' : 'Enter your username (or email) and password.'; return; }
+      if (mode === 'signup' && !username) { err.textContent = 'Pick a username.'; return; }
       btn.disabled = true; btn.textContent = 'Please wait…';
-      let data, error;
-      try { ({ data, error } = mode === 'signup'
-        ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + '/confirm.html' } })
-        : await supabase.auth.signInWithPassword({ email, password })); }
+      let data, error, email = typed;
+      try {
+        if (mode === 'signup') {
+          ({ data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + '/confirm.html', data: { username, gender: gender || null } } }));
+          if (error && /usernames_pkey|usernames.*duplicate|duplicate key.*username/i.test(error.message)) error = { message: 'That username is already taken — try another.' };
+        } else {
+          const resolved = await resolveLoginEmail(typed);
+          if (resolved.error) error = { message: resolved.error };
+          else ({ data, error } = await supabase.auth.signInWithPassword({ email: resolved.email, password }));
+        }
+      }
       catch { error = { message: 'Could not connect. Check your connection and try again.' }; }
       btn.disabled = false; btn.textContent = mode === 'signup' ? 'Create account' : 'Continue your story';
       if (error) { err.textContent = error.message; return; }
@@ -1731,7 +1776,8 @@ function showAuthScreen() {
         // already filled in, so coming back to this tab after confirming is one click.
         setMode('login');
         $('authEmail').value = email;
-        err.textContent = 'Check your email to confirm your account, then log in here.';
+        confirmBanner.textContent = '📧 GO TO YOUR EMAIL AND CONFIRM';
+        confirmBanner.style.display = 'block';
         return;
       }
       $('auth').style.display = 'none';
@@ -1860,8 +1906,8 @@ function runSpawnScreen(userId, persist) {
       let spinTimer = setInterval(() => { dieEl.style.transform = rollDieFace(1 + Math.floor(Math.random() * 6)); }, 120);
       const roll = 1 + Math.floor(Math.random() * 6);
       const [res] = await Promise.all([
-        fetch('/api/generate-life', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ roll }) })
-          .then(r => r.json()).catch(() => null),
+        (navigator.onLine?fetch('/api/generate-life', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ roll }) }):Promise.resolve(null))
+          .then(r => r?.json()).catch(() => null),
         new Promise(r => setTimeout(r, 1400)),
       ]);
       clearInterval(spinTimer);
@@ -1959,9 +2005,13 @@ function showMenu(hasSave) {
   });
 }
 
+let playerUsername = null;   // set once the user signs in/up; null for guests or if they skipped it
+function offlinePlayerSession(){let id=localStorage.getItem('lastSoloPlayer')||localStorage.getItem('guestId');if(!id){id='guest-'+crypto.randomUUID();localStorage.setItem('guestId',id);}return {user:{id,isGuest:true}};}
 async function boot() {
-  const { data: { session } } = await supabase.auth.getSession();
-  const activeSession = session || await showAuthScreen();
+  let session=null;
+  if(navigator.onLine){try{const result=await Promise.race([supabase.auth.getSession(),new Promise(resolve=>setTimeout(()=>resolve(null),8000))]);session=result?.data?.session||null;}catch{}}
+  const activeSession = navigator.onLine?(session||await showAuthScreen()):offlinePlayerSession();
+  playerUsername = activeSession.user.user_metadata?.username || null;
   if (!activeSession.user.isGuest) supabase.from('logins').insert({ user_id: activeSession.user.id });
   const existingSave = loadSolo(activeSession.user.id);
   const mode = await showMenu(!!existingSave);
@@ -1973,7 +2023,7 @@ async function boot() {
     await runSpawnScreen(activeSession.user.id, false);
   }
   if(mode==='host'||mode==='join'){await runSpawnScreen(activeSession.user.id,true);player.position.copy(SPAWN);}
-  if (mode === 'continue' || mode === 'new') { soloMode = true; soloUserId = activeSession.user.id; }
+  if (mode === 'continue' || mode === 'new') { soloMode = true; soloUserId = activeSession.user.id;localStorage.setItem('lastSoloPlayer',soloUserId); }
   window.addEventListener('beforeunload', saveSolo);
   $('start').style.display = 'flex';
 }
@@ -6266,7 +6316,7 @@ function updateCamera(dt) {
 
 function updateHud(dt) {
   const c = characters[charIdx];
-  $('charName').textContent = (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level}` + (prog.points ? ' (C)' : '') + (isVillain ? '  ☠ Villain' : '');
+  $('charName').textContent = (playerUsername ? playerUsername + '  ·  ' : '') + (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level}` + (prog.points ? ' (C)' : '') + (isVillain ? '  ☠ Villain' : '');
   $('charName').style.color = isVillain ? '#ff4d4d' : '';
   $('hpBar').style.width = clamp(stats.hp / maxHp() * 100, 0, 100) + '%';
   $('hpText').textContent = `${Math.max(0, Math.round(stats.hp))} / ${maxHp()}`;
