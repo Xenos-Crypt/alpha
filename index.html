@@ -1128,7 +1128,13 @@ function addPet(kind, x, z) {
   const home = new THREE.Vector3(x, CURB, z);
   g.position.copy(home);
   scene.add(g);
-  parkPets.push({ kind, g, home, target: home.clone(), speed: (horse ? 1.6 : 0.8) + rand() * 0.5, waitT: rand() * 3 });
+  const pet = { kind, g, home, target: home.clone(), speed: (horse ? 1.6 : 0.8) + rand() * 0.5, waitT: rand() * 3, ridden: false };
+  parkPets.push(pet);
+  if (horse) {
+    pet.mountInteract = { pos: home.clone(), r: 2, label: 'Ride the horse', action: () => mountHorse(pet) };
+    interactables.push(pet.mountInteract);
+  }
+  return pet;
 }
 addPet('dog', 25, -26);
 addPet('dog', -28, -26);
@@ -1164,6 +1170,8 @@ const ARENA = new THREE.Vector3(PARK.x - 60, CURB, PARK.z + 10);
 function updatePets(dt) {
   for (const a of parkPets) {
     const p = a.g.position;
+    if (a.mountInteract) { a.mountInteract.pos.copy(p); a.mountInteract.label = a.ridden ? 'Dismount' : 'Ride the horse'; }
+    if (a.ridden) continue;   // player (or riding()) is driving this one directly
     if(a.owner){
       if(a.owner===player&&(swimming||inCar||transport?.rider)){a.leash.visible=false;a.target.copy(p);continue;}
       a.leash.visible=true;
@@ -2132,6 +2140,7 @@ function spendPoint(key) {
 // =====================================================================
 const vehicles = [];
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0;
+let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
 const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2cc, emissiveIntensity: 0.3 });
 const tailMat = new THREE.MeshStandardMaterial({ color: 0x880000, emissive: 0xff2020, emissiveIntensity: 0.3 });
@@ -3474,7 +3483,7 @@ function aimMelee() {
   return fwdOf(player);
 }
 
-function canAct() { return !transport?.rider && !swimming && !sitting && !action && !inCar && playerStun <= 0 && locked; }
+function canAct() { return !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
 
 // ---- M1: 4-hit combo, the last hit is a heavy knockback with an impact frame ----
 function m1() {
@@ -4588,7 +4597,37 @@ function exitVehicle(force = false) {
   player.visible = true;
   driving = null; inCar = false;
 }
+function mountHorse(pet) {
+  if (riding || inCar || sitting || dungeon) { toast('Finish what you\'re doing first.'); return; }
+  pet.ridden = true;
+  riding = pet;
+  player.visible = false;
+}
+function dismountHorse() {
+  if (!riding) return;
+  const g = riding.g, h = g.rotation.y;
+  player.position.set(g.position.x + Math.sin(h) * 1.6, 0, g.position.z + Math.cos(h) * 1.6);
+  collide(player.position, 0.4);
+  player.position.y = groundY(player.position.x, player.position.z);
+  player.visible = true;
+  riding.ridden = false;
+  riding = null;
+}
+function updateRiding(dt) {
+  const g = riding.g, dir = inputDir();
+  const moving = dir.lengthSq() > 0;
+  if (moving) {
+    const sprint = keys.ShiftLeft ? 1.6 : 1;
+    g.position.addScaledVector(dir, 7 * sprint * dt);
+    g.rotation.y = lerpAngle(g.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-10 * dt));
+  }
+  collide(g.position, 0.5);
+  g.position.y = groundY(g.position.x, g.position.z, g.position.y);
+  player.position.copy(g.position);
+  player.rotation.y = g.rotation.y;
+}
 function interact() {
+  if (riding) return dismountHorse();
   if(transport?.rider) return transport.leave();
   if (inCar) return exitVehicle();
   if (sitting) return toggleSit(null);
@@ -5486,6 +5525,7 @@ function updateNeeds(dt) {
     stats.hp = maxHp(); stats.hunger = 60; stats.energy = 60;
     wanted = 0; pursuitBackupCooldown = 0;   // fainting shouldn't leave police still chasing you home
     if (inCar) exitVehicle(true);
+    if (riding) { riding.ridden = false; riding = null; player.visible = true; }
     if (dungeon) leaveDungeon();
     action = null;
     player.position.copy(SPAWN);
@@ -5753,7 +5793,8 @@ function frame() {
     psyCd = Math.max(0, psyCd - dt);
     updatePursuit(dt);
     updateNeeds(dt);
-    if (!inCar) updatePlayer(dt);
+    if (riding) updateRiding(dt);
+    else if (!inCar) updatePlayer(dt);
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);
