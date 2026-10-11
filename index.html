@@ -1019,6 +1019,39 @@ const LAMP_OFFSETS = [[-14.3, -14.3], [14.3, -14.3], [-14.3, 14.3], [14.3, 14.3]
 for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++)
   for (const [ox, oz] of LAMP_OFFSETS) lampSpots.push(new THREE.Vector3(cx * 40 + 20 + ox, 0, cz * 40 + 20 + oz));
 
+// =====================================================================
+// TRAFFIC LIGHTS: one set per intersection, cycling red/amber/green. Visual
+// only for now — traffic AI doesn't read them yet, so they don't change
+// vehicle behavior.
+// =====================================================================
+const trafficLights = [];
+const TL_MAT = { red: new THREE.MeshStandardMaterial({ color: 0x2a0a0a, emissive: 0xff2020, emissiveIntensity: 0 }),
+  amber: new THREE.MeshStandardMaterial({ color: 0x2a1c0a, emissive: 0xffaa20, emissiveIntensity: 0 }),
+  green: new THREE.MeshStandardMaterial({ color: 0x0a2a10, emissive: 0x20ff50, emissiveIntensity: 0 }) };
+function addTrafficLight(x, z, faceY) {
+  box(0.09, 3.2, 0.09, x, 1.6, z, 0x2b2f33, false);
+  const head = new THREE.Group(); head.position.set(x, 3.2, z); head.rotation.y = faceY; scene.add(head);
+  mesh(new THREE.BoxGeometry(0.4, 0.9, 0.3), 0x1a1c1e, head);
+  const lamps = {};
+  let i = 0;
+  for (const key of ['red', 'amber', 'green']) {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(0.11, 12), TL_MAT[key]);
+    m.position.set(0, 0.28 - i * 0.28, 0.16); head.add(m); lamps[key] = m.material; i++;
+  }
+  trafficLights.push({ phase: rand() * 6, lamps });
+}
+for (let cx = -3; cx < 4; cx++) for (let cz = -3; cz < 4; cz++) {
+  if (rand() < 0.5) continue;   // not every single intersection — keeps it from feeling mechanical
+  addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
+}
+function updateTrafficLights(dt) {
+  for (const t of trafficLights) {
+    t.phase = (t.phase + dt) % 6;   // 3s green, 1s amber, 2s red (offset per light so they're not synced)
+    const state = t.phase < 3 ? 'green' : t.phase < 4 ? 'amber' : 'red';
+    for (const key in t.lamps) t.lamps[key].emissiveIntensity = key === state ? (key === 'amber' ? 3 : 2) : 0;
+  }
+}
+
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x2b2f33, roughness: 0.6 });
 const lanternMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: 0xffc66b, emissiveIntensity: 0 });
 const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.09, 4, 6), poleMat, lampSpots.length);
@@ -5307,6 +5340,23 @@ document.addEventListener('pointerlockerror', () => {
 const DAY_LEN = 300; // seconds per in-game day
 let reconstructionDays = 0;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
+// Weather: cycles clear/rain on its own timer, independent of day/night.
+let weatherState = 'clear', weatherT = 90 + rand() * 120;
+function updateWeather(dt) {
+  weatherT -= dt;
+  if (weatherT <= 0) {
+    weatherState = weatherState === 'clear' ? 'rain' : 'clear';
+    weatherT = weatherState === 'rain' ? 45 + rand() * 45 : 100 + rand() * 140;
+    toast(weatherState === 'rain' ? 'Rain is moving in.' : 'The rain has cleared up.');
+  }
+  if (weatherState === 'rain' && Math.random() < 0.9) {
+    for (let i = 0; i < 6; i++) {
+      const a = rand() * Math.PI * 2, r = rand() * 16;
+      const x = player.position.x + Math.cos(a) * r, z = player.position.z + Math.sin(a) * r;
+      spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3(0, -14, 0), 0x9fc3e0, 0.05, 0.7, -14);
+    }
+  }
+}
 
 let swimming = false, waterExhausted = false;
 function isSeaWater(x,z,bodyY = null) {
@@ -5754,12 +5804,14 @@ function updateWorldLight(dt) {
     top.copy(SKY.duskTop).lerp(SKY.nightTop, t);
     horizon.copy(SKY.duskHorizon).lerp(SKY.nightHorizon, t);
   }
+  if (weatherState === 'rain') { top.lerp(new THREE.Color(0x5a6168), 0.6); horizon.lerp(new THREE.Color(0x6b7278), 0.6); }
   scene.fog.color.copy(horizon);
+  scene.fog.far = weatherState === 'rain' ? 160 : 280;
   sky.position.copy(camera.position);
   sunDisc.position.copy(camera.position).addScaledVector(sunDir, 400);
   moonDisc.position.copy(camera.position).addScaledVector(sunDir, -400);
-  sunDisc.visible = elev > -0.1;
-  moonDisc.visible = elev < 0.1;
+  sunDisc.visible = elev > -0.1 && weatherState !== 'rain';
+  moonDisc.visible = elev < 0.1 && weatherState !== 'rain';
 
   for (const c of clouds) {
     c.position.x += dt * 2;
@@ -5996,6 +6048,8 @@ function frame() {
     updateVehicles(dt);
     updateParkLife(dt);
     updateBridgeLift(dt);
+    updateTrafficLights(dt);
+    updateWeather(dt);
     updatePlanes(dt);
     updateAdBalloon(dt);
     updateShips(dt);
