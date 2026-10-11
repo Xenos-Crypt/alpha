@@ -2691,6 +2691,38 @@ addBridgeCommuter(0xe17055, [new THREE.Vector3(220, 0, 60), new THREE.Vector3(22
     colliders.push({ minX: x - r * 0.7, maxX: x + r * 0.7, minZ: z - r * 0.7, maxZ: z + r * 0.7 });
   }
   signboard('ASHFORD HIGHLANDS', -310, 5, 660, 14, '#2a2f33');
+  // Forest at the foot of the mountains — a real start on the "forest with
+  // bats/insects" request, not just two trees for show.
+  for (let i = 0; i < 45; i++) addTree(-320 - rand() * 170, 590 + rand() * 360, 0.9 + rand() * 0.6);
+}
+const bats = [];
+function addBat(x, z) {
+  const m = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.05, 3), new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.DoubleSide }));
+  scene.add(m);
+  bats.push({ m, cx: x, cz: z, r: 6 + rand() * 10, h: 8 + rand() * 6, phase: rand() * 10, speed: 1 + rand() * 0.8 });
+}
+for (let i = 0; i < 12; i++) addBat(-350 - rand() * 100, 620 + rand() * 300);
+function updateBats(dt) {
+  for (const b of bats) {
+    b.phase += b.speed * dt;
+    const x = b.cx + Math.cos(b.phase) * b.r, z = b.cz + Math.sin(b.phase) * b.r;
+    b.m.position.set(x, b.h + Math.sin(b.phase * 5) * 0.6, z);
+    b.m.rotation.y = -b.phase; b.m.rotation.x = Math.sin(b.phase * 8) * 0.5;
+  }
+}
+const forestInsects = [];
+function addForestInsect(x, z) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 5), new THREE.MeshBasicMaterial({ color: 0xbfff80 }));
+  scene.add(m);
+  forestInsects.push({ m, cx: x, cz: z, phase: rand() * 10 });
+}
+for (let i = 0; i < 25; i++) addForestInsect(-320 - rand() * 170, 590 + rand() * 360);
+function updateForestInsects(dt) {
+  for (const f of forestInsects) {
+    f.phase += dt * 2;
+    const x = f.cx + Math.sin(f.phase) * 1.2, z = f.cz + Math.cos(f.phase * 1.4) * 1.2;
+    f.m.position.set(x, groundY(x, z) + 0.8 + Math.sin(f.phase * 3) * 0.3, z);
+  }
 }
 for (let cx = -1; cx <= 0; cx++) for (let cz = 16; cz <= 17; cz++) addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
 for (let cx = 5; cx <= 8; cx += 3) for (let cz = 18; cz <= 21; cz += 3) addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
@@ -3280,6 +3312,7 @@ function killEnemy(e) {
   } else if (e.kind === 'npc') {
     e.respawn = 20;
     popText(at(e.root.position, 2.2), 'K.O.', 'break');
+    dispatchDeathAmbulance(e);
     gainXp(10);
     villainKills++; localStorage.setItem('villainKills', String(villainKills));
     if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); }
@@ -3570,6 +3603,28 @@ function dispatchAmbulance(victim) {
       victim.hidden = true; victim.root.visible = false; victim.root.position.copy(HIDDEN);
       victim.ped.state = 'rescued'; victim.alive = true; victim.hp = victim.maxHp;
       toast('Patient loaded — ambulance is heading back to the hospital.');
+    } else task.t = task.dur;
+  }, end() { const i = vehicles.indexOf(amb); if (i >= 0) vehicles.splice(i, 1); disposeObj(amb.group); } });
+}
+// A killed NPC used to just lie there, then silently teleport to a new spot
+// once its respawn timer ran out. Now an ambulance actually comes for the
+// body — purely visual, doesn't touch the existing alive/respawn timing.
+function dispatchDeathAmbulance(e) {
+  if (!HOSPITAL_POS) return;
+  const dest = e.root.position.clone();
+  const amb = makeVehicle('car', 0xffffff);
+  amb.ai = null;
+  amb.group.position.copy(HOSPITAL_POS); amb.group.position.y = 0;
+  const st = { phase: 1, exit: HOSPITAL_POS.clone() };
+  addTask({ dur: 60, update(dt, t, task) {
+    const p = amb.group.position, target = st.phase === 1 ? dest : st.exit;
+    const dir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z), d = dir.length();
+    if (d > 2) {
+      dir.normalize(); p.addScaledVector(dir, 11 * dt);
+      amb.group.rotation.y = lerpAngle(amb.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
+    } else if (st.phase === 1) {
+      st.phase = 2;
+      if (e.h) e.root.visible = false;   // only if still the same body — e.respawn's own reset will re-show it later
     } else task.t = task.dur;
   }, end() { const i = vehicles.indexOf(amb); if (i >= 0) vehicles.splice(i, 1); disposeObj(amb.group); } });
 }
@@ -5390,7 +5445,7 @@ function requestGameControl() {
     if (innerHeight >= innerWidth) return;
     locked = true; boardOpen = false; settingsOpen = false; $('board').style.display = 'none'; $('settingsPanel').style.display = 'none'; $('start').style.display = 'none';
     mobileControls.update();applyLayout();
-  } else renderer.domElement.requestPointerLock();
+  } else { renderer.domElement.requestPointerLock(); applyLayout(); }   // re-apply here too — desktop only ever got this once, at the very first page load
 }
 function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style.display = boardOpen || settingsOpen ? 'none' : 'flex'; }
 
@@ -6344,6 +6399,8 @@ function frame() {
     updateTrafficLights(dt);
     updateWeather(dt);
     updateFirefighters(dt);
+    updateBats(dt);
+    updateForestInsects(dt);
     updatePlanes(dt);
     updateAdBalloon(dt);
     updateShips(dt);
