@@ -1,4 +1,6 @@
+import {buildPoisonLand,poisonBossMultiplier} from './poison-land.js';
 import {buildHighlandForest,buildVolcanicIsland} from './forest-volcano.js';
+import {buildGhostIsland} from './ghost-island.js';
 import {createWorldAudio} from './world-audio.js';
 import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
@@ -330,7 +332,8 @@ const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
 const mountains = [];       // {x,z,r,h} cone-shaped peaks — groundY() ramps elevation up their slope so they're real climbable terrain
 const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford Cave tunnel+chamber footprint, kept flat despite sitting inside a mountain's radius
-let spaceCentre = null, volcanicIsland = null, worldAudio = null;
+let poisonLand = null;
+let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
 const buildings = [];      // every city building, so it can be destroyed
 
@@ -383,7 +386,9 @@ const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[[0,0],[-80,-80],[80,80],[-80,80]];
 function groundY(x, z, bodyY = null) {
+ const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
+  const ghostFloor=ghostIsland?.groundAt(x,z);if(ghostFloor!=null)return ghostFloor;
   const spaceFloor=spaceCentre?.groundAt(x,z,bodyY??player.position.y);if(spaceFloor!=null)return spaceFloor;
   if(ROUNDABOUT_CENTRES.some(([cx,cz])=>Math.hypot(x-cx,z-cz)<9.5))return .17;
   const metroFloor=metro?.groundAt(x,z);if(metroFloor!=null)return metroFloor;
@@ -3255,8 +3260,10 @@ function killEnemy(e) {
     const col = e.mdef.horns ? [0xff4020, 0x2a0606, 0xffb02e] : [0xffe08a, 0xffffff, 0xfff2c0];
     burst(c, 40, col, 10, 0.2, 0.7, 2);
     fxSphere(c, col[0], 2.5 * e.mdef.scale, 0.35);
-    const xp = Math.round(e.mdef.xp * (1 + e.level * 0.2));
-    const gold = Math.round(e.mdef.xp * 1.5 * (1 + e.level * 0.15));
+    const bonus=e.type==='venomSovereign'&&dungeon?.gate.finalBoss?poisonBossMultiplier(dungeon.entryLevel,prog.level):1;
+    if(bonus===20){dungeon.secretBonus=true;toast('Secret victory: level 50 Sovereign defeat. Rewards multiplied by 20!');}
+    const xp = bonus*Math.round(e.mdef.xp * (1 + e.level * 0.2));
+    const gold = bonus*Math.round(e.mdef.xp * 1.5 * (1 + e.level * 0.15));
     stats.gold += gold;
     popText(at(e.root.position, e.height + 0.6), `+${gold} gold`, 'info');
     gainXp(xp);
@@ -3344,8 +3351,9 @@ for (let i = 0; i < (SLIMES_ENABLED ? 8 : 0); i++) {
 
 // ---- Wildlife: lions and snakes out in the mountains/forest ----
 const WILDLIFE_DEFS = {
-  lion: { scale: 1, maxHp: 90, chase: 22, speed: 4.4, dmg: 12, kb: 9, colors: [0xc9962f, 0xb8841f], maneColor: 0x6b3e1a },
-  snake: { scale: 1, maxHp: 22, chase: 8, speed: 1.9, dmg: 5, kb: 4, colors: [0x5a7a3a, 0x3f5c2a], maneColor: null },
+  lion: { label: 'Lion', radius: 0.7, height: 1.2, maxHp: 90, chase: 22, speed: 4.4, dmg: 12, kb: 9, colors: [0xc9962f, 0xb8841f], maneColor: 0x6b3e1a },
+  snake: { label: 'Snake', radius: 0.4, height: 0.5, maxHp: 22, chase: 8, speed: 1.9, dmg: 5, kb: 4, colors: [0x5a7a3a, 0x3f5c2a] },
+  skeleton: { label: 'Ancient Skeleton', radius: 0.5, height: 1.8, maxHp: 70, chase: 16, speed: 2.6, dmg: 14, kb: 7, colors: [0xe8e0c8, 0xdcd3b4] },
 };
 function addWildlife(kind, x, z) {
   const def = WILDLIFE_DEFS[kind];
@@ -3370,6 +3378,17 @@ function addWildlife(kind, x, z) {
     const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.8, 5), mat);
     tail.position.set(-0.85, 0.2, 0); tail.rotation.z = Math.PI / 2.6; body.add(tail);
     root.add(body);
+  } else if (kind === 'skeleton') {
+    body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.75, 4, 8), mat);
+    body.position.y = 1.0; root.add(body);
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat);
+    skull.position.y = 1.65; root.add(skull);
+    for (const side of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.75, 5), mat);
+      arm.position.set(side * 0.32, 1.05, 0); root.add(arm);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.85, 5), mat);
+      leg.position.set(side * 0.14, 0.42, 0); root.add(leg);
+    }
   } else {
     body = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 1.4, 4, 8), mat);
     body.rotation.z = Math.PI / 2; body.position.y = 0.18; root.add(body);
@@ -3378,8 +3397,8 @@ function addWildlife(kind, x, z) {
   }
   root.position.copy(home);
   scene.add(root);
-  makeEnemy({ kind: 'wildlife', animal: kind, labelName: kind === 'lion' ? 'Lion' : 'Snake', root, body, radius: kind === 'lion' ? 0.7 : 0.4,
-    height: kind === 'lion' ? 1.2 : 0.5, maxHp: def.maxHp, home, touchCd: 0, phase: rand() * 10, flashMats });
+  makeEnemy({ kind: 'wildlife', animal: kind, labelName: def.label, root, body: body || root, radius: def.radius,
+    height: def.height, maxHp: def.maxHp, home, touchCd: 0, phase: rand() * 10, flashMats });
 }
 function updateWildlife(e, dt) {
   const def = WILDLIFE_DEFS[e.animal], p = e.root.position;
@@ -3396,12 +3415,12 @@ function updateWildlife(e, dt) {
     e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(mx, mz), 1 - Math.exp(-8 * dt));
   }
   if (e.animal === 'snake') e.root.rotation.z = (mx || mz) ? Math.sin(e.phase) * 0.35 : 0;   // slither wiggle while moving
-  else if (e.body) e.body.position.y = 0.55 + Math.abs(Math.sin(e.phase)) * (mx || mz ? 0.1 : 0);
+  else if (e.animal === 'lion') e.body.position.y = 0.55 + Math.abs(Math.sin(e.phase)) * (mx || mz ? 0.1 : 0);
   p.y = groundY(p.x, p.z);
   e.touchCd -= dt;
-  if (!inCar && e.stun <= 0 && dist < (e.animal === 'lion' ? 1.6 : 1.1) && Math.abs(p.y - player.position.y) < 1.5 && e.touchCd <= 0) {
+  if (!inCar && e.stun <= 0 && dist < (e.animal === 'snake' ? 1.1 : 1.6) && Math.abs(p.y - player.position.y) < 1.5 && e.touchCd <= 0) {
     hurtPlayer(def.dmg, p, def.kb);
-    e.touchCd = e.animal === 'lion' ? 1.2 : 1.6;
+    e.touchCd = e.animal === 'snake' ? 1.6 : 1.2;
   }
 }
 for (let i = 0; i < 6; i++) addWildlife('lion', -320 - rand() * 170, 590 + rand() * 360);
@@ -4563,6 +4582,7 @@ const TIER = {
 };
 function tierOf(level) { const d = level - prog.level; return d > 2 ? 'red' : d >= -2 ? 'blue' : 'green'; }
 const THEMES = {
+ poison:{label:"Poison Monsters",floor:0x485332,wall:0x25341c,light:0x98d644,fog:0x233214,skyTop:0x10200b,sigil:0x9bed37},
   demon: { label: 'Demons', floor: 0x6b3a3a, wall: 0x3a1f1f, light: 0xff6040, fog: 0x2a0606, skyTop: 0x0a0000, sigil: 0xff2a00 },
   angel: { label: 'Angels', floor: 0xe8e2d0, wall: 0xcfc6ad, light: 0xfff2c0, fog: 0xd9cfa8, skyTop: 0x8aa7c8, sigil: 0xffd84a },
   mixed: { label: 'Demons & Angels', floor: 0x5a4f6b, wall: 0x2e2838, light: 0xc9a0ff, fog: 0x1a1428, skyTop: 0x05030a, sigil: 0xb388ff },
@@ -4572,7 +4592,7 @@ const GATE_NAMES = {
   angel: ['Seraph Spire', 'Halo Sanctum', 'Gilded Heaven', 'Celestial Rift', 'Sanctum of Light'],
   mixed: ['Twilight Breach', 'Fallen Cathedral', 'Eclipse Rift'],
 };
-const wavesFor = g => 2 + Math.ceil(g.stars / 2);
+const wavesFor = g => g.finalBoss?1:2 + Math.ceil(g.stars / 2);
 
 const swirlTex = makeTex(256, 256, g => {
   const grd = g.createRadialGradient(128, 128, 8, 128, 128, 128);
@@ -4645,12 +4665,13 @@ function spawnGate(announce) {
   const gate = Object.assign(gm, { pos: spot.pos, level, rank, stars: rank + 1, theme, tier, name: pick(GATE_NAMES[theme]) });
   gm.disc.userData.gate = gate;
   gates.push(gate);
-  if (gates.length > 6) removeGate(gates[0]);
+  const ordinary=gates.filter(g=>!g.poisonCity);if(ordinary.length>6)removeGate(ordinary[0]);
   if (announce) worldAlert(gate);
 }
 function removeGate(g) {
+  const index=gates.indexOf(g);if(index<0)return;
   disposeObj(g.group);
-  gates.splice(gates.indexOf(g), 1);
+  gates.splice(index, 1);
 }
 function worldAlert(g) {
   const el = $('alert');
@@ -4760,6 +4781,9 @@ function applyTheme(theme) {
 // DUNGEON MONSTERS (demons, angels, and their bosses)
 // =====================================================================
 const MONSTERS = {
+ toxicCrawler:{name:'Toxic Crawler',look:{outfit:0x466620,hair:0x141c0a,skin:0x8fb848,pants:0x293b13,shoes:0x17240d},scale:.8,hp:60,dmg:7,speed:3.5,ai:'melee',xp:20,shot:0x95de27,poison:true},
+ venomStalker:{name:'Venom Stalker',look:{outfit:0x11201a,hair:0x050907,skin:0x344d27,pants:0x142019,shoes:0x0b100c},scale:1.4,hp:120,dmg:10,speed:4,ai:'ranged',xp:35,shot:0x92ed2a,poison:true},
+ venomSovereign:{name:'Great Venom Sovereign',look:{outfit:0x111d14,hair:0x080d08,skin:0x578437,pants:0x13221a,shoes:0x08120a},scale:3,hp:1200,dmg:18,speed:3.4,ai:'boss',xp:500,shot:0x8fff21,poison:true,horns:true},
   imp:       { name: 'Imp', look: { outfit: 0x7b1010, hair: 0x220000, skin: 0xc0392b, pants: 0x3d0000, shoes: 0x1a0000 }, scale: 0.75, hp: 35, dmg: 5, speed: 5.2, ai: 'melee', horns: true, xp: 8 },
   demon:     { name: 'Demon', look: { outfit: 0x3b0b0b, hair: 0x111111, skin: 0x922b21, pants: 0x1b0a0a, shoes: 0x111111 }, scale: 1.15, hp: 90, dmg: 9, speed: 3.6, ai: 'melee', horns: true, xp: 15 },
   angel:     { name: 'Angel', look: { outfit: 0xf5f6fa, hair: 0xf9e79f, skin: 0xffe0c4, pants: 0xe8e8e8, shoes: 0xd4ac0d }, scale: 1, hp: 65, dmg: 8, speed: 3.2, ai: 'ranged', wings: 'feather', halo: true, fly: 1.4, xp: 15 },
@@ -4767,7 +4791,7 @@ const MONSTERS = {
   demonLord: { name: 'Demon Lord', look: { outfit: 0x1a0505, hair: 0x000000, skin: 0x7b241c, pants: 0x0d0303, shoes: 0x000000 }, scale: 1.9, hp: 650, dmg: 15, speed: 3.2, ai: 'boss', horns: true, wings: 'bat', xp: 120, shot: 0xff4020 },
   archangel: { name: 'Archangel', look: { outfit: 0xfdfefe, hair: 0xf7dc6f, skin: 0xffe0c4, pants: 0xf2f3f4, shoes: 0xd4ac0d }, scale: 1.8, hp: 600, dmg: 14, speed: 3, ai: 'boss', wings: 'feather', halo: true, fly: 1.2, xp: 120, shot: 0xffe08a },
 };
-const WAVE_TYPES = { demon: ['imp', 'imp', 'demon'], angel: ['angel', 'knight', 'angel'], mixed: ['imp', 'demon', 'angel', 'knight'] };
+const WAVE_TYPES = { poison:['toxicCrawler','venomStalker','toxicCrawler'], demon: ['imp', 'imp', 'demon'], angel: ['angel', 'knight', 'angel'], mixed: ['imp', 'demon', 'angel', 'knight'] };
 
 function makeMonster(type, level, pos) {
   const m = MONSTERS[type];
@@ -4843,6 +4867,7 @@ function bossSpecial(e) {
   ai.state = Math.random() < 0.5 ? 'aoe' : 'volley';
   ai.t = 0; ai.fired = false;
   if (ai.state !== 'aoe') return;
+  if(e.mdef.poison){const c=player.position.clone();telegraph(c,6,1.2,0x92ed2a,()=>{if(!e.alive||!dungeon)return;fxRing(c,0x92ed2a,6,.8);if(distXZ(player.position,c)<6)hurtPlayer(e.dmg*1.5,c,5);});return;}
   if (e.type === 'archangel') {   // pillars of light around you
     for (let i = 0; i < 4; i++) {
       const c = player.position.clone().add(i ? new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8) : new THREE.Vector3());
@@ -4967,8 +4992,8 @@ function enterDungeon(gate) {
   action = null;
   $('fade').style.opacity = 1;
   setTimeout(() => {
-    dungeon = { gate, wave: 0, waves: wavesFor(gate), mobs: [], cleared: false, nextT: 2, boss: null, returnPos: player.position.clone() };
-    removeGate(gate);
+    dungeon = { gate, wave: 0, waves: wavesFor(gate), mobs: [], cleared: false, nextT: 2, boss: null, returnPos: player.position.clone(),entryLevel:prog.level };
+    if(!gate.persistent)removeGate(gate);
     wanted = 0;
     applyTheme(gate.theme);
     setGateColor(exitGate, 0xffffff);
@@ -4987,12 +5012,13 @@ function spawnWave() {
   const count = Math.min(9, 2 + Math.floor(g.stars / 2) + d.wave);
   const list = [];
   for (let i = 0; i < (isBoss ? Math.ceil(count / 2) : count); i++) list.push(pick(WAVE_TYPES[g.theme]));
-  if (isBoss) list.unshift(g.theme === 'demon' ? 'demonLord' : g.theme === 'angel' ? 'archangel' : pick(['demonLord', 'archangel']));
+  if(g.finalBoss)list.length=0;
+  if (isBoss) list.unshift(g.theme==='poison'?'venomSovereign':g.theme === 'demon' ? 'demonLord' : g.theme === 'angel' ? 'archangel' : pick(['demonLord', 'archangel']));
   list.forEach((type, i) => {
     const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * 12;
     const pos = isBoss && i === 0 ? new THREE.Vector3(DUN.x, 0, DUN.z - 12)
       : new THREE.Vector3(DUN.x + Math.cos(a) * r, 0, DUN.z - 4 + Math.sin(a) * r * 0.7);
-    const e = makeMonster(type, g.level + (isBoss && i === 0 ? 2 : 0), pos);
+    const e = makeMonster(type, g.level + (isBoss && i === 0 && !g.finalBoss ? 2 : 0), pos);
     e.stun = 0.8;   // short delay before they attack
     d.mobs.push(e);
     if (isBoss && i === 0) d.boss = e;
@@ -5003,9 +5029,11 @@ function spawnWave() {
 }
 function clearDungeon() {
   const d = dungeon, g = d.gate;
+  if(d.cleared)return;
   d.cleared = true;
-  const gold = Math.round(40 * g.stars * (1 + g.level * 0.2));
-  const xp = Math.round(60 * g.stars * (1 + g.level * 0.15));
+  const rewardMultiplier=d.secretBonus?20:1;
+  const gold = Math.round(40 * g.stars * (1 + g.level * 0.2))*rewardMultiplier;
+  const xp = Math.round(60 * g.stars * (1 + g.level * 0.15))*rewardMultiplier;
   stats.gold += gold;
   gainXp(xp);
   callout('DUNGEON CLEARED', 0xffd166, true);
@@ -6457,8 +6485,12 @@ mobileControls = setupMobileControls({
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
+poisonLand=buildPoisonLand({scene,box,makeTex,interactables,toast,makeMonster,removeEnemy,removeGate,destinations:townPlaces.destinations,playerPosition:()=>player.position,inDungeon:()=>!!dungeon,hurt:hurtPlayer,
+createGate(o){const gm=makeGateMesh(0x92ed2a),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:'poison',tier:tierOf(o.level),name:o.name,persistent:o.persistent,finalBoss:o.finalBoss,poisonCity:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
 buildHighlandForest({scene,colliders,insideCollider,groundY,addBird});
 volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:hurtPlayer});regionalEnvironment.islands.push(volcanicIsland.island);
+ghostIsland=buildGhostIsland({scene,box,interactables,toast,stats,destinations:townPlaces.destinations,signboard,rand});regionalEnvironment.islands.push(ghostIsland.island);
+for(let i=0;i<3;i++)addWildlife('skeleton',ghostIsland.chamberCentre.x+(rand()-0.5)*14,ghostIsland.chamberCentre.z+(rand()-0.5)*14);
 worldAudio=createWorldAudio({volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),state:()=>({playing:locked,position:player.position,birds,weather:weatherState,driving:inCar,speed:driving?.speed||0,swimming,airborne:!onGround,indoor:!!metro?.underground||!!sewers?.underground||!!inCivicInterior,lava:Math.hypot(player.position.x-155,player.position.z-520)<35})});
 applyLayout();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
@@ -6513,7 +6545,7 @@ function frame() {
     spaceCentre?.update(dt);
     transport.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
