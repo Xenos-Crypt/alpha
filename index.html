@@ -2941,11 +2941,13 @@ function killEnemy(e) {
   }
   e.alive = false;
   e.stun = 0;
+  // Counts toward the special-ability training quest (used to be slime-only, but
+  // slimes were removed from the world — any real kill counts now).
+  if (!specialUnlocked) { specialTrainingKills = Math.min(5, specialTrainingKills + 1); localStorage.setItem('specialTrainingKills', String(specialTrainingKills)); }
   if (e.kind === 'slime') {
     e.respawn = 10;
     e.root.visible = false;
     kills++;
-    if(!specialUnlocked){specialTrainingKills=Math.min(5,specialTrainingKills+1);localStorage.setItem('specialTrainingKills',String(specialTrainingKills));}
     gainXp(25);
   } else if (e.kind === 'monster') {
     e.respawn = Infinity;   // dungeon monsters stay dead
@@ -3698,7 +3700,7 @@ const PSY = [0xb388ff, 0x7c4dff, 0xe1bee7, 0xffffff];
 let psyCd = 0;
 function psychicGrip() {
   if (!canAct() || psyCd > 0) return;
-  if (!specialUnlocked) { toast('Special slot is empty. Defeat 5 slimes, then claim your ability at the training-ground board.'); return; }
+  if (!specialUnlocked) { toast('Special slot is empty. Defeat 5 enemies, then claim your ability at the training-ground board.'); return; }
   const f = aimForward();
   const range = 9 + prog.men * 0.6, maxTargets = 2 + Math.floor(prog.men / 2);
   const grabbed = enemies.filter(e => {
@@ -4958,7 +4960,7 @@ function renderBoard() {
   html += skillRow('Click', { icon: '⚔️', name: 'M1 Combo', desc: 'Hold or tap for a 4-hit combo. The 4th hit sends enemies flying.', dmg: `${attackDmg()} ×3 + ${Math.round(attackDmg() * 1.8)}` });
   html += skillRow('Q', { icon: '➤', name: 'Dash', desc: 'Quick dash in the direction you are moving. Brief invincibility.', dmg: '0' }, ' · Cooldown 1.5s');
   html += skillRow('F', { icon: '🛡️', name: 'Block', desc: 'Hold to block hits from the front (80% less damage). Guard-break moves go through.', dmg: '0' });
-  html += skillRow('R', { icon: 'SP', name: specialUnlocked ? 'Psychic Grip' : 'Empty special slot', desc: specialUnlocked ? 'Lift nearby targets and throw them. Scales with Mental.' : 'Defeat 5 slimes and claim your special ability at the training-ground board. Progress: '+specialTrainingKills+'/5.', dmg: specialUnlocked ? String(psyDmg()) : '0' });
+  html += skillRow('R', { icon: 'SP', name: specialUnlocked ? 'Psychic Grip' : 'Empty special slot', desc: specialUnlocked ? 'Lift nearby targets and throw them. Scales with Mental.' : 'Defeat 5 enemies and claim your special ability at the training-ground board. Progress: '+specialTrainingKills+'/5.', dmg: specialUnlocked ? String(psyDmg()) : '0' });
   for (const c of characters) {
     html += `<div class="charHead" style="color:${hex(c.fx)}">${c.name}${c === characters[charIdx] ? ' (active)' : ''}</div>`;
     c.skills.forEach((s, i) => { html += skillRow(i + 1, s, ` · Cooldown ${s.cd}s`); });
@@ -5860,7 +5862,7 @@ sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpo
  canEnter:()=>!inCar&&!transport?.rider&&!sitting&&!action,
  moveTo(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);yaw=0;}
 });
-interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 slimes. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
+interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 enemies. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
 buildControlSettings($('controlChoices'),controlPrefs,matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0,()=>{for(const key in keys)keys[key]=false;mobileControls?.reset();mobileControls?.update();applyLayout();});
 mobileControls = setupMobileControls({
   playing: () => locked && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
