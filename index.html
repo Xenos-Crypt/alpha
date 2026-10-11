@@ -5085,27 +5085,37 @@ function updateRiding(dt) {
   player.position.copy(g.position);
   player.rotation.y = g.rotation.y;
 }
-function interact() {
-  if(metro?.rider)return metro.leave();
-  if (riding) return dismountHorse();
-  if(transport?.rider) return transport.leave();
-  if (inCar) return exitVehicle();
-  if (sitting) return toggleSit(null);
-  if (action) return; // stand up from wherever you're sitting
+// Single source of truth for "what would pressing E do right now" — used by
+// both the HUD prompt text and interact() itself, so the prompt can never say
+// one thing while E actually does another (they were two separately
+// maintained priority lists before, and had drifted out of sync).
+function resolveInteractTarget() {
+  if (metro?.rider) return { label: 'Leave the subway', action: () => metro.leave() };
+  if (riding) return { label: 'Dismount', action: dismountHorse };
+  if (transport?.rider) return { label: 'Leave', action: () => transport.leave() };
+  if (inCar) return { label: driving.kind === 'plane' && driving.alt > 2 ? 'Land first, then get out' : 'Get out', action: () => exitVehicle() };
+  if (sitting) return { label: 'Stand up', action: () => toggleSit(null) };
+  if (action) return null;
   const seat = nearestSitSpot();
-  if (seat) return toggleSit(seat); // any registered seat — house couch, bus bench, or the civic chair
-  if (inCivicInterior) return leaveCivicBuilding();
-  if (dungeon) { if (nearExitPortal()) leaveDungeonFade(); return; }
+  if (seat) return { label: seat.label || 'Sit', action: () => toggleSit(seat) };
+  if (inCivicInterior) return { label: 'Leave', action: leaveCivicBuilding };
+  if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
   const service = nearestInteractable();
-  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway'))) return service.action();
+  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway'))) return { label: service.label, action: service.action };
   const cb = nearestCivicBuilding();
-  if (cb) return enterCivicBuilding(cb);
+  if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
   const g = nearestGate();
-  if (g) return enterDungeon(g);
+  if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
   const v = nearestVehicle();
-  if (v) return enterVehicle(v);
-  nearestInteractable()?.action();
+  if (v) {
+    const names = { car: 'car', police: 'police car', bus: 'bus', boat: 'boat' };
+    const label = v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' ? 'Steal the ' : 'Drive the ') + names[v.kind];
+    return { label, action: () => enterVehicle(v) };
+  }
+  const it = nearestInteractable();
+  return it ? { label: it.label, action: it.action } : null;
 }
+function interact() { resolveInteractTarget()?.action(); }
 
 // =====================================================================
 // CIVIC BUILDINGS: real police stations, hospitals, courthouses, libraries,
@@ -6201,17 +6211,8 @@ function updateHud(dt) {
     : awaken > 0 ? `AWAKENED ${awaken.toFixed(1)}s` : `Slimes defeated: ${kills}`)
     + (wanted > 0 ? `  ·  WANTED ${Math.ceil(wanted)}s` : '');
 
-  let prompt = '';
-  if (inCar) prompt = driving.kind === 'plane' && driving.alt > 2 ? 'Land to get out' : 'E: Get out';
-  else if (dungeon) { if (nearExitPortal()) prompt = dungeon.cleared ? 'E: Leave the dungeon' : 'E: Escape (no reward)'; }
-  else if (nearestGate()) prompt = `E: Enter gate "${nearestGate().name}"`;
-  else {
-    const v = nearestVehicle();
-    const names = { car: 'car', police: 'police car', bus: 'bus', boat: 'boat' };
-    if (v) prompt = v.kind === 'plane' ? `E: Fly the ${v.name.toLowerCase()}`
-      : (v.ai && v.kind !== 'boat' ? 'E: Steal the ' : 'E: Drive the ') + names[v.kind];
-    else { const it = nearestInteractable(); if (it) prompt = 'E: ' + it.label; }
-  }
+  const interactTarget = resolveInteractTarget();
+  let prompt = interactTarget ? 'E: ' + interactTarget.label : '';
   $('prompt').textContent = mobileControls?.mobile ? prompt.replace(/^E:/, 'Interact:') : prompt;
   $('prompt').style.display = prompt ? 'block' : 'none';
 
