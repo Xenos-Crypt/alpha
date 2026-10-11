@@ -404,6 +404,8 @@ import {buildMetro} from './metro.js';
 import {loadControlPreferences,movementKey,buildControlSettings} from './control-preferences.js';
 const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
+let villainKills = Number(localStorage.getItem('villainKills')) || 0;
+let isVillain = villainKills > 0;
 let specialTrainingKills=Math.min(5,Math.max(0,Number(localStorage.getItem('specialTrainingKills'))||0));
 let activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};
 import { createClient } from '@supabase/supabase-js';
@@ -3228,8 +3230,13 @@ function applyHit(e, h) {
 
   popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '');
   burst(at(p, e.height * 0.6), h.heavy ? 18 : 8, [0xffffff, 0xffe08a, characters[charIdx].fx], h.heavy ? 12 : 7, 0.12, 0.3, 8);
-  stats.ult = Math.min(100, stats.ult + dmg * 0.6 * (1 + prog.men * 0.08));
-  registerCombo(dmg);
+  // Only count toward the player's own combo/ultimate-charge when the player
+  // actually caused the hit — AI traffic running someone over was bumping the
+  // on-screen combo counter for damage the player had nothing to do with.
+  if (h.fromPlayer ?? true) {
+    stats.ult = Math.min(100, stats.ult + dmg * 0.6 * (1 + prog.men * 0.08));
+    registerCombo(dmg);
+  }
   // The big screen-flash/shake was firing on every heavy hit regardless of target,
   // which made routine kills feel as disruptive as a boss fight. Kills (any kind)
   // never get the full flash now, even though the kill counter/combo still count.
@@ -3274,6 +3281,8 @@ function killEnemy(e) {
     e.respawn = 20;
     popText(at(e.root.position, 2.2), 'K.O.', 'break');
     gainXp(10);
+    villainKills++; localStorage.setItem('villainKills', String(villainKills));
+    if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); }
     const n = randomCorner();   // comes back later somewhere else in town
     e.spot = cornerPos(n);
     Object.assign(e.ped, { state: 'wander', node: n, prev: null, target: cornerPos(n), stop: null, bus: null });
@@ -5787,7 +5796,7 @@ function resolveRoadMovement(v, start, dt) {
     if (segmentDistance(e.root.position, start, p) > v.radius * 0.65 + e.radius) continue;
     const relativeSpeed = Math.hypot(velocity.x - e.vel.x, velocity.z - e.vel.z);
     e.carCd = 1.2;
-    applyHit(e, { dmg: impactDamage(relativeSpeed, 0.65), from: e.root.position.clone().sub(new THREE.Vector3(velocity.x, 0, velocity.z)), kb: Math.min(22, relativeSpeed * 0.8), up: Math.min(6, relativeSpeed * 0.2), stun: Math.min(3, relativeSpeed * 0.12), heavy: true, impact: 0.4, police: v !== driving });
+    applyHit(e, { dmg: impactDamage(relativeSpeed, 0.65), from: e.root.position.clone().sub(new THREE.Vector3(velocity.x, 0, velocity.z)), kb: Math.min(22, relativeSpeed * 0.8), up: Math.min(6, relativeSpeed * 0.2), stun: Math.min(3, relativeSpeed * 0.12), heavy: true, impact: 0.4, police: v !== driving, fromPlayer: v === driving });
     v.speed *= 0.92;
     if (v === driving && e.kind === 'npc') raiseWanted(60);
   }
@@ -6178,7 +6187,8 @@ function updateCamera(dt) {
 
 function updateHud(dt) {
   const c = characters[charIdx];
-  $('charName').textContent = (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level}` + (prog.points ? ' (C)' : '');
+  $('charName').textContent = (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level}` + (prog.points ? ' (C)' : '') + (isVillain ? '  ☠ Villain' : '');
+  $('charName').style.color = isVillain ? '#ff4d4d' : '';
   $('hpBar').style.width = clamp(stats.hp / maxHp() * 100, 0, 100) + '%';
   $('hpText').textContent = `${Math.max(0, Math.round(stats.hp))} / ${maxHp()}`;
   $('hungerBar').style.width = stats.hunger + '%';
