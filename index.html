@@ -989,9 +989,10 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
   const isHome = cx === 0 && cz === 0, isPark = cx === -1 && cz === 0, isTraining = cx === 1 && cz === 0;
   const isResidential = cz === -1 && (cx === 0 || cx === -1);
   const isPoliceCell = (cx === 2 && cz === 0) || (cx === -4 && cz === 1) || (cx === 2 && cz === -4);   // downtown police posts — see buildDowntownPolice()
+  const isSchoolCell = cx === -2 && cz === 1;   // see buildSchool()
   pavement(x0, z0, isHome || isPark || isResidential ? lawnMat : isTraining ? sandMat : null);
   if (isResidential) residentialCells.push([x0, z0]);
-  if (isHome || isPark || isTraining || isResidential || isPoliceCell) continue;
+  if (isHome || isPark || isTraining || isResidential || isPoliceCell || isSchoolCell) continue;
   for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
     if (rand() < 0.12) {   // small plaza instead of a building
       addTree(x0 + ox, z0 + oz, 1.1);
@@ -2709,6 +2710,26 @@ buildDowntownPolice(100, 20, 'Ashford Downtown Police Post — Central');
 buildDowntownPolice(-140, 60, 'Ashford Downtown Police Post — West');
 buildDowntownPolice(100, -140, 'Ashford Downtown Police Post — South');
 
+// Ashford School — the building + playground only; the student population is
+// added later, once the pedestrian system (addPedPopulation) exists.
+const SCHOOL = new THREE.Vector3(-60, 0, 60);
+(function buildSchool() {
+  const { x, z } = SCHOOL, w = 24, d = 18, h = 7;
+  box(w, h, d, x, h / 2, z, 0xcf8c4a);
+  box(w + 0.6, 0.6, d + 0.6, x, h + 0.3, z, 0x8a5c30);
+  colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  civicBuildings.push({ type: 'school', name: 'Ashford School', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  signboard('ASHFORD SCHOOL', x, h + 0.9, z - d / 2 - 0.1, 12, '#1d2e1f');
+  // Playground out front.
+  box(16, 0.1, 10, x, 0.05, z + d / 2 + 7, sandMat, false);
+  for (const [px, pz] of [[-5, -2], [5, -2]]) {
+    box(0.15, 2, 0.15, x + px, 1, z + d / 2 + 7 + pz, 0x8a8a8a, false);
+    box(3, 0.15, 0.6, x + px, 2, z + d / 2 + 7 + pz, 0x8a8a8a, false);
+  }
+  addBench(x - 7, z + d / 2 + 2, Math.PI);
+  addBench(x + 7, z + d / 2 + 2, Math.PI);
+})();
+
 function loadCityTile(tx, tz) {
   const key = `${tx}_${tz}`;
   if (cityTiles.has(key)) return;
@@ -2890,6 +2911,9 @@ const AIRFIELD_X = -550;
 const AIRCRAFT = [
   { name: 'Prop plane', color: 0xf5f6fa, accent: 0xe1b12c, maxSpeed: 45, takeoff: 22, turn: 0.9, jet: false, home: [AIRFIELD_X - 95, -48] },
   { name: 'Jet', color: 0x95a5a6, accent: 0x2c3e50, maxSpeed: 85, takeoff: 35, turn: 0.7, jet: true, home: [AIRFIELD_X - 95, -12] },
+  { name: 'Airliner', color: 0xe8edf0, accent: 0x1a5fb4, maxSpeed: 95, takeoff: 40, turn: 0.6, jet: true, home: [AIRFIELD_X - 95, 24] },
+  { name: 'Cargo plane', color: 0xb0a080, accent: 0x5a4a30, maxSpeed: 50, takeoff: 26, turn: 0.8, jet: false, home: [AIRFIELD_X - 95, -84] },
+  { name: 'Fighter jet', color: 0x4a5560, accent: 0xb8302a, maxSpeed: 120, takeoff: 30, turn: 1.1, jet: true, home: [AIRFIELD_X - 95, 60] },
 ];
 function makeAircraft(a) {
   const g = new THREE.Group();
@@ -3422,6 +3446,7 @@ function addPedPopulation(count, bounds) {
 addPedPopulation(34, MAIN_BOUNDS);
 addPedPopulation(10, RIVERSIDE_BOUNDS);
 addPedPopulation(18, CAPITAL_BOUNDS);
+addPedPopulation(12, { bx0: -2, bx1: -2, bz0: 1, bz1: 1 });   // students attending Ashford School
 
 // Bystanders react to nearby violence/explosions like real people would instead
 // of only the directly-hit ped panicking: close by, people flee; a bit further
