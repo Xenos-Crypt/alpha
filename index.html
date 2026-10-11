@@ -362,6 +362,7 @@
       </form>
       <button id="authSwitch" type="button">Already have an account? Log in</button>
       <button id="authGuest" type="button" style="background:transparent;border:1px solid rgba(255,255,255,.25);margin-top:8px">Play as guest — no account needed</button>
+      <button id="authContact" type="button" style="background:transparent;border:0;margin-top:10px;text-decoration:underline;opacity:.75;cursor:pointer">Contact support</button>
       <div id="authError" role="status" aria-live="polite"></div>
       <p class="auth-note">You may need to confirm your email before entering. On a phone, rotate sideways when you're ready to play.</p>
       <p class="auth-note">Guest play saves progress only on this device/browser — sign up to keep it anywhere.</p>
@@ -1387,33 +1388,26 @@ function addWireRun(poleMat, points) {
 // =====================================================================
 // TRAINING GROUND (sand arena with a fence and a sign)
 // =====================================================================
+// The fenced training-arena shell is gone (replaced by a real runway just
+// south of here) but TRAIN itself, the combat dummies and the special-ability
+// claim point below all still live at this spot — those aren't cosmetic.
 const TRAIN = new THREE.Vector3(60, CURB, 20);
 addBench(TRAIN.x - 10, TRAIN.z - 7, Math.PI / 2);
 addBench(TRAIN.x - 10, TRAIN.z + 7, Math.PI / 2);
-for (const s of [-1, 1]) for (const o of [-7.75, 7.75]) {
-  // rails along the north/south sides, then east/west sides, leaving a gap in the middle of each
-  box(10.5, 0.12, 0.12, TRAIN.x + o, CURB + 0.95, TRAIN.z + s * 13, woodMatPlain);
-  box(10.5, 0.12, 0.12, TRAIN.x + o, CURB + 0.5, TRAIN.z + s * 13, woodMatPlain, false);
-  box(0.12, 0.12, 10.5, TRAIN.x + s * 13, CURB + 0.95, TRAIN.z + o, woodMatPlain);
-  box(0.12, 0.12, 10.5, TRAIN.x + s * 13, CURB + 0.5, TRAIN.z + o, woodMatPlain, false);
-  for (const e of [-5.25, 5.25]) {
-    box(0.18, 1.15, 0.18, TRAIN.x + o + e, CURB + 0.57, TRAIN.z + s * 13, woodMatPlain, false);
-    box(0.18, 1.15, 0.18, TRAIN.x + s * 13, CURB + 0.57, TRAIN.z + o + e, woodMatPlain, false);
-  }
+
+// =====================================================================
+// HOME RUNWAY: a short strip just south of the old training ground, for the
+// plane parked near home. Outside the main block grid (|z| > 160) so it
+// doesn't collide with any street/building there.
+// =====================================================================
+const RUNWAY = new THREE.Vector3(TRAIN.x, 0, 200);
+{
+  const len = 90, w = 11;
+  box(w, 0.08, len, RUNWAY.x, 0.04, RUNWAY.z, 0x3a3c40, false);
+  for (const side of [-1, 1]) box(0.3, 0.1, len, RUNWAY.x + side * w / 2, 0.09, RUNWAY.z, 0xe8e8e8, false);
+  for (let z = RUNWAY.z - len / 2 + 4; z < RUNWAY.z + len / 2; z += 10) box(0.3, 0.1, 5, RUNWAY.x, 0.09, z, 0xe6c24a, false);
+  signboard('HOME RUNWAY', RUNWAY.x, 2.4, RUNWAY.z - len / 2 - 2, 10, '#2a2f33');
 }
-const signTex = makeTex(512, 112, (g) => {
-  g.fillStyle = '#5a3d26'; g.fillRect(0, 0, 512, 112);
-  g.strokeStyle = '#e0b872'; g.lineWidth = 6; g.strokeRect(8, 8, 496, 96);
-  g.fillStyle = '#ffe2a8'; g.font = 'bold 54px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('TRAINING GROUND', 256, 58);
-});
-signTex.wrapS = signTex.wrapT = THREE.ClampToEdgeWrapping;
-const signMat = new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.8 });
-const signBoard = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.1, 5.2), [signMat, signMat, woodMatPlain, woodMatPlain, woodMatPlain, woodMatPlain]);
-signBoard.position.set(TRAIN.x - 13.6, CURB + 3, TRAIN.z);
-signBoard.castShadow = true;
-scene.add(signBoard);
-for (const o of [-2.7, 2.7]) box(0.16, 3.6, 0.16, TRAIN.x - 13.6, CURB + 1.8, TRAIN.z + o, woodMatPlain, false);
 
 // =====================================================================
 // HOME (Sims-style house; the roof hides when you walk inside)
@@ -1990,6 +1984,8 @@ function showAuthScreen() {
       $('auth').style.display = 'none';
       resolve({ user: { id: guestId, email: null, isGuest: true } });
     });
+    $('authContact').addEventListener('click', () => { $('contactModal').style.display = 'flex'; });
+    $('contactClose').onclick = () => { $('contactModal').style.display = 'none'; };   // wired here too since showMenu() (which also sets this) hasn't run yet pre-login
     $('authForm').addEventListener('submit', async e => {
       e.preventDefault();
       if (btn.disabled) return;
@@ -2989,7 +2985,7 @@ function makeAircraft(a) {
 AIRCRAFT.forEach(makeAircraft);
 // Temporary: your own plane parked near home instead of the car, for testing
 // fast travel — same "for now, revert later" spirit as CHEAT_NO_NEEDS/SPEED.
-makeAircraft({ name: 'Your plane', color: 0xf5f6fa, accent: 0xd63031, maxSpeed: 60, takeoff: 24, turn: 0.95, jet: false, home: [HOME.x + 30, HOME.z - 10] });
+makeAircraft({ name: 'Your plane', color: 0xf5f6fa, accent: 0xd63031, maxSpeed: 60, takeoff: 24, turn: 0.95, jet: false, home: [RUNWAY.x, RUNWAY.z - 35] });
 
 function crashPlane(v) {
   const p = v.group.position.clone();
@@ -3527,6 +3523,11 @@ function dispatchAmbulance(victim) {
 }
 function updatePed(e, dt) {
   const s = e.ped, p = e.root.position;
+  // Skip full pathing/animation work for ordinary wandering peds far from the
+  // player — with 4 separate populated districts, most of them aren't visible
+  // at any given moment anyway. Anything mid-reaction (panic, down, boarding,
+  // etc.) still updates normally regardless of distance.
+  if (s.state === 'wander' && distXZ(p, player.position) > 120) return;
   let moving = false, speed = s.speed;
   if (e.stun > 0 || !e.onGround) { animateHumanoid(e.h, e.stun > 0 ? 'stunned' : null, false, false, e.onGround, dt); return; }
   switch (s.state) {
