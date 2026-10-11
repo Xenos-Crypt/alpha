@@ -1,3 +1,5 @@
+import {createRoomChat} from './room-chat.js';
+import {buildCityLife,waterFootprint} from './city-life.js';
 import {buildPoisonLand,poisonBossMultiplier} from './poison-land.js';
 import {buildHighlandForest,buildVolcanicIsland} from './forest-volcano.js';
 import {buildGhostIsland} from './ghost-island.js';
@@ -65,7 +67,7 @@ const at = (p, h) => new THREE.Vector3(p.x, p.y + h, p.z);
 // =====================================================================
 // RENDERER / SCENE / LIGHTS
 // =====================================================================
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
 const touchDevice = matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0;
 renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1 : 1.5));
@@ -78,7 +80,7 @@ document.body.prepend(renderer.domElement);
 // Graphics quality (resolution/shadows) — set from the Settings panel, saved across sessions.
 const GFX_PRESETS = {
   low: { pr: 0.75, shadows: false, shadowSize: 1024 },
-  medium: { pr: touchDevice ? 1 : 1.25, shadows: true, shadowSize: touchDevice ? 1024 : 2048 },
+  medium: { pr: touchDevice ? 1 : 1.25, shadows: true, shadowSize: 1024 },
   high: { pr: touchDevice ? 1 : 1.5, shadows: true, shadowSize: 2048 },
   ultra: { pr: touchDevice ? 1.5 : 2, shadows: true, shadowSize: 4096 },
 };
@@ -99,6 +101,7 @@ function setGraphicsQuality(level) {
 // Split out from setGraphicsQuality() since `sun` doesn't exist yet the first
 // time that runs (declared further down this file); the sun's own setup below
 // calls this once more right after creating it, using the already-chosen quality.
+let manualGraphics=false;
 let sunReady = false;   // `sun` is declared further down this module; guards against touching it before then
 function applyShadowMapSize() {
   if (!sunReady) return;
@@ -332,6 +335,7 @@ const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
 const mountains = [];       // {x,z,r,h} cone-shaped peaks — groundY() ramps elevation up their slope so they're real climbable terrain
 const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford Cave tunnel+chamber footprint, kept flat despite sitting inside a mountain's radius
+let cityLife=null,monsterQuestKills=0;
 let poisonLand = null;
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
@@ -354,6 +358,7 @@ function box(w, h, d, x, y, z, color, collide = true) {
 function collide(p, r) {
   let hit = false;
   for (const c of colliders) {
+    if(p.x<c.minX-r||p.x>c.maxX+r||p.z<c.minZ-r||p.z>c.maxZ+r)continue;
     if(c.circleRadius!=null){const dx=p.x-c.circleX,dz=p.z-c.circleZ,d=Math.hypot(dx,dz),limit=r+c.circleRadius;if(d<limit){hit=true;p.x+=dx/(d||1)*(limit-d);p.z+=dz/(d||1)*(limit-d);if(d<.0001)p.x=c.circleX+limit;}continue;}
     if(c.baseYAt){const base=c.baseYAt(p.x,p.z);if(p.y<base-.8||p.y>base+2)continue;}
     const cx = clamp(p.x, c.minX, c.maxX), cz = clamp(p.z, c.minZ, c.maxZ);
@@ -527,7 +532,8 @@ function addBuilding(x, z, faceX, faceZ) {
   const floors = 2 + Math.floor(rand() * rand() * 10 + centreBoost * rand() * 10);
   const tall = floors >= 8;
   const f = facades[tall ? [2, 3, 4][Math.floor(rand() * 3)] : Math.floor(rand() * facades.length)];
-  const w = rand() < 0.5 ? 9 : 12, d = rand() < 0.5 ? 9 : 12;
+  const regional=z>=640&&z<=950;
+  const w = regional?8:(rand()<.5?9:12), d=regional?8:(rand()<.5?9:12);
   const firstChild = scene.children.length, firstCollider = colliders.length, firstBlock = planeBlocks.length;
   let top = addTower(x, CURB, z, w, floors * 3, d, f, true);
 
@@ -697,9 +703,9 @@ const trafficLights = [];
 const TL_MAT = { red: new THREE.MeshStandardMaterial({ color: 0x2a0a0a, emissive: 0xff2020, emissiveIntensity: 0 }),
   amber: new THREE.MeshStandardMaterial({ color: 0x2a1c0a, emissive: 0xffaa20, emissiveIntensity: 0 }),
   green: new THREE.MeshStandardMaterial({ color: 0x0a2a10, emissive: 0x20ff50, emissiveIntensity: 0 }) };
-function addTrafficLight(x, z, faceY) {
-  box(0.14, 5, 0.14, x, 2.5, z, 0x2b2f33, false);   // taller mast — more visible from a distance/while driving
-  const head = new THREE.Group(); head.position.set(x, 5, z); head.rotation.y = faceY; scene.add(head);
+function addTrafficLight(x, z, faceY,baseY=0,phase=null) {
+  box(0.14, 5, 0.14, x, baseY+2.5, z, 0x2b2f33, false);   // taller mast — more visible from a distance/while driving
+  const head = new THREE.Group(); head.position.set(x, baseY+5, z); head.rotation.y = faceY; scene.add(head);
   mesh(new THREE.BoxGeometry(0.55, 1.3, 0.4), 0x1a1c1e, head);
   const lamps = {};
   let i = 0;
@@ -707,7 +713,7 @@ function addTrafficLight(x, z, faceY) {
     const m = new THREE.Mesh(new THREE.CircleGeometry(0.17, 14), TL_MAT[key].clone());
     m.position.set(0, 0.4 - i * 0.4, 0.21); head.add(m); lamps[key] = m.material; i++;
   }
-  trafficLights.push({ phase: rand() * 6, lamps });
+  const signal={phase:phase??rand()*6,lamps,x,z,axis:Math.abs(Math.sin(faceY))>.7?'x':'z'};trafficLights.push(signal);return signal;
 }
 // A handful of roundabouts instead of light-controlled intersections.
 const ROUNDABOUT_CELLS = new Set(['0,0', '-2,-2', '2,2', '-2,2']);
@@ -736,16 +742,40 @@ function updateTrafficLights(dt) {
 
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x2b2f33, roughness: 0.6 });
 const lanternMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: 0xffc66b, emissiveIntensity: 0 });
-const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.09, 4, 6), poleMat, lampSpots.length);
-const lanterns = new THREE.InstancedMesh(new THREE.BoxGeometry(0.32, 0.45, 0.32), lanternMat, lampSpots.length);
-const caps = new THREE.InstancedMesh(new THREE.ConeGeometry(0.32, 0.25, 4), poleMat, lampSpots.length);
+// Sized with headroom: the bridge and regionalEnvironment both push more lamp
+// spots onto lampSpots *after* this point (addLampSpot() below handles those),
+// but an InstancedMesh's capacity is fixed at construction — undersizing it
+// here meant those later lamps had no pole/lantern/cap instance at all, so
+// they never rendered and breakLamp() silently no-op'd past the real count.
+const LAMP_CAPACITY = lampSpots.length + 220;
+const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.09, 4, 6), poleMat, LAMP_CAPACITY);
+const lanterns = new THREE.InstancedMesh(new THREE.BoxGeometry(0.32, 0.45, 0.32), lanternMat, LAMP_CAPACITY);
+const caps = new THREE.InstancedMesh(new THREE.ConeGeometry(0.32, 0.25, 4), poleMat, LAMP_CAPACITY);
 const dummyObj = new THREE.Object3D();
-lampSpots.forEach((p, i) => {
+function placeLampInstance(i, p) {
   dummyObj.rotation.set(0, 0, 0);
   dummyObj.position.set(p.x, CURB + 2, p.z); dummyObj.updateMatrix(); poles.setMatrixAt(i, dummyObj.matrix);
   dummyObj.position.y = CURB + 4.2; dummyObj.updateMatrix(); lanterns.setMatrixAt(i, dummyObj.matrix);
   dummyObj.position.y = CURB + 4.55; dummyObj.rotation.y = Math.PI / 4; dummyObj.updateMatrix(); caps.setMatrixAt(i, dummyObj.matrix);
-});
+  poles.instanceMatrix.needsUpdate = lanterns.instanceMatrix.needsUpdate = caps.instanceMatrix.needsUpdate = true;
+}
+// Unused instance slots default to an identity matrix (visible at the world
+// origin), not hidden — hide the whole reserved range before placing the
+// lamps that actually exist yet.
+dummyObj.position.set(0, -500, 0); dummyObj.scale.setScalar(0.0001); dummyObj.updateMatrix();
+for (let i = 0; i < LAMP_CAPACITY; i++) { poles.setMatrixAt(i, dummyObj.matrix); lanterns.setMatrixAt(i, dummyObj.matrix); caps.setMatrixAt(i, dummyObj.matrix); }
+dummyObj.scale.setScalar(1);
+lampSpots.forEach(placeLampInstance);
+// Any lamp spot registered after this point (bridge, regionalEnvironment) must
+// go through here instead of pushing lampSpots directly, so it actually gets
+// a pole/lantern/cap instance and can be broken like any other streetlight.
+function addLampSpot(x, y, z) {
+  const p = new THREE.Vector3(x, y, z);
+  const i = lampSpots.length;
+  lampSpots.push(p);
+  if (i < LAMP_CAPACITY) placeLampInstance(i, p);
+  return p;
+}
 poles.castShadow = caps.castShadow = true;
 scene.add(poles, lanterns, caps);
 
@@ -1682,7 +1712,8 @@ function toggleInventory(open) {
 const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
 player.position.copy(SPAWN);
 const DEFAULT_SPAWN=SPAWN.clone();
-const hosting=createHosting({client:supabase,toast,setSpawn(city){SPAWN.set(city.x,groundY(city.x,city.z),city.z);},resetSpawn(){SPAWN.copy(DEFAULT_SPAWN);}});
+const roomChat=createRoomChat({client:supabase,name:()=>playerUsername||'Player',pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
+const hosting=createHosting({client:supabase,onRoomJoined:room=>roomChat.start(room),onRoomLeft:()=>roomChat.stop(),toast,setSpawn(city){SPAWN.set(city.x,groundY(city.x,city.z),city.z);},resetSpawn(){SPAWN.copy(DEFAULT_SPAWN);}});
 
 let vy = 0, onGround = true;
 const pvel = new THREE.Vector3();          // knockback velocity
@@ -1991,13 +2022,19 @@ const soloSaveKey = userId => 'aw_solo_save_' + userId;
 function loadSolo(userId) { try { const raw = localStorage.getItem(soloSaveKey(userId)); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 function clearSolo(userId) { try { localStorage.removeItem(soloSaveKey(userId)); } catch {} }
 function saveSolo() {
-  if (!soloMode || !soloUserId) return;
+  if (!soloMode || !soloUserId) return true;
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
+      stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
+      metro:metro?.snapshot(),sewer:sewers?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
+      questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
+      driving:inCar&&driving?{kind:driving.kind,name:driving.name,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
+      dungeon:dungeon?{gate:{name:dungeon.gate.name,level:dungeon.gate.level,rank:dungeon.gate.rank,stars:dungeon.gate.stars,theme:dungeon.gate.theme,tier:dungeon.gate.tier,finalBoss:dungeon.gate.finalBoss,persistent:dungeon.gate.persistent},wave:dungeon.wave,waves:dungeon.waves,cleared:dungeon.cleared,nextT:dungeon.nextT,entryLevel:dungeon.entryLevel,secretBonus:dungeon.secretBonus,returnPos:dungeon.returnPos.toArray(),mobs:dungeon.mobs.map(m=>({type:m.type,level:m.level,hp:m.hp,alive:m.alive,position:m.root.position.toArray(),boss:m===dungeon.boss}))}:null,
       pos: { x: player.position.x, y: player.position.y, z: player.position.z }, yaw,
     }));
-  } catch {}
+    return true;
+  } catch {return false;}
 }
 function applySoloSave(save) {
   origin = save.origin;
@@ -2015,6 +2052,14 @@ function applySoloSave(save) {
   }
   if (save.pos) player.position.set(save.pos.x, save.pos.y, save.pos.z);
   if (typeof save.yaw === 'number') yaw = save.yaw;
+  if(save.stats)Object.assign(stats,save.stats);if(Array.isArray(save.inventory))inventory=save.inventory;if(typeof save.hasBag==='boolean'){hasBag=save.hasBag;backpack.visible=hasBag;}
+  if(Number.isFinite(save.dayTime))dayTime=save.dayTime;if(Number.isFinite(save.reconstructionDays))reconstructionDays=save.reconstructionDays;if(Number.isFinite(save.pitch))pitch=save.pitch;
+  monsterQuestKills=save.monsterQuestKills||0;for(const q of cityLife?.quests||[]){const saved=save.questState?.find(s=>s.name===q.name);if(saved)Object.assign(q,saved);}
+  spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
+  if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
+  if(save.driving){const v=vehicles[save.driving.index]?.kind===save.driving.kind?vehicles[save.driving.index]:null;if(v&&!v.disabled){v.group.position.fromArray(save.driving.position);v.group.rotation.fromArray(save.driving.rotation);v.health=save.driving.health??v.health;v.speed=save.driving.speed||0;if(save.driving.alt!=null)v.alt=save.driving.alt;driving=v;inCar=true;v.ai=null;activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};}}
+  if(save.dungeon){const d=save.dungeon;dungeon={...d,returnPos:new THREE.Vector3().fromArray(d.returnPos),mobs:[],boss:null};applyTheme(d.gate.theme);for(const saved of d.mobs){if(!MONSTERS[saved.type])continue;const m=makeMonster(saved.type,saved.level,new THREE.Vector3().fromArray(saved.position));m.hp=saved.hp;m.alive=saved.alive;m.root.visible=saved.alive;m.respawn=saved.alive?0:Infinity;dungeon.mobs.push(m);if(saved.boss)dungeon.boss=m;}setGateColor(exitGate,d.cleared?0xffd166:0xffffff);}
+
 }
 
 function showMenu(hasSave) {
@@ -2046,7 +2091,8 @@ async function boot() {
   playerUsername = activeSession.user.user_metadata?.username || null;
   if (!activeSession.user.isGuest) supabase.from('logins').insert({ user_id: activeSession.user.id });
   const existingSave = loadSolo(activeSession.user.id);
-  const mode = await showMenu(!!existingSave);
+  const restoringUpdate=sessionStorage.getItem('resumeAfterUpdate')===activeSession.user.id&&!!existingSave;sessionStorage.removeItem('resumeAfterUpdate');
+  const mode = restoringUpdate?'continue':await showMenu(!!existingSave);
   if (mode === 'continue') {
     applySoloSave(existingSave);
     wanted = 0; pursuitBackupCooldown = 0;   // a reload should never resume with police already after you
@@ -2057,8 +2103,11 @@ async function boot() {
   if(mode==='host'||mode==='join'){await runSpawnScreen(activeSession.user.id,true);player.position.copy(SPAWN);}
   if (mode === 'continue' || mode === 'new') { soloMode = true; soloUserId = activeSession.user.id;localStorage.setItem('lastSoloPlayer',soloUserId); }
   window.addEventListener('beforeunload', saveSolo);
+  window.addEventListener('pagehide',saveSolo);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)saveSolo();});
   $('start').style.display = 'flex';
 }
+addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await hosting.prepareReload();}})());});
 boot();
 const maxHp = () => (origin?.maxHealth ?? 100) + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
@@ -2103,7 +2152,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0;
+let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
 const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2cc, emissiveIntensity: 0.3 });
@@ -2122,9 +2171,26 @@ const ambCrossMat = new THREE.MeshStandardMaterial({ color: 0xe84118, roughness:
 function makeVehicle(kind, color) {
   const g = new THREE.Group();
   scene.add(g);
-  const isBus = kind === 'bus';
-  const L = isBus ? 9 : 4.2, W = isBus ? 2.5 : 2;
+  const isBus = kind === 'bus', isTank = kind === 'tank';
+  const L = isBus ? 9 : isTank ? 5.6 : 4.2, W = isBus ? 2.5 : isTank ? 2.7 : 2;
   const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.35 });
+  if (isTank) {
+    mesh(new THREE.BoxGeometry(W, 0.9, L), paint, g).position.y = 0.75;   // hull
+    const turret = mesh(new THREE.BoxGeometry(1.5, 0.6, 1.9), paint, g); turret.position.set(0, 1.5, -0.3);
+    const barrel = mesh(new THREE.CylinderGeometry(0.1, 0.11, 3.2, 8), 0x2a2d26, turret); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0, -2.3);
+    const trackMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.9 });
+    for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.5, 0.65, L), trackMat, g).position.set(s * (W / 2 + 0.05), 0.4, 0);
+    const wheels = [];
+    for (let i = 0; i < 4; i++) for (const s of [-1, 1]) {
+      const pivot = new THREE.Group(); pivot.position.set(s * (W / 2 + 0.05), 0.4, L / 2 - 0.8 - i * (L - 1.2) / 3);
+      g.add(pivot);
+      const wheel = new THREE.Mesh(tyreGeo, tyreMat); wheel.rotation.z = Math.PI / 2; wheel.scale.set(0.8, 0.5, 0.8); pivot.add(wheel);
+      wheels.push(pivot);
+    }
+    const v = { kind, group: g, wheels, speed: 0, radius: 2.6, length: L, maxSpeed: 26, ai: null, passengers: null };
+    vehicles.push(v);
+    return v;
+  }
   if (isBus) {
     mesh(new THREE.BoxGeometry(W, 2.6, L), paint, g).position.y = 1.65;
     for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.04, 0.8, L - 1.2), glassMat, g).position.set(s * (W / 2 + 0.01), 2.2, -0.3);
@@ -2324,7 +2390,7 @@ function signboard(text, x, y, z, width = 10, colour = '#15364a') {
     box(0.3, 1.1, len, BRIDGE_X + side * (BRIDGE_HALF_W - 0.2), BRIDGE_Y + 0.55, midZ, 0x3a3f45, false);
     // Thin collider strip along each railing so you can't walk/drive off the edge into the water.
     colliders.push({ minX: BRIDGE_X + side * (BRIDGE_HALF_W - 0.1) - 0.2, maxX: BRIDGE_X + side * (BRIDGE_HALF_W - 0.1) + 0.2, minZ: BRIDGE_Z0, maxZ: BRIDGE_Z1 });
-    for (let z = BRIDGE_Z0 + 10; z < BRIDGE_Z1; z += 24) lampSpots.push(new THREE.Vector3(BRIDGE_X + side * (BRIDGE_HALF_W - 0.7), BRIDGE_Y, z));
+    for (let z = BRIDGE_Z0 + 10; z < BRIDGE_Z1; z += 24) addLampSpot(BRIDGE_X + side * (BRIDGE_HALF_W - 0.7), BRIDGE_Y, z);
   }
   for (let z = BRIDGE_Z0 + 30; z < BRIDGE_Z1; z += 60) for (const side of [-1, 1])
     box(1.4, 15, 1.4, BRIDGE_X + side * 4, BRIDGE_Y - 7.5, z, 0x6d6d6d, false);
@@ -2364,7 +2430,7 @@ const marbleMat = new THREE.MeshStandardMaterial({ color: 0xe4ddc9, roughness: 0
 for (let cx = -2; cx <= 1; cx++) for (let cz = 16; cz <= 18; cz++) {
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
   pavement(x0, z0, marbleMat);
-  for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
+  for (const [ox, oz] of [[-5.5, -5.5], [5.5, -5.5], [-5.5, 5.5], [5.5, 5.5]]) {
     if (rand() < 0.15) { addTree(x0 + ox, z0 + oz, 1.2); continue; }
     addBuilding(x0 + ox, z0 + oz, Math.sign(ox), Math.sign(oz));
   }
@@ -2389,12 +2455,13 @@ signboard('RIVERSIDE ESTATES — PRIVATE', BRIDGE_X, BRIDGE_Y + 2.4, RIVERSIDE_Z
 const CAPITAL_CX = (CAPITAL_X0 + CAPITAL_X1) / 2, CAPITAL_CZ = (CAPITAL_Z0 + CAPITAL_Z1) / 2;
 for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++) {
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
+  if(x0===300&&z0===900)continue;
   if(x0===420&&[700,740].includes(z0))continue;
   if ([340,380].includes(x0) && [740,780,860].includes(z0)) continue;
   if (Math.hypot(x0 - CAPITAL_CX, z0 - CAPITAL_CZ) < 36) continue;   // leave the central plaza for the Capitol itself
   if (Math.abs(x0 - 220) < 55 && z0 < 740) continue;   // keep a real clear plaza at the bridge's mouth, not houses pressed right up against it
   pavement(x0, z0, lawnMat);
-  for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
+  for (const [ox, oz] of [[-5.5, -5.5], [5.5, -5.5], [-5.5, 5.5], [5.5, 5.5]]) {
     if (rand() < 0.1) { addTree(x0 + ox, z0 + oz, 1.1); continue; }
     addBuilding(x0 + ox, z0 + oz, Math.sign(ox), Math.sign(oz));
   }
@@ -2866,14 +2933,13 @@ for (let i = 0; i < 3; i++) {
   if (big) for (let c = 0; c < 6; c++) mesh(new THREE.BoxGeometry(7, 2.4, 5), pick(AWNING_COLORS), g).position.set(0, 3.9 + (c % 2) * 2.4, -8 + Math.floor(c / 2) * 7);
   else mesh(new THREE.BoxGeometry(6, 2.5, 18), 0xf5f6fa, g).position.set(0, 3.9, 5);
   scene.add(g);
-  ships.push({ g, z: 360 + i * 60, x: -250 + i * 200, spd: (5 + i * 1.5) * (i % 2 ? -1 : 1) });
+  ships.push({ g,length:big?46:30, z: 360 + i * 60, x: -250 + i * 200, spd: (5 + i * 1.5) * (i % 2 ? -1 : 1) });
 }
 function updateShips(dt) {
   const t = performance.now() / 1000;
   for (const s of ships) {
-    s.x += s.spd * dt;
-    if (s.x > 320) s.x = -320;
-    if (s.x < -320) s.x = 320;
+    const next=s.x+s.spd*dt,heading=s.spd>0?Math.PI/2:-Math.PI/2;
+    if(waterFootprint(next,s.z,heading,s.length||46,9,isSeaWater))s.x=next;else s.spd*=-1;
     s.g.position.set(s.x, Math.sin(t + s.z) * 0.15, s.z);
     s.g.rotation.set(Math.sin(t * 0.7 + s.x) * 0.01, s.spd > 0 ? Math.PI / 2 : -Math.PI / 2, Math.sin(t * 0.8) * 0.02);
   }
@@ -2924,7 +2990,8 @@ boat.group.position.set(PIER.x + 4, 0, 195);
   const ferry = makeBoat();
   const ferryDockA = new THREE.Vector3(PIER.x + 4, 0, 192), ferryDockB = new THREE.Vector3(ISLAND.x, 0, ISLAND.z - ISLAND_R - 8);
   ferry.group.position.copy(ferryDockA);
-  const ferryState = { at: 'A', doors: true, wait: 6 };
+  const ferryState = { at: 'A', doors: true, wait: 6, routeIndex:0 };
+  const ferryRoute=[ferryDockA,new THREE.Vector3(25,0,220),new THREE.Vector3(25,0,408),new THREE.Vector3(-45,0,408),new THREE.Vector3(-270,0,408),new THREE.Vector3(-270,0,460),ferryDockB];
   const ferryInteract = { pos: ferryDockA.clone(), r: 3, label: 'Board the ferry to Driftwood Island', action: () => {
     if (riding || inCar || sitting) { toast("Finish what you're doing first."); return; }
     if (ferryRider) { ctxLeaveFerry(); return; }
@@ -2951,19 +3018,23 @@ boat.group.position.set(PIER.x + 4, 0, 195);
     if (ferryRider) player.position.set(ferry.group.position.x, groundY(ferry.group.position.x, ferry.group.position.z), ferry.group.position.z);
     if (ferryState.doors) {
       ferryState.wait -= dt;
-      if (ferryState.wait <= 0) { ferryState.doors = false; }
+      if (ferryState.wait <= 0) { ferryState.doors = false;ferryState.routeIndex=ferryState.at==='A'?1:ferryRoute.length-2; }
       return;
     }
-    const target = ferryState.at === 'A' ? ferryDockB : ferryDockA;
+    const target = ferryRoute[ferryState.routeIndex];
     const delta = target.clone().sub(ferry.group.position), dist = delta.length();
     if (dist < 1) {
       ferry.group.position.copy(target);
+      const final=ferryState.at==='A'?ferryRoute.length-1:0;
+      if(ferryState.routeIndex!==final){ferryState.routeIndex+=ferryState.at==='A'?1:-1;return;}
       ferryState.at = ferryState.at === 'A' ? 'B' : 'A';
       ferryState.doors = true; ferryState.wait = 8;
       if (ferryRider) ctxLeaveFerry();
       return;
     }
-    ferry.group.position.addScaledVector(delta.normalize(), 9 * dt);
+    const next=ferry.group.position.clone().addScaledVector(delta.normalize(),Math.min(dist,9*dt));
+    if(!waterFootprint(next.x,next.z,Math.atan2(delta.x,delta.z),5,2.2,isSeaWater)){return;}
+    ferry.group.position.copy(next);
     ferry.group.rotation.y = Math.atan2(delta.x, delta.z) - Math.PI / 2;
   } });
 }
@@ -3254,6 +3325,7 @@ function killEnemy(e) {
     popText(at(e.root.position, e.height + 0.6), `+${gold} gold`, 'info');
     gainXp(e.animal === 'lion' ? 30 : 12);
   } else if (e.kind === 'monster') {
+    monsterQuestKills++;
     e.respawn = Infinity;   // dungeon monsters stay dead
     e.root.visible = false;
     const c = at(e.root.position, e.height * 0.5);
@@ -3562,7 +3634,7 @@ const PED_SKIN = [0xffdcc0, 0xf1c27d, 0xc68642, 0x8d5524, 0xe0ac69];
 const PED_PANTS = [0x2d3142, 0x34495e, 0x1e272e, 0x6d4c41, 0x2f3640];
 const SIDE = 13;
 const HIDDEN = new THREE.Vector3(9999, -500, 9999);
-const cornerPos = n => new THREE.Vector3(n.bx * 40 + 20 + n.sx * SIDE, CURB, n.bz * 40 + 20 + n.sz * SIDE);
+const cornerPos = n => new THREE.Vector3(n.bx * 40 + 20 + n.sx * (n.bz>=16?11:SIDE), CURB, n.bz * 40 + 20 + n.sz * (n.bz>=16?11:SIDE));
 // Block-grid bounds pedestrians are allowed to wander within. Main town is the
 // original/default; Riverside and the Capital get their own so their peds don't
 // try to wander into the water between districts.
@@ -3717,6 +3789,7 @@ function updatePed(e, dt) {
     }
     case 'wander':
     case 'toStop':
+      if(p.z>=640&&s.node&&s.prev&&(s.node.bx!==s.prev.bx||s.node.bz!==s.prev.bz)){const centre=p.clone().add(s.target).multiplyScalar(.5),axis=s.node.bx!==s.prev.bx?'z':'x',signal=trafficLights.filter(t=>t.axis===axis).find(t=>Math.hypot(t.x-centre.x,t.z-centre.z)<22);const car=vehicles.find(v=>!v.disabled&&Math.abs(v.speed)>2&&distXZ(v.group.position,centre)<16);const beforeCross=s.node.bx!==s.prev.bx?Math.abs(p.x-Math.round(p.x/40)*40)>=8:Math.abs(p.z-Math.round(p.z/40)*40)>=8;if(beforeCross&&((signal&&signal.phase<4)||car)){animateHumanoid(e.h,null,false,false,true,dt);break;}}
       moving = walkTowards(e, s.target, speed, dt);
       if (distXZ(p, s.target) < 0.5) {
         if (s.state === 'toStop') { s.state = 'waiting'; s.waitT = 0; break; }
@@ -4665,7 +4738,7 @@ function spawnGate(announce) {
   const gate = Object.assign(gm, { pos: spot.pos, level, rank, stars: rank + 1, theme, tier, name: pick(GATE_NAMES[theme]) });
   gm.disc.userData.gate = gate;
   gates.push(gate);
-  const ordinary=gates.filter(g=>!g.poisonCity);if(ordinary.length>6)removeGate(ordinary[0]);
+  const ordinary=gates.filter(g=>!g.poisonCity&&!g.capitalGate);if(ordinary.length>6)removeGate(ordinary[0]);
   if (announce) worldAlert(gate);
 }
 function removeGate(g) {
@@ -5226,7 +5299,7 @@ function resolveInteractTarget() {
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
   const v = nearestVehicle();
   if (v) {
-    const names = { car: 'car', police: 'police car', bus: 'bus', boat: 'boat' };
+    const names = { car: 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank' };
     const label = v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' ? 'Steal the ' : 'Drive the ') + names[v.kind];
     return { label, action: () => enterVehicle(v) };
   }
@@ -5556,7 +5629,7 @@ function toggleSettings(open) {
   else if (getComputedStyle($('menu')).display === 'none') requestGameControl();
 }
 document.querySelectorAll('#settingsPanel .tab').forEach(b => b.addEventListener('click', () => { settingsTab = b.dataset.stab; renderSettings(); }));
-document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
+document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { manualGraphics=true;setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
 $('settingsBtn').addEventListener('click', () => toggleSettings(true));
 $('menuLagSettings').addEventListener('click', () => { settingsTab = 'graphics'; toggleSettings(true); });
 $('inventoryBtn').addEventListener('click', () => toggleInventory(true));
@@ -5700,7 +5773,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -6023,6 +6096,7 @@ function updateBridgeFlight(v,dt){const f=v.bridgeFlight,previousY=f.y;advanceBr
  if(f.y<-.4){v.bridgeFlight=null;v.disabled=true;v.health=0;v.speed=0;v.group.rotation.x=0;if(v===driving){exitVehicle(true);toast('The jump did not clear the bridge. Swim to shore.');}}
 }
 function driveVehicle(v, dt) {
+  const roadStartPosition=v.group.position.clone();
   const roadStartZ=v.group.position.z;
   if(v.bridgeFlight){updateBridgeFlight(v,dt);return;}
   if(isRoadVehicle(v)&&isSeaWater(v.group.position.x,v.group.position.z,v.group.position.y)){v.disabled=true;v.health=0;v.speed=0;if(v===driving){exitVehicle(true);toast('Vehicle submerged. Swim to shore.');}return;}
@@ -6045,6 +6119,7 @@ function driveVehicle(v, dt) {
     const nx = clamp(p.x, -290, 290), nz = clamp(p.z, SEA_Z + 2, 890);
     if (nx !== p.x || nz !== p.z) v.speed *= -0.3;
     p.x = nx; p.z = nz;
+    if(!waterFootprint(p.x,p.z,h,5,2.2,isSeaWater)){p.copy(roadStartPosition);v.speed=0;}
     p.y = 0.05 + Math.sin(performance.now() / 400) * 0.08;
     v.group.rotation.x = -Math.min(0.15, Math.abs(v.speed) * 0.006);
     if (mine && Math.abs(v.speed) > 4) spawnParticle(p.clone().add(new THREE.Vector3(-Math.sin(h) * 2.8, 0.2, -Math.cos(h) * 2.8)), randUnit().multiplyScalar(1.5).setY(1.5), 0xffffff, 0.2, 0.6, 4);
@@ -6152,6 +6227,20 @@ function updatePursuit(dt) {
   else wanted = Math.max(0, wanted - dt);
   if (!dungeon && !inCivicInterior && !sewers?.underground && !metro?.underground) requestPoliceBackup();
 }
+// Police catching you on foot is an arrest, not a kill: they're after cuffing
+// you, not your health bar. Clears the pursuit, costs you a fine (capped at
+// whatever gold you actually have), and hauls you to the nearest station.
+function arrestPlayer() {
+  wanted = 0; pursuitBackupCooldown = 0;
+  const fine = Math.min(stats.gold, 50 + Math.floor(rand() * 150));
+  stats.gold -= fine;
+  const station = civicBuildings.filter(b => b.type === 'police')
+    .sort((a, b) => distXZ(a, player.position) - distXZ(b, player.position))[0];
+  if (station) player.position.set(station.x, 0, station.maxZ + 4); else player.position.copy(SPAWN);
+  player.position.y = groundY(player.position.x, player.position.z);
+  vy = 0; pvel.set(0, 0, 0);
+  toast(fine > 0 ? `Arrested! Released after paying a $${fine} fine.` : 'Arrested! You had nothing on you to fine — released with a warning.');
+}
 function policeChase(v, dt) {
   const ai = v.ai, p = v.group.position;
   ai.chasing = true; ai.parked = false;
@@ -6171,7 +6260,7 @@ function policeChase(v, dt) {
   if (d < 3 && ai.ramCd <= 0) {
     ai.ramCd = 1.5;
     if (inCar) { /* Central collision response handles vehicle impacts. */ }
-    else hurtPlayer(10, p, 12);
+    else arrestPlayer();
   }
 }
 
@@ -6196,11 +6285,12 @@ function updateVehicles(dt) {
   for (const v of vehicles) {
     if(v.bridgeFlight){driveVehicle(v,dt);continue;}
     if(v.routeTraffic&&v!==driving)continue;
-    if (v.disabled || (v.ai?.parked && wanted <= 0)) { v.speed = 0; continue; }
+    if (v.disabled || (v.ai?.parked && wanted <= 0 && !(v.kind === 'tank' && militaryAlert > 0))) { v.speed = 0; continue; }
     v.crashCooldown = Math.max(0, (v.crashCooldown || 0) - dt);
     const roadStart = v.group.position.clone();
     if (v === driving || !v.ai) driveVehicle(v, dt);
     else if (v.kind === 'police' && wanted > 0 && !dungeon) policeChase(v, dt);
+    else if (v.kind === 'tank' && militaryAlert > 0 && !dungeon) tankChase(v, dt);
     else {
       if (v.ai.chasing) {   // chase over: head back onto the roads
         v.ai.chasing = false;
@@ -6466,7 +6556,7 @@ sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpo
 });
 interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 enemies. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
 buildControlSettings($('controlChoices'),controlPrefs,matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0,()=>{for(const key in keys)keys[key]=false;mobileControls?.reset();mobileControls?.update();applyLayout();});
-regionalEnvironment=buildRegionalEnvironment({scene,box,makeTex,addTrafficLight,addBird,insideCollider,addLampSpot:(x,y,z)=>lampSpots.push(new THREE.Vector3(x,y,z))});
+regionalEnvironment=buildRegionalEnvironment({scene,box,makeTex,addTrafficLight,addBird,insideCollider,addLampSpot});
 metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex,toast,groundY,
  canEnter:()=>!inCar&&!transport?.rider&&!metro?.rider&&!riding&&!sitting&&!action,
  playerPos:()=>player.position,firstPerson:()=>cameraView==='first',
@@ -6474,7 +6564,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -6490,6 +6580,7 @@ createGate(o){const gm=makeGateMesh(0x92ed2a),pos=new THREE.Vector3(o.x,0,o.z),r
 buildHighlandForest({scene,colliders,insideCollider,groundY,addBird});
 volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:hurtPlayer});regionalEnvironment.islands.push(volcanicIsland.island);
 ghostIsland=buildGhostIsland({scene,box,interactables,toast,stats,destinations:townPlaces.destinations,signboard,rand});regionalEnvironment.islands.push(ghostIsland.island);
+cityLife=buildCityLife({scene,interactables,toast,islands:[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),killCount:()=>monsterQuestKills,reward(gold,xp){stats.gold+=gold;gainXp(xp);},removeGate,createGate(o){const gm=makeGateMesh(0xa883ff),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:o.theme,tier:tierOf(o.level),name:o.name,persistent:o.persistent,capitalGate:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
 for(let i=0;i<3;i++)addWildlife('skeleton',ghostIsland.chamberCentre.x+(rand()-0.5)*14,ghostIsland.chamberCentre.z+(rand()-0.5)*14);
 worldAudio=createWorldAudio({volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),state:()=>({playing:locked,position:player.position,birds,weather:weatherState,driving:inCar,speed:driving?.speed||0,swimming,airborne:!onGround,indoor:!!metro?.underground||!!sewers?.underground||!!inCivicInterior,lava:Math.hypot(player.position.x-155,player.position.z-520)<35})});
 applyLayout();
@@ -6509,7 +6600,11 @@ if (location.hash === '#test-systems') {   // exercises building collapse, plane
   }, 3000);
 }
 const clock = new THREE.Clock();
+let slowFrameTime=0,lastFrameAt=performance.now(),perfWarmup=0;
 function frame() {
+  const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
+  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low');slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
+  if(document.hidden){clock.getDelta();requestAnimationFrame(frame);return;}
   const rawDt = Math.min(clock.getDelta(), 0.05);
   let dt = rawDt;
   if (hitStop > 0) { hitStop -= rawDt; dt = 0; }   // freeze the world for a split second on big hits
@@ -6545,7 +6640,7 @@ function frame() {
     spaceCentre?.update(dt);
     transport.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);

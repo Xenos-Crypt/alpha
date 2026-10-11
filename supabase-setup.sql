@@ -161,3 +161,16 @@ returns text language sql security definer set search_path=public as $$
 $$;
 revoke all on function public.email_for_username(text) from public,authenticated;
 grant execute on function public.email_for_username(text) to anon,authenticated;
+-- Private room communication: apply this section for text and voice chat.
+create or replace function public.can_communicate_in_room(p_code text)
+returns boolean language sql stable security definer set search_path=public as $$
+ select exists(select 1 from game_rooms r join game_room_members m on m.room_code=r.code where r.code=p_code and r.active and m.user_id=auth.uid());
+$$;
+revoke all on function public.can_communicate_in_room(text) from public,anon;
+grant execute on function public.can_communicate_in_room(text) to authenticated;
+drop policy if exists "Room members receive communication" on realtime.messages;
+create policy "Room members receive communication" on realtime.messages for select to authenticated
+using (extension in ('broadcast','presence') and public.can_communicate_in_room(split_part(realtime.topic(),':',2)) and split_part(realtime.topic(),':',1)='roomchat');
+drop policy if exists "Room members send communication" on realtime.messages;
+create policy "Room members send communication" on realtime.messages for insert to authenticated
+with check (extension in ('broadcast','presence') and public.can_communicate_in_room(split_part(realtime.topic(),':',2)) and split_part(realtime.topic(),':',1)='roomchat');
