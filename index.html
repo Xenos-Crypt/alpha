@@ -1253,7 +1253,51 @@ function updateBirds(dt) {
     if(b.state!=='landed'){b.m.rotation.y=-b.phase;b.m.rotation.x=-Math.PI/2+Math.sin(b.phase*9)*.3;}
   }
 }
-function updateParkLife(dt) { updateDucks(dt); updatePets(dt); updateButterflies(dt); updateBees(dt); updateBirds(dt); }
+// Squirrels — small, skittish, dart between a few trees near the park.
+const squirrels = [];
+function addSquirrel(x, z) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: pick([0x8a5a3a, 0x6b4a2f, 0x5a4530]), roughness: 0.9 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.16, 4, 6), mat); body.rotation.z = Math.PI / 2; body.position.y = 0.1; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), mat); head.position.set(0.14, 0.12, 0); g.add(head);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.3, 6), mat); tail.rotation.z = -Math.PI / 2.4; tail.position.set(-0.16, 0.22, 0); g.add(tail);
+  g.position.set(x, groundY(x, z), z); scene.add(g);
+  squirrels.push({ g, home: new THREE.Vector3(x, 0, z), target: new THREE.Vector3(x, 0, z), waitT: rand() * 3 });
+}
+for (const [ox, oz] of [[-9, -9], [-5, -11], [9, -9], [-9, 9], [10, -3.5]]) addSquirrel(PARK.x + ox, PARK.z + oz);
+function updateSquirrels(dt) {
+  for (const s of squirrels) {
+    const p = s.g.position;
+    if (distXZ(p, s.target) < 0.2) {
+      s.waitT -= dt;
+      if (s.waitT <= 0) { s.target.set(s.home.x + (rand() - 0.5) * 4, 0, s.home.z + (rand() - 0.5) * 4); s.waitT = 1 + rand() * 3; }
+    } else {
+      const dir = new THREE.Vector3(s.target.x - p.x, 0, s.target.z - p.z).normalize();
+      p.addScaledVector(dir, 3 * dt);
+      s.g.rotation.y = Math.atan2(dir.x, dir.z);
+    }
+    p.y = groundY(p.x, p.z);
+  }
+}
+// A handful of fish breaking the surface in the sea/river.
+const fish = [];
+function addFish(x, z) {
+  const m = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.4, 4), new THREE.MeshStandardMaterial({ color: pick([0x4a7ba6, 0x6b9bc9, 0x8aa6b0]), metalness: 0.4, roughness: 0.4 }));
+  m.rotation.x = Math.PI / 2; scene.add(m);
+  fish.push({ m, cx: x, cz: z, phase: rand() * 10, r: 3 + rand() * 4 });
+}
+for (let i = 0; i < 10; i++) addFish((rand() - 0.5) * 200, 207 + rand() * 300); // sea starts at z=187; stay clear of the beach/pier
+function updateFish(dt) {
+  for (const f of fish) {
+    f.phase += dt * 0.6;
+    const x = f.cx + Math.cos(f.phase) * f.r, z = f.cz + Math.sin(f.phase) * f.r;
+    const surface = Math.sin(performance.now() / 900 + f.phase * 3);
+    f.m.visible = surface > 0.5;
+    f.m.position.set(x, 0.05, z);
+    f.m.rotation.y = -f.phase;
+  }
+}
+function updateParkLife(dt) { updateDucks(dt); updatePets(dt); updateButterflies(dt); updateBees(dt); updateBirds(dt); updateSquirrels(dt); updateFish(dt); }
 
 // =====================================================================
 // TRAINING GROUND (sand arena with a fence and a sign)
