@@ -727,6 +727,10 @@ const CURB = 0.15;
 const BRIDGE_X = 0, BRIDGE_HALF_W = 7, BRIDGE_Z0 = 160, BRIDGE_Z1 = 654, BRIDGE_Y = CURB + 0.4;
 const RIVERSIDE_Z0 = 640, RIVERSIDE_Z1 = 780, RIVERSIDE_X0 = -80, RIVERSIDE_X1 = 80;
 const CAPITAL_X0 = 120, CAPITAL_X1 = 440, CAPITAL_Z0 = 680, CAPITAL_Z1 = 920;
+// Bascule lift section of the river bridge — raises for ship traffic.
+const GAP0 = 400, GAP1 = 416, GAP_JUMP_SPEED = 18;
+let bridgeLeafNorth = null, bridgeLeafSouth = null, bridgeLiftAngle = 0, bridgeLiftState = 'down', bridgeLiftT = 20;
+const bridgePostLights = [], bridgeWarnStrips = [];
 function groundY(x, z, bodyY = null) {
   const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
@@ -737,6 +741,7 @@ function groundY(x, z, bodyY = null) {
   for (const r of stairRamps) {
     if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.y0 + (z - r.z0) / (r.z1 - r.z0) * (r.y1 - r.y0);
   }
+  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z >= GAP0 && z <= GAP1 && bridgeLiftAngle > 0.08) return -2;   // bridge is open — only a fast "jump" (see driveVehicle) clears it
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z > BRIDGE_Z0 - 4 && z < BRIDGE_Z1 + 4) return BRIDGE_Y;   // river bridge deck
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0 && z <= RIVERSIDE_Z1) {   // Riverside, across the bridge
     const lx2 = ((x % 40) + 40) % 40, lz2 = ((z % 40) + 40) % 40;
@@ -2318,7 +2323,30 @@ function signboard(text, x, y, z, width = 10, colour = '#15364a') {
 }
 {
   const midZ = (BRIDGE_Z0 + BRIDGE_Z1) / 2, len = BRIDGE_Z1 - BRIDGE_Z0;
-  box(BRIDGE_HALF_W * 2, 0.6, len, BRIDGE_X, BRIDGE_Y - 0.3, midZ, 0x5c5c5c, false);
+  // The middle stretch is a real bascule lift (two leaves on four posts) that
+  // raises for ship traffic — see updateBridgeLift(). Everything outside the
+  // gap is a normal fixed deck.
+  box(BRIDGE_HALF_W * 2, 0.6, GAP0 - BRIDGE_Z0, BRIDGE_X, BRIDGE_Y - 0.3, (BRIDGE_Z0 + GAP0) / 2, 0x5c5c5c, false);
+  box(BRIDGE_HALF_W * 2, 0.6, BRIDGE_Z1 - GAP1, BRIDGE_X, BRIDGE_Y - 0.3, (GAP1 + BRIDGE_Z1) / 2, 0x5c5c5c, false);
+  const leafLen = (GAP1 - GAP0) / 2, leafGeo = new THREE.BoxGeometry(BRIDGE_HALF_W * 2, 0.6, leafLen), leafMat = new THREE.MeshStandardMaterial({ color: 0x5c5c5c });
+  bridgeLeafNorth = new THREE.Group(); bridgeLeafNorth.position.set(BRIDGE_X, BRIDGE_Y - 0.3, GAP0); scene.add(bridgeLeafNorth);
+  const leafNorthMesh = new THREE.Mesh(leafGeo, leafMat); leafNorthMesh.position.z = leafLen / 2; bridgeLeafNorth.add(leafNorthMesh);
+  bridgeLeafSouth = new THREE.Group(); bridgeLeafSouth.position.set(BRIDGE_X, BRIDGE_Y - 0.3, GAP1); scene.add(bridgeLeafSouth);
+  const leafSouthMesh = new THREE.Mesh(leafGeo, leafMat); leafSouthMesh.position.z = -leafLen / 2; bridgeLeafSouth.add(leafSouthMesh);
+  // Four posts, hazard-striped red/white — standing in the way isn't blocked, it's just a warning.
+  const postMat = new THREE.MeshStandardMaterial({ color: 0xb8302a, emissive: 0x4a0000, emissiveIntensity: 0.5, roughness: 0.4 });
+  for (const pz of [GAP0, GAP1]) for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 9, 10), postMat);
+    post.position.set(BRIDGE_X + side * (BRIDGE_HALF_W + 1), BRIDGE_Y + 4, pz); scene.add(post);
+    bridgePostLights.push(post.material);
+    for (let y = 1; y < 8; y += 1.6) box(0.47, 0.5, 0.47, post.position.x, BRIDGE_Y + y, pz, y % 3.2 < 1.6 ? 0xffffff : 0xb8302a, false);
+  }
+  // Amber warning strips at both approach edges of the gap — lit up while the bridge isn't flat.
+  for (const pz of [GAP0 - 1.5, GAP1 + 1.5]) {
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(BRIDGE_HALF_W * 2 - 1, 0.8), new THREE.MeshBasicMaterial({ color: 0xffb703, transparent: true, opacity: 0 }));
+    strip.rotation.x = -Math.PI / 2; strip.position.set(BRIDGE_X, BRIDGE_Y + 0.05, pz); scene.add(strip);
+    bridgeWarnStrips.push(strip);
+  }
   for (const side of [-1, 1]) {
     box(0.3, 1.1, len, BRIDGE_X + side * (BRIDGE_HALF_W - 0.2), BRIDGE_Y + 0.55, midZ, 0x3a3f45, false);
     // Thin collider strip along each railing so you can't walk/drive off the edge into the water.
@@ -2328,6 +2356,22 @@ function signboard(text, x, y, z, width = 10, colour = '#15364a') {
   for (let z = BRIDGE_Z0 + 30; z < BRIDGE_Z1; z += 60) for (const side of [-1, 1])
     box(1.4, 15, 1.4, BRIDGE_X + side * 4, BRIDGE_Y - 7.5, z, 0x6d6d6d, false);
   signboard('RIVER BRIDGE — MERGE AHEAD', BRIDGE_X, BRIDGE_Y + 2.2, BRIDGE_Z0 - 3, 10);
+}
+const BRIDGE_CYCLE = 90, BRIDGE_RAISE_TIME = 4, BRIDGE_STAY_UP = 16, BRIDGE_MAX_ANGLE = Math.PI / 3.2;
+function updateBridgeLift(dt) {
+  bridgeLiftT += dt;
+  if (bridgeLiftState === 'down' && bridgeLiftT > BRIDGE_CYCLE) { bridgeLiftState = 'raising'; bridgeLiftT = 0; toast('A ship is approaching — the bridge is raising!'); }
+  else if (bridgeLiftState === 'raising' && bridgeLiftT > BRIDGE_RAISE_TIME) { bridgeLiftState = 'up'; bridgeLiftT = 0; }
+  else if (bridgeLiftState === 'up' && bridgeLiftT > BRIDGE_STAY_UP) { bridgeLiftState = 'lowering'; bridgeLiftT = 0; }
+  else if (bridgeLiftState === 'lowering' && bridgeLiftT > BRIDGE_RAISE_TIME) { bridgeLiftState = 'down'; bridgeLiftT = 0; toast('The bridge has lowered — the road is clear.'); }
+  bridgeLiftAngle = bridgeLiftState === 'raising' ? (bridgeLiftT / BRIDGE_RAISE_TIME) * BRIDGE_MAX_ANGLE
+    : bridgeLiftState === 'up' ? BRIDGE_MAX_ANGLE
+    : bridgeLiftState === 'lowering' ? (1 - bridgeLiftT / BRIDGE_RAISE_TIME) * BRIDGE_MAX_ANGLE : 0;
+  if (bridgeLeafNorth) { bridgeLeafNorth.rotation.x = -bridgeLiftAngle; bridgeLeafSouth.rotation.x = bridgeLiftAngle; }
+  const warn = bridgeLiftState !== 'down';
+  const pulse = warn ? 0.5 + Math.sin(performance.now() / 150) * 0.5 : 0;
+  for (const m of bridgePostLights) m.emissiveIntensity = 0.5 + pulse * 2.5;
+  for (const s of bridgeWarnStrips) s.material.opacity = pulse * 0.85;
 }
 // Ship control office at the bridge's north corner — real ships need the channel
 // kept clear, so this is where passage requests would be handled.
@@ -5144,7 +5188,7 @@ let swimming = false, waterExhausted = false;
 function isSeaWater(x,z,bodyY = null) {
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
-  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return false;
+  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return z >= GAP0 && z <= GAP1 && bridgeLiftAngle > 0.08;
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0) return false;
   if (x >= CAPITAL_X0 && x <= CAPITAL_X1 && z >= CAPITAL_Z0) return false;
   return x>=-300&&x<=300&&z>SEA_Z&&z<900&&!(x>18&&x<22&&z<206)&&harbour?.groundAt(x,z)==null;
@@ -5334,7 +5378,28 @@ const GEAR_RATIOS = [0.22, 0.42, 0.62, 0.82, 1.0];
 let transmissionAuto = controlPrefs.drivingMode==='automatic', gear = 1;
 function shiftGear(direction){if(inCar&&!transmissionAuto&&isRoadVehicle(driving)){gear=clamp(gear+direction,1,5);toast('Gear '+gear);}}
 function driveVehicle(v, dt) {
-  if (isRoadVehicle(v) && isSeaWater(v.group.position.x,v.group.position.z,v.group.position.y)) { v.disabled=true;v.health=0;v.speed=0;if(v===driving){exitVehicle(true);toast('Vehicle submerged. Swim to shore.');}return; }
+  if (isRoadVehicle(v)) {
+    const p0 = v.group.position;
+    const inGap = p0.x > BRIDGE_X - BRIDGE_HALF_W && p0.x < BRIDGE_X + BRIDGE_HALF_W && p0.z >= GAP0 && p0.z <= GAP1 && bridgeLiftAngle > 0.08;
+    if (inGap) {
+      if (Math.abs(v.speed) >= GAP_JUMP_SPEED) {
+        if (!v.gapJumped) {
+          v.gapJumped = true;
+          damageVehicle(v, 30, p0);
+          burst(at(p0, 1), 16, [0xffd166, 0x888888], 8, 0.2, 0.4, 4);
+          shake = Math.max(shake, 0.3);
+          if (v === driving) toast('You cleared the gap — but it cost you.');
+        }
+      } else {
+        v.disabled = true; v.health = 0; v.speed = 0;
+        if (v === driving) { exitVehicle(true); toast('Too slow to clear the gap — you dropped into the river.'); }
+        return;
+      }
+    } else {
+      v.gapJumped = false;
+      if (isSeaWater(p0.x, p0.z, p0.y)) { v.disabled = true; v.health = 0; v.speed = 0; if (v === driving) { exitVehicle(true); toast('Vehicle submerged. Swim to shore.'); } return; }
+    }
+  }
   if (v.kind === 'plane') return flyPlane(v, dt);
   const mine = v === driving;
   if (mine) {
@@ -5358,7 +5423,8 @@ function driveVehicle(v, dt) {
     if (mine && Math.abs(v.speed) > 4) spawnParticle(p.clone().add(new THREE.Vector3(-Math.sin(h) * 2.8, 0.2, -Math.cos(h) * 2.8)), randUnit().multiplyScalar(1.5).setY(1.5), 0xffffff, 0.2, 0.6, 4);
     return;
   }
-  p.y = lerp(p.y, groundY(p.x, p.z), 1 - Math.exp(-20 * dt));
+  const jumpingGap = isRoadVehicle(v) && p.x > BRIDGE_X - BRIDGE_HALF_W && p.x < BRIDGE_X + BRIDGE_HALF_W && p.z >= GAP0 && p.z <= GAP1 && bridgeLiftAngle > 0.08 && Math.abs(v.speed) >= GAP_JUMP_SPEED;
+  p.y = lerp(p.y, jumpingGap ? BRIDGE_Y : groundY(p.x, p.z), 1 - Math.exp(-20 * dt));
   for (const w of v.wheels) w.rotation.x += v.speed * dt / 0.4;
 }
 
@@ -5804,6 +5870,7 @@ function frame() {
     updateWaypoint();
     updateVehicles(dt);
     updateParkLife(dt);
+    updateBridgeLift(dt);
     updatePlanes(dt);
     updateAdBalloon(dt);
     updateShips(dt);
