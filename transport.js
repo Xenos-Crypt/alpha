@@ -22,7 +22,7 @@ export function buildTransport(ctx){
  function update(dt){
 
 
-  for(const s of services){if(s.doors){s.wait-=dt;if(s.wait<=0){s.doors=false;s.direction=s.index===s.stops.length-1?-1:s.index===0?1:s.direction;s.index+=s.direction;}}else{const target=s.stops[s.index],distance=Math.abs(target-s.g.position.x);s.speed=Math.min(s.name==='Train'?18:8,Math.sqrt(2*3*distance));s.g.position.x+=Math.sign(target-s.g.position.x)*Math.min(distance,Math.max(.2,s.speed)*dt);if(distance<.1){s.g.position.x=target;s.doors=true;s.wait=10;s.speed=0;}}}
+  for(const s of services){const previousX=s.g.position.x;if(s.collisionStop>0){s.collisionStop=Math.max(0,s.collisionStop-dt);s.velocityX=0;continue;}if(s.doors){s.wait-=dt;if(s.wait<=0){s.doors=false;s.direction=s.index===s.stops.length-1?-1:s.index===0?1:s.direction;s.index+=s.direction;}}else{const target=s.stops[s.index],distance=Math.abs(target-s.g.position.x);s.speed=Math.min(s.name==='Train'?18:8,Math.sqrt(2*3*distance));s.g.position.x+=Math.sign(target-s.g.position.x)*Math.min(distance,Math.max(.2,s.speed)*dt);if(distance<.1){s.g.position.x=target;s.doors=true;s.wait=10;s.speed=0;}}s.velocityX=dt>0?(s.g.position.x-previousX)/dt:0;}
   const a=airport;a.timer+=dt;
   if(a.state==='approach'){if(moveTo(a,new THREE.Vector3(-550,0,-220),18,dt)){a.state='taxi-in';a.pathIndex=0;a.timer=0;}}
   else if(a.state==='taxi-in'){if(moveTo(a,taxi[a.pathIndex],7,dt)){a.pathIndex++;if(a.pathIndex===taxi.length){a.state='unloading';a.doors=true;a.timer=0;}}}

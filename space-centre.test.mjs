@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';import * as THREE from 'three';import {buildSpaceCentre} from './space-centre.js';
+const element=()=>({style:{},append(){},replaceChildren(){},textContent:''});globalThis.document={createElement:element,body:{append(){}},exitPointerLock(){}};
+const player=new THREE.Vector3(),interactables=[],destinations=[];const ctx={scene:new THREE.Scene(),interactables,destinations,box(){},makeTex:()=>new THREE.Texture(),makePerson:()=>({root:new THREE.Group()}),animatePerson(){},toast(){},canTravel:()=>true,moveTo(x,y,z){player.set(x,y,z);},playerPosition:()=>player};
+const space=buildSpaceCentre(ctx);assert.equal(space.floors.length,9);assert(space.staff.length>=24);
+interactables.find(i=>i.label==='Enter nine-storey space centre').action();assert.equal(space.groundAt(420,740,.4),.4);
+space.launch(0);assert(space.rider);space.interact();assert.equal(space.state,'idle');assert.equal(player.y,.55);
+space.launch(0);for(let i=0;i<500&&space.state!=='landed';i++)space.update(.1);assert.equal(space.state,'landed');assert.equal(player.y,1210);space.interact();assert.equal(space.state,'idle');assert.equal(player.y,1200);assert.equal(space.groundAt(player.x,player.z,player.y),1200);
+interactables.find(i=>i.label==='Board return rocket to Earth').action();assert.equal(space.state,'returning');for(let i=0;i<260;i++)space.update(.1);assert.equal(space.state,'idle');assert.equal(player.y,.55);
+space.launch(1);for(let i=0;i<500&&space.state!=='landed';i++)space.update(.1);space.interact();assert.equal(player.x,490);assert.equal(space.groundAt(490,716,1200),1200);
+console.log('PASS: nine staffed floors, lift floor support, launch abort, full Moon flight, disembarkation, Earth return, Mars landing');
