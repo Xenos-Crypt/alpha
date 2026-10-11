@@ -458,7 +458,10 @@ document.body.prepend(renderer.domElement);
 
 // Graphics quality (resolution/shadows) — set from the Settings panel, saved across sessions.
 const GFX_PRESETS = { low: { pr: 0.75, shadows: false }, medium: { pr: touchDevice ? 1 : 1.25, shadows: true }, high: { pr: touchDevice ? 1 : 1.5, shadows: true } };
-let gfxQuality = GFX_PRESETS[localStorage.getItem('gfxQuality')] ? localStorage.getItem('gfxQuality') : 'medium';
+// Phones default to Low (no shadows, lower pixel ratio) unless the player has
+// already picked a quality themselves -- "medium" for everyone was hammering
+// weaker phones, since shadow rendering is the single biggest GPU cost there.
+let gfxQuality = GFX_PRESETS[localStorage.getItem('gfxQuality')] ? localStorage.getItem('gfxQuality') : (touchDevice ? 'low' : 'medium');
 function setGraphicsQuality(level) {
   gfxQuality = GFX_PRESETS[level] ? level : 'medium';
   const p = GFX_PRESETS[gfxQuality];
@@ -5566,7 +5569,7 @@ function updateWeather(dt) {
   // from here without reaching into transport.js's own update loop.
   if (weatherState === 'snow') for (const s of transport?.services ?? []) { s.doors = true; s.wait = 2; }
   if ((weatherState === 'rain' || weatherState === 'snow') && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < (touchDevice ? 2 : 6); i++) {   // fewer weather particles on phones
       const a = rand() * Math.PI * 2, r = rand() * 16;
       const x = player.position.x + Math.cos(a) * r, z = player.position.z + Math.sin(a) * r;
       if (weatherState === 'snow') spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3((Math.random() - 0.5), -2.5, (Math.random() - 0.5)), 0xffffff, 0.07, 1.6, -2.5);
