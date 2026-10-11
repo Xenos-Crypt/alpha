@@ -254,6 +254,16 @@
   <div id="extra"></div>
 </div>
 <div id="settingsBtn">⚙ Settings</div>
+<div id="inventoryBtn" style="position:fixed;right:16px;top:56px;z-index:12;color:#fff;font:12px system-ui, sans-serif;background:rgba(10,14,24,.55);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:7px 12px;cursor:pointer">🎒 Inventory (I)</div>
+<div id="inventoryPanel" style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow-y:auto;box-sizing:border-box;color:#fff;background:rgba(14,18,30,.94);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:18px 22px;display:none;z-index:16;font:13px/1.6 system-ui, sans-serif">
+  <h2 style="margin:0 0 12px;font-size:20px">Inventory</h2>
+  <div id="inventoryList"></div>
+  <div class="row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:12px;padding-top:12px;display:flex;gap:8px">
+    <button id="dropBagBtn" class="opt" style="font:inherit;color:#fff;background:#8a3030;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;flex:1">Drop bag</button>
+    <button id="wearBagBtn" class="opt" style="font:inherit;color:#fff;background:#2f3542;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;flex:1">Wear bag</button>
+  </div>
+  <button class="close" id="closeInventory" style="font:inherit;width:100%;margin-top:12px;color:#fff;background:#2f3542;border:0;border-radius:8px;padding:8px;cursor:pointer">Close</button>
+</div>
 <div id="crosshair"></div>
 <div id="mouseHint">Mouse unlocked · press L to lock it again</div>
 <div id="sitPrompt"><span class="kbd">E</span><span id="sitPromptText">Sit</span></div>
@@ -1985,6 +1995,42 @@ P.armR.pivot.add(swordGrip);
 mesh(new THREE.BoxGeometry(0.06, 0.04, 1.0), new THREE.MeshStandardMaterial({ color: 0xe6e9ee, metalness: 0.6, roughness: 0.3 }), swordGrip).position.z = 0.55;
 mesh(new THREE.BoxGeometry(0.26, 0.06, 0.06), 0xc9a227, swordGrip).position.z = 0.05;
 swordGrip.visible = false; // nobody starts armed — whether you get a weapon at all depends on your birth roll
+
+// =====================================================================
+// INVENTORY: a worn backpack (visible on the back), a contents panel (I to
+// open), and a separate "Drop bag" action — dropping is distinct from just
+// looking at what's inside.
+// =====================================================================
+const backpack = new THREE.Group();
+backpack.position.set(0, 1.35, -0.26);
+mesh(new THREE.BoxGeometry(0.34, 0.42, 0.18), 0x5a4530, backpack);
+mesh(new THREE.BoxGeometry(0.28, 0.14, 0.05), 0x4a3824, backpack).position.set(0, 0.1, -0.1);
+for (const s of [-1, 1]) mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 6), 0x3a2c1c, backpack).position.set(s * 0.14, 0.05, 0.1);
+P.rig.add(backpack);
+let hasBag = true, inventory = [
+  { name: 'Water bottle', icon: '💧' },
+  { name: 'Snack bar', icon: '🍫' },
+];
+function renderInventory() {
+  const box = $('inventoryList'); box.innerHTML = '';
+  if (!hasBag) { box.innerHTML = '<div class="sub">You dropped your bag — nothing to carry anything in.</div>'; return; }
+  if (!inventory.length) { box.innerHTML = '<div class="sub">Empty.</div>'; return; }
+  for (const it of inventory) {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<span style="font-size:20px">${it.icon}</span><span style="flex:1">${it.name}</span>`;
+    box.appendChild(row);
+  }
+}
+let inventoryOpen = false;
+function toggleInventory(open) {
+  if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
+  if (open && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
+  if (open && settingsOpen) { settingsOpen = false; $('settingsPanel').style.display = 'none'; }
+  inventoryOpen = open;
+  $('inventoryPanel').style.display = open ? 'block' : 'none';
+  if (open) { renderInventory(); document.exitPointerLock(); locked = false; }
+  else requestGameControl();
+}
 
 const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
 player.position.copy(SPAWN);
@@ -5475,6 +5521,7 @@ function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style
 function toggleBoard(open) {
   if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
   if (open && settingsOpen) { settingsOpen = false; $('settingsPanel').style.display = 'none'; }
+  if (open && inventoryOpen) { inventoryOpen = false; $('inventoryPanel').style.display = 'none'; }
   boardOpen = open;
   $('board').style.display = open ? 'block' : 'none';
   if (open) {
@@ -5514,6 +5561,20 @@ function toggleSettings(open) {
 document.querySelectorAll('#settingsPanel .tab').forEach(b => b.addEventListener('click', () => { settingsTab = b.dataset.stab; renderSettings(); }));
 document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
 $('settingsBtn').addEventListener('click', () => toggleSettings(true));
+$('inventoryBtn').addEventListener('click', () => toggleInventory(true));
+$('closeInventory').addEventListener('click', () => toggleInventory(false));
+$('dropBagBtn').addEventListener('click', () => {
+  if (!hasBag) { toast('You already dropped your bag.'); return; }
+  hasBag = false; backpack.visible = false; inventory = [];
+  toast('You dropped your bag. Its contents are gone.');
+  renderInventory();
+});
+$('wearBagBtn').addEventListener('click', () => {
+  if (hasBag) { toast('Already wearing your bag.'); return; }
+  hasBag = true; backpack.visible = true;
+  toast('You put the bag back on.');
+  renderInventory();
+});
 $('closeSettings').addEventListener('click', () => toggleSettings(false));
  document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>setCameraView(b.dataset.view)));
 const savedVolume = localStorage.getItem('masterVolume');
@@ -5594,6 +5655,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyT') switchChar();
   if (e.code === 'KeyG') useUlt();
   if (e.code === 'KeyM') { player.position.set(CITY_OFFSET.x, player.position.y, CITY_OFFSET.z); toast('Teleported to Edinburgh (testing only)'); } // temporary test-only fast travel to the real-world map patch
+  if (e.code === 'KeyI' && !settingsOpen && !boardOpen) toggleInventory(!inventoryOpen);
   if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) useSkill(Number(e.code.slice(5)) - 1);
   if (e.code === 'KeyN' && inCar && isRoadVehicle(driving)) { toast('Choose transmission in Settings before entering your next vehicle.'); }
   if (!transmissionAuto && inCar && isRoadVehicle(driving)) {
@@ -5629,7 +5691,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || boardOpen || settingsOpen || layoutEditMode ? 'none' : 'flex';
+  startEl.style.display = locked || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
