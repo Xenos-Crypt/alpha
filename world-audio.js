@@ -1,0 +1,15 @@
+// Procedural audio stays available offline and starts only after a user gesture.
+export function createWorldAudio(ctx){
+ let audio,master,noiseGain,engine,engineGain,chirpTimer=0,stepTimer=0,lastPosition=null;
+ function unlock(){if(!audio){const Audio=globalThis.AudioContext||globalThis.webkitAudioContext;if(!Audio)return;audio=new Audio();master=audio.createGain();master.connect(audio.destination);const buffer=audio.createBuffer(1,audio.sampleRate*2,audio.sampleRate),data=buffer.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=Math.random()*2-1;const noise=audio.createBufferSource();noise.buffer=buffer;noise.loop=true;const filter=audio.createBiquadFilter();filter.type='lowpass';filter.frequency.value=600;noiseGain=audio.createGain();noiseGain.gain.value=0;noise.connect(filter);filter.connect(noiseGain);noiseGain.connect(master);noise.start();engine=audio.createOscillator();engine.type='triangle';engineGain=audio.createGain();engineGain.gain.value=0;engine.connect(engineGain);engineGain.connect(master);engine.start();}if(audio.state==='suspended')audio.resume().catch(()=>{});}
+ function tone(from,to,duration,gain=.06,type='sine'){if(!audio||audio.state!=='running')return;const o=audio.createOscillator(),g=audio.createGain(),now=audio.currentTime;o.type=type;o.frequency.setValueAtTime(from,now);o.frequency.exponentialRampToValueAtTime(Math.max(10,to),now+duration);g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(Math.max(.0001,gain),now+.01);g.gain.exponentialRampToValueAtTime(.0001,now+duration);o.connect(g);g.connect(master);o.start();o.stop(now+duration+.02);o.onended=()=>{o.disconnect();g.disconnect();};}
+ for(const event of ['pointerdown','keydown'])addEventListener(event,unlock,{passive:true});
+ function update(dt){if(!audio)return;const s=ctx.state(),playing=s.playing&&!document.hidden,now=audio.currentTime;master.gain.setTargetAtTime(playing?ctx.volume():0,now,.1);if(!playing){lastPosition=null;return;}
+ const forest=s.position.x<-300&&s.position.z>570,nearSea=s.position.z>160&&s.position.z<900&&Math.abs(s.position.x)<300;
+ noiseGain.gain.setTargetAtTime(s.indoor?0:s.weather==='rain'?.09:s.lava?.055:nearSea?.04:forest?.022:.008,now,.2);
+ engineGain.gain.setTargetAtTime(s.driving?.035:0,now,.12);engine.frequency.setTargetAtTime(45+Math.abs(s.speed||0)*5,now,.1);
+ chirpTimer-=dt;if(!s.indoor&&chirpTimer<=0){chirpTimer=forest?1.5+Math.random()*2:4+Math.random()*4;const bird=s.birds?.find(b=>Math.hypot((b.m||b.root)?.position.x-s.position.x,(b.m||b.root)?.position.z-s.position.z)<50);if(bird){tone(2000+Math.random()*800,4000,.13,.03);setTimeout(()=>{if(ctx.state().playing)tone(3400,1800,.18,.025);},170);}}
+ stepTimer-=dt;if(lastPosition&&!s.driving&&!s.airborne&&Math.hypot(s.position.x-lastPosition.x,s.position.z-lastPosition.z)>.015&&stepTimer<=0){stepTimer=s.swimming?.65:.35;tone(s.swimming?350:100,s.swimming?120:45,.1,.025,'triangle');}lastPosition={x:s.position.x,z:s.position.z};
+ }
+ return {update,impact(speed){tone(90+speed*4,30,.22,Math.min(.18,speed*.006),'sawtooth');}};
+}

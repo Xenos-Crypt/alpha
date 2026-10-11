@@ -193,7 +193,7 @@
   #settingsBtn:hover { background: rgba(10, 14, 24, .8); }
   #settingsPanel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 40px);
            overflow-y: auto; box-sizing: border-box; color: #fff; background: rgba(14, 18, 30, .94); border: 1px solid rgba(255,255,255,.12);
-           border-radius: 16px; padding: 18px 22px; display: none; z-index: 16; font: 13px/1.6 system-ui, sans-serif; }
+           border-radius: 16px; padding: 18px 22px; display: none; z-index: 27; font: 13px/1.6 system-ui, sans-serif; }
   #settingsPanel h2 { margin: 0 0 12px; font-size: 20px; }
   #settingsPanel .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
   #settingsPanel .tab { flex: 1; font: inherit; color: #fff; background: #2f3542; border: 0; border-radius: 8px; padding: 8px; cursor: pointer; }
@@ -298,21 +298,26 @@
     </div>
     <div class="sub">Move each control individually, including Settings. Press Done to save your layout.</div>
     <div class="row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px">
+      <button class="opt" id="leaveToMenuBtn">Leave to menu</button>
+    </div>
+    <div class="sub">Saves your progress and takes you back to Continue / New game / Host / Join.</div>
+    <div class="row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px">
       <button class="opt" id="signOutBtn">Sign out</button>
     </div>
   </div>
   <div id="stabSound" style="display:none">
     <div class="row"><span>Master volume</span><input type="range" id="volumeSlider" min="0" max="100" value="80"><span id="volumeVal">80%</span></div>
-    <div class="sub">Adjust the clock-tower bell volume. Additional sound effects are in development.</div>
+    <div class="sub">Adjust ambient, movement, vehicle and clock-tower sounds.</div>
   </div>
   <div id="stabGraphics" style="display:none">
     <div class="sub">Resolution / quality</div>
-    <div class="row">
-      <button class="opt" data-gfx="low">Low</button>
-      <button class="opt" data-gfx="medium">Medium</button>
-      <button class="opt" data-gfx="high">High</button>
+    <div class="row" style="flex-wrap:wrap">
+      <button class="opt" data-gfx="low" style="flex:1 1 40%">Low (mobile)</button>
+      <button class="opt" data-gfx="medium" style="flex:1 1 40%">Medium (laptop)</button>
+      <button class="opt" data-gfx="high" style="flex:1 1 40%">High (laptop)</button>
+      <button class="opt" data-gfx="ultra" style="flex:1 1 40%">Ultra High</button>
     </div>
-    <div class="sub">Lower settings reduce render resolution and turn off shadows for better performance.</div>
+    <div class="sub">Lower settings reduce render resolution and turn off shadows for better performance. Ultra High is not recommended for most devices.</div>
   </div>
   <div id="stabView" style="display:none"><div class="sub">Camera perspective</div><div class="row"><button class="opt" data-view="first">First person</button><button class="opt" data-view="third">Third person</button></div><div class="sub">Changes your walking, swimming and driving view. Your choice is saved on this browser.</div></div>
   <button class="close" id="closeSettings">Close</button>
@@ -329,6 +334,7 @@
 <div id="menu">
   <div class="panel">
     <h1>Another World</h1>
+    <p style="margin:-10px 0 14px;font-size:12px;color:#9fb3c8">Too much lag? <span id="menuLagSettings" style="color:#74b9ff;text-decoration:underline;cursor:pointer">Go to Settings</span></p>
     <div style="position:relative"><button id="menuOffline"><b id="menuOfflineLabel">Offline mode</b><span class="sub" id="menuOfflineSub">Play solo, no one else around</span></button>
       <button id="offlineInfoBtn" type="button" aria-label="How offline mode works" title="How offline mode works" style="position:absolute;right:10px;top:10px;width:26px;height:26px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(0,0,0,.35);color:#fff;font:700 13px system-ui;cursor:pointer;line-height:1">ⓘ</button></div>
     <div id="offlineInfoBox" style="display:none;margin:-6px 0 8px;padding:12px 14px;border-radius:10px;background:rgba(20,24,38,.9);border:1px solid rgba(255,255,255,.18);color:#dbe7ef;font-size:12px;line-height:1.5">

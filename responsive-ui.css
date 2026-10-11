@@ -15,6 +15,22 @@
 #hostingPanel :focus-visible{outline:2px solid #9ce6db;outline-offset:3px}
 #hostingPanel [hidden]{display:none!important}
 #publicRooms{display:grid;gap:8px}#publicRooms>div{flex-wrap:wrap}#publicRooms>div>span{flex:1 1 180px;overflow-wrap:anywhere}#roomError{overflow-wrap:anywhere}
+/* Hosting panel visual polish — was plain system-default labels/inputs with no hierarchy. */
+#hostingPanel .hosting-card{border:1px solid #ffffff20;box-shadow:0 20px 60px #0006}
+#hostingPanel h2{margin:0 0 18px;font-size:24px;letter-spacing:-.02em}
+#hostingPanel h3{margin:20px 0 8px;font-size:12px;color:#8ee1ce;text-transform:uppercase;letter-spacing:.12em;font-weight:700}
+#hostingPanel label{display:block;font-size:13px;color:#b8cbe0;margin:16px 0 7px}
+#hostingPanel p{font-size:12px;color:#8299a9;line-height:1.5;margin:6px 0 0}
+#hostingPanel select,#hostingPanel input[type=text],#hostingPanel input[type=number]{background:#0c1723!important;border:1px solid #6a85954d!important;border-radius:10px!important;padding:12px!important}
+#hostingPanel select:focus,#hostingPanel input:focus{outline:2px solid #8fe0ce;outline-offset:2px}
+#hostingPanel #roomSubmit{display:block;width:100%;margin-top:20px;background:#3867d6;border-color:#3867d6;font-weight:700;font-size:15px}
+#hostingPanel #roomSubmit:hover:not(:disabled){background:#4a76e0}
+#hostingPanel #roomCancel{display:block;width:100%;margin-top:10px;background:transparent;border-color:transparent;color:#9fb3c8;text-decoration:underline}
+#hostingPanel #roomError{font-size:13px;min-height:16px;margin-top:14px}
+#hostingPanel #refreshRooms{padding:7px 14px;font-size:12px;min-height:36px}
+#hostingPanel #publicRoomStatus{margin:8px 0}
+#hostingPanel #publicRooms>div{background:#1b2a40;border-color:#2e4365}
+#hostingPanel #publicRooms button{background:#3867d6;border-color:#3867d6;font-weight:600;font-size:13px;padding:8px 14px;min-height:36px}
 @media(max-width:700px),(pointer:coarse){
  #menu{height:var(--visible-height,100dvh)!important;top:var(--visible-top,0px);overflow:hidden!important;background:linear-gradient(135deg,#0a1726e8,#152a40db)}
  #menu .panel,.mobile-game #menu .panel{top:0;bottom:60px;width:min(460px,100%);max-height:calc(var(--visible-height,100dvh) - 60px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;justify-content:flex-start;gap:10px;padding:max(20px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) 24px max(18px,env(safe-area-inset-left));margin:auto;left:0;right:0}

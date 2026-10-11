@@ -1,3 +1,5 @@
+import {buildHighlandForest,buildVolcanicIsland} from './forest-volcano.js';
+import {createWorldAudio} from './world-audio.js';
 import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
 import {buildSpaceCentre} from './space-centre.js';
@@ -72,7 +74,12 @@ renderer.toneMappingExposure = 1.1;
 document.body.prepend(renderer.domElement);
 
 // Graphics quality (resolution/shadows) — set from the Settings panel, saved across sessions.
-const GFX_PRESETS = { low: { pr: 0.75, shadows: false }, medium: { pr: touchDevice ? 1 : 1.25, shadows: true }, high: { pr: touchDevice ? 1 : 1.5, shadows: true } };
+const GFX_PRESETS = {
+  low: { pr: 0.75, shadows: false, shadowSize: 1024 },
+  medium: { pr: touchDevice ? 1 : 1.25, shadows: true, shadowSize: touchDevice ? 1024 : 2048 },
+  high: { pr: touchDevice ? 1 : 1.5, shadows: true, shadowSize: 2048 },
+  ultra: { pr: touchDevice ? 1.5 : 2, shadows: true, shadowSize: 4096 },
+};
 // Phones default to Low (no shadows, lower pixel ratio) unless the player has
 // already picked a quality themselves -- "medium" for everyone was hammering
 // weaker phones, since shadow rendering is the single biggest GPU cost there.
@@ -82,7 +89,23 @@ function setGraphicsQuality(level) {
   const p = GFX_PRESETS[gfxQuality];
   renderer.setPixelRatio(Math.min(devicePixelRatio, p.pr));
   renderer.shadowMap.enabled = p.shadows;
+  applyShadowMapSize();   // no-op before `sun` exists; the sun's own setup applies the initial size instead
   localStorage.setItem('gfxQuality', gfxQuality);
+}
+// The shadow render target is only (re)created lazily at its current size —
+// changing mapSize after the first render needs the stale one disposed first.
+// Split out from setGraphicsQuality() since `sun` doesn't exist yet the first
+// time that runs (declared further down this file); the sun's own setup below
+// calls this once more right after creating it, using the already-chosen quality.
+let sunReady = false;   // `sun` is declared further down this module; guards against touching it before then
+function applyShadowMapSize() {
+  if (!sunReady) return;
+  const size = GFX_PRESETS[gfxQuality].shadowSize;
+  if (sun.shadow.mapSize.width !== size) {
+    sun.shadow.mapSize.set(size, size);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+  }
 }
 setGraphicsQuality(gfxQuality);
 
@@ -94,11 +117,13 @@ const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x6b5a3a, 0.9);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(touchDevice ? 1024 : 2048, touchDevice ? 1024 : 2048);
+sun.shadow.mapSize.set(1024, 1024);   // placeholder — applyShadowMapSize() below sets the real size for the active quality preset
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
 Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 1, far: 300 });
 scene.add(sun, sun.target);
+sunReady = true;
+applyShadowMapSize();
 
 const fx2d = document.getElementById('fx2d');
 const g2 = fx2d.getContext('2d');
@@ -305,7 +330,7 @@ const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
 const mountains = [];       // {x,z,r,h} cone-shaped peaks — groundY() ramps elevation up their slope so they're real climbable terrain
 const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford Cave tunnel+chamber footprint, kept flat despite sitting inside a mountain's radius
-let spaceCentre = null;
+let spaceCentre = null, volcanicIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
 const buildings = [];      // every city building, so it can be destroyed
 
@@ -358,6 +383,7 @@ const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[[0,0],[-80,-80],[80,80],[-80,80]];
 function groundY(x, z, bodyY = null) {
+  const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
   const spaceFloor=spaceCentre?.groundAt(x,z,bodyY??player.position.y);if(spaceFloor!=null)return spaceFloor;
   if(ROUNDABOUT_CENTRES.some(([cx,cz])=>Math.hypot(x-cx,z-cz)<9.5))return .17;
   const metroFloor=metro?.groundAt(x,z);if(metroFloor!=null)return metroFloor;
@@ -5496,11 +5522,15 @@ function toggleSettings(open) {
   settingsOpen = open;hosting.settingsVisible(open);
   $('settingsPanel').style.display = open ? 'block' : 'none';
   if (open) { mobileControls?.reset();for(const code in keys)keys[code]=false;renderSettings(); document.exitPointerLock(); locked = false; }
-  else requestGameControl();
+  // Settings can also be opened straight from the main menu (the "Too much lag?"
+  // link) before a game has actually started — closing it there should just
+  // reveal the menu again, not grab pointer lock like resuming gameplay would.
+  else if (getComputedStyle($('menu')).display === 'none') requestGameControl();
 }
 document.querySelectorAll('#settingsPanel .tab').forEach(b => b.addEventListener('click', () => { settingsTab = b.dataset.stab; renderSettings(); }));
 document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
 $('settingsBtn').addEventListener('click', () => toggleSettings(true));
+$('menuLagSettings').addEventListener('click', () => { settingsTab = 'graphics'; toggleSettings(true); });
 $('inventoryBtn').addEventListener('click', () => toggleInventory(true));
 $('closeInventory').addEventListener('click', () => toggleInventory(false));
 $('dropBagBtn').addEventListener('click', () => {
@@ -5545,6 +5575,10 @@ function resetLayout(){localStorage.removeItem(layoutKey());document.querySelect
 $('layoutEditBtn').addEventListener('click',()=>{settingsOpen=false;$('settingsPanel').style.display='none';if(mobileControls?.mobile){locked=false;}else{freeMouse=true;locked=false;document.exitPointerLock();}setLayoutEditMode(true);});
 $('layoutResetBtn').addEventListener('click',resetLayout);
 $('signOutBtn').addEventListener('click',()=>{if(confirm('Sign out?'))signOutAndReload();});
+// There was no way to back out of a running game (offline/solo or hosted) to the
+// main menu short of signing out entirely. Saves first, then reloads — boot()
+// finds the existing session and goes straight to the menu, skipping sign-in.
+$('leaveToMenuBtn').addEventListener('click',()=>{if(soloMode)saveSolo();location.reload();});
 $('layoutDoneBtn').addEventListener('click',()=>{setLayoutEditMode(false);freeMouse=false;requestGameControl();});
 
 // =====================================================================
@@ -5820,6 +5854,7 @@ const busDoor = v => v.group.localToWorld(new THREE.Vector3(2.0, 0, v.length / 2
 const isRoadVehicle = v => ['car', 'police', 'bus'].includes(v.kind);
 function vehicleVelocity(v) { return { x: Math.sin(v.group.rotation.y) * v.speed, z: Math.cos(v.group.rotation.y) * v.speed }; }
 function damageVehicle(v, deltaSpeed, point) {
+  if(deltaSpeed>3&&point.distanceTo(player.position)<60)worldAudio?.impact(deltaSpeed);
   if (!isRoadVehicle(v)) return;
   const damage = impactDamage(deltaSpeed);
   if (damage <= 0) return;
@@ -6422,6 +6457,9 @@ mobileControls = setupMobileControls({
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
+buildHighlandForest({scene,colliders,insideCollider,groundY,addBird});
+volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:hurtPlayer});regionalEnvironment.islands.push(volcanicIsland.island);
+worldAudio=createWorldAudio({volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),state:()=>({playing:locked,position:player.position,birds,weather:weatherState,driving:inCar,speed:driving?.speed||0,swimming,airborne:!onGround,indoor:!!metro?.underground||!!sewers?.underground||!!inCivicInterior,lava:Math.hypot(player.position.x-155,player.position.z-520)<35})});
 applyLayout();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
 if (location.hash === '#test') { locked = true; startEl.style.display = 'none'; }
@@ -6475,7 +6513,7 @@ function frame() {
     spaceCentre?.update(dt);
     transport.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
@@ -6485,6 +6523,7 @@ function frame() {
     updateTasks(dt);
     updateParticles(dt);
   }
+  worldAudio?.update(locked?rawDt:0);
   mobileControls?.update();
   townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar, reconstructionDays * DAY_LEN, locked ? rawDt : 0);
   if(locked) harbour.update(reconstructionDays * DAY_LEN, rawDt);
