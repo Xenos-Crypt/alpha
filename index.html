@@ -679,6 +679,9 @@ const tasks = [];
 // Same story: addPet()'s horses register a "Ride the horse" interactable during
 // the very first world-building pass too, long before this would otherwise exist.
 const interactables = [];
+// Same story again: the chapel's organ seat pushes into sitSpots during the
+// very first world-building pass, before this would otherwise be declared.
+const sitSpots = [];
 const camBlockers = [];    // meshes the camera should not pass through
 const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
@@ -1392,8 +1395,57 @@ function addWireRun(poleMat, points) {
 // south of here) but TRAIN itself, the combat dummies and the special-ability
 // claim point below all still live at this spot — those aren't cosmetic.
 const TRAIN = new THREE.Vector3(60, CURB, 20);
-addBench(TRAIN.x - 10, TRAIN.z - 7, Math.PI / 2);
-addBench(TRAIN.x - 10, TRAIN.z + 7, Math.PI / 2);
+
+// =====================================================================
+// ASHFORD CHAPEL: two storeys, a real walk-in building (open door, not a
+// civic pocket interior) — pews facing the altar, a staircase up to the
+// choir loft, and an organ for worship.
+// =====================================================================
+(function buildChapel() {
+  const x = TRAIN.x, z = TRAIN.z, w = 20, d = 26, h1 = 4.6, h2 = 3.6;
+  const stoneMat = new THREE.MeshStandardMaterial({ color: 0xcfc3a8, roughness: 0.9 });
+  const roofC = new THREE.MeshStandardMaterial({ color: 0x4a3a30, roughness: 0.85 });
+  const woodC = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.8 });
+  // Ground floor walls — open door on the south (+z) face.
+  box(w, h1, 0.4, x, h1 / 2, z - d / 2, stoneMat); camBlockers.push(box(w, h1, 0.4, x, h1 / 2, z - d / 2, stoneMat));
+  camBlockers.push(box(0.4, h1, d, x - w / 2, h1 / 2, z, stoneMat));
+  camBlockers.push(box(0.4, h1, d, x + w / 2, h1 / 2, z, stoneMat));
+  camBlockers.push(box((w - 4.5) / 2, h1, 0.4, x - (w + 4.5) / 4, h1 / 2, z + d / 2, stoneMat));
+  camBlockers.push(box((w - 4.5) / 2, h1, 0.4, x + (w + 4.5) / 4, h1 / 2, z + d / 2, stoneMat));
+  // Thin wall-only colliders (not a filled footprint) so the inside is actually walkable.
+  colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2 - 0.2, maxZ: z - d / 2 + 0.2 },
+    { minX: x - w / 2 - 0.2, maxX: x - w / 2 + 0.2, minZ: z - d / 2, maxZ: z + d / 2 },
+    { minX: x + w / 2 - 0.2, maxX: x + w / 2 + 0.2, minZ: z - d / 2, maxZ: z + d / 2 },
+    { minX: x - w / 2, maxX: x - 2.25, minZ: z + d / 2 - 0.2, maxZ: z + d / 2 + 0.2 },
+    { minX: x + 2.25, maxX: x + w / 2, minZ: z + d / 2 - 0.2, maxZ: z + d / 2 + 0.2 });
+  // Second storey (choir loft) — only the back third, open over the main hall.
+  const loftDepth = 8, loftZ = z - d / 2 + loftDepth / 2 + 1;
+  box(w - 1, 0.3, loftDepth, x, h1 + 0.15, loftZ, woodC, false);
+  camBlockers.push(box(w, h2, 0.3, x, h1 + h2 / 2, z - d / 2, stoneMat));
+  camBlockers.push(box(0.3, h2, loftDepth + 1, x - w / 2, h1 + h2 / 2, loftZ, stoneMat));
+  camBlockers.push(box(0.3, h2, loftDepth + 1, x + w / 2, h1 + h2 / 2, loftZ, stoneMat));
+  const roof = box(w + 1, 0.3, d + 1, x, h1 + h2 + 0.15, z, roofC, false); camBlockers.push(roof);
+  planeBlocks.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, top: h1 + 0.3 },
+    { minX: x - w / 2, maxX: x + w / 2, minZ: loftZ - loftDepth / 2, maxZ: loftZ + loftDepth / 2, top: h1 + h2 + 0.45 });
+  // Staircase up to the loft, along the east wall.
+  for (let s = 0; s < 14; s++) box(2, 0.12, 0.9, x + w / 2 - 1.3, 0.2 + s * 0.33, z - d / 2 + 2 + s * 0.6, woodC, false);
+  box(0.12, h1, 0.12, x + w / 2 - 2.3, h1 / 2, z - d / 2 + 2, woodC, false);
+  // Cross on the roof peak, out front above the door.
+  box(0.2, 1.8, 0.2, x, h1 + h2 + 1, z - d / 2, 0xe8e2cf, false);
+  box(0.9, 0.2, 0.2, x, h1 + h2 + 1.4, z - d / 2, 0xe8e2cf, false);
+  signboard('ASHFORD CHAPEL', x, h1 + h2 + 2.4, z + d / 2 + 0.5, 12, '#2a2516');
+  // Pews facing the altar (north end), aisle down the middle.
+  for (let row = 0; row < 5; row++) for (const side of [-1, 1]) {
+    const pz = z - d / 2 + 4 + row * 2.6;
+    box(5, 0.9, 0.5, x + side * 3.6, 0.45, pz, woodC, false);
+    box(5, 0.5, 0.12, x + side * 3.6, 0.85, pz - 0.2, woodC, false);
+  }
+  // Altar + organ up in the loft.
+  box(3, 1, 1.2, x, 0.5, z - d / 2 + 1.5, 0xe8e2cf, false);
+  box(2.4, 1.6, 1, x, h1 + 0.8, loftZ + loftDepth / 2 - 1, 0x3a2a1a, false);   // organ body
+  for (let p = -5; p <= 5; p++) box(0.14, 1 + Math.abs(p) * 0.08, 0.14, x + p * 0.2, h1 + 1.9 + Math.abs(p) * 0.04, loftZ + loftDepth / 2 - 1.5, 0xc8b878, false);   // pipes
+  sitSpots.push({ x, z: loftZ + loftDepth / 2 - 2.3, yaw: Math.PI, seatY: h1 + 0.75, label: 'Sit at the organ' });
+})();
 
 // =====================================================================
 // HOME RUNWAY: a short strip just south of the old training ground, for the
@@ -1492,12 +1544,12 @@ const HOUSE_COLORS = [[0xf6e3c5, 0x8e3b2f], [0xdfe8ef, 0x34495e], [0xf3d6d6, 0x6
 // Unified sit system: any real seat (house couches, bus stop benches, the civic
 // interior's chair) registers here as {x,z,yaw}. One proximity check + one E
 // handler covers all of them, instead of a separate one-off per location.
-const sitSpots = [
+sitSpots.push(
   ...streetSeats,
   { x: 14.75, z: 20.8, yaw: Math.PI / 2, seatY: F_Y + 0.45, label: 'Sit on couch' },
   { x: 22, z: 20.6, yaw: 0, seatY: F_Y + 0.5, label: 'Sit on stool' },
   { x: 22, z: 22.4, yaw: Math.PI, seatY: F_Y + 0.5, label: 'Sit on stool' },
-];
+);
 // Same idea for sleep/eat spots — originally only the one starting house had a
 // working bed+fridge; every procedural house gets one now too.
 interactables.push(
@@ -3301,20 +3353,8 @@ function makeDummy(kind, name, spot, look, maxHp) {
   return makeEnemy({ kind, labelName: name, h, root: h.root, radius: 0.45, height: 2.0, maxHp, spot: spot.clone(),
     flashMats: h.flashMats, ai: kind === 'fighter' ? { state: 'idle', t: 0, combo: 0, cd: 1, dashCd: 2, hitDone: false } : null });
 }
-const standingDummy = makeDummy('standing', 'Standing Dummy', new THREE.Vector3(TRAIN.x - 5, CURB, TRAIN.z - 6),
-  { outfit: 0xc8a165, hair: 0x8a6a3a, skin: 0xd8b77a, pants: 0xa98a55, shoes: 0x6b5232 }, 500);
-const target = mesh(new THREE.CircleGeometry(0.16, 20), new THREE.MeshStandardMaterial({ color: 0xd63031 }), standingDummy.h.rig);
-target.position.set(0, 1.3, 0.245);
-target.castShadow = false;
-
-const defenceDummy = makeDummy('defence', 'Defence Dummy', new THREE.Vector3(TRAIN.x - 5, CURB, TRAIN.z + 6),
-  { outfit: 0x4a6fa5, hair: 0x2d3a4d, skin: 0xa9b3bf, pants: 0x34495e, shoes: 0x222a33 }, 300);
-const shield = mesh(new THREE.BoxGeometry(0.08, 0.85, 0.65), new THREE.MeshStandardMaterial({ color: 0x8395a7, metalness: 0.5, roughness: 0.35 }), defenceDummy.h.armL.pivot);
-shield.position.set(0.12, -0.45, 0.1);
-defenceDummy.flashMats.push(shield.material);
-
-const fighterDummy = makeDummy('fighter', 'Fighting Dummy', new THREE.Vector3(TRAIN.x + 5, CURB, TRAIN.z),
-  { outfit: 0x8b1e2d, hair: 0x111111, skin: 0x7a5a45, pants: 0x1e1e24, shoes: 0x111111, handScale: 1.8 }, 260);
+// Training dummies removed per feedback — that spot is now Ashford Chapel
+// (see buildChapel()) instead of the practice yard.
 
 // ---- Enemy AI ----
 function updateSlime(e, dt) {
