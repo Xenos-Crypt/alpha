@@ -395,6 +395,7 @@ import { setupMobileControls } from './mobile-controls.js';
 import { buildHarbour } from './harbour.js';
 import { buildTransport } from './transport.js';
 import { buildBridge } from './bridge.js';
+import {liftBridgeSurface,launchBridgeJump,advanceBridgeJump,VEHICLE_GRAVITY} from './bridge-jump-physics.js';
 import { buildUrban } from './urban.js';
 import { buildSewersAndOffices } from './sewers-offices.js';
 import {buildRegionalEnvironment} from './regional-environment.js';
@@ -567,16 +568,16 @@ const grassTex = makeTex(256, 256, (g, w, h) => {
 // One 40m x 40m road tile centred on an intersection; repeated across the city.
 const roadTex = makeTex(512, 512, (g) => {
   g.fillStyle = '#8c8c8c'; g.fillRect(0, 0, 512, 512);           // hidden under pavements
-  g.fillStyle = '#3a3c40'; g.fillRect(179, 0, 154, 512); g.fillRect(0, 179, 512, 154);   // widened from 128 to 154px (10m -> ~12m)
+  g.fillStyle = '#3a3c40'; g.fillRect(154, 0, 204, 512); g.fillRect(0, 154, 512, 204);   // widened from 128 to 154px (10m -> ~12m)
   speckle(g, 512, 512, 9000, ['rgba(255,255,255,.05)', 'rgba(0,0,0,.18)']);
   g.fillStyle = '#e8e8e8';                                          // edge lines
-  for (const x of [185, 325]) { g.fillRect(x, 0, 2, 137); g.fillRect(x, 375, 2, 137); }
+  for (const x of [160, 352]) { g.fillRect(x, 0, 2, 137); g.fillRect(x, 375, 2, 137); }
   for (const y of [185, 325]) { g.fillRect(0, y, 137, 2); g.fillRect(375, y, 137, 2); }
   g.fillStyle = '#e6c24a';                                          // centre dashes
   for (let y = 4; y < 137; y += 48) { g.fillRect(254, y, 4, 28); g.fillRect(254, y + 371, 4, 28); }
   for (let x = 4; x < 137; x += 48) { g.fillRect(x, 254, 28, 4); g.fillRect(x + 371, 254, 28, 4); }
   g.fillStyle = '#f0f0f0';                                          // zebra crossings
-  for (let x = 184; x < 329; x += 13) {
+  for (let x = 160; x < 353; x += 13) {
     g.fillRect(x, 141, 7, 32); g.fillRect(x, 339, 7, 32);
     g.fillRect(141, x, 32, 7); g.fillRect(339, x, 32, 7);
   }
@@ -700,6 +701,7 @@ function box(w, h, d, x, y, z, color, collide = true) {
 function collide(p, r) {
   let hit = false;
   for (const c of colliders) {
+    if(c.circleRadius!=null){const dx=p.x-c.circleX,dz=p.z-c.circleZ,d=Math.hypot(dx,dz),limit=r+c.circleRadius;if(d<limit){hit=true;p.x+=dx/(d||1)*(limit-d);p.z+=dz/(d||1)*(limit-d);if(d<.0001)p.x=c.circleX+limit;}continue;}
     if(c.baseYAt){const base=c.baseYAt(p.x,p.z);if(p.y<base-.8||p.y>base+2)continue;}
     const cx = clamp(p.x, c.minX, c.maxX), cz = clamp(p.z, c.minZ, c.maxZ);
     const dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
@@ -717,7 +719,7 @@ function collide(p, r) {
   if (p.x > -1000 && p.x < 1000) { p.x = clamp(p.x, -900, 900); p.z = clamp(p.z, -650, 950); }   // dungeons live far away at x = 2000; south bound extended for Riverside/Capital
   return hit;
 }
-const insideCollider = p => colliders.some(c => p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ);
+const insideCollider = p => colliders.some(c => c.circleRadius!=null ? Math.hypot(p.x-c.circleX,p.z-c.circleZ)<c.circleRadius : p.x>c.minX&&p.x<c.maxX&&p.z>c.minZ&&p.z<c.maxZ);
 
 // City layout: roads every 40m (10m wide), blocks in between with 15cm-high pavements.
 const CURB = 0.15;
@@ -729,7 +731,9 @@ const GAP0 = 400, GAP1 = 416, GAP_JUMP_SPEED = 18;
 let bridgeLeafNorth = null, bridgeLeafSouth = null, bridgeLiftAngle = 0, bridgeLiftState = 'down', bridgeLiftT = 20;
 const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
+const ROUNDABOUT_CENTRES=[[0,0],[-80,-80],[80,80],[-80,80]];
 function groundY(x, z, bodyY = null) {
+  if(ROUNDABOUT_CENTRES.some(([cx,cz])=>Math.hypot(x-cx,z-cz)<9.5))return .17;
   const metroFloor=metro?.groundAt(x,z);if(metroFloor!=null)return metroFloor;
   const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
@@ -740,8 +744,7 @@ function groundY(x, z, bodyY = null) {
   for (const r of stairRamps) {
     if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.y0 + (z - r.z0) / (r.z1 - r.z0) * (r.y1 - r.y0);
   }
-  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z >= GAP0 && z <= GAP1 && bridgeLiftAngle > 0.08) return -2;   // bridge is open — only a fast "jump" (see driveVehicle) clears it
-  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W && z > BRIDGE_Z0 - 4 && z < BRIDGE_Z1 + 4) return BRIDGE_Y;   // river bridge deck
+  if(x>BRIDGE_X-BRIDGE_HALF_W&&x<BRIDGE_X+BRIDGE_HALF_W&&z>BRIDGE_Z0-4&&z<BRIDGE_Z1+4)return liftBridgeSurface(z,bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1).height??-2;
   const regionFloor=regionalEnvironment?.groundAt(x,z);if(regionFloor!=null)return regionFloor;
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0 && z <= RIVERSIDE_Z1) {   // Riverside, across the bridge
     const lx2 = ((x % 40) + 40) % 40, lz2 = ((z % 40) + 40) % 40;
@@ -757,7 +760,7 @@ function groundY(x, z, bodyY = null) {
   if (x > 18 && x < 22 && z > 164 && z < 206) return CURB;   // harbour pier
   if (Math.abs(x) > 160 || Math.abs(z) > 160) return 0;
   const lx = ((x % 40) + 40) % 40, lz = ((z % 40) + 40) % 40;
-  return lx > 6 && lx < 34 && lz > 6 && lz < 34 ? CURB : 0;   // roads widened from 10m to ~12m
+  return lx > 8 && lx < 32 && lz > 8 && lz < 32 ? CURB : 0;   // roads widened from 10m to ~12m
 }
 
 // =====================================================================
@@ -781,12 +784,12 @@ const lawnTex = grassTex.clone(); lawnTex.repeat.set(7, 7); lawnTex.needsUpdate 
 const lawnMat = new THREE.MeshStandardMaterial({ map: lawnTex, roughness: 1 });
 const sandMat = new THREE.MeshStandardMaterial({ map: sandTex, roughness: 1 });
 function pavement(x, z, innerMat) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(30, CURB, 30), [curbMat, curbMat, paveMat, curbMat, curbMat, curbMat]);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(24, CURB, 24), [curbMat, curbMat, paveMat, curbMat, curbMat, curbMat]);
   m.position.set(x, CURB / 2, z);
   m.receiveShadow = true;
   scene.add(m);
   if (innerMat) {
-    const l = mesh(new THREE.PlaneGeometry(26, 26), innerMat);
+    const l = mesh(new THREE.PlaneGeometry(20, 20), innerMat);
     l.rotation.x = -Math.PI / 2;
     l.position.set(x, CURB + 0.01, z);
     l.castShadow = false;
@@ -1049,12 +1052,13 @@ for (let cx = -3; cx < 4; cx++) for (let cz = -3; cz < 4; cz++) {
 for (const key of ROUNDABOUT_CELLS) {
   const [cx, cz] = key.split(',').map(Number);
   const x = cx * 40, z = cz * 40;
-  const island = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.5, 0.3, 24), curbMat);
+  const island = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 0.3, 24), curbMat);
   island.position.set(x, 0.15, z); scene.add(island);
-  const grass = new THREE.Mesh(new THREE.CircleGeometry(4, 24), lawnMat);
+  const grass = new THREE.Mesh(new THREE.CircleGeometry(3, 24), lawnMat);
   grass.rotation.x = -Math.PI / 2; grass.position.set(x, 0.32, z); scene.add(grass);
   addTree(x, z, 1.3);
-  colliders.push({ minX: x - 4, maxX: x + 4, minZ: z - 4, maxZ: z + 4 });
+  colliders.push({ minX:x-3.5,maxX:x+3.5,minZ:z-3.5,maxZ:z+3.5,circleX:x,circleZ:z,circleRadius:3.5 });
+  const apron=mesh(new THREE.CircleGeometry(9.5,48),0x3a3c40);apron.rotation.x=-Math.PI/2;apron.position.set(x,.17,z);apron.castShadow=false;
 }
 function updateTrafficLights(dt) {
   for (const t of trafficLights) {
@@ -1352,6 +1356,33 @@ function updateFish(dt) {
   }
 }
 function updateParkLife(dt) { updateDucks(dt); updatePets(dt); updateButterflies(dt); updateBees(dt); updateBirds(dt); updateSquirrels(dt); updateFish(dt); }
+
+// =====================================================================
+// UTILITY POLES: telecom/power poles with sagging wires along a few streets —
+// decorative only, not an electrical system.
+// =====================================================================
+function addWireRun(poleMat, points) {
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1], mid = a.clone().lerp(b, 0.5); mid.y -= 0.8;
+    const curve = new THREE.CatmullRomCurve3([a, mid, b]);
+    const wire = new THREE.Mesh(new THREE.TubeGeometry(curve, 10, 0.03, 5, false), poleMat);
+    scene.add(wire);
+  }
+}
+{
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x4a3a28, roughness: 0.9 });
+  const wireMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
+  for (const x of [-140, -60, 60, 140]) {
+    const tops = [];
+    for (let z = -140; z <= 140; z += 40) {
+      box(0.18, 7, 0.18, x + 4, 3.5, z, poleMat, false);
+      box(2.4, 0.12, 0.12, x + 4, 6.6, z, poleMat, false);
+      tops.push(new THREE.Vector3(x + 4 - 1.1, 6.6, z), new THREE.Vector3(x + 4 + 1.1, 6.6, z));
+    }
+    const left = tops.filter((_, i) => i % 2 === 0), right = tops.filter((_, i) => i % 2 === 1);
+    addWireRun(wireMat, left); addWireRun(wireMat, right);
+  }
+}
 
 // =====================================================================
 // TRAINING GROUND (sand arena with a fence and a sign)
@@ -2234,7 +2265,7 @@ const drainMul = () => (origin ? 1.6 - origin.roll * 0.1 : 1) * (isHomeless() ? 
 const defMul = () => 1 / (1 + prog.def * 0.06);
 const psyDmg = () => 10 + prog.men * 4;
 const psyCdMax = () => Math.max(4, 9 - prog.men * 0.3);
-const speedMul = () => 1 + prog.agi * 0.06;
+const speedMul = () => (1 + prog.agi * 0.06) * CHEAT_SPEED_MULT;
 // A weak start (low birth-roll confidence) hits for less; a strong one hits harder.
 // confidence 0 -> 0.5x, confidence 55 (no origin yet) -> ~1x, confidence 100 -> 1.5x.
 // Fighting bare-handed (no starting weapon) hits for 35% less than fighting armed.
@@ -2321,7 +2352,7 @@ function makeVehicle(kind, color) {
 }
 
 // Road network: an intersection every 40m. Traffic drives on the LEFT, like in the UK.
-const LANE = 2.4;
+const LANE = 3.6;
 const nodePos = (i, j) => new THREE.Vector3(i * 40, 0, j * 40);
 function nextNode(cur, prev) {
   const opts = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([di, dj]) => [cur[0] + di, cur[1] + dj])
@@ -2333,7 +2364,7 @@ function laneFrame(ai) {
   const A = nodePos(...ai.from);
   const dir = nodePos(...ai.to).sub(A).normalize();
   const left = new THREE.Vector3(dir.z, 0, -dir.x);
-  return { A, dir, left, pos: A.clone().addScaledVector(dir, ai.s).addScaledVector(left, LANE) };
+  const pos=A.clone().addScaledVector(dir,ai.s).addScaledVector(left,LANE);for(const [x,z]of ROUNDABOUT_CENTRES){const dx=pos.x-x,dz=pos.z-z,d=Math.hypot(dx,dz);if(d<6.5&&d>.01){pos.x=x+dx/d*6.5;pos.z=z+dz/d*6.5;}}return {A,dir,left,pos};
 }
 
 // Bus route (a loop of intersections) and the bus stops along it
@@ -2956,6 +2987,9 @@ function makeAircraft(a) {
   return v;
 }
 AIRCRAFT.forEach(makeAircraft);
+// Temporary: your own plane parked near home instead of the car, for testing
+// fast travel — same "for now, revert later" spirit as CHEAT_NO_NEEDS/SPEED.
+makeAircraft({ name: 'Your plane', color: 0xf5f6fa, accent: 0xd63031, maxSpeed: 60, takeoff: 24, turn: 0.95, jet: false, home: [HOME.x + 30, HOME.z - 10] });
 
 function crashPlane(v) {
   const p = v.group.position.clone();
@@ -3750,6 +3784,48 @@ function dispatchTowTruck(v) {
     } else task.t = task.dur;
   }, end() { const i = vehicles.indexOf(tow); if (i >= 0) vehicles.splice(i, 1); disposeObj(tow.group); } });
 }
+
+// =====================================================================
+// TAXI: wait at the rank, board it (you're a passenger, not the driver), then
+// "Take me home" drives it to SPAWN on its own and drops you off. A basic,
+// honest first version — not a full pick-any-destination service yet.
+// =====================================================================
+function buildTaxi() {
+  const rank = new THREE.Vector3(80, 0, -20);
+  const v = makeVehicle('car', 0xf6c80a);
+  v.group.position.copy(rank); v.ai = null; v.noSteal = true;
+  signboard('TAXI RANK', rank.x, 2.6, rank.z - 3, 7, '#8a6b00');
+  const st = { riding: false };
+  const boardInteract = { pos: rank.clone(), r: 2.5, label: 'Board the taxi', action: () => {
+    if (st.riding) { st.dropoff = true; toast('Heading home...'); return; }
+    if (riding || inCar || sitting) { toast("Finish what you're doing first."); return; }
+    st.riding = true; player.visible = false;
+    toast('Aboard the taxi. Use Interact again to head home.');
+  } };
+  interactables.push(boardInteract);
+  addTask({ dur: 1e9, update(dt) {
+    if (st.riding) {
+      player.position.copy(v.group.position);
+      boardInteract.pos.copy(v.group.position);
+      boardInteract.label = 'Take me home';
+      if (st.dropoff) {
+        const dir = new THREE.Vector3(SPAWN.x - v.group.position.x, 0, SPAWN.z - v.group.position.z), d = dir.length();
+        if (d < 3) {
+          st.riding = false; st.dropoff = false;
+          player.position.set(SPAWN.x + 2, 0, SPAWN.z); player.position.y = groundY(player.position.x, player.position.z);
+          player.visible = true;
+          boardInteract.pos.copy(rank); boardInteract.label = 'Board the taxi';
+          toast("You're home. Fare's on the house.");
+        } else {
+          dir.normalize(); v.group.position.addScaledVector(dir, 11 * dt);
+          v.group.rotation.y = lerpAngle(v.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
+          v.group.position.y = groundY(v.group.position.x, v.group.position.z);
+        }
+      }
+    } else boardInteract.label = 'Board the taxi';
+  } });
+}
+buildTaxi();
 
 // Hit everything within r of center. Returns how many were hit.
 function hitAround(center, r, hits, h, maxDy = 3) {
@@ -4867,7 +4943,7 @@ const nearestInteractable = () => interactables.find(it => distXZ(player.positio
 function nearestVehicle() {
   let best = null, bd = 3.6;
   for (const v of vehicles) {
-    if (v.crashed || v.disabled) continue;
+    if (v.crashed || v.disabled || v.noSteal) continue;
     const d = distXZ(player.position, v.group.position) - (v.kind === 'bus' ? 2.5 : v.kind === 'boat' ? 1.5 : v.kind === 'plane' ? 3 : 0);
     if (d < bd) { bd = d; best = v; }
   }
@@ -4907,6 +4983,7 @@ function enterVehicle(v) {
   headlight.target.position.set(0, 0, 14);
 }
 function exitVehicle(force = false) {
+  if(driving?.bridgeFlight&&!force){toast('Wait until the vehicle lands before getting out.');return;}
   const v = driving, h = v.group.rotation.y;
   if (v.kind === 'plane' && !force && (v.alt > groundY(v.group.position.x, v.group.position.z) + 2 || v.speed > 8)) {
     toast('Land and slow down before getting out.');
@@ -5490,7 +5567,7 @@ function isSeaWater(x,z,bodyY = null) {
   if(regionalEnvironment?.groundAt(x,z)!=null)return false;
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
-  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return z >= GAP0 && z <= GAP1 && bridgeLiftAngle > 0.08;
+  if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return z>=GAP0&&z<=GAP1&&liftBridgeSurface(z,bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1).height==null;
   if (x >= RIVERSIDE_X0 && x <= RIVERSIDE_X1 && z >= RIVERSIDE_Z0) return false;
   if (x >= CAPITAL_X0 && x <= CAPITAL_X1 && z >= CAPITAL_Z0) return false;
   if (Math.hypot(x - ISLAND.x, z - ISLAND.z) < ISLAND_R) return false;
@@ -5638,7 +5715,7 @@ function hitStreetSeats(v, from, to) {
   }
 }
 function resolveRoadMovement(v, start, dt) {
-  if (!isRoadVehicle(v)) return;
+  if (!isRoadVehicle(v)||v.bridgeFlight) return;
   const p = v.group.position, destination = p.clone();
   const steps = Math.max(1, Math.ceil(start.distanceTo(destination) / 0.3));
   const velocity = vehicleVelocity(v);
@@ -5695,29 +5772,18 @@ function resolveRoadMovement(v, start, dt) {
 const GEAR_RATIOS = [0.22, 0.42, 0.62, 0.82, 1.0];
 let transmissionAuto = controlPrefs.drivingMode==='automatic', gear = 1;
 function shiftGear(direction){if(inCar&&!transmissionAuto&&isRoadVehicle(driving)){gear=clamp(gear+direction,1,5);toast('Gear '+gear);}}
+function updateBridgeFlight(v,dt){const f=v.bridgeFlight,previousY=f.y;advanceBridgeJump(f,dt);v.group.position.set(f.x,f.y,f.z);v.group.rotation.x=-Math.atan2(f.vy,Math.hypot(f.vx,f.vz))*Math.sign(v.speed||1);
+ const onBridge=Math.abs(f.x-BRIDGE_X)<BRIDGE_HALF_W&&f.z>BRIDGE_Z0&&f.z<BRIDGE_Z1;
+ const surface=onBridge?liftBridgeSurface(f.z,bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1):null;
+ const floor=surface?.height??(onBridge?-2:groundY(f.x,f.z,f.y));
+ if(floor>-.5&&f.y<=floor&&f.vy<=0){const impact=Math.max(0,-(f.vy-f.vz*(surface?.slope||0))/Math.hypot(1,surface?.slope||0));v.group.position.y=floor;v.bridgeFlight=null;v.group.rotation.x=0;damageVehicle(v,impact,v.group.position);if(v===driving)toast('Landed: impact '+impact.toFixed(1)+' m/s.');}
+ else if(surface?.height!=null&&f.y<surface.height-.8&&previousY<surface.height&&f.z>=GAP0&&f.z<=GAP1){damageVehicle(v,Math.hypot(f.vx,f.vz),v.group.position);f.vx*=.3;f.vz*=.3;}
+ if(f.y<-.4){v.bridgeFlight=null;v.disabled=true;v.health=0;v.speed=0;v.group.rotation.x=0;if(v===driving){exitVehicle(true);toast('The jump did not clear the bridge. Swim to shore.');}}
+}
 function driveVehicle(v, dt) {
-  if (isRoadVehicle(v)) {
-    const p0 = v.group.position;
-    const inGap = p0.x > BRIDGE_X - BRIDGE_HALF_W && p0.x < BRIDGE_X + BRIDGE_HALF_W && p0.z >= GAP0 && p0.z <= GAP1 && bridgeLiftAngle > 0.08;
-    if (inGap) {
-      if (Math.abs(v.speed) >= GAP_JUMP_SPEED) {
-        if (!v.gapJumped) {
-          v.gapJumped = true;
-          damageVehicle(v, 30, p0);
-          burst(at(p0, 1), 16, [0xffd166, 0x888888], 8, 0.2, 0.4, 4);
-          shake = Math.max(shake, 0.3);
-          if (v === driving) toast('You cleared the gap — but it cost you.');
-        }
-      } else {
-        v.disabled = true; v.health = 0; v.speed = 0;
-        if (v === driving) { exitVehicle(true); toast('Too slow to clear the gap — you dropped into the river.'); }
-        return;
-      }
-    } else {
-      v.gapJumped = false;
-      if (isSeaWater(p0.x, p0.z, p0.y)) { v.disabled = true; v.health = 0; v.speed = 0; if (v === driving) { exitVehicle(true); toast('Vehicle submerged. Swim to shore.'); } return; }
-    }
-  }
+  const roadStartZ=v.group.position.z;
+  if(v.bridgeFlight){updateBridgeFlight(v,dt);return;}
+  if(isRoadVehicle(v)&&isSeaWater(v.group.position.x,v.group.position.z,v.group.position.y)){v.disabled=true;v.health=0;v.speed=0;if(v===driving){exitVehicle(true);toast('Vehicle submerged. Swim to shore.');}return;}
   if (v.kind === 'plane') return flyPlane(v, dt);
   const mine = v === driving;
   const icy = isRoadVehicle(v) && weatherState === 'snow';   // less grip: slower to slow down, looser steering — cars can slide
@@ -5742,8 +5808,19 @@ function driveVehicle(v, dt) {
     if (mine && Math.abs(v.speed) > 4) spawnParticle(p.clone().add(new THREE.Vector3(-Math.sin(h) * 2.8, 0.2, -Math.cos(h) * 2.8)), randUnit().multiplyScalar(1.5).setY(1.5), 0xffffff, 0.2, 0.6, 4);
     return;
   }
-  const jumpingGap = isRoadVehicle(v) && p.x > BRIDGE_X - BRIDGE_HALF_W && p.x < BRIDGE_X + BRIDGE_HALF_W && p.z >= GAP0 && p.z <= GAP1 && bridgeLiftAngle > 0.08 && Math.abs(v.speed) >= GAP_JUMP_SPEED;
-  p.y = lerp(p.y, jumpingGap ? BRIDGE_Y : groundY(p.x, p.z, p.y), 1 - Math.exp(-20 * dt));
+  const previousZ=roadStartZ;
+  if(Math.abs(p.x-BRIDGE_X)<BRIDGE_HALF_W&&bridgeLiftAngle>.08){
+    const surface=liftBridgeSurface(previousZ,bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1);
+    const forward=Math.cos(h)*v.speed;
+    const edge=forward>0?surface.edgeNorth:surface.edgeSouth;
+    if(edge!=null&&((forward>0&&previousZ<=edge&&p.z>edge)||(forward<0&&previousZ>=edge&&p.z<edge))){
+      const launch=liftBridgeSurface(edge+(forward>0?-.0001:.0001),bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1);
+      p.z=edge;p.y=launch.height;v.bridgeFlight=launchBridgeJump(v.speed,bridgeLiftAngle,h,p.x,p.y,p.z);v.previousBridgeZ=p.z;updateBridgeFlight(v,dt);return;
+    }
+    const current=liftBridgeSurface(p.z,bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1);
+    if(current.height!=null&&current.side){v.speed-=Math.sign(v.speed)*VEHICLE_GRAVITY*Math.sin(bridgeLiftAngle)*Math.sign(forward*current.slope)*dt;v.group.rotation.x=-Math.atan(current.slope)*Math.sign(Math.cos(h)||1);}
+  }else v.group.rotation.x=0;
+  p.y=lerp(p.y,groundY(p.x,p.z,p.y),1-Math.exp(-20*dt));v.previousBridgeZ=p.z;
   for (const w of v.wheels) w.rotation.x += v.speed * dt / 0.4;
 }
 
@@ -5791,7 +5868,7 @@ function trafficDrive(v, dt) {
   const p = v.group.position, k = 1 - Math.exp(-6 * dt);   // smoothing makes the turns look natural
   p.x = lerp(p.x, f.pos.x, k);
   p.z = lerp(p.z, f.pos.z, k);
-  p.y = 0;
+  p.y = groundY(p.x,p.z,p.y);
   v.group.rotation.y = lerpAngle(v.group.rotation.y, Math.atan2(f.dir.x, f.dir.z), 1 - Math.exp(-5 * dt));
   for (const w of v.wheels) w.rotation.x += v.speed * dt / 0.4;
 }
@@ -5875,6 +5952,8 @@ function busArrive(v, stop) {
 
 function updateVehicles(dt) {
   for (const v of vehicles) {
+    if(v.bridgeFlight){driveVehicle(v,dt);continue;}
+    if(v.routeTraffic&&v!==driving)continue;
     if (v.disabled || (v.ai?.parked && wanted <= 0)) { v.speed = 0; continue; }
     v.crashCooldown = Math.max(0, (v.crashCooldown || 0) - dt);
     const roadStart = v.group.position.clone();
@@ -5894,10 +5973,16 @@ function updateVehicles(dt) {
   }
 }
 
+// Temporary testing toggles — requested as a "for now" state, meant to be
+// flipped back off later, not a permanent design change.
+const CHEAT_NO_NEEDS = true;    // hunger/energy stop draining
+const CHEAT_SPEED_MULT = 2.5;   // extra on-foot speed multiplier, stacks with speedMul()
 function updateNeeds(dt) {
-  stats.hunger = clamp(stats.hunger - 100 / 180 * drainMul() * dt, 0, 100);   // empty after ~3 minutes
-  stats.energy = clamp(stats.energy - 100 / 240 * drainMul() * dt, 0, 100);   // empty after ~4 minutes
-  if (stats.hunger === 0 || stats.energy === 0) stats.hp -= 2 * dt;
+  if (!CHEAT_NO_NEEDS) {
+    stats.hunger = clamp(stats.hunger - 100 / 180 * drainMul() * dt, 0, 100);   // empty after ~3 minutes
+    stats.energy = clamp(stats.energy - 100 / 240 * drainMul() * dt, 0, 100);   // empty after ~4 minutes
+  }
+  if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) stats.hp -= 2 * dt;
   else if (stats.hunger > 30) stats.hp += 1 * dt;
   // A frail birth (very low peace) bleeds health passively, roughly 1/sec at the floor,
   // tapering off above peace 25 — this is the one stat with a real, constant downside.
