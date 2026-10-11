@@ -1201,7 +1201,7 @@ function addPet(kind, x, z) {
   const home = new THREE.Vector3(x, CURB, z);
   g.position.copy(home);
   scene.add(g);
-  const pet = { kind, g, home, target: home.clone(), speed: (horse ? 1.6 : 0.8) + rand() * 0.5, waitT: rand() * 3, ridden: false };
+  const pet = { kind, g, home, target: home.clone(), speed: (horse ? 1.6 : 0.8) + rand() * 0.5, waitT: rand() * 3, ridden: false, hp: horse ? 60 : 20, alive: true, radius: horse ? 1.2 : 0.4 };
   parkPets.push(pet);
   if (horse) {
     pet.mountInteract = { pos: home.clone(), r: 2, label: 'Ride the horse', action: () => mountHorse(pet) };
@@ -1242,6 +1242,7 @@ const ARENA = new THREE.Vector3(PARK.x - 60, CURB, PARK.z + 10);
 }
 function updatePets(dt) {
   for (const a of parkPets) {
+    if (!a.alive) continue;
     const p = a.g.position;
     if (a.mountInteract) { a.mountInteract.pos.copy(p); a.mountInteract.label = a.ridden ? 'Dismount' : 'Ride the horse'; }
     if (a.ridden) continue;   // player (or riding()) is driving this one directly
@@ -1257,7 +1258,11 @@ function updatePets(dt) {
       if (!a.owner && a.waitT <= 0) { a.target = a.home.clone().add(new THREE.Vector3((rand() - 0.5) * 8, 0, (rand() - 0.5) * 8)); a.waitT = 2 + rand() * 3; }
     } else {
       const dir = new THREE.Vector3(a.target.x - p.x, 0, a.target.z - p.z).normalize();
-      const previous=p.clone();p.addScaledVector(dir,a.speed*dt);if(isSeaWater(p.x,p.z))p.copy(previous);
+      // A companion following the player needs to actually keep up, including
+      // sprint/speed-boost — it was using its own fixed (slow) wander speed
+      // even while owned, so it dragged behind constantly.
+      const chaseSpeed = (a.owner === player) ? Math.max(a.speed, 7 * speedMul()) : a.speed;
+      const previous=p.clone();p.addScaledVector(dir,chaseSpeed*dt);if(isSeaWater(p.x,p.z))p.copy(previous);
       a.g.rotation.y = Math.atan2(-dir.z, dir.x);
     }
     collide(p,.2);p.y = groundY(p.x, p.z, p.y);
@@ -3939,6 +3944,17 @@ buildTaxi();
 function hitAround(center, r, hits, h, maxDy = 3) {
   breakLampsNear(center, r);
   let n = hitVehicles(center, r, hits, h, maxDy);
+  for (const a of parkPets) {   // dogs/cats/horses weren't attackable at all before — now they are
+    if (!a.alive || a.ridden) continue;
+    if (distXZ(a.g.position, center) > r + (a.radius ?? 0.4) || Math.abs(a.g.position.y - center.y) > maxDy) continue;
+    a.hp -= h.dmg ?? 0;
+    burst(at(a.g.position, 0.5), 8, [0xffffff, 0x8a5a3a], 6, 0.1, 0.25, 6);
+    if (a.hp <= 0 && a.alive) {
+      a.alive = false; a.g.visible = false;
+      if (a.mountInteract) { const idx = interactables.indexOf(a.mountInteract); if (idx >= 0) interactables.splice(idx, 1); }
+      raiseWanted(40);
+    }
+  }
   for (const e of enemies) {
     if (!e.alive || hits?.has(e)) continue;
     if (distXZ(e.root.position, center) > r + e.radius || Math.abs(e.root.position.y - center.y) > maxDy) continue;
