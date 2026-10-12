@@ -722,8 +722,7 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
 // STREET LAMPS (instanced so hundreds cost almost nothing)
 // =====================================================================
 const lampSpots = [];
-const LAMP_OFFSETS = [[-10.5, -10.5], [10.5, -10.5], [-10.5, 10.5], [10.5, 10.5],
-  [-5, -10.5], [5, -10.5], [-5, 10.5], [5, 10.5], [-10.5, -5], [-10.5, 5], [10.5, -5], [10.5, 5]];
+const LAMP_OFFSETS = [[-10.2,0],[10.2,0],[0,-10.2],[0,10.2]];
 for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++)
   for (const [ox, oz] of LAMP_OFFSETS) lampSpots.push(new THREE.Vector3(cx * 40 + 20 + ox, 0, cz * 40 + 20 + oz));
 // Riverside and the Capital are outside the main town grid and had no lamps at
@@ -744,6 +743,7 @@ const TL_MAT = { red: new THREE.MeshStandardMaterial({ color: 0x2a0a0a, emissive
   amber: new THREE.MeshStandardMaterial({ color: 0x2a1c0a, emissive: 0xffaa20, emissiveIntensity: 0 }),
   green: new THREE.MeshStandardMaterial({ color: 0x0a2a10, emissive: 0x20ff50, emissiveIntensity: 0 }) };
 function addTrafficLight(x, z, faceY,baseY=0,phase=null) {
+ const cx=Math.round(x/40)*40,cz=Math.round(z/40)*40,sx=x<cx?-1:1,sz=z<cz?-1:1;if(Math.abs(Math.sin(faceY))>.7){x=cx+sx*13;z=cz+sz*9.6;}else{x=cx+sx*9.6;z=cz+sz*13;}
   box(0.14, 5, 0.14, x, baseY+2.5, z, 0x2b2f33, false);   // taller mast — more visible from a distance/while driving
   const head = new THREE.Group(); head.position.set(x, baseY+5, z); head.rotation.y = faceY; scene.add(head);
   mesh(new THREE.BoxGeometry(0.55, 1.3, 0.4), 0x1a1c1e, head);
@@ -788,7 +788,7 @@ const lanternMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: 0
 // here meant those later lamps had no pole/lantern/cap instance at all, so
 // they never rendered and breakLamp() silently no-op'd past the real count.
 for(const p of lampSpots)if(p.z>=640&&p.z<=950)p.y=p.x>=120?.4:.2;
-const LAMP_CAPACITY = lampSpots.length + 220;
+const LAMP_CAPACITY = lampSpots.length + 600;
 const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.09, 4, 6), poleMat, LAMP_CAPACITY);
 const lanterns = new THREE.InstancedMesh(new THREE.BoxGeometry(0.32, 0.45, 0.32), lanternMat, LAMP_CAPACITY);
 const caps = new THREE.InstancedMesh(new THREE.ConeGeometry(0.32, 0.25, 4), poleMat, LAMP_CAPACITY);
@@ -815,6 +815,7 @@ function addLampSpot(x, y, z) {
   const onBridge=Math.abs(x-BRIDGE_X)<BRIDGE_HALF_W&&z>=BRIDGE_Z0&&z<=BRIDGE_Z1&&Math.abs(y-BRIDGE_Y)<.1;
   if(!onBridge){const safe=roadsidePosition(x,z);x=safe.x;z=safe.z;}
   const p = new THREE.Vector3(x,onBridge?y:z>=640&&z<=950?(x>=120?.4:.2):(y||CURB),z);
+  const existing=lampSpots.find(q=>q.distanceTo(p)<.5);if(existing)return existing;
   const i = lampSpots.length;
   lampSpots.push(p);
   if (i < LAMP_CAPACITY) placeLampInstance(i, p);
@@ -831,7 +832,7 @@ function breakLamp(i) {
   lampBroken[i] = true;
   const p = lampSpots[i];
   dummyObj.rotation.set(0, 0, Math.PI / 2.3);
-  dummyObj.position.set(p.x, CURB + 0.3, p.z);
+  dummyObj.position.set(p.x, (p.y||CURB) + 0.3, p.z);
   dummyObj.updateMatrix(); poles.setMatrixAt(i, dummyObj.matrix); poles.instanceMatrix.needsUpdate = true;
   dummyObj.rotation.set(0, 0, 0); dummyObj.scale.setScalar(0); dummyObj.position.set(p.x, -5, p.z);
   dummyObj.updateMatrix();
@@ -4109,6 +4110,7 @@ function hitAround(center, r, hits, h, maxDy = 3) {
 }
 // Hit everything in front of origin within range.
 function hitCone(origin, dir, range, minDot, hits, h, maxDy = 2.5) {
+ for(let i=0;i<lampSpots.length;i++){const p=lampSpots[i],d=p.clone().sub(origin).setY(0);if(!lampBroken[i]&&Math.abs(p.y-origin.y)<=maxDy&&d.length()<range+.3&&(d.length()<.6||d.normalize().dot(dir)>=minDot))breakLamp(i);}
   let n = hitVehicles(origin, range, hits, h, maxDy, dir, minDot);
   for (const e of enemies) {
     if (!e.alive || hits?.has(e)) continue;
@@ -5964,7 +5966,7 @@ function updatePlayer(dt) {
   const canMove = !action && playerStun <= 0;
   const sprinting = canMove && moving && keys.ShiftLeft && stats.energy > 0 && !playerBlocking;
   if (canMove && moving) {
-    player.position.addScaledVector(dir, (sprinting ? 9 : 5) * (sewers?.movementScale(player.position) ?? 1) * speedMul() * (playerBlocking ? 0.35 : 1) * dt);
+    player.position.addScaledVector(dir, (sprinting ? 9 : 5) * (sewers?.movementScale(player.position) ?? 1) * (metro?.movementScale(player.position)??1) * speedMul() * (playerBlocking ? 0.35 : 1) * dt);
     if (!playerBlocking) player.rotation.y = lerpAngle(player.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-12 * dt));
   }
   if (sprinting) stats.energy -= 3 * drainMul() * dt;
@@ -6052,6 +6054,7 @@ function damageVehicle(v, deltaSpeed, point) {
     }
   }
 }
+function hitStreetLamps(v,from,to){if(Math.abs(v.speed)<3)return;for(let i=0;i<lampSpots.length;i++){const p=lampSpots[i];if(lampBroken[i]||Math.abs(p.y-v.group.position.y)>2||p.x<Math.min(from.x,to.x)-v.radius-1||p.x>Math.max(from.x,to.x)+v.radius+1||p.z<Math.min(from.z,to.z)-v.radius-1||p.z>Math.max(from.z,to.z)+v.radius+1)continue;if(segmentDistance(p,from,to)<v.radius+.2){breakLamp(i);v.speed*=.8;if(!v.crashCooldown)damageVehicle(v,Math.min(9,Math.abs(v.speed)*.2),p);}}}
 function hitStreetSeats(v, from, to) {
   const speed = Math.abs(v.speed);
   if (speed < 1) return;
@@ -6098,6 +6101,7 @@ function resolveRoadMovement(v, start, dt) {
       break;
     }
   }
+  hitStreetLamps(v,start,p);
   const speed = Math.hypot(velocity.x, velocity.z);
   for (const e of enemies) {
     if (!e.alive || e.hidden || e.carCd > 0 || speed < 2 || Math.abs(e.root.position.y - p.y) > 2) continue;
@@ -6531,11 +6535,11 @@ function updateCamera(dt) {
     if (hit) dist = Math.max(1, hit.distance - 0.3);
 
     camera.position.copy(target).addScaledVector(offset, dist);
-    camera.position.y = Math.max(camera.position.y,navy?.rider?.depth>2?-navy.rider.depth+.4:.4);
+    camera.position.y = Math.max(camera.position.y,navy?.rider?.depth>2?-navy.rider.depth+.4:metro?.entrances.groundAt(player.position.x,player.position.z)!=null?player.position.y+.2:.4);
     camera.lookAt(target);
   }
 
-  if((sewers?.underground||metro?.underground)&&cameraView==='third'&&!cine){const eye=player.position.clone().add(new THREE.Vector3(0,1.5,0));const delta=camera.position.clone().sub(eye);if(delta.length()>2.4)camera.position.copy(eye).addScaledVector(delta.normalize(),2.4);camera.position.y=Math.min(3.6,camera.position.y);camera.lookAt(eye);}
+  if((sewers?.underground||metro?.underground||metro?.entrances.groundAt(player.position.x,player.position.z)!=null)&&cameraView==='third'&&!cine){const eye=player.position.clone().add(new THREE.Vector3(0,1.5,0));const delta=camera.position.clone().sub(eye);if(delta.length()>2.4)camera.position.copy(eye).addScaledVector(delta.normalize(),2.4);camera.position.y=Math.min(player.position.y+3.3,camera.position.y);camera.lookAt(eye);}
   // Screen shake
   if (shake > 0.001) {
     camera.position.add(randUnit().multiplyScalar(shake * 0.5));
@@ -6637,6 +6641,8 @@ interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'
 buildControlSettings($('controlChoices'),controlPrefs,matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0,()=>{for(const key in keys)keys[key]=false;mobileControls?.reset();mobileControls?.update();applyLayout();});
 regionalEnvironment=buildRegionalEnvironment({scene,box,makeTex,addTrafficLight,addBird,insideCollider,addLampSpot});
 metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex,toast,groundY,
+ makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+ clearEntrance(rect){for(let i=0;i<lampSpots.length;i++){const p=lampSpots[i];if(p.x>rect.minX-.4&&p.x<rect.maxX+.4&&p.z>rect.minZ-.4&&p.z<rect.maxZ+.4){p.z=rect.maxZ+2;placeLampInstance(i,p);}}for(const b of buildings)if(b.alive&&b.x+b.w/2>rect.minX-.5&&b.x-b.w/2<rect.maxX+.5&&b.z+b.d/2>rect.minZ&&b.z-b.d/2<rect.maxZ){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[]){m.visible=false;const i=camBlockers.indexOf(m);if(i>=0)camBlockers.splice(i,1);}for(const c of [b.collider,...(b.extraColliders||[])]){const i=colliders.indexOf(c);if(i>=0)colliders.splice(i,1);}for(const c of b.blocks||[]){const i=planeBlocks.indexOf(c);if(i>=0)planeBlocks.splice(i,1);}}},
  canEnter:()=>!navy?.rider&&!intercityRail?.rider&&!inCar&&!transport?.rider&&!metro?.rider&&!riding&&!sitting&&!action,
  playerPos:()=>player.position,firstPerson:()=>cameraView==='first',
  move(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);},
@@ -6717,6 +6723,7 @@ npcConversations=createNpcConversations({people:()=>peds,scene,interactables,pla
 worldExpansion=buildWorldExpansion({...regionalTransportContext,civicBuildings,fence:fenceRect,talk:(name,text)=>npcConversations.show(name,text),playerPosition:()=>player.position,makeMonster,light:addTrafficLight,tree:addTree,seat:(x,z)=>addBench(x,z,Math.PI),heal(){stats.hp=maxHp();toast('Medical treatment complete.');},food:()=>buyFood(15,20),killPlayer(){stats.hp=-1;toast('Strategic security: lethal exclusion zone breached.');},civilians:()=>peds,killCivilian(e){e.alive=false;e.hp=0;e.respawn=30;e.ped.state='down';}});
 townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
+metro.cutSurfaces();
 worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosition:()=>player.position});worldAdvertising.update(0);adBalloon.visible=false;
 const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>worldMap.show();document.body.append(mapButton);
