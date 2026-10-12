@@ -86,6 +86,12 @@ export function buildGhostIsland(ctx) {
     boneHeap.add(bone);
   }
   ctx.scene.add(boneHeap);
+  const dragon=new THREE.Group();dragon.position.set(ix,0.5,iz+6);ctx.scene.add(dragon);
+  function bone(a,b,r=.1){const delta=b.clone().sub(a),m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,delta.length(),8),boneMat);m.position.copy(a).lerp(b,.5);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());dragon.add(m);}
+  for(let i=0;i<12;i++){const z=-8+i*1.1,y=.6+Math.sin(i*.25)*.4;const vertebra=new THREE.Mesh(new THREE.SphereGeometry(.28,8,6),boneMat);vertebra.position.set(0,y,z);dragon.add(vertebra);if(i>3&&i<10)for(const side of [-1,1]){bone(new THREE.Vector3(0,y,z),new THREE.Vector3(side*1.5,y+.8,z));bone(new THREE.Vector3(side*1.5,y+.8,z),new THREE.Vector3(side*2,.3,z+.3));}}
+  const skull=new THREE.Mesh(new THREE.BoxGeometry(1.5,1,2.8),boneMat);skull.position.set(0,1,5.6);dragon.add(skull);
+  for(const side of [-1,1]){const horn=new THREE.Mesh(new THREE.ConeGeometry(.25,1.7,8),boneMat);horn.position.set(side*.7,1.8,4.7);horn.rotation.z=side*.5;dragon.add(horn);for(let finger=0;finger<3;finger++){bone(new THREE.Vector3(side,1,0),new THREE.Vector3(side*5,1.3,-2));bone(new THREE.Vector3(side*5,1.3,-2),new THREE.Vector3(side*(7+finger),.3,-6+finger*2));}}
+  ctx.interactables.push({pos:new THREE.Vector3(ix,.2,iz+11),r:3,label:'Inspect the dragon skeleton',action:()=>ctx.toast('Ancient dragon bones: ribs, wing fingers, spine and horned skull. No living residents remain in Ghost Town.')});
   let looted = false;
   ctx.interactables.push({
     pos: new THREE.Vector3(crX, 0.5, chamberZ), r: 3.5, label: 'Search the ancient bones',

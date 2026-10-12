@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import {shipNeedsBridge,shipCanAdvance,driftVelocity,rollAircraft} from './transport-rules.js';
+import {buildNavy} from './navy.js';
+import {buildIntercityRail} from './intercity-rail.js';
+import {buildRegionalFacilities} from './regional-facilities.js';
+const ship={x:-50,z:408,length:46};assert(shipNeedsBridge(ship,0,400,416));assert(!shipCanAdvance(ship,-25,0,400,416,0));assert(shipCanAdvance(ship,-25,0,400,416,1.46));assert(!shipNeedsBridge({...ship,z:360},0,400,416));
+const slide=driftVelocity({x:0,z:20},Math.PI/2,20,true,.1),grip=driftVelocity({x:0,z:20},Math.PI/2,20,false,.1);assert(slide.z>grip.z&&slide.x<grip.x);
+const aircraft={};for(let i=0;i<30;i++)rollAircraft(aircraft,1,true,.1);assert(aircraft.stuntRoll>Math.PI*2);rollAircraft(aircraft,0,false,.1);assert.equal(aircraft.stuntRoll,0);
+const scene=new THREE.Scene(),items=[],player=new THREE.Vector3();let input={forward:0,back:0,left:0,right:0,dive:0,surface:0},water=true;
+const ctx={scene,box(){},sign(){},destinations:[],interactables:items,planeBlocks:[],civicBuildings:[],makePerson:()=>({root:new THREE.Group()}),animatePerson(){},toast(){},canBoard:()=>true,prepare(){},move:p=>player.copy(p),carry:p=>player.copy(p),input:()=>input,water:()=>water,clearPassage:()=>true,fence(){},addPolice(){},reception(){}};
+const navy=buildNavy(ctx);items.find(i=>i.label==='Board navy submarine').action();assert(navy.rider.sub);input.dive=1;navy.update(2);assert.equal(navy.rider.depth,6);assert.equal(player.y,-4);navy.leave();assert(navy.rider);input.dive=0;input.surface=1;navy.update(2);navy.leave();assert(!navy.rider);
+items.find(i=>i.label==='Board navy patrol ship').action();input={forward:1,back:0,left:0,right:0,dive:0,surface:0};water=false;const old=navy.rider.g.position.clone();navy.update(1);assert(navy.rider.g.position.equals(old));navy.leave();
+const rail=buildIntercityRail(ctx);assert.equal(rail.stops.length,5);items.find(i=>i.label==='Board intercity train at Ashford Outskirts').action();assert(rail.rider);rail.update(16);rail.leave();assert(rail.rider);for(let i=0;i<1000;i++){rail.update(.1);if(rail.snapshot().wait>0)break;}assert.equal(rail.snapshot().index,1);assert(rail.snapshot().wait>0);rail.leave();assert(!rail.rider);assert.equal(player.x,106);assert.equal(player.z,700);const save=rail.snapshot();rail.restore(save);assert.equal(rail.groundAt(106,700),6);
+const facilities=buildRegionalFacilities(ctx);assert.equal(facilities.stations.length,3);assert.equal(facilities.residence.type,'government');assert.equal(facilities.groundAt(500,880),.3);
+console.log('PASS: ship clearance and lift requests, drift grip, complete barrel roll, submarine dive/surface and land exclusion, intercity travel and stop-only exit, regional police and presidential residence');

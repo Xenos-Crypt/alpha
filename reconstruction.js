@@ -20,7 +20,7 @@ export function createReconstruction(ctx) {
     const group = new THREE.Group(); ctx.scene.add(group); state.objects.push(group);
     const texture = ctx.makeTex(512, 64, g => {
       g.fillStyle = '#ffda24'; g.fillRect(0, 0, 512, 64);
-      g.fillStyle = '#181818'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; g.fillText('CAUTION  •  CONSTRUCTION  •  KEEP OUT', 256, 40);
+      g.fillStyle = '#181818'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; g.fillText('CAUTION  ï¿½  CONSTRUCTION  ï¿½  KEEP OUT', 256, 40);
     });
     texture.wrapS = THREE.RepeatWrapping; texture.repeat.x = 2;
     const tapeMaterial = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
@@ -52,14 +52,15 @@ export function createReconstruction(ctx) {
     if(b.collider&&!ctx.colliders.includes(b.collider))ctx.colliders.push(b.collider);
     for(const block of b.blocks||[])if(!ctx.planeBlocks.includes(block))ctx.planeBlocks.push(block);
     for(const mesh of state.cameraMeshes)if(!ctx.camBlockers.includes(mesh))ctx.camBlockers.push(mesh);
-    b.alive=true;sites.delete(b);ctx.toast('Construction complete. The building has been rebuilt.');
+    for(const c of b.extraColliders||[])if(!ctx.colliders.includes(c))ctx.colliders.push(c);
+    b.integrity=250;b.alive=true;sites.delete(b);ctx.toast('Construction complete. The building has been rebuilt.');
   }
   function update(currentDay, dt) {
     for(const state of sites.values()) {
       if(!state.ready)continue;
       const days=Math.max(0,Math.ceil(state.deadline-currentDay));
       if(days!==state.lastDays){
-        const g=state.canvas.getContext('2d');g.fillStyle='#21252b';g.fillRect(0,0,768,192);g.fillStyle='#ffda24';g.textAlign='center';g.font='bold 34px sans-serif';g.fillText('BUILDING CLOSED • RECONSTRUCTION',384,62);g.fillStyle='#ffffff';g.font='bold 42px sans-serif';g.fillText(days+' IN-GAME DAY'+(days===1?'':'S')+' UNTIL REBUILT',384,128);state.texture.needsUpdate=true;state.lastDays=days;
+        const g=state.canvas.getContext('2d');g.fillStyle='#21252b';g.fillRect(0,0,768,192);g.fillStyle='#ffda24';g.textAlign='center';g.font='bold 34px sans-serif';g.fillText('BUILDING CLOSED ï¿½ RECONSTRUCTION',384,62);g.fillStyle='#ffffff';g.font='bold 42px sans-serif';g.fillText(days+' IN-GAME DAY'+(days===1?'':'S')+' UNTIL REBUILT',384,128);state.texture.needsUpdate=true;state.lastDays=days;
       }
       const p=state.officer.root.position,distance=p.distanceTo(state.officerTarget);
       const moving=distance>.1;

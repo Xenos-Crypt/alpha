@@ -12,7 +12,9 @@ const threeAddonsPlugin = {
 };
 
 await esbuild.build({
-  entryPoints: ['main.js'],
+  absWorkingDir: fileURLToPath(new URL('.', import.meta.url)),
+  entryPoints: [fileURLToPath(new URL('./main.js', import.meta.url))],
+  tsconfigRaw: {},
   bundle: true,
   format: 'esm',
   outfile: 'dist/bundle.js',

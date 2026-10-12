@@ -1,0 +1,1 @@
+import assert from 'node:assert/strict';import {alignmentColor} from './online-players.js';assert.equal(alignmentColor('neutral'),'#ffffff');assert.equal(alignmentColor('hero'),'#67b3ff');assert.equal(alignmentColor('villain'),'#ff4d4d');console.log('PASS: neutral, hero and villain name colours');

@@ -1,3 +1,22 @@
+import {buildWorldExpansion,insideExclusionZone} from './world-expansion.js';
+import {createNpcConversations} from './npc-conversations.js';
+import {registerAdditionalStructures} from './destructible-structures.js';
+import {detailVehicle} from './vehicle-design.js';
+import {buildRegionalFacilities} from './regional-facilities.js';
+import {buildNavy} from './navy.js';
+import {buildIntercityRail} from './intercity-rail.js';
+import {shipNeedsBridge,shipCanAdvance,driftVelocity,rollAircraft} from './transport-rules.js';
+import {fenceSegments,conditionFactors,applyVehicleCondition} from './crash-infrastructure.js';
+import {buildBridgeTraffic} from './bridge-traffic.js';
+import {buildAdventureServices} from './adventure-services.js';
+import {roadsidePosition} from './roadside-placement.js';
+import {buildWorldAdvertising} from './world-advertising.js';
+import {createWorldMap} from './world-map.js';
+import {createMovieTv} from './movie-tv.js';
+import {createOnlineAccount} from './online-account.js';
+import {createSupportSkills} from './support-skills.js';
+import {buildCityServices} from './city-services.js';
+import {requireUsername,createOnlineAvatars} from './online-players.js';
 import {createRoomChat} from './room-chat.js';
 import {buildCityLife,waterFootprint} from './city-life.js';
 import {buildPoisonLand,poisonBossMultiplier} from './poison-land.js';
@@ -25,6 +44,14 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null;
+let navy=null,intercityRail=null,regionalFacilities=null;
+let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
+let onlineAccount=null;
+let alignmentUserId=null;
+function saveAlignment(){if(alignmentUserId)try{localStorage.setItem('alignment:'+alignmentUserId,JSON.stringify({heroDungeonKills,villainKills}));}catch{}}
+let heroDungeonKills=0,onlinePlayers=null,onlinePlayReady=false;
+const playerAlignment=()=>isVillain?'villain':heroDungeonKills>0?'hero':'neutral';
 let specialTrainingKills=Math.min(5,Math.max(0,Number(localStorage.getItem('specialTrainingKills'))||0));
 let activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};
 import { createClient } from '@supabase/supabase-js';
@@ -170,6 +197,9 @@ const SKY = {
   nightTop: new THREE.Color(0x03050d), nightHorizon: new THREE.Color(0x141b33),
 };
 
+const starGeometry=new THREE.BufferGeometry(),starPositions=new Float32Array(1200*3);
+for(let i=0;i<1200;i++){const z=Math.random()*2-1,a=Math.random()*Math.PI*2,r=Math.sqrt(1-z*z);starPositions[i*3]=Math.cos(a)*r*420;starPositions[i*3+1]=z*420;starPositions[i*3+2]=Math.sin(a)*r*420;}
+starGeometry.setAttribute('position',new THREE.BufferAttribute(starPositions,3));const spaceStars=new THREE.Points(starGeometry,new THREE.PointsMaterial({color:0xffffff,size:1.2,sizeAttenuation:false,fog:false}));spaceStars.visible=false;scene.add(spaceStars);
 const clouds = [];
 const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, fog: false, flatShading: true });
 const cloudGeo = new THREE.IcosahedronGeometry(1, 1);
@@ -335,6 +365,8 @@ const glowMats = [];       // materials whose windows glow at night
 const planeBlocks = [];    // building footprints + heights, so flying into a tower crashes your plane
 const mountains = [];       // {x,z,r,h} cone-shaped peaks — groundY() ramps elevation up their slope so they're real climbable terrain
 const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford Cave tunnel+chamber footprint, kept flat despite sitting inside a mountain's radius
+let supportSkills=null,cityServices=null,supportCounters={dungeons:0,bosses:0};
+function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localStorage.setItem('support:'+alignmentUserId,JSON.stringify({skill:supportSkills.snapshot(),counters:supportCounters,kills:monsterQuestKills}));}catch{}}
 let cityLife=null,monsterQuestKills=0;
 let poisonLand = null;
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
@@ -374,7 +406,7 @@ function collide(p, r) {
       p.x += opts[0][0]; p.z += opts[0][1];
     }
   }
-  if (p.x > -1000 && p.x < 1000) { p.x = clamp(p.x, -900, 900); p.z = clamp(p.z, -650, 950); }   // dungeons live far away at x = 2000; south bound extended for Riverside/Capital
+  if (p.x > -1000 && p.x < 1500) { p.x = clamp(p.x, -900, 1240); p.z = clamp(p.z, -650, 950); }   // dungeons live far away at x = 2000; south bound extended for Riverside/Capital
   return hit;
 }
 const insideCollider = p => colliders.some(c => c.circleRadius!=null ? Math.hypot(p.x-c.circleX,p.z-c.circleZ)<c.circleRadius : p.x>c.minX&&p.x<c.maxX&&p.z>c.minZ&&p.z<c.maxZ);
@@ -386,6 +418,7 @@ const RIVERSIDE_Z0 = 640, RIVERSIDE_Z1 = 780, RIVERSIDE_X0 = -80, RIVERSIDE_X1 =
 const CAPITAL_X0 = 120, CAPITAL_X1 = 440, CAPITAL_Z0 = 680, CAPITAL_Z1 = 920;
 // Bascule lift section of the river bridge — raises for ship traffic.
 const GAP0 = 400, GAP1 = 416, GAP_JUMP_SPEED = 18;
+const liftPlaneBlocks=[];
 let bridgeLeafNorth = null, bridgeLeafSouth = null, bridgeLiftAngle = 0, bridgeLiftState = 'down', bridgeLiftT = 20;
 const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
@@ -397,6 +430,10 @@ function groundY(x, z, bodyY = null) {
   const spaceFloor=spaceCentre?.groundAt(x,z,bodyY??player.position.y);if(spaceFloor!=null)return spaceFloor;
   if(ROUNDABOUT_CENTRES.some(([cx,cz])=>Math.hypot(x-cx,z-cz)<9.5))return .17;
   const metroFloor=metro?.groundAt(x,z);if(metroFloor!=null)return metroFloor;
+  const navyFloor=navy?.groundAt(x,z);if(navyFloor!=null)return navyFloor;
+  const residenceFloor=regionalFacilities?.groundAt(x,z);if(residenceFloor!=null)return residenceFloor;
+  const railwayFloor=intercityRail?.groundAt(x,z);if(railwayFloor!=null)return railwayFloor;
+  const expandedFloor=worldExpansion?.groundAt(x,z);if(expandedFloor!=null)return expandedFloor;
   const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
   const urbanFloor=urban?.groundAt(x,z);if(urbanFloor!=null)return urbanFloor;
@@ -474,7 +511,8 @@ const leafGeo = new THREE.IcosahedronGeometry(1, 0);
 const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, 2.2, 7);
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
 const leafMats = [0x3f8f3a, 0x4f9d3f, 0x2f7a35, 0x5aa845].map(c => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.9 }));
-function addTree(x, z, s = 1) {
+function addTree(x, z, s = 1, trafficIsland=false) {
+  if(!trafficIsland){const safe=roadsidePosition(x,z,9.7);x=safe.x;z=safe.z;}
   const y0 = groundY(x, z);
   const trunk = mesh(trunkGeo, trunkMat);
   trunk.scale.setScalar(s);
@@ -533,7 +571,7 @@ function addBuilding(x, z, faceX, faceZ) {
   const tall = floors >= 8;
   const f = facades[tall ? [2, 3, 4][Math.floor(rand() * 3)] : Math.floor(rand() * facades.length)];
   const regional=z>=640&&z<=950;
-  const w = regional?8:(rand()<.5?9:12), d=regional?8:(rand()<.5?9:12);
+  const w=8,d=8;
   const firstChild = scene.children.length, firstCollider = colliders.length, firstBlock = planeBlocks.length;
   let top = addTower(x, CURB, z, w, floors * 3, d, f, true);
 
@@ -596,19 +634,20 @@ function addCCTV(x, y, z, faceZ) {
 
 // A destroyed building sinks into the ground in a cloud of dust, hurts everything nearby,
 // and leaves rubble before construction officers secure and rebuild the site.
-function collapseBuilding(b) {
+function collapseBuilding(b,criminal=true) {
   if (!b.alive) return;
   const rebuild = reconstruction.begin(b, reconstructionDays);
   b.alive = false;
   const colliderIndex = colliders.indexOf(b.collider);
   if (colliderIndex >= 0) colliders.splice(colliderIndex, 1);
+  for(const c of b.extraColliders||[]){const i=colliders.indexOf(c);if(i>=0)colliders.splice(i,1);}
   for (const pb of b.blocks) { const i = planeBlocks.indexOf(pb); if (i >= 0) planeBlocks.splice(i, 1); }
   for (const m of b.meshes) { const i = camBlockers.indexOf(m); if (i >= 0) camBlockers.splice(i, 1); }
   const base = new THREE.Vector3(b.x, CURB, b.z), size = Math.max(b.w, b.d), H = b.top;
   impactFrame(1.5);
   callout('BUILDING DESTROYED', 0xff7a2f, true);
-  raiseWanted(90);
-  hitAround(base, size * 0.9, null, { dmg: 80, kb: 14, up: 8, stun: 2, heavy: true, impact: 1, guardBreak: true }, 60);
+  if(criminal)raiseWanted(90);
+  hitAround(base, size * 0.9, null, { dmg: 80, kb: 14, up: 8, stun: 2, heavy: true, impact: 1, guardBreak: true,police:!criminal,fromPlayer:criminal }, 60);
   if (!inCar && distXZ(player.position, base) < size) hurtPlayer(30, base, 15);
   reactBystanders(base, false); // raiseWanted(90) above already covers the crime
   const start = b.meshes.map(m => m.position.clone());
@@ -660,6 +699,7 @@ function addBench(x, z, rotY) {
 // (0,-1) and (-1,-1) are houses you can walk into.
 const residentialCells = [];
 for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
+  if(cz===-3&&[1,2,3].includes(cx)||cx===-4&&cz===2)continue;
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
   const isHome = cx === 0 && cz === 0, isPark = cx === -1 && cz === 0, isTraining = cx === 1 && cz === 0;
   const isResidential = cz === -1 && (cx === 0 || cx === -1);
@@ -668,7 +708,7 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
   pavement(x0, z0, isHome || isPark || isResidential ? lawnMat : isTraining ? sandMat : null);
   if (isResidential) residentialCells.push([x0, z0]);
   if (isHome || isPark || isTraining || isResidential || isPoliceCell || isSchoolCell) continue;
-  for (const [ox, oz] of [[-7.5, -7.5], [7.5, -7.5], [-7.5, 7.5], [7.5, 7.5]]) {
+  for (const [ox, oz] of [[-5.5, -5.5], [5.5, -5.5], [-5.5, 5.5], [5.5, 5.5]]) {
     if (rand() < 0.12) {   // small plaza instead of a building
       addTree(x0 + ox, z0 + oz, 1.1);
       addBench(x0 + ox + Math.sign(ox) * 3, z0 + oz, Math.sign(ox) > 0 ? -Math.PI / 2 : Math.PI / 2);
@@ -682,8 +722,8 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
 // STREET LAMPS (instanced so hundreds cost almost nothing)
 // =====================================================================
 const lampSpots = [];
-const LAMP_OFFSETS = [[-13, -13], [13, -13], [-13, 13], [13, 13],
-  [-5, -13], [5, -13], [-5, 13], [5, 13], [-13, -5], [-13, 5], [13, -5], [13, 5]];
+const LAMP_OFFSETS = [[-10.5, -10.5], [10.5, -10.5], [-10.5, 10.5], [10.5, 10.5],
+  [-5, -10.5], [5, -10.5], [-5, 10.5], [5, 10.5], [-10.5, -5], [-10.5, 5], [10.5, -5], [10.5, 5]];
 for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++)
   for (const [ox, oz] of LAMP_OFFSETS) lampSpots.push(new THREE.Vector3(cx * 40 + 20 + ox, 0, cz * 40 + 20 + oz));
 // Riverside and the Capital are outside the main town grid and had no lamps at
@@ -719,7 +759,7 @@ function addTrafficLight(x, z, faceY,baseY=0,phase=null) {
 const ROUNDABOUT_CELLS = new Set(['0,0', '-2,-2', '2,2', '-2,2']);
 for (let cx = -3; cx < 4; cx++) for (let cz = -3; cz < 4; cz++) {
   if (ROUNDABOUT_CELLS.has(cx + ',' + cz)) continue;   // roundabouts replace lights at a few intersections
-  addTrafficLight(cx * 40 - 6.5, cz * 40 - 6.5, Math.PI * 0.75);
+  addTrafficLight(cx * 40 - 9.5, cz * 40 - 9.5, Math.PI * 0.75);
 }
 for (const key of ROUNDABOUT_CELLS) {
   const [cx, cz] = key.split(',').map(Number);
@@ -728,7 +768,7 @@ for (const key of ROUNDABOUT_CELLS) {
   island.position.set(x, 0.15, z); scene.add(island);
   const grass = new THREE.Mesh(new THREE.CircleGeometry(3, 24), lawnMat);
   grass.rotation.x = -Math.PI / 2; grass.position.set(x, 0.32, z); scene.add(grass);
-  addTree(x, z, 1.3);
+  addTree(x, z, 1.3,true);
   colliders.push({ minX:x-3.5,maxX:x+3.5,minZ:z-3.5,maxZ:z+3.5,circleX:x,circleZ:z,circleRadius:3.5 });
   const apron=mesh(new THREE.CircleGeometry(9.5,48),0x3a3c40);apron.rotation.x=-Math.PI/2;apron.position.set(x,.17,z);apron.castShadow=false;
 }
@@ -747,16 +787,18 @@ const lanternMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: 0
 // but an InstancedMesh's capacity is fixed at construction — undersizing it
 // here meant those later lamps had no pole/lantern/cap instance at all, so
 // they never rendered and breakLamp() silently no-op'd past the real count.
+for(const p of lampSpots)if(p.z>=640&&p.z<=950)p.y=p.x>=120?.4:.2;
 const LAMP_CAPACITY = lampSpots.length + 220;
 const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.09, 4, 6), poleMat, LAMP_CAPACITY);
 const lanterns = new THREE.InstancedMesh(new THREE.BoxGeometry(0.32, 0.45, 0.32), lanternMat, LAMP_CAPACITY);
 const caps = new THREE.InstancedMesh(new THREE.ConeGeometry(0.32, 0.25, 4), poleMat, LAMP_CAPACITY);
 const dummyObj = new THREE.Object3D();
 function placeLampInstance(i, p) {
+  const baseY=p.y||CURB;
   dummyObj.rotation.set(0, 0, 0);
-  dummyObj.position.set(p.x, CURB + 2, p.z); dummyObj.updateMatrix(); poles.setMatrixAt(i, dummyObj.matrix);
-  dummyObj.position.y = CURB + 4.2; dummyObj.updateMatrix(); lanterns.setMatrixAt(i, dummyObj.matrix);
-  dummyObj.position.y = CURB + 4.55; dummyObj.rotation.y = Math.PI / 4; dummyObj.updateMatrix(); caps.setMatrixAt(i, dummyObj.matrix);
+  dummyObj.position.set(p.x, baseY + 2, p.z); dummyObj.updateMatrix(); poles.setMatrixAt(i, dummyObj.matrix);
+  dummyObj.position.y = baseY + 4.2; dummyObj.updateMatrix(); lanterns.setMatrixAt(i, dummyObj.matrix);
+  dummyObj.position.y = baseY + 4.55; dummyObj.rotation.y = Math.PI / 4; dummyObj.updateMatrix(); caps.setMatrixAt(i, dummyObj.matrix);
   poles.instanceMatrix.needsUpdate = lanterns.instanceMatrix.needsUpdate = caps.instanceMatrix.needsUpdate = true;
 }
 // Unused instance slots default to an identity matrix (visible at the world
@@ -770,7 +812,9 @@ lampSpots.forEach(placeLampInstance);
 // go through here instead of pushing lampSpots directly, so it actually gets
 // a pole/lantern/cap instance and can be broken like any other streetlight.
 function addLampSpot(x, y, z) {
-  const p = new THREE.Vector3(x, y, z);
+  const onBridge=Math.abs(x-BRIDGE_X)<BRIDGE_HALF_W&&z>=BRIDGE_Z0&&z<=BRIDGE_Z1&&Math.abs(y-BRIDGE_Y)<.1;
+  if(!onBridge){const safe=roadsidePosition(x,z);x=safe.x;z=safe.z;}
+  const p = new THREE.Vector3(x,onBridge?y:z>=640&&z<=950?(x>=120?.4:.2):(y||CURB),z);
   const i = lampSpots.length;
   lampSpots.push(p);
   if (i < LAMP_CAPACITY) placeLampInstance(i, p);
@@ -1712,8 +1756,8 @@ function toggleInventory(open) {
 const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
 player.position.copy(SPAWN);
 const DEFAULT_SPAWN=SPAWN.clone();
-const roomChat=createRoomChat({client:supabase,name:()=>playerUsername||'Player',pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
-const hosting=createHosting({client:supabase,onRoomJoined:room=>roomChat.start(room),onRoomLeft:()=>roomChat.stop(),toast,setSpawn(city){SPAWN.set(city.x,groundY(city.x,city.z),city.z);},resetSpawn(){SPAWN.copy(DEFAULT_SPAWN);}});
+const roomChat=createRoomChat({client:supabase,name:()=>playerUsername||'Player',alignment:playerAlignment,playerState:()=>({position:player.position.toArray(),yaw:player.rotation.y,classIndex:charIdx}),onPlayer:data=>onlinePlayers?.receive(data),onPlayerLeft:id=>onlinePlayers?.remove(id),onClearPlayers:()=>onlinePlayers?.clear(),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
+const hosting=createHosting({client:supabase,onRoomJoined:room=>roomChat.start(room),onRoomLeft:()=>roomChat.stop(),beforeRoomLeave:()=>onlineAccount?.save(),toast,setSpawn(city){SPAWN.set(city.x,groundY(city.x,city.z),city.z);},resetSpawn(){SPAWN.copy(DEFAULT_SPAWN);}});
 
 let vy = 0, onGround = true;
 const pvel = new THREE.Vector3();          // knockback velocity
@@ -1849,6 +1893,7 @@ function showAuthScreen() {
 }
 
 async function signOutAndReload() {
+  if(onlinePlayReady&&hosting.room)try{await onlineAccount.save();await hosting.prepareReload();}catch(e){toast('Could not save online progress: '+e.message);return;}
   // Guest progress is saved under guestId — clearing it here (as earlier code
   // did) orphaned that save permanently, since a guest has no account to log
   // back into and reclaim it. Leave it alone so "Continue" still finds it.
@@ -1895,7 +1940,8 @@ const CLASS_DEFS = [
   { key: 'time', name: 'Time', icon: '⏳', locked: true },
   ...Array.from({ length: 10 }, (_, i) => ({ key: 'soon' + i, name: '???', icon: '❔' })),
 ];
-function showClassSelect() {
+function showClassSelect(options={}) {
+  $('classSelect').querySelector('h1').textContent=options.online?'Choose Your Permanent Class':'Choose Your Elements';
   return new Promise(resolve => {
     $('classSelect').style.display = 'flex';
     const grid = $('classGrid');
@@ -1905,7 +1951,7 @@ function showClassSelect() {
         <div class="nm">${c.name}</div>
         <div class="st">${c.playable ? 'Ready' : c.locked ? 'Locked' : 'Coming soon'}</div>
       </div>`).join('');
-    let primary = null, secondary = null;
+    let primary = null, secondary = null,savingChoice=false;
     const refresh = () => {
       grid.querySelectorAll('.class-card').forEach(card => {
         const def = CLASS_DEFS[Number(card.dataset.i)];
@@ -1914,10 +1960,13 @@ function showClassSelect() {
       });
       $('classSub').textContent = !primary ? 'Pick a primary element, then a secondary — you can switch between the two in-game with T. Most are still being built; only ones marked ready can be picked.'
         : !secondary ? `Primary: ${primary.name}. Now pick a secondary element.` : `Primary: ${primary.name} · Secondary: ${secondary.name}`;
-      $('classConfirm').disabled = !(primary && secondary);
+      if(options.online)$('classSub').textContent=primary?'Online class: '+primary.name+'. This choice is permanent for your account.':'Choose one permanent online class. You cannot change it later.';
+      $('classConfirm').textContent=options.online?'Choose permanently':'Begin';
+      $('classConfirm').disabled = savingChoice||!(primary&&(options.online||secondary));
     };
     grid.querySelectorAll('.class-card').forEach(card => card.addEventListener('click', () => {
       const def = CLASS_DEFS[Number(card.dataset.i)];
+      if(savingChoice)return;if(options.online&&def.playable){primary=def;secondary=null;refresh();return;}
       if (!def.playable) { toast(def.locked ? `${def.name} is locked — complete a future quest to unlock it.` : `${def.name} isn't built yet — coming soon.`); return; }
       if (def === primary) { primary = secondary; secondary = null; }
       else if (def === secondary) { secondary = null; }
@@ -1927,10 +1976,9 @@ function showClassSelect() {
       refresh();
     }));
     refresh();
-    $('classConfirm').onclick = () => {
-      if (!primary || !secondary) return;
-      unlockedCharIndices = [primary.charIndex, secondary.charIndex];
-      charIdx = primary.charIndex;
+    $('classConfirm').onclick = async() => {
+      if(savingChoice||!primary||!options.online&&!secondary)return;
+      if(options.online){savingChoice=true;refresh();try{const account=await options.saveChoice(primary.charIndex);charIdx=account.class_index;unlockedCharIndices=[charIdx];}catch(e){savingChoice=false;refresh();$('classSub').textContent='Class was not saved: '+e.message;return;}}else{unlockedCharIndices=[primary.charIndex,secondary.charIndex];charIdx=primary.charIndex;}
       const c = characters[charIdx];
       P.mats.outfit.color.set(c.color);
       P.mats.hair.color.set(c.hair);
@@ -2026,10 +2074,10 @@ function saveSolo() {
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
-      stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
+      adventure:adventureServices?.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
       metro:metro?.snapshot(),sewer:sewers?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
-      questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
-      driving:inCar&&driving?{kind:driving.kind,name:driving.name,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
+      navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
+      driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
       dungeon:dungeon?{gate:{name:dungeon.gate.name,level:dungeon.gate.level,rank:dungeon.gate.rank,stars:dungeon.gate.stars,theme:dungeon.gate.theme,tier:dungeon.gate.tier,finalBoss:dungeon.gate.finalBoss,persistent:dungeon.gate.persistent},wave:dungeon.wave,waves:dungeon.waves,cleared:dungeon.cleared,nextT:dungeon.nextT,entryLevel:dungeon.entryLevel,secretBonus:dungeon.secretBonus,returnPos:dungeon.returnPos.toArray(),mobs:dungeon.mobs.map(m=>({type:m.type,level:m.level,hp:m.hp,alive:m.alive,position:m.root.position.toArray(),boss:m===dungeon.boss}))}:null,
       pos: { x: player.position.x, y: player.position.y, z: player.position.z }, yaw,
     }));
@@ -2054,10 +2102,14 @@ function applySoloSave(save) {
   if (typeof save.yaw === 'number') yaw = save.yaw;
   if(save.stats)Object.assign(stats,save.stats);if(Array.isArray(save.inventory))inventory=save.inventory;if(typeof save.hasBag==='boolean'){hasBag=save.hasBag;backpack.visible=hasBag;}
   if(Number.isFinite(save.dayTime))dayTime=save.dayTime;if(Number.isFinite(save.reconstructionDays))reconstructionDays=save.reconstructionDays;if(Number.isFinite(save.pitch))pitch=save.pitch;
+  supportSkills?.restore(save.support);if(save.supportCounters)supportCounters=save.supportCounters;specialUnlocked=!!supportSkills?.equipped;buildHotbar();
+  heroDungeonKills=save.heroDungeonKills||0;
   monsterQuestKills=save.monsterQuestKills||0;for(const q of cityLife?.quests||[]){const saved=save.questState?.find(s=>s.name===q.name);if(saved)Object.assign(q,saved);}
-  spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
+  navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
   if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
-  if(save.driving){const v=vehicles[save.driving.index]?.kind===save.driving.kind?vehicles[save.driving.index]:null;if(v&&!v.disabled){v.group.position.fromArray(save.driving.position);v.group.rotation.fromArray(save.driving.rotation);v.health=save.driving.health??v.health;v.speed=save.driving.speed||0;if(save.driving.alt!=null)v.alt=save.driving.alt;driving=v;inCar=true;v.ai=null;activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};}}
+  adventureServices?.restore(save.adventure);
+  cityServices?.restore(save.cityServices);
+  if(save.driving){const v=save.driving.ownedId?vehicles.find(v=>v.ownedId===save.driving.ownedId):vehicles[save.driving.index]?.kind===save.driving.kind?vehicles[save.driving.index]:null;if(v&&!v.disabled){v.group.position.fromArray(save.driving.position);v.group.rotation.fromArray(save.driving.rotation);v.health=save.driving.health??v.health;v.speed=save.driving.speed||0;if(save.driving.alt!=null)v.alt=save.driving.alt;driving=v;inCar=true;v.ai=null;activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};}}
   if(save.dungeon){const d=save.dungeon;dungeon={...d,returnPos:new THREE.Vector3().fromArray(d.returnPos),mobs:[],boss:null};applyTheme(d.gate.theme);for(const saved of d.mobs){if(!MONSTERS[saved.type])continue;const m=makeMonster(saved.type,saved.level,new THREE.Vector3().fromArray(saved.position));m.hp=saved.hp;m.alive=saved.alive;m.root.visible=saved.alive;m.respawn=saved.alive?0:Infinity;dungeon.mobs.push(m);if(saved.boss)dungeon.boss=m;}setGateColor(exitGate,d.cleared?0xffd166:0xffffff);}
 
 }
@@ -2088,7 +2140,10 @@ async function boot() {
   let session=null;
   if(navigator.onLine){try{const result=await Promise.race([supabase.auth.getSession(),new Promise(resolve=>setTimeout(()=>resolve(null),8000))]);session=result?.data?.session||null;}catch{}}
   const activeSession = navigator.onLine?(session||await showAuthScreen()):offlinePlayerSession();
-  playerUsername = activeSession.user.user_metadata?.username || null;
+  alignmentUserId=activeSession.user.id;try{const role=JSON.parse(localStorage.getItem('alignment:'+alignmentUserId));if(role){heroDungeonKills=role.heroDungeonKills||0;villainKills=role.villainKills||0;isVillain=villainKills>0;}}catch{}
+  playerUsername = activeSession.user.isGuest?(localStorage.getItem('lastPlayerName')||'Guest'):await requireUsername(supabase);
+  if(!activeSession.user.isGuest)localStorage.setItem('lastPlayerName',playerUsername);
+  try{const support=JSON.parse(localStorage.getItem('support:'+activeSession.user.id));if(support){supportSkills?.restore(support.skill);supportCounters=support.counters||supportCounters;monsterQuestKills=support.kills||monsterQuestKills;specialUnlocked=!!supportSkills?.equipped;buildHotbar();}}catch{}
   if (!activeSession.user.isGuest) supabase.from('logins').insert({ user_id: activeSession.user.id });
   const existingSave = loadSolo(activeSession.user.id);
   const restoringUpdate=sessionStorage.getItem('resumeAfterUpdate')===activeSession.user.id&&!!existingSave;sessionStorage.removeItem('resumeAfterUpdate');
@@ -2100,14 +2155,28 @@ async function boot() {
     clearSolo(activeSession.user.id);
     await runSpawnScreen(activeSession.user.id, false);
   }
-  if(mode==='host'||mode==='join'){await runSpawnScreen(activeSession.user.id,true);player.position.copy(SPAWN);}
+  if(mode==='host'||mode==='join'){
+    let account=await onlineAccount.load();
+    origin={roll:null,family:null,backstory:null,stats:{confidence:50,peace:50,karma:50,wisdom:50},perk:null,wealthTier:'working',housing:'Online resident',startingGold:150,maxHealth:100,weapon:null};
+    stats.gold=150;stats.hp=maxHp();
+    if(!account){await showClassSelect({online:true,saveChoice:index=>onlineAccount.claim(index)});account=onlineAccount.account;}
+    charIdx=account.class_index;unlockedCharIndices=[charIdx];const c=characters[charIdx];P.mats.outfit.color.set(c.color);P.mats.hair.color.set(c.hair);swordGrip.visible=false;
+    const onlineSave=account.progress||{};
+    if(onlineSave.prog)Object.assign(prog,onlineSave.prog);if(onlineSave.stats)Object.assign(stats,onlineSave.stats);
+    inventory=Array.isArray(onlineSave.inventory)?onlineSave.inventory:inventory;hasBag=onlineSave.hasBag??true;backpack.visible=hasBag;
+    supportSkills.restore(onlineSave.support);supportCounters=onlineSave.supportCounters||{dungeons:0,bosses:0};monsterQuestKills=onlineSave.monsterQuestKills||0;
+    heroDungeonKills=onlineSave.heroDungeonKills||0;villainKills=onlineSave.villainKills||0;isVillain=villainKills>0;specialUnlocked=!!supportSkills.equipped;
+    adventureServices.restore(onlineSave.adventure);cityServices.restore({owned:onlineSave.ownedCars||[]});for(const q of cityLife.quests){const state=onlineSave.quests?.find(s=>s.name===q.name);if(state)Object.assign(q,state);}
+    saveAlignment();persistSupportProgress();buildHotbar();player.position.copy(SPAWN);
+  }
   if (mode === 'continue' || mode === 'new') { soloMode = true; soloUserId = activeSession.user.id;localStorage.setItem('lastSoloPlayer',soloUserId); }
   window.addEventListener('beforeunload', saveSolo);
   window.addEventListener('pagehide',saveSolo);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)saveSolo();});
+  onlinePlayReady=mode==='host'||mode==='join';
   $('start').style.display = 'flex';
 }
-addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await hosting.prepareReload();}})());});
+addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();}})());});
 boot();
 const maxHp = () => (origin?.maxHealth ?? 100) + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
@@ -2121,7 +2190,7 @@ const drainMul = () => (origin ? 1.6 - origin.roll * 0.1 : 1) * (isHomeless() ? 
 const defMul = () => 1 / (1 + prog.def * 0.06);
 const psyDmg = () => 10 + prog.men * 4;
 const psyCdMax = () => Math.max(4, 9 - prog.men * 0.3);
-const speedMul = () => (1 + prog.agi * 0.06) * CHEAT_SPEED_MULT;
+const speedMul = () => (1 + prog.agi * 0.06) * CHEAT_SPEED_MULT*(supportSkills?.speedMultiplier||1);
 // A weak start (low birth-roll confidence) hits for less; a strong one hits harder.
 // confidence 0 -> 0.5x, confidence 55 (no origin yet) -> ~1x, confidence 100 -> 1.5x.
 // Fighting bare-handed (no starting weapon) hits for 35% less than fighting armed.
@@ -2235,6 +2304,7 @@ function makeVehicle(kind, color) {
   }
   const v = { kind, group: g, wheels, speed: 0, radius: isBus ? 2.6 : 1.8, length: L,
               maxSpeed: isBus ? 24 : kind === 'police' || kind === 'ambulance' ? 85 : 75, ai: null, passengers: isBus ? [] : null };
+  if(kind==='car'||kind==='police')detailVehicle(v,kind==='police'?'police':'standard');
   vehicles.push(v);
   return v;
 }
@@ -2325,6 +2395,7 @@ for (let i = 0; i < 3; i++) {
   add(new THREE.BoxGeometry(0.25, 3.2, 2.4), planeTailMat, 0, 1.8, -7);
   const light = add(new THREE.SphereGeometry(0.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3333, fog: false }), 0, 3.5, -7.5);
   scene.add(g);
+  g.position.set(-665-i*26,1,-30);g.rotation.y=Math.PI/2;
   planes.push({ g, light, r: 160 + i * 50, h: 100 + i * 25, a: i * 2.1, spd: (0.05 + i * 0.01) * (i % 2 ? -1 : 1) });
 }
 // =====================================================================
@@ -2396,16 +2467,17 @@ function signboard(text, x, y, z, width = 10, colour = '#15364a') {
     box(1.4, 15, 1.4, BRIDGE_X + side * 4, BRIDGE_Y - 7.5, z, 0x6d6d6d, false);
   signboard('RIVER BRIDGE — MERGE AHEAD', BRIDGE_X, BRIDGE_Y + 2.2, BRIDGE_Z0 - 3, 10);
 }
-const BRIDGE_CYCLE = 90, BRIDGE_RAISE_TIME = 4, BRIDGE_STAY_UP = 16, BRIDGE_MAX_ANGLE = Math.PI / 3.2;
+const BRIDGE_CYCLE = 90, BRIDGE_RAISE_TIME = 4, BRIDGE_STAY_UP = 16, BRIDGE_MAX_ANGLE = Math.PI / 2.15;
 function updateBridgeLift(dt) {
   bridgeLiftT += dt;
-  if (bridgeLiftState === 'down' && bridgeLiftT > BRIDGE_CYCLE) { bridgeLiftState = 'raising'; bridgeLiftT = 0; toast('A ship is approaching — the bridge is raising!'); }
+  if (bridgeLiftState === 'down' && (ships.concat(vehicles.filter(v=>v.kind==='boat').map(v=>({x:v.group.position.x,z:v.group.position.z,length:v.length}))).some(s=>shipNeedsBridge(s,BRIDGE_X,GAP0,GAP1))||navy?.vessels.some(v=>v.depth<5&&shipNeedsBridge({x:v.g.position.x,z:v.g.position.z,length:v.length},BRIDGE_X,GAP0,GAP1)))) { bridgeLiftState = 'raising'; bridgeLiftT = 0; toast('A ship is approaching — the bridge is raising!'); }
   else if (bridgeLiftState === 'raising' && bridgeLiftT > BRIDGE_RAISE_TIME) { bridgeLiftState = 'up'; bridgeLiftT = 0; }
-  else if (bridgeLiftState === 'up' && bridgeLiftT > BRIDGE_STAY_UP) { bridgeLiftState = 'lowering'; bridgeLiftT = 0; }
+  else if (bridgeLiftState === 'up' && bridgeLiftT > BRIDGE_STAY_UP && !ships.concat(vehicles.filter(v=>v.kind==='boat').map(v=>({x:v.group.position.x,z:v.group.position.z,length:v.length}))).some(s=>shipNeedsBridge(s,BRIDGE_X,GAP0,GAP1))&&!navy?.vessels.some(v=>v.depth<5&&shipNeedsBridge({x:v.g.position.x,z:v.g.position.z,length:v.length},BRIDGE_X,GAP0,GAP1))) { bridgeLiftState = 'lowering'; bridgeLiftT = 0; }
   else if (bridgeLiftState === 'lowering' && bridgeLiftT > BRIDGE_RAISE_TIME) { bridgeLiftState = 'down'; bridgeLiftT = 0; toast('The bridge has lowered — the road is clear.'); }
   bridgeLiftAngle = bridgeLiftState === 'raising' ? (bridgeLiftT / BRIDGE_RAISE_TIME) * BRIDGE_MAX_ANGLE
     : bridgeLiftState === 'up' ? BRIDGE_MAX_ANGLE
     : bridgeLiftState === 'lowering' ? (1 - bridgeLiftT / BRIDGE_RAISE_TIME) * BRIDGE_MAX_ANGLE : 0;
+  for(const b of liftPlaneBlocks){b.top=BRIDGE_Y+Math.sin(bridgeLiftAngle)*8+.4;if(b.side===1)b.maxZ=GAP0+Math.cos(bridgeLiftAngle)*8;else b.minZ=GAP1-Math.cos(bridgeLiftAngle)*8;}
   if (bridgeLeafNorth) { bridgeLeafNorth.rotation.x = -bridgeLiftAngle; bridgeLeafSouth.rotation.x = bridgeLiftAngle; }
   const warn = bridgeLiftState !== 'down';
   const pulse = warn ? 0.5 + Math.sin(performance.now() / 150) * 0.5 : 0;
@@ -2428,6 +2500,7 @@ function updateBridgeLift(dt) {
 // green read too much like the sea from a distance).
 const marbleMat = new THREE.MeshStandardMaterial({ color: 0xe4ddc9, roughness: 0.55 });
 for (let cx = -2; cx <= 1; cx++) for (let cz = 16; cz <= 18; cz++) {
+  if(cz===18&&[-2,-1,1].includes(cx)||cx===1&&cz===16)continue;
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
   pavement(x0, z0, marbleMat);
   for (const [ox, oz] of [[-5.5, -5.5], [5.5, -5.5], [-5.5, 5.5], [5.5, 5.5]]) {
@@ -2454,6 +2527,7 @@ signboard('RIVERSIDE ESTATES — PRIVATE', BRIDGE_X, BRIDGE_Y + 2.4, RIVERSIDE_Z
 // =====================================================================
 const CAPITAL_CX = (CAPITAL_X0 + CAPITAL_X1) / 2, CAPITAL_CZ = (CAPITAL_Z0 + CAPITAL_Z1) / 2;
 for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++) {
+  if(cz===22&&[3,4,5].includes(cx)||cx===10&&cz===20)continue;
   const x0 = cx * 40 + 20, z0 = cz * 40 + 20;
   if(x0===300&&z0===900)continue;
   if(x0===420&&[700,740].includes(z0))continue;
@@ -2682,35 +2756,16 @@ const firefighters = [];
 // each edge, plus two short angled barbed-wire strands on every post. `gate`
 // (optional) leaves a gap in one edge for a vehicle/pedestrian entrance.
 const fenceWireMat = new THREE.MeshStandardMaterial({ color: 0x8a949e, transparent: true, opacity: 0.3, side: THREE.DoubleSide, roughness: 0.6 });
-function fenceRect(x0, x1, z0, z1, { postSpacing = 4, h = 2.6, gate = null } = {}) {
-  const edges = [
-    { a0: x0, a1: x1, fixed: z0, axis: 'x', side: 'z0' },
-    { a0: x0, a1: x1, fixed: z1, axis: 'x', side: 'z1' },
-    { a0: z0, a1: z1, fixed: x0, axis: 'z', side: 'x0' },
-    { a0: z0, a1: z1, fixed: x1, axis: 'z', side: 'x1' },
-  ];
-  for (const e of edges) {
-    const n = Math.max(2, Math.round((e.a1 - e.a0) / postSpacing));
-    for (let i = 0; i <= n; i++) {
-      const t = e.a0 + (e.a1 - e.a0) * i / n;
-      if (gate && gate.side === e.side && t > gate.from && t < gate.to) continue; // gap for the gate
-      const px = e.axis === 'x' ? t : e.fixed, pz = e.axis === 'x' ? e.fixed : t;
-      box(0.12, h, 0.12, px, h / 2, pz, 0x333333, false);
-      for (const a of [0.5, -0.5]) { const b = box(0.55, 0.05, 0.05, px, h + 0.06, pz, 0x1a1a1a, false); b.rotation.y = a; }
-    }
-    const midx = e.axis === 'x' ? (e.a0 + e.a1) / 2 : e.fixed, midz = e.axis === 'x' ? e.fixed : (e.a0 + e.a1) / 2, len = e.a1 - e.a0;
-    for (const ry of [0.5, 1.4, 2.3]) {
-      if (e.axis === 'x') box(len, 0.04, 0.04, midx, ry, midz, 0x3a3a3a, false);
-      else box(0.04, 0.04, len, midx, ry, midz, 0x3a3a3a, false);
-    }
-    const fab = mesh(new THREE.PlaneGeometry(len, h), fenceWireMat); fab.castShadow = false; fab.receiveShadow = false;
-    fab.position.set(midx, h / 2, midz); if (e.axis === 'z') fab.rotation.y = Math.PI / 2;
-    if (gate && gate.side === e.side) { // two short gate wings + pillars either side of the opening
-      const gc0 = gate.from, gc1 = gate.to;
-      for (const gc of [gc0, gc1]) box(0.3, h + 0.4, 0.3, e.axis === 'x' ? gc : e.fixed, (h + 0.4) / 2, e.axis === 'x' ? e.fixed : gc, 0x1b1b1b, false);
-    }
-  }
+function fenceRect(x0,x1,z0,z1,{postSpacing=4,h=2.6,gate=null}={}){
+ for(const [side,x1a,z1a,x2a,z2a]of [['z0',x0,z0,x1,z0],['z1',x0,z1,x1,z1],['x0',x0,z0,x0,z1],['x1',x1,z0,x1,z1]])for(const span of fenceSegments(x1a,z1a,x2a,z2a,gate?.side===side?[gate.from,gate.to]:null)){
+  const len=Math.hypot(span.x2-span.x1,span.z2-span.z1),alongX=Math.abs(span.x2-span.x1)>.1,mx=(span.x1+span.x2)/2,mz=(span.z1+span.z2)/2;
+  for(let d=0;d<=len;d+=len/Math.max(1,Math.ceil(len/postSpacing)))box(.12,h,.12,span.x1+(span.x2-span.x1)*d/len,h/2,span.z1+(span.z2-span.z1)*d/len,0x454c50,false);
+  for(const y of [.5,1.4,2.3])box(alongX?len:.04,.04,alongX?.04:len,mx,y,mz,0x596468,false);
+  const fabric=mesh(new THREE.PlaneGeometry(len,h),fenceWireMat);fabric.position.set(mx,h/2,mz);if(!alongX)fabric.rotation.y=Math.PI/2;fabric.castShadow=false;
+  const collider={minX:Math.min(span.x1,span.x2)-.12,maxX:Math.max(span.x1,span.x2)+.12,minZ:Math.min(span.z1,span.z2)-.12,maxZ:Math.max(span.z1,span.z2)+.12};colliders.push(collider);planeBlocks.push({...collider,bottom:0,top:h});
+ }
 }
+
 function buildWatchtower(x, z) {
   const legH = 7, topY = legH, platW = 3.2;
   for (const [ox, oz] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]]) box(0.25, legH, 0.25, x + ox, legH / 2, z + oz, 0x4a4a4a, false);
@@ -2933,15 +2988,20 @@ for (let i = 0; i < 3; i++) {
   if (big) for (let c = 0; c < 6; c++) mesh(new THREE.BoxGeometry(7, 2.4, 5), pick(AWNING_COLORS), g).position.set(0, 3.9 + (c % 2) * 2.4, -8 + Math.floor(c / 2) * 7);
   else mesh(new THREE.BoxGeometry(6, 2.5, 18), 0xf5f6fa, g).position.set(0, 3.9, 5);
   scene.add(g);
-  ships.push({ g,length:big?46:30, z: 360 + i * 60, x: -250 + i * 200, spd: (5 + i * 1.5) * (i % 2 ? -1 : 1) });
+  g.position.set(-220,0,300+i*42);g.rotation.y=Math.PI/2;
+  ships.push({g,length:big?46:30,z:300+i*42,x:-220,spd:5+i*1.5,home:new THREE.Vector2(-220,300+i*42),routeIndex:0});
 }
+let activeShipIndex=0,shipDockWait=20;
+function navigableSea(x,z){if(Math.abs(x-BRIDGE_X)<BRIDGE_HALF_W&&z>=GAP0&&z<=GAP1)return true;return isSeaWater(x,z,-10);}
 function updateShips(dt) {
   const t = performance.now() / 1000;
-  for (const s of ships) {
-    const next=s.x+s.spd*dt,heading=s.spd>0?Math.PI/2:-Math.PI/2;
-    if(waterFootprint(next,s.z,heading,s.length||46,9,isSeaWater))s.x=next;else s.spd*=-1;
+  shipDockWait=Math.max(0,shipDockWait-dt);
+  for (const [i,s] of ships.entries()) {
+    let heading=s.g.rotation.y;
+    if(i===activeShipIndex&&shipDockWait===0){const route=[[-220,408],[180,408],[-220,408],[s.home.x,s.home.y]],target=route[s.routeIndex],dx=target[0]-s.x,dz=target[1]-s.z,d=Math.hypot(dx,dz);heading=Math.atan2(dx,dz);const step=Math.min(d,s.spd*dt),nx=s.x+dx/Math.max(d,.001)*step,nz=s.z+dz/Math.max(d,.001)*step;
+      if(shipCanAdvance(s,nx,BRIDGE_X,GAP0,GAP1,bridgeLiftAngle)&&waterFootprint(nx,nz,heading,s.length,9,navigableSea)){s.x=nx;s.z=nz;}if(d<.1){s.routeIndex++;if(s.routeIndex===route.length){s.routeIndex=0;activeShipIndex=(activeShipIndex+1)%ships.length;shipDockWait=45;}}}
     s.g.position.set(s.x, Math.sin(t + s.z) * 0.15, s.z);
-    s.g.rotation.set(Math.sin(t * 0.7 + s.x) * 0.01, s.spd > 0 ? Math.PI / 2 : -Math.PI / 2, Math.sin(t * 0.8) * 0.02);
+    s.g.rotation.set(Math.sin(t * 0.7 + s.x) * 0.01,heading,Math.sin(t * 0.8) * 0.02);
   }
 }
 
@@ -3033,9 +3093,9 @@ boat.group.position.set(PIER.x + 4, 0, 195);
       return;
     }
     const next=ferry.group.position.clone().addScaledVector(delta.normalize(),Math.min(dist,9*dt));
-    if(!waterFootprint(next.x,next.z,Math.atan2(delta.x,delta.z),5,2.2,isSeaWater)){return;}
+    if(!shipCanAdvance({x:ferry.group.position.x,z:ferry.group.position.z,length:5},next.x,BRIDGE_X,GAP0,GAP1,bridgeLiftAngle)||!waterFootprint(next.x,next.z,Math.atan2(delta.x,delta.z),5,2.2,navigableSea)){return;}
     ferry.group.position.copy(next);
-    ferry.group.rotation.y = Math.atan2(delta.x, delta.z) - Math.PI / 2;
+    ferry.group.rotation.y = Math.atan2(delta.x, delta.z);
   } });
 }
 
@@ -3086,7 +3146,7 @@ function makeAircraft(a) {
   const yaw0 = 0;
   g.position.set(a.home[0], 0, a.home[1]);
   g.rotation.y = yaw0;
-  const v = { kind: 'plane', name: a.name, group: g, wheels: [], speed: 0, radius: 3.5, length: 8 * s, maxSpeed: a.maxSpeed,
+  const v = { kind: 'plane', name: a.name, group: g, wheels: [], speed: 0, radius: 3.5, wingSpan:20*s,length: 8 * s, maxSpeed: a.maxSpeed,
     takeoff: a.takeoff, turnRate: a.turn, ai: null, passengers: null, alt: 0, crashed: false, prop, exhaust,
     plane: { throttle: 0, pitch: 0, roll: 0, yaw: yaw0 }, home: { x: a.home[0], z: a.home[1], yaw: yaw0 } };
   vehicles.push(v);
@@ -3146,26 +3206,29 @@ function flyPlane(v, dt) {
   if (!airborne && P.pitch < 0) P.pitch = 0;
   P.yaw += turn * v.turnRate * dt * (airborne ? 1 : 0.5) * Math.min(1, v.speed / 10);
   P.roll = lerp(P.roll, airborne ? -turn * 0.6 : 0, 1 - Math.exp(-3 * dt));
+  rollAircraft(P,mine?((keys.KeyQ?1:0)-(keys.KeyR?1:0)):0,airborne,dt);
+  if(airborne&&P.stuntRoll)P.yaw+=Math.sin(P.stuntRoll)*.15*dt;
   // Fly back towards the city if you reach the edge of the map
-  if (Math.abs(p.x) > 880 || Math.abs(p.z) > 880) P.yaw = lerpAngle(P.yaw, Math.atan2(-p.x, -p.z), 1 - Math.exp(-1.5 * dt));
+  if (Math.abs(p.x) > 13000 || Math.abs(p.z) > 13000) P.yaw = lerpAngle(P.yaw, Math.atan2(-p.x, -p.z), 1 - Math.exp(-1.5 * dt));
 
-  const climb = Math.sin(P.pitch) * v.speed * lift * 0.6 - (airborne ? (1 - lift) * 8 : 0);
+  const climb = Math.sin(P.pitch) * v.speed * lift * 0.6 - (airborne ? (1 - lift) * 8+(1-Math.cos(P.roll+(P.stuntRoll||0)))*3 : 0);
   v.alt = Math.min(300, v.alt + climb * dt);
   p.x += Math.sin(P.yaw) * Math.cos(P.pitch) * v.speed * dt;
   p.z += Math.cos(P.yaw) * Math.cos(P.pitch) * v.speed * dt;
   const g2 = groundY(p.x, p.z);
   if (v.alt <= g2) {   // touching the ground: a hard or tilted landing is a crash
-    if (airborne && (climb < -12 || Math.abs(P.roll) > 0.5)) return crashPlane(v);
+    if (airborne && (climb < -12 || Math.abs(Math.atan2(Math.sin(P.roll+(P.stuntRoll||0)),Math.cos(P.roll+(P.stuntRoll||0)))) > 0.5)) return crashPlane(v);
     v.alt = g2;
     P.pitch = Math.max(0, P.pitch);
   }
   p.y = v.alt;
-  if (planeBlocks.some(b => p.x > b.minX && p.x < b.maxX && p.z > b.minZ && p.z < b.maxZ && v.alt < b.top)) return crashPlane(v);
+  const planeRadius=v.wingSpan? v.wingSpan/2:5;
+  if ((airborne||Math.abs(v.speed)>2)&&planeBlocks.some(b=>p.x+planeRadius>b.minX&&p.x-planeRadius<b.maxX&&p.z+planeRadius>b.minZ&&p.z-planeRadius<b.maxZ&&v.alt+1.2>(b.bottom??0)&&v.alt-1.2<b.top))return crashPlane(v);
   if (v.alt < 6 && collide(p, 2.5)) {
     if (airborne || v.speed > 20) return crashPlane(v);
     v.speed *= 0.2;
   }
-  v.group.rotation.set(-P.pitch, P.yaw, P.roll);
+  v.group.rotation.set(-P.pitch, P.yaw, P.roll+(P.stuntRoll||0));
   if (v.prop) v.prop.rotation.z += (5 + v.speed) * dt * 3;
   if (v.exhaust) v.exhaust.scale.setScalar(0.5 + P.throttle);
   if (mine && airborne && Math.random() < 0.6) spawnParticle(at(p, 1.2).addScaledVector(fwdOf(v.group), -v.length * 0.6), randUnit().multiplyScalar(0.5), 0xffffff, 0.25, 0.8);
@@ -3189,8 +3252,9 @@ adBanner.tex = new THREE.CanvasTexture(adBanner.canvas);
 const AD_MESSAGES = ['VISIT THE CORNER CAFÉ', 'ANOTHERWORLD — YOUR STORY AWAITS', 'FRESH BREAD DAILY', 'JOIN A DUNGEON TODAY', 'NEW ELEMENTS COMING SOON'];
 let adBalloonA = 0;
 function updateAdBalloon(dt) {
+  if(worldAdvertising){worldAdvertising.update(dt);return;}
   adBalloonA += dt * 0.04;
-  adBalloon.position.set(Math.cos(adBalloonA) * 150, 70 + Math.sin(adBalloonA * 2) * 8, Math.sin(adBalloonA) * 150);
+  adBalloon.position.set(Math.cos(adBalloonA) * 150, 36 + Math.sin(adBalloonA * 2) * 3, Math.sin(adBalloonA) * 150);
   adBalloon.rotation.y = adBalloonA + Math.PI / 2;
   if (performance.now() < adBanner.nextDraw) return;
   adBanner.nextDraw = performance.now() + 5000;
@@ -3202,12 +3266,8 @@ function updateAdBalloon(dt) {
 }
 
 function updatePlanes(dt) {
-  for (const p of planes) {
-    p.a += p.spd * dt;
-    const dirSign = Math.sign(p.spd);
-    p.g.position.set(Math.cos(p.a) * p.r, p.h, Math.sin(p.a) * p.r);
-    p.g.rotation.set(0, Math.atan2(-Math.sin(p.a) * dirSign, Math.cos(p.a) * dirSign), -0.25 * dirSign);
-    p.light.visible = performance.now() % 1000 < 150;
+  for (const [i,p] of planes.entries()) {
+    p.g.position.set(-665-i*26,1,-30);p.g.rotation.set(0,Math.PI/2,0);p.light.visible=false;
   }
 }
 
@@ -3221,6 +3281,7 @@ function makeEnemy(o) {
     respawn: 0, guard: 0, blocking: false, lastHit: 99, carCd: 0, label: null,
   }, o);
   e.hp = e.maxHp;
+  if(e.kind==='npc'&&!e.home)e.home=e.root.position.clone();
   if (o.labelName) e.label = makeLabel(o.labelName, o.kind === 'defence');
   enemies.push(e);
   return e;
@@ -3234,7 +3295,7 @@ function applyHit(e, h) {
   const dir = new THREE.Vector3(p.x - h.from.x, 0, p.z - h.from.z);
   if (dir.lengthSq() < 1e-4) dir.copy(fwdOf(player));
   dir.normalize();
-  let dmg = h.dmg * dmgMul();
+  let dmg = h.dmg * dmgMul()*(h.fromPlayer!==false&&!h.police?(supportSkills?.damageMultiplier||1):1);
   e.lastHit = 0;
 
   // Blocking: only works against hits from the front
@@ -3302,6 +3363,7 @@ function applyHit(e, h) {
 }
 
 function killEnemy(e) {
+  if(e.npcRaid){e.alive=false;e.hp=0;e.root.visible=false;e.respawn=Infinity;return;}
   if (e.kind === 'standing') {           // the standing dummy never dies
     e.hp = e.maxHp;
     popText(at(e.root.position, 2.6), 'RESET', 'info');
@@ -3325,13 +3387,15 @@ function killEnemy(e) {
     popText(at(e.root.position, e.height + 0.6), `+${gold} gold`, 'info');
     gainXp(e.animal === 'lion' ? 30 : 12);
   } else if (e.kind === 'monster') {
-    monsterQuestKills++;
+    if(dungeon){heroDungeonKills++;saveAlignment();}
+    monsterQuestKills++;persistSupportProgress();
     e.respawn = Infinity;   // dungeon monsters stay dead
     e.root.visible = false;
     const c = at(e.root.position, e.height * 0.5);
     const col = e.mdef.horns ? [0xff4020, 0x2a0606, 0xffb02e] : [0xffe08a, 0xffffff, 0xfff2c0];
     burst(c, 40, col, 10, 0.2, 0.7, 2);
     fxSphere(c, col[0], 2.5 * e.mdef.scale, 0.35);
+    if(e.type==='venomSovereign'&&dungeon?.gate.finalBoss){supportCounters.bosses++;persistSupportProgress();}
     const bonus=e.type==='venomSovereign'&&dungeon?.gate.finalBoss?poisonBossMultiplier(dungeon.entryLevel,prog.level):1;
     if(bonus===20){dungeon.secretBonus=true;toast('Secret victory: level 50 Sovereign defeat. Rewards multiplied by 20!');}
     const xp = bonus*Math.round(e.mdef.xp * (1 + e.level * 0.2));
@@ -3346,6 +3410,7 @@ function killEnemy(e) {
     dispatchDeathAmbulance(e);
     gainXp(10);
     villainKills++; localStorage.setItem('villainKills', String(villainKills));
+    saveAlignment();
     if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); }
     const n = randomCorner();   // comes back later somewhere else in town
     e.spot = cornerPos(n);
@@ -3632,7 +3697,7 @@ const PED_OUTFITS = [0x2e86de, 0xe17055, 0x6c5ce7, 0x00b894, 0xfdcb6e, 0xd63031,
 const PED_HAIR = [0x2d1b0e, 0x4a2c17, 0x111111, 0xc8a165, 0x8e3b1f, 0xdddddd];
 const PED_SKIN = [0xffdcc0, 0xf1c27d, 0xc68642, 0x8d5524, 0xe0ac69];
 const PED_PANTS = [0x2d3142, 0x34495e, 0x1e272e, 0x6d4c41, 0x2f3640];
-const SIDE = 13;
+const SIDE = 11;
 const HIDDEN = new THREE.Vector3(9999, -500, 9999);
 const cornerPos = n => new THREE.Vector3(n.bx * 40 + 20 + n.sx * (n.bz>=16?11:SIDE), CURB, n.bz * 40 + 20 + n.sz * (n.bz>=16?11:SIDE));
 // Block-grid bounds pedestrians are allowed to wander within. Main town is the
@@ -3757,6 +3822,8 @@ function updatePed(e, dt) {
       }
       break;
     }
+    case 'chat': {animateHumanoid(e.h,null,false,false,e.onGround,dt);break;}
+    case 'personalCall': {s.reactT-=dt;animateHumanoid(e.h,'phone',false,false,e.onGround,dt);if(s.reactT<=0)s.state='wander';break;}
     case 'call': case 'record': {
       s.reactT -= dt;
       if (s.lookAt) e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(s.lookAt.x - p.x, s.lookAt.z - p.z), 1 - Math.exp(-4 * dt));
@@ -3895,8 +3962,9 @@ function updateLabels() {
 // PLAYER COMBAT
 // =====================================================================
 function hurtPlayer(dmg, from, kb) {
-  if (iFrames > 0 || inCar) return;
-  dmg *= defMul();
+  if(inCar&&driving){monsterEnvironmentDamage(driving.group.position,dmg,2);return;}
+  if (iFrames > 0) return;
+  dmg *= defMul()*(supportSkills?.defenseMultiplier||1)*(adventureServices?.armour||1);
   // High defense can knock dmg down near zero; it still rounded to "0" in the
   // taken-damage popup along with a full flash/stun/knockback for nothing.
   if (dmg < 0.5) return;
@@ -3927,14 +3995,14 @@ function hitVehicles(center, range, hits, h, maxDy, dir = null, minDot = -1) {
     const delta = v.group.position.clone().sub(center).setY(0), distance = delta.length();
     if (distance > range + v.radius || Math.abs(v.group.position.y + 0.8 - center.y) > maxDy) continue;
     if (dir && distance > 0.6 && delta.normalize().dot(dir) < minDot) continue;
-    hits?.add(v); damageVehiclePower(v, Number(h.dmg) || 0, center); count++;
+    hits?.add(v); damageVehiclePower(v, Number(h.dmg) || 0, center,!h.police&&h.fromPlayer!==false); count++;
   }
   return count;
 }
 function damageVehiclePower(v, damage, from, criminal = true) {
   if (!isRoadVehicle(v) || v.exploded || !Number.isFinite(damage) || damage <= 0) return;
   if (criminal) raiseWanted(v.kind === 'police' ? 120 : 60);
-  v.health = Math.max(0, (v.health ?? 100) - damage);
+  v.health = Math.max(0, (v.health ?? 100) - damage);applyVehicleCondition(v);
   burst(at(v.group.position, 0.8), 8, [0xffcc66, 0x777777], 4, 0.1, 0.3, 8, 1);
   if (v.health === 0) explodeVehicle(v, criminal);
 }
@@ -4008,42 +4076,7 @@ function dispatchTowTruck(v) {
 // "Take me home" drives it to SPAWN on its own and drops you off. A basic,
 // honest first version — not a full pick-any-destination service yet.
 // =====================================================================
-function buildTaxi() {
-  const rank = new THREE.Vector3(80, 0, -20);
-  const v = makeVehicle('car', 0xf6c80a);
-  v.group.position.copy(rank); v.ai = null; v.noSteal = true;
-  signboard('TAXI RANK', rank.x, 2.6, rank.z - 3, 7, '#8a6b00');
-  const st = { riding: false };
-  const boardInteract = { pos: rank.clone(), r: 2.5, label: 'Board the taxi', action: () => {
-    if (st.riding) { st.dropoff = true; toast('Heading home...'); return; }
-    if (riding || inCar || sitting) { toast("Finish what you're doing first."); return; }
-    st.riding = true; player.visible = false;
-    toast('Aboard the taxi. Use Interact again to head home.');
-  } };
-  interactables.push(boardInteract);
-  addTask({ dur: 1e9, update(dt) {
-    if (st.riding) {
-      player.position.copy(v.group.position);
-      boardInteract.pos.copy(v.group.position);
-      boardInteract.label = 'Take me home';
-      if (st.dropoff) {
-        const dir = new THREE.Vector3(SPAWN.x - v.group.position.x, 0, SPAWN.z - v.group.position.z), d = dir.length();
-        if (d < 3) {
-          st.riding = false; st.dropoff = false;
-          player.position.set(SPAWN.x + 2, 0, SPAWN.z); player.position.y = groundY(player.position.x, player.position.z);
-          player.visible = true;
-          boardInteract.pos.copy(rank); boardInteract.label = 'Board the taxi';
-          toast("You're home. Fare's on the house.");
-        } else {
-          dir.normalize(); v.group.position.addScaledVector(dir, 11 * dt);
-          v.group.rotation.y = lerpAngle(v.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
-          v.group.position.y = groundY(v.group.position.x, v.group.position.z);
-        }
-      }
-    } else boardInteract.label = 'Board the taxi';
-  } });
-}
-buildTaxi();
+// Taxi service is provided in every city by city-services.js.
 
 // Hit everything within r of center. Returns how many were hit.
 function hitAround(center, r, hits, h, maxDy = 3) {
@@ -4119,11 +4152,12 @@ function aimMelee() {
   return fwdOf(player);
 }
 
-function canAct() { return !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
+function canAct() { return !navy?.rider && !intercityRail?.rider && !cityServices?.rider && !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
 
 // ---- M1: 4-hit combo, the last hit is a heavy knockback with an impact frame ----
 function m1() {
   if (!canAct() || m1Cd > 0 || playerBlocking) return;
+  if(adventureServices?.equipped){m1Cd=.35;adventureServices.attack();return;}
   const now = performance.now() / 1000;
   comboIdx = now - lastM1 < 0.9 ? (comboIdx + 1) % 4 : 0;
   lastM1 = now;
@@ -4243,7 +4277,8 @@ function updateProjectiles(dt) {
 // ---- Psychic Grip (R): lift targets with your mind, then hurl them. Scales with Mental. ----
 const PSY = [0xb388ff, 0x7c4dff, 0xe1bee7, 0xffffff];
 let psyCd = 0;
-function psychicGrip() {
+function psychicGrip(){if(!canAct())return;if(supportSkills?.equipped){supportSkills.use();return;}legacyPsychicGrip();}
+function legacyPsychicGrip() {
   if (!canAct() || psyCd > 0) return;
   if (!specialUnlocked) { toast('Special slot is empty. Defeat 5 enemies, then claim your ability at the training-ground board.'); return; }
   const f = aimForward();
@@ -4915,15 +4950,20 @@ function enemyShoot(from, dir, speed, dmg, color) {
   scene.add(m);
   enemyShots.push({ m, vel: dir.clone().normalize().multiplyScalar(speed), dmg, color, life: 3 });
 }
+function monsterEnvironmentDamage(position,damage,range=3,criminal=false){
+ for(const v of vehicles){if(v.disabled||Math.abs(v.group.position.y-position.y)>4||distXZ(v.group.position,position)>range+(v.radius||2))continue;if(isRoadVehicle(v))damageVehiclePower(v,damage,position,criminal);else{v.health=Math.max(0,(v.health??100)-damage);if(v.health===0){if(v.kind==='plane')crashPlane(v);else{v.disabled=true;v.speed=0;v.group.rotation.z=.8;}}}}
+ for(const b of buildings){if(!b.alive)continue;const dx=Math.max(0,Math.abs(position.x-b.x)-b.w/2),dz=Math.max(0,Math.abs(position.z-b.z)-b.d/2);if(Math.hypot(dx,dz)>range||position.y>b.top+2)continue;b.integrity=Math.max(0,(b.integrity??250)-damage);if(b.integrity===0)collapseBuilding(b,criminal);}
+}
 function updateEnemyShots(dt) {
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
     s.life -= dt;
     s.m.position.addScaledVector(s.vel, dt);
     if (Math.random() < 0.5) spawnParticle(s.m.position, randUnit(), s.color, 0.1, 0.3);
+    const environmentHit=vehicles.some(v=>!v.disabled&&Math.abs(v.group.position.y-s.m.position.y)<3&&distXZ(v.group.position,s.m.position)<(v.radius||2)+.5)||insideCollider(s.m.position);if(environmentHit)monsterEnvironmentDamage(s.m.position,s.dmg,2);
     const hitPlayer = !inCar && s.m.position.distanceTo(at(player.position, 1.1)) < 0.9;
     if (hitPlayer) hurtPlayer(s.dmg, s.m.position, 5);
-    if (hitPlayer || s.life <= 0 || insideCollider(s.m.position) || s.m.position.y < 0) { disposeObj(s.m); enemyShots.splice(i, 1); }
+    if (environmentHit || hitPlayer || s.life <= 0 || insideCollider(s.m.position) || s.m.position.y < 0) { disposeObj(s.m); enemyShots.splice(i, 1); }
   }
 }
 
@@ -4940,7 +4980,7 @@ function bossSpecial(e) {
   ai.state = Math.random() < 0.5 ? 'aoe' : 'volley';
   ai.t = 0; ai.fired = false;
   if (ai.state !== 'aoe') return;
-  if(e.mdef.poison){const c=player.position.clone();telegraph(c,6,1.2,0x92ed2a,()=>{if(!e.alive||!dungeon)return;fxRing(c,0x92ed2a,6,.8);if(distXZ(player.position,c)<6)hurtPlayer(e.dmg*1.5,c,5);});return;}
+  if(e.mdef.poison){const c=player.position.clone();telegraph(c,6,1.2,0x92ed2a,()=>{if(!e.alive||!dungeon)return;fxRing(c,0x92ed2a,6,.8);monsterEnvironmentDamage(c,e.dmg*1.5,6);if(distXZ(player.position,c)<6)hurtPlayer(e.dmg*1.5,c,5);});return;}
   if (e.type === 'archangel') {   // pillars of light around you
     for (let i = 0; i < 4; i++) {
       const c = player.position.clone().add(i ? new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8) : new THREE.Vector3());
@@ -4957,6 +4997,7 @@ function bossSpecial(e) {
     c.y = groundY(c.x, c.z);
     telegraph(c, 7, 1.1, 0xff3030, () => {
       if (!dungeon || !e.alive) return;
+      monsterEnvironmentDamage(c,e.dmg*2,8);
       fxRing(c, 0xff4020, 8, 0.45);
       fxCrater(c, 4);
       burst(at(c, 0.3), 40, [0xff4020, 0x8a7d66, 0xffb02e], 14, 0.25, 0.8, 20, 6);
@@ -4967,6 +5008,9 @@ function bossSpecial(e) {
 }
 
 function updateMonster(e, dt) {
+ if(e.caveHome&&distXZ(player.position,e.caveHome)>42){if(distXZ(e.root.position,e.caveHome)>2)walkTowards(e,e.caveHome,2,dt);animateHumanoid(e.h,null,false,false,true,dt);return;}
+  if(e.npcRaid)return;
+  if(e.controlledByPlayer||supportSkills?.invisible){animateHumanoid(e.h,null,false,false,true,dt);return;}
   const m = e.mdef, ai = e.ai, p = e.root.position, now = performance.now() / 1000;
   for (const w of e.wings) w.rotation.y = w.userData.side * (0.5 + Math.sin(now * 8 + e.seed) * 0.35);
   ai.cd -= dt; ai.special -= dt;
@@ -5103,7 +5147,7 @@ function spawnWave() {
 function clearDungeon() {
   const d = dungeon, g = d.gate;
   if(d.cleared)return;
-  d.cleared = true;
+  d.cleared = true;supportCounters.dungeons++;persistSupportProgress();
   const rewardMultiplier=d.secretBonus?20:1;
   const gold = Math.round(40 * g.stars * (1 + g.level * 0.2))*rewardMultiplier;
   const xp = Math.round(60 * g.stars * (1 + g.level * 0.15))*rewardMultiplier;
@@ -5155,6 +5199,7 @@ function updateDungeon(dt) {
 // HOME ACTIONS
 // =====================================================================
 function switchChar() {
+  if(onlinePlayReady&&hosting.room){toast('Your online class is permanent for this account.');return;}
   if (!canAct()) return;
   const pos = unlockedCharIndices.indexOf(charIdx);
   charIdx = unlockedCharIndices[(pos + 1) % unlockedCharIndices.length];
@@ -5193,11 +5238,15 @@ function nearestVehicle() {
   return best;
 }
 function raiseWanted(t = 45) {
-  if (wanted <= 0) toast('WANTED! The police are after you.');
+  if (wanted <= 0) toast('Police alert: stop and surrender to avoid a pursuit.');
   wanted = Math.max(wanted, t);
   policeLastSeen.copy(inCar && driving ? driving.group.position : player.position);
 }
 function enterVehicle(v) {
+  if(adventureServices?.parachuting){toast('Land before entering a vehicle.');return;}
+  if(v.noSteal){toast('This is a passenger taxi or a display car. Board at its service point.');return;}
+  v.routeTraffic=false;
+  if(v.kind==='plane')adventureServices?.giveEmergencyParachute();
   if (v.disabled) { toast('This vehicle is wrecked. Choose another car.'); return; }
   if (v.ai) {   // carjacking: the driver jumps out and runs, passengers flee
     const driver = peds.find(e => e.alive && !e.hidden && e.ped.state === 'wander' && distXZ(e.root.position, player.position) > 60);
@@ -5220,7 +5269,7 @@ function enterVehicle(v) {
   driving = v; inCar = true; action = null;
   if(cameraView==='first'){yaw=v.group.rotation.y+Math.PI;pitch=0;}
   player.visible = false;
-  if (v.kind === 'plane') toast('W/S throttle · A/D turn · Space climb · Shift dive. Take off down the runway!');
+  if (v.kind === 'plane') toast('Q/R barrel roll in flight. W/S throttle · A/D turn · Space climb · Shift dive. Take off down the runway!');
   v.group.add(headlight, headlight.target);
   headlight.position.set(0, 0.8, v.length / 2 + 0.1);
   headlight.target.position.set(0, 0, 14);
@@ -5228,10 +5277,7 @@ function enterVehicle(v) {
 function exitVehicle(force = false) {
   if(driving?.bridgeFlight&&!force){toast('Wait until the vehicle lands before getting out.');return;}
   const v = driving, h = v.group.rotation.y;
-  if (v.kind === 'plane' && !force && (v.alt > groundY(v.group.position.x, v.group.position.z) + 2 || v.speed > 8)) {
-    toast('Land and slow down before getting out.');
-    return;
-  }
+  if(v.kind==='plane'&&!force&&v.alt>groundY(v.group.position.x,v.group.position.z,v.alt)+3){const p=v.group.position.clone();p.x+=Math.cos(h)*4;p.z-=Math.sin(h)*4;player.position.copy(p);player.visible=true;driving=null;inCar=false;vy=-4;onGround=false;pvel.set(Math.sin(h)*v.speed*.3,0,Math.cos(h)*v.speed*.3);adventureServices?.giveEmergencyParachute();adventureServices?.deploy();return;}
   if (v.kind === 'boat') {   // step off onto the pier
     const island=regionalEnvironment?.islands.find(i=>Math.hypot(v.group.position.x-i.x,v.group.position.z-i.z)<i.r+14);
     if(island)player.position.set(island.x,.2,island.z-island.r+2);
@@ -5280,11 +5326,16 @@ function updateRiding(dt) {
 // one thing while E actually does another (they were two separately
 // maintained priority lists before, and had drifted out of sync).
 function resolveInteractTarget() {
-  if(spaceCentre?.rider)return {label:spaceCentre.state==='landed'?'Leave rocket':spaceCentre.state==='countdown'?'Abort launch':'Rocket flight in progress',action:()=>spaceCentre.interact()};
+  if(adventureServices?.parachuting)return {label:'Parachute: steer to land',action:()=>toast('Use movement controls to steer the parachute toward clear ground.')};
+  if(navy?.rider)return {label:'Leave naval vessel at dock',action:()=>navy.leave()};
+  if(intercityRail?.rider)return {label:'Leave intercity train at station',action:()=>intercityRail.leave()};
+  if(wanted>0&&vehicles.some(v=>v.kind==='police'&&distXZ(v.group.position,player.position)<25))return {label:'Surrender to police',action:()=>{if(inCar&&Math.abs(driving.speed)>1){toast('Stop the car before surrendering.');return;}if(inCar)exitVehicle(true);arrestPlayer();}};
+  if(cityServices?.rider)return {label:cityServices.rider.bus?'Leave city bus':'Leave taxi',action:()=>cityServices.leave()};
+  if(spaceCentre?.rider)return {label:spaceCentre.state==='landed'?'Leave rocket':spaceCentre.state==='boarding'?'Leave rocket cabin':spaceCentre.state==='countdown'?'Abort launch':'Rocket flight in progress',action:()=>spaceCentre.interact()};
   if (metro?.rider) return { label: 'Leave the subway', action: () => metro.leave() };
   if (riding) return { label: 'Dismount', action: dismountHorse };
   if (transport?.rider) return { label: 'Leave', action: () => transport.leave() };
-  if (inCar) return { label: driving.kind === 'plane' && driving.alt > 2 ? 'Land first, then get out' : 'Get out', action: () => exitVehicle() };
+  if (inCar) return { label: driving.kind === 'plane' && driving.alt > 3 ? 'Jump with parachute' : 'Get out', action: () => exitVehicle() };
   if (sitting) return { label: 'Stand up', action: () => toggleSit(null) };
   if (action) return null;
   const seat = nearestSitSpot();
@@ -5292,6 +5343,7 @@ function resolveInteractTarget() {
   if (inCivicInterior) return { label: 'Leave', action: leaveCivicBuilding };
   if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
   const service = nearestInteractable();
+  if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return {label:service.label,action:service.action};
   if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway'))) return { label: service.label, action: service.action };
   const cb = nearestCivicBuilding();
   if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
@@ -5338,7 +5390,7 @@ const CIVIC_THEMES = {
 };
 const DEFAULT_CIVIC_THEME = { wall: 0xe8e4d8, floor: 0xcfc9ba, light: 0xfff4d6 };
 let civicFloor, civicWalls = [], civicLight;
-let civicTvCanvas, civicTvTexture, civicTvT = 0;
+let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
 (function buildCivicInterior() {
   civicFloor = box(26, 0.3, 20, CIVIC_OFFSET.x, 0.15, CIVIC_OFFSET.z, 0xcfc9ba);             // floor
   civicWalls.push(box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z - 10, 0xe8e4d8));        // back wall
@@ -5357,13 +5409,14 @@ let civicTvCanvas, civicTvTexture, civicTvT = 0;
   box(0.8, 0.9, 0.12, CIVIC_OFFSET.x, 0.95, CIVIC_OFFSET.z + 2.4, 0x4a3a2a, false); // backrest, behind the seat (toward the entrance, away from the TV)
   civicTvCanvas = document.createElement('canvas'); civicTvCanvas.width = 256; civicTvCanvas.height = 160;
   civicTvTexture = new THREE.CanvasTexture(civicTvCanvas);
-  const tvScreen = mesh(new THREE.PlaneGeometry(2.4, 1.5), new THREE.MeshBasicMaterial({ map: civicTvTexture }));
+  const tvScreen = civicTvScreen = mesh(new THREE.PlaneGeometry(2.4, 1.5), new THREE.MeshBasicMaterial({ map: civicTvTexture }));
   tvScreen.position.set(CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.55);
   box(2.7, 1.8, 0.15, CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.6, 0x1a1a1a, false);
   sitSpots.push({ x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, yaw: Math.PI, seatY: 0.9, label: 'Sit and watch TV' }); // face -Z, toward the TV
 })();
 let sitting = false, sitReturnPosition = null, activeSitSpot = null;
 function updateCivicTv(dt) {
+  if(movieTv?.playing)return;
   if (!civicTvCanvas) return;
   civicTvT += dt;
   if (civicTvT < 0.4) return; // redraw a few times a second, not every frame
@@ -5465,6 +5518,7 @@ function nearestCivicBuilding() {
   return best;
 }
 async function enterCivicBuilding(b) {
+  if(b.structure&&!b.structure.alive){toast('Building closed for reconstruction.');return;}
   action = null;
   civicReturnPos = player.position.clone();
   $('fade').style.opacity = 1;
@@ -5530,13 +5584,15 @@ function renderBoard() {
   html += skillRow('Click', { icon: '⚔️', name: 'M1 Combo', desc: 'Hold or tap for a 4-hit combo. The 4th hit sends enemies flying.', dmg: `${attackDmg()} ×3 + ${Math.round(attackDmg() * 1.8)}` });
   html += skillRow('Q', { icon: '➤', name: 'Dash', desc: 'Quick dash in the direction you are moving. Brief invincibility.', dmg: '0' }, ' · Cooldown 1.5s');
   html += skillRow('F', { icon: '🛡️', name: 'Block', desc: 'Hold to block hits from the front (80% less damage). Guard-break moves go through.', dmg: '0' });
-  html += skillRow('R', { icon: 'SP', name: specialUnlocked ? 'Psychic Grip' : 'Empty special slot', desc: specialUnlocked ? 'Lift nearby targets and throw them. Scales with Mental.' : 'Defeat 5 enemies and claim your special ability at the training-ground board. Progress: '+specialTrainingKills+'/5.', dmg: specialUnlocked ? String(psyDmg()) : '0' });
+  html += skillRow('R', { icon: 'SP', name: supportSkills?.equipped?supportSkills.name:specialUnlocked ? 'Psychic Grip' : 'Empty special slot', desc: specialUnlocked ? 'Support skills are separate from your elemental class. Open the support collection below.' : 'Reach level 5, find a hidden quest master, and earn a support skill. Training progress: '+specialTrainingKills+'/5.', dmg: specialUnlocked ? String(psyDmg()) : '0' });
   for (const c of characters) {
     html += `<div class="charHead" style="color:${hex(c.fx)}">${c.name}${c === characters[charIdx] ? ' (active)' : ''}</div>`;
     c.skills.forEach((s, i) => { html += skillRow(i + 1, s, ` · Cooldown ${s.cd}s`); });
     html += skillRow('G', c.ult, ' · Needs a full ultimate bar');
   }
+  html+='<button id="openSupportSkills">Support skill collection</button>';
   $('tabSkills').innerHTML = html;
+  $('openSupportSkills').onclick=()=>supportSkills?.show();
 }
 document.querySelectorAll('#board .tab').forEach(b => b.addEventListener('click', () => { boardTab = b.dataset.tab; renderBoard(); }));
 
@@ -5547,7 +5603,7 @@ function buildHotbar() {
     <div class="sname">${s.name}</div><div class="key">${key}</div><div class="cd"></div><div class="cdt"></div>
     <div class="lock">🔒<span class="lvl">Lv ${lvl}</span></div></div>`;
   $('hotbar').innerHTML = slot('Q', { icon: '➤', name: 'Dash' }, 'small')
-    + slot('R', { icon: 'SP', name: specialUnlocked ? 'Psychic' : 'Empty special' }, 'small')
+    + slot('R', { icon: 'SP', name: supportSkills?.name||(specialUnlocked?'Psychic':'Empty special') }, 'small')
     + c.skills.map((s, i) => slot(i + 1, s, '', SKILL_UNLOCK_LEVEL[i])).join('')
     + slot('G', c.ult, 'ult', ULT_UNLOCK_LEVEL);
   slotEls = [...$('hotbar').children].map(el => ({ el, cd: el.querySelector('.cd'), cdt: el.querySelector('.cdt') }));
@@ -5559,7 +5615,7 @@ function updateHotbar() {
     s.cdt.textContent = remaining > 0 ? Math.ceil(remaining) : '';
   };
   set(slotEls[0], dashCd, 1.5);
-  set(slotEls[1], psyCd, psyCdMax());
+  set(slotEls[1],supportSkills?.equipped?supportSkills.cooldown:psyCd,supportSkills?.equipped?12:psyCdMax());
   slotEls[1].el.classList.toggle('locked', !specialUnlocked);slotEls[1].el.querySelector('.lvl').textContent=specialUnlocked?'':'Quest';
   c.skills.forEach((s, i) => { set(slotEls[i + 2], c.cds[i], s.cd); slotEls[i + 2].el.classList.toggle('locked', prog.level < SKILL_UNLOCK_LEVEL[i]); });
   slotEls[slotEls.length - 1].el.classList.toggle('locked', prog.level < ULT_UNLOCK_LEVEL);
@@ -5581,7 +5637,7 @@ function requestGameControl() {
     if (innerHeight >= innerWidth) return;
     locked = true; boardOpen = false; settingsOpen = false; $('board').style.display = 'none'; $('settingsPanel').style.display = 'none'; $('start').style.display = 'none';
     mobileControls.update();applyLayout();
-  } else { renderer.domElement.requestPointerLock(); applyLayout(); }   // re-apply here too — desktop only ever got this once, at the very first page load
+  } else { if(document.pointerLockElement!==renderer.domElement)renderer.domElement.requestPointerLock()?.catch?.(()=>{});applyLayout(); }
 }
 function pauseMobileGame() { locked = false; mouseHeld = false; $('start').style.display = boardOpen || settingsOpen ? 'none' : 'flex'; }
 
@@ -5679,7 +5735,7 @@ $('signOutBtn').addEventListener('click',()=>{if(confirm('Sign out?'))signOutAnd
 // There was no way to back out of a running game (offline/solo or hosted) to the
 // main menu short of signing out entirely. Saves first, then reloads — boot()
 // finds the existing session and goes straight to the menu, skipping sign-in.
-$('leaveToMenuBtn').addEventListener('click',()=>{if(soloMode)saveSolo();location.reload();});
+$('leaveToMenuBtn').addEventListener('click',async()=>{if(soloMode)saveSolo();try{if(onlinePlayReady)await onlineAccount.save();}catch(e){toast(e.message);return;}location.reload();});
 $('layoutDoneBtn').addEventListener('click',()=>{setLayoutEditMode(false);freeMouse=false;requestGameControl();});
 
 // =====================================================================
@@ -5717,20 +5773,21 @@ function setFreeMouse(on) {
 addEventListener('keydown', e => {
   if(e.target.closest?.('input,textarea,select,[contenteditable=true]'))return;
   if(e.code==='KeyP'&&!e.ctrlKey&&!e.metaKey){if(!e.repeat&&(locked||settingsOpen||hosting.open||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
-  if(e.code==='KeyS'&&!e.ctrlKey&&!e.metaKey&&(controlPrefs.desktopMovement==='arrows'||e.shiftKey)){if(!e.repeat&&(locked||settingsOpen||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
+  if(e.code==='KeyS'&&!e.ctrlKey&&!e.metaKey&&(controlPrefs.desktopMovement==='arrows'||e.shiftKey&&!inCar&&!navy?.rider)){if(!e.repeat&&(locked||settingsOpen||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
   const movement=movementKey(e.code,controlPrefs.desktopMovement);if(movement)keys[movement]=true;
   if(e.code.startsWith('Arrow'))e.preventDefault();
   if (locked && ['Space', 'Tab'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   if (e.code === 'KeyC' && (locked || boardOpen)) { toggleBoard(!boardOpen); return; }
   if (e.code === 'KeyL' && locked && !boardOpen) { setFreeMouse(!freeMouse); return; }
+  if(e.code==='KeyM'&&(locked||worldMap?.open)){if(!worldMap?.open)worldMap?.show();e.preventDefault();return;}
   if (!locked) return;
   if (e.code === 'KeyE') interact();
-  if (e.code === 'KeyQ') dash();
-  if (e.code === 'KeyR') psychicGrip();
+  if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
+  if (e.code === 'KeyR'&&!(inCar&&driving.kind==='plane')) psychicGrip();
   if (e.code === 'KeyT') switchChar();
   if (e.code === 'KeyG') useUlt();
-  if (e.code === 'KeyM') { player.position.set(CITY_OFFSET.x, player.position.y, CITY_OFFSET.z); toast('Teleported to Edinburgh (testing only)'); } // temporary test-only fast travel to the real-world map patch
+  if (e.code === 'KeyM') { worldMap?.show(); } // temporary test-only fast travel to the real-world map patch
   if (e.code === 'KeyI' && !settingsOpen && !boardOpen) toggleInventory(!inventoryOpen);
   if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) useSkill(Number(e.code.slice(5)) - 1);
   if (e.code === 'KeyN' && inCar && isRoadVehicle(driving)) { toast('Choose transmission in Settings before entering your next vehicle.'); }
@@ -5773,7 +5830,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -5809,7 +5866,7 @@ function updateWeather(dt) {
   // forcing a perpetual "doors open, waiting" state is the only hook available
   // from here without reaching into transport.js's own update loop.
   if (weatherState === 'snow') for (const s of transport?.services ?? []) { s.doors = true; s.wait = 2; }
-  if ((weatherState === 'rain' || weatherState === 'snow') && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
+  if ((weatherState === 'rain' || weatherState === 'snow') && !spaceCentre?.inSpace && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
     for (let i = 0; i < (touchDevice ? 2 : 6); i++) {   // fewer weather particles on phones
       const a = rand() * Math.PI * 2, r = rand() * 16;
       const x = player.position.x + Math.cos(a) * r, z = player.position.z + Math.sin(a) * r;
@@ -5860,6 +5917,7 @@ function updateFirefighters(dt) {
 }
 let swimming = false, waterExhausted = false;
 function isSeaWater(x,z,bodyY = null) {
+  if(navy?.groundAt(x,z)!=null)return false;
   if(regionalEnvironment?.groundAt(x,z)!=null)return false;
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
@@ -5885,6 +5943,10 @@ function updateSwimming(dt) {
   if(!isSeaWater(player.position.x,player.position.z)){swimming=false;waterExhausted=false;P.rig.rotation.x=0;player.position.y=groundY(player.position.x,player.position.z);onGround=true;toast('Back on dry ground.');}
 }
 function updatePlayer(dt) {
+ if(adventureServices?.parachuting){const p=player.position;const input=locked?inputDir():new THREE.Vector3();p.addScaledVector(input,5*dt);p.addScaledVector(pvel,dt);pvel.multiplyScalar(Math.max(0,1-dt*2));p.y-=3.8*dt;const floor=groundY(p.x,p.z,p.y);if(p.y-floor<3)collide(p,.4);if(p.y<=floor+.2){p.y=floor;vy=0;onGround=true;adventureServices.land();}animateHumanoid(P,'fall',false,false,false,dt);return;}
+
+  if(navy?.rider||intercityRail?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
+  if(cityServices?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(spaceCentre?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(metro?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(transport?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
@@ -5953,14 +6015,14 @@ const busDoor = v => v.group.localToWorld(new THREE.Vector3(2.0, 0, v.length / 2
 
 // A vehicle you are driving, or one that is parked
 const isRoadVehicle = v => ['car', 'police', 'bus'].includes(v.kind);
-function vehicleVelocity(v) { return { x: Math.sin(v.group.rotation.y) * v.speed, z: Math.cos(v.group.rotation.y) * v.speed }; }
+function vehicleVelocity(v) { return v.slideVelocity||{ x: Math.sin(v.group.rotation.y) * v.speed, z: Math.cos(v.group.rotation.y) * v.speed }; }
 function damageVehicle(v, deltaSpeed, point) {
   if(deltaSpeed>3&&point.distanceTo(player.position)<60)worldAudio?.impact(deltaSpeed);
   if (!isRoadVehicle(v)) return;
   const damage = impactDamage(deltaSpeed);
   if (damage <= 0) return;
   v.health = Math.max(0, (v.health ?? 100) - damage);
-  v.crashCooldown = 0.3;
+  v.crashCooldown = 0.3;applyVehicleCondition(v);
   if (deltaSpeed > 5) burst(at(point, 0.7), Math.min(25, Math.ceil(deltaSpeed)), [0xffc266, 0x777777], 5, 0.08, 0.3, 8, 1);
   if (deltaSpeed > 8) breakLampsNear(point, 1.5);   // ram a lamp post hard enough and it goes down
   if (v === driving) {
@@ -6027,6 +6089,7 @@ function resolveRoadMovement(v, start, dt) {
       const normal = p.clone().sub(attempted).setY(0).normalize();
       const normalSpeed = Math.max(0, -(velocity.x * normal.x + velocity.z * normal.z));
       if (normalSpeed > 0) {
+        if(v.slideVelocity){v.slideVelocity.x+=normal.x*normalSpeed;v.slideVelocity.z+=normal.z*normalSpeed;}
         if (!v.crashCooldown) damageVehicle(v, normalSpeed * 1.08, p);
         const tangent = { x: velocity.x + normal.x * normalSpeed, z: velocity.z + normal.z * normalSpeed };
         const h = v.group.rotation.y;
@@ -6059,6 +6122,8 @@ function resolveRoadMovement(v, start, dt) {
     if (hit.impulse > 0) {
       v.speed += hit.aDelta * (normal.x * Math.sin(v.group.rotation.y) + normal.z * Math.cos(v.group.rotation.y));
       other.speed -= hit.bDelta * (normal.x * Math.sin(other.group.rotation.y) + normal.z * Math.cos(other.group.rotation.y));
+      if(v.slideVelocity){v.slideVelocity.x+=normal.x*hit.aDelta;v.slideVelocity.z+=normal.z*hit.aDelta;}
+      if(other.slideVelocity){other.slideVelocity.x-=normal.x*hit.bDelta;other.slideVelocity.z-=normal.z*hit.bDelta;}
       if (!v.crashCooldown) damageVehicle(v, hit.aDelta, p);
       if (!other.crashCooldown) damageVehicle(other, hit.bDelta, other.group.position);
       if (other.ai) other.ai.stopTimer = 2;
@@ -6104,22 +6169,25 @@ function driveVehicle(v, dt) {
   const mine = v === driving;
   const icy = isRoadVehicle(v) && weatherState === 'snow';   // less grip: slower to slow down, looser steering — cars can slide
   if (mine) {
-    if (keys.KeyW) v.speed += (v.kind === 'bus' ? 9 : 18) * dt;
+    if (keys.KeyW) v.speed += (v.kind === 'bus' ? 9 : 18)*conditionFactors(v.health).power * dt;
     if (keys.KeyS) v.speed -= 24 * dt;
     const steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
-    v.group.rotation.y += steer * (v.kind === 'bus' ? 1.1 : 1.8) * (icy ? 0.5 : 1) * dt * Math.min(1, Math.abs(v.speed) / 8) * Math.sign(v.speed);
+    v.group.rotation.y += steer * (v.kind === 'bus' ? 1.1 : 1.8) * (icy ? 0.5 : 1) *conditionFactors(v.health).steering* dt * Math.min(1, Math.abs(v.speed) / 8) * Math.sign(v.speed);
   }
   v.speed *= Math.max(0, 1 - (mine && (keys.KeyW || keys.KeyS) ? 0.3 : 1.5) * (icy ? 0.3 : 1) * dt);
+  const condition=conditionFactors(v.health);if(mine&&isRoadVehicle(v))v.group.rotation.y+=condition.drift*Math.sin(performance.now()*.002)*dt*Math.min(1,Math.abs(v.speed)/8);
   const topSpeed = mine && !transmissionAuto && isRoadVehicle(v) ? v.maxSpeed * GEAR_RATIOS[gear - 1] : v.maxSpeed;
-  v.speed = clamp(v.speed, -8, topSpeed);
+  v.speed = clamp(v.speed, -8, topSpeed*(isRoadVehicle(v)?condition.topSpeed:1));
   const h = v.group.rotation.y, p = v.group.position;
-  p.x += Math.sin(h) * v.speed * dt;
-  p.z += Math.cos(h) * v.speed * dt;
+  const drifting=mine&&!transmissionAuto&&isRoadVehicle(v)&&keys.Space&&Math.abs(v.speed)>8;
+  v.slideVelocity=driftVelocity(v.slideVelocity,h,v.speed,drifting,dt);
+  p.x+=v.slideVelocity.x*dt;p.z+=v.slideVelocity.z*dt;
+  if(drifting){v.speed*=Math.exp(-.45*dt);if(Math.random()<.15)spawnParticle(at(p,.15),new THREE.Vector3(0,.3,0),0xa4a8aa,.3,.5,0);}
   if (v.kind === 'boat') {   // stays on the water and bobs on the waves
     const nx = clamp(p.x, -290, 290), nz = clamp(p.z, SEA_Z + 2, 890);
     if (nx !== p.x || nz !== p.z) v.speed *= -0.3;
     p.x = nx; p.z = nz;
-    if(!waterFootprint(p.x,p.z,h,5,2.2,isSeaWater)){p.copy(roadStartPosition);v.speed=0;}
+    if(!shipCanAdvance({x:roadStartPosition.x,z:roadStartPosition.z,length:5},p.x,BRIDGE_X,GAP0,GAP1,bridgeLiftAngle)||!waterFootprint(p.x,p.z,h,5,2.2,navigableSea)){p.copy(roadStartPosition);v.speed=0;}
     p.y = 0.05 + Math.sin(performance.now() / 400) * 0.08;
     v.group.rotation.x = -Math.min(0.15, Math.abs(v.speed) * 0.006);
     if (mine && Math.abs(v.speed) > 4) spawnParticle(p.clone().add(new THREE.Vector3(-Math.sin(h) * 2.8, 0.2, -Math.cos(h) * 2.8)), randUnit().multiplyScalar(1.5).setY(1.5), 0xffffff, 0.2, 0.6, 4);
@@ -6158,7 +6226,7 @@ function trafficBlocked(v, pos, dir, left) {
 function trafficDrive(v, dt) {
   const ai = v.ai;
   let f = laneFrame(ai);
-  let desired = ai.cruise;
+  let desired = ai.cruise*conditionFactors(v.health).topSpeed;
   ai.ignoreT -= dt;
   if (ai.stopTimer > 0) { ai.stopTimer -= dt; desired = 0; }
   else if (ai.ignoreT <= 0 && trafficBlocked(v, v.group.position, f.dir, f.left)) {
@@ -6250,7 +6318,10 @@ function policeChase(v, dt) {
   const want = Math.atan2(tp.x - p.x, tp.z - p.z);
   v.group.rotation.y += clamp(angleDiff(v.group.rotation.y, want), -2.2 * dt, 2.2 * dt);
   const d = distXZ(p, tp);
-  v.speed = lerp(v.speed, d > 8 ? 24 : 4, 1 - Math.exp(-1.5 * dt));
+  const captureSpeed=inCar?Math.min(24,Math.max(0,Math.abs(driving.speed)+2)):Math.min(16,Math.sqrt(4*Math.max(0,d-3)));
+  v.speed=lerp(v.speed,captureSpeed,1-Math.exp(-3*dt));
+  ai.warningTimer=(ai.warningTimer||0)-dt;if(ai.warningTimer<=0&&d<35){toast('Police: stop and surrender. Use Interact near an officer.');ai.warningTimer=10;}
+  if(inCar&&d<6&&Math.abs(driving.speed)<1){exitVehicle(true);arrestPlayer();return;}
   const h = v.group.rotation.y;
   p.x += Math.sin(h) * v.speed * dt;
   p.z += Math.cos(h) * v.speed * dt;
@@ -6260,7 +6331,7 @@ function policeChase(v, dt) {
   if (d < 3 && ai.ramCd <= 0) {
     ai.ramCd = 1.5;
     if (inCar) { /* Central collision response handles vehicle impacts. */ }
-    else arrestPlayer();
+    else if(distXZ(p,player.position)<4)arrestPlayer();
   }
 }
 
@@ -6283,14 +6354,18 @@ function busArrive(v, stop) {
 
 function updateVehicles(dt) {
   for (const v of vehicles) {
+    if(isRoadVehicle(v)&&(v.health??100)<100)applyVehicleCondition(v);
+    if(isRoadVehicle(v)&&!v.disabled&&v.health<35){v.conditionSmoke=(v.conditionSmoke||0)-dt;if(v.conditionSmoke<=0){v.conditionSmoke=.6;spawnParticle(at(v.group.position,1.3),new THREE.Vector3(0,1.5,0),0x5d6365,.25,.8,0);}}
+    if(v.displayCar){v.speed=0;continue;}
     if(v.bridgeFlight){driveVehicle(v,dt);continue;}
     if(v.routeTraffic&&v!==driving)continue;
-    if (v.disabled || (v.ai?.parked && wanted <= 0 && !(v.kind === 'tank' && militaryAlert > 0))) { v.speed = 0; continue; }
+    if (v.disabled || (v.ai?.parked && !(v.kind==='police'&&wanted>0) && !(v.kind === 'tank' && militaryAlert > 0))) { v.speed = 0; continue; }
     v.crashCooldown = Math.max(0, (v.crashCooldown || 0) - dt);
     const roadStart = v.group.position.clone();
     if (v === driving || !v.ai) driveVehicle(v, dt);
     else if (v.kind === 'police' && wanted > 0 && !dungeon) policeChase(v, dt);
     else if (v.kind === 'tank' && militaryAlert > 0 && !dungeon) tankChase(v, dt);
+    else if(v.kind==='police'&&v.stationHome){const delta=v.stationHome.clone().sub(v.group.position).setY(0),distance=delta.length();if(distance<3){v.ai.parked=true;v.ai.chasing=false;v.speed=0;}else{v.group.rotation.y=Math.atan2(delta.x,delta.z);v.speed=Math.min(10,distance);v.group.position.addScaledVector(delta.normalize(),v.speed*dt);v.group.position.y=groundY(v.group.position.x,v.group.position.z);}}
     else {
       if (v.ai.chasing) {   // chase over: head back onto the roads
         v.ai.chasing = false;
@@ -6323,6 +6398,7 @@ function updateNeeds(dt) {
   if (peace < 25) stats.hp -= (25 - peace) / 25 * dt;
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
+    navy?.reset();intercityRail?.reset();cityServices?.reset();
     metro?.reset();
     sewers?.reset();
     transport?.cancel();
@@ -6343,6 +6419,7 @@ const sunColorLow = new THREE.Color(0xffa060), sunColorHigh = new THREE.Color(0x
 const hemiDay = new THREE.Color(0xcfe6ff), hemiNight = new THREE.Color(0x5566aa);
 function updateWorldLight(dt) {
   const focus = inCar ? driving.group.position : player.position;
+  const inSpace=!!spaceCentre?.inSpace;spaceStars.visible=inSpace;spaceStars.position.copy(camera.position);for(const cloud of clouds)cloud.visible=!inSpace&&!(navy?.rider?.depth>2)&&!metro?.underground&&!sewers?.underground&&!dungeon;
   const a = dayTime * Math.PI * 2;
   const elev = Math.sin(a);
   const sunDir = new THREE.Vector3(Math.cos(a), elev, 0.35).normalize();
@@ -6369,7 +6446,7 @@ function updateWorldLight(dt) {
   }
   if (weatherState === 'rain') { top.lerp(new THREE.Color(0x5a6168), 0.6); horizon.lerp(new THREE.Color(0x6b7278), 0.6); }
   scene.fog.color.copy(horizon);
-  scene.fog.far = weatherState === 'rain' ? 160 : 280;
+  scene.fog.far = weatherState === 'rain' ? 300 : 600;
   sky.position.copy(camera.position);
   sunDisc.position.copy(camera.position).addScaledVector(sunDir, 400);
   moonDisc.position.copy(camera.position).addScaledVector(sunDir, -400);
@@ -6402,6 +6479,8 @@ function updateWorldLight(dt) {
   }
   for (const l of lampLights) l.intensity = dungeon ? 40 : glow * 30;
 
+  if(inSpace){top.set(0x000106);horizon.set(0x02030a);scene.fog.color.set(0x000106);scene.fog.near=600;scene.fog.far=950;sunDisc.visible=moonDisc.visible=false;sun.intensity=1.1;sun.color.set(0xffffff);hemi.intensity=.35;hemi.color.set(0xc7d2e5);return;}
+  if(navy?.rider?.depth>2){top.set(0x15465c);horizon.set(0x15465c);scene.fog.color.set(0x15465c);scene.fog.near=6;scene.fog.far=75;hemi.intensity=.65;hemi.color.set(0x8fc9dc);sunDisc.visible=moonDisc.visible=false;return;}
   if(metro?.underground){top.set(0x102535);horizon.set(0x102535);scene.fog.color.set(0x102535);scene.fog.near=12;scene.fog.far=90;sun.intensity=.02;hemi.intensity=.35;hemi.color.set(0xa9c9d9);sunDisc.visible=moonDisc.visible=false;return;}
   if(sewers?.underground){top.set(0x111a15);horizon.set(0x111a15);scene.fog.color.set(0x111a15);scene.fog.near=8;scene.fog.far=55;sun.intensity=.03;hemi.intensity=.25;hemi.color.set(0xb5c5aa);sunDisc.visible=moonDisc.visible=false;return;}
   // Inside a dungeon: themed sky, thick fog and torchlight instead of the sun
@@ -6414,7 +6493,7 @@ function updateWorldLight(dt) {
     hemi.intensity = 0.45; hemi.color.set(th.light);
     sunDisc.visible = moonDisc.visible = false;
   } else {
-    scene.fog.near = 90; scene.fog.far = 280;
+    scene.fog.near = 140; scene.fog.far = 600;
   }
 }
 
@@ -6452,7 +6531,7 @@ function updateCamera(dt) {
     if (hit) dist = Math.max(1, hit.distance - 0.3);
 
     camera.position.copy(target).addScaledVector(offset, dist);
-    camera.position.y = Math.max(camera.position.y, 0.4);
+    camera.position.y = Math.max(camera.position.y,navy?.rider?.depth>2?-navy.rider.depth+.4:.4);
     camera.lookAt(target);
   }
 
@@ -6465,13 +6544,13 @@ function updateCamera(dt) {
 
   // Sims-style: hide the roof while the player is inside the house
   const p = player.position;
-  for (const hs of houses) hs.roof.visible = inCar || !(p.x > hs.minX && p.x < hs.maxX && p.z > hs.minZ && p.z < hs.maxZ);
+  for (const hs of houses) hs.roof.visible = hs.structure?.alive===false?false:inCar || !(p.x > hs.minX && p.x < hs.maxX && p.z > hs.minZ && p.z < hs.maxZ);
 }
 
 function updateHud(dt) {
   const c = characters[charIdx];
   $('charName').textContent = (playerUsername ? playerUsername + '  ·  ' : '') + (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level}` + (prog.points ? ' (C)' : '') + (isVillain ? '  ☠ Villain' : '');
-  $('charName').style.color = isVillain ? '#ff4d4d' : '';
+  $('charName').style.color = isVillain ? '#ff4d4d' : heroDungeonKills>0?'#67b3ff':'#fff';
   $('hpBar').style.width = clamp(stats.hp / maxHp() * 100, 0, 100) + '%';
   $('hpText').textContent = `${Math.max(0, Math.round(stats.hp))} / ${maxHp()}`;
   $('hungerBar').style.width = stats.hunger + '%';
@@ -6525,8 +6604,8 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 // room() helper, so they never auto-registered on the travel map like everything else.
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
-buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,destinations:townPlaces.destinations});
-spaceCentre=buildSpaceCentre({makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
+capitalServiceBuildings=buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,destinations:townPlaces.destinations});
+spaceCentre=buildSpaceCentre({safeFence:fenceRect,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
@@ -6545,33 +6624,33 @@ interactables.push({pos:companion.home.clone(),r:3,label:'Adopt companion dog',a
 harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex});
 townPlaces.destinations.push({name:'Harbour bridge',x:220,z:85});
 transport=buildTransport({scene,box,makeTex,sitSpots,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
- canBoard:()=>!inCar&&!sitting&&!action&&!swimming&&wanted===0,firstPerson:()=>cameraView==='first',board(){action=null;vy=0;pvel.set(0,0,0);},
+ canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!inCar&&!sitting&&!action&&!swimming&&wanted===0,firstPerson:()=>cameraView==='first',board(){action=null;vy=0;pvel.set(0,0,0);},
  carry(pos){player.position.copy(pos);},leave(pos){player.position.copy(pos);player.position.y=groundY(pos.x,pos.z);collide(player.position,.4);vy=0;pvel.set(0,0,0);}
 });
 urban=buildUrban({scene,box,camBlockers,planeBlocks,sitSpots,interactables,makeTex,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,buyFood:()=>buyFood(12,15),destinations:townPlaces.destinations,busStops,busRoute:BUS_ROUTE,vehicles,playerPos:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')||80)/100))});
 transport.update(0);urban.update(dayTime,0);
 sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpots,interactables,makeTex,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,destinations:townPlaces.destinations,playerPos:()=>player.position,
- canEnter:()=>!inCar&&!transport?.rider&&!sitting&&!action,
+ canEnter:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!inCar&&!transport?.rider&&!sitting&&!action,
  moveTo(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);yaw=0;}
 });
-interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 enemies. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
+interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(prog.level<5){toast('Reach level 5 to unlock support-skill quests.');return;}if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 enemies. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;supportSkills?.grantPsychic();localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
 buildControlSettings($('controlChoices'),controlPrefs,matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0,()=>{for(const key in keys)keys[key]=false;mobileControls?.reset();mobileControls?.update();applyLayout();});
 regionalEnvironment=buildRegionalEnvironment({scene,box,makeTex,addTrafficLight,addBird,insideCollider,addLampSpot});
 metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex,toast,groundY,
- canEnter:()=>!inCar&&!transport?.rider&&!metro?.rider&&!riding&&!sitting&&!action,
+ canEnter:()=>!navy?.rider&&!intercityRail?.rider&&!inCar&&!transport?.rider&&!metro?.rider&&!riding&&!sitting&&!action,
  playerPos:()=>player.position,firstPerson:()=>cameraView==='first',
  move(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);},
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
   attack: down => { mouseHeld = down; if (down) m1(); },
   board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame,
   preferences:()=>controlPrefs,
-  state:()=>({driving:inCar||!!metro?.rider||!!transport?.rider,passenger:!!spaceCentre?.rider||!!metro?.rider||!!transport?.rider,vehicleKind:driving?.kind||(metro?.rider?'subway':transport?.rider?'transit':undefined),carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
+  state:()=>({driving:inCar||!!navy?.rider||!!intercityRail?.rider||!!cityServices?.rider||!!metro?.rider||!!transport?.rider,passenger:!!intercityRail?.rider||!!cityServices?.rider||!!spaceCentre?.rider||!!metro?.rider||!!transport?.rider,vehicleKind:driving?.kind||(navy?.rider?(navy.rider.sub?'submarine':'boat'):metro?.rider?'subway':transport?.rider?'transit':undefined),carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
@@ -6580,9 +6659,71 @@ createGate(o){const gm=makeGateMesh(0x92ed2a),pos=new THREE.Vector3(o.x,0,o.z),r
 buildHighlandForest({scene,colliders,insideCollider,groundY,addBird});
 volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:hurtPlayer});regionalEnvironment.islands.push(volcanicIsland.island);
 ghostIsland=buildGhostIsland({scene,box,interactables,toast,stats,destinations:townPlaces.destinations,signboard,rand});regionalEnvironment.islands.push(ghostIsland.island);
-cityLife=buildCityLife({scene,interactables,toast,islands:[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),killCount:()=>monsterQuestKills,reward(gold,xp){stats.gold+=gold;gainXp(xp);},removeGate,createGate(o){const gm=makeGateMesh(0xa883ff),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:o.theme,tier:tierOf(o.level),name:o.name,persistent:o.persistent,capitalGate:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
-for(let i=0;i<3;i++)addWildlife('skeleton',ghostIsland.chamberCentre.x+(rand()-0.5)*14,ghostIsland.chamberCentre.z+(rand()-0.5)*14);
-worldAudio=createWorldAudio({volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),state:()=>({playing:locked,position:player.position,birds,weather:weatherState,driving:inCar,speed:driving?.speed||0,swimming,airborne:!onGround,indoor:!!metro?.underground||!!sewers?.underground||!!inCivicInterior,lava:Math.hypot(player.position.x-155,player.position.z-520)<35})});
+cityLife=buildCityLife({level:()=>prog.level,openSkills:()=>supportSkills?.show(true),scene,interactables,toast,islands:[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),killCount:()=>monsterQuestKills,reward(gold,xp){stats.gold+=gold;gainXp(xp);},removeGate,createGate(o){const gm=makeGateMesh(0xa883ff),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:o.theme,tier:tierOf(o.level),name:o.name,persistent:o.persistent,capitalGate:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
+for(let i=0;i<6;i++)addWildlife('skeleton',ghostIsland.chamberCentre.x+(rand()-0.5)*14,ghostIsland.chamberCentre.z+(rand()-0.5)*14);
+for(let i=0;i<12;i++)addWildlife('skeleton',-80+Math.sin(i*2)*18,480+Math.cos(i*2)*17);
+supportSkills=createSupportSkills({level:()=>prog.level,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons,bosses:supportCounters.bosses}),toast,
+changed(){specialUnlocked=!!supportSkills?.equipped;buildHotbar();if(alignmentUserId)try{localStorage.setItem('support:'+alignmentUserId,JSON.stringify({skill:supportSkills.snapshot(),counters:supportCounters,kills:monsterQuestKills}));}catch{}},
+pause(){locked=false;mouseHeld=false;for(const key in keys)keys[key]=false;document.exitPointerLock();$('start').style.display='none';},resume(){if(!boardOpen&&!settingsOpen)requestGameControl();},
+psychic:legacyPsychicGrip,effect(name,color){callout(name.toUpperCase(),color);fxRing(player.position,color,4,.5);},
+attack(range,damage,kb,cone){if(cone)hitCone(player.position,aimForward(),range,.25,new Set(),{dmg:damage,kb,up:1,stun:.7,heavy:true,from:player.position.clone()},3);else hitAround(player.position,range,new Set(),{dmg:damage,kb,up:2,stun:.7,heavy:true,from:player.position.clone()},3);},
+heal(hp,energy){stats.hp=Math.min(maxHp(),stats.hp+hp);stats.energy=Math.min(100,stats.energy+energy);},
+blink(distance){player.position.addScaledVector(aimForward().setY(0).normalize(),distance);collide(player.position,.4);player.position.y=groundY(player.position.x,player.position.z,player.position.y);},
+gravity(range,damage){for(const e of enemies)if(e.alive&&e.kind==='monster'&&distXZ(e.root.position,player.position)<range)applyHit(e,{dmg:damage,from:player.position.clone(),kb:1,up:8,stun:2,heavy:true});},
+sense(range){for(const e of enemies)if(e.alive&&e.kind==='monster'&&distXZ(e.root.position,player.position)<range){fxPillar(e.root.position,0xffea7b,1,4,1.5);e.glow=1;}},
+controlTarget:()=>enemies.find(e=>e.alive&&e.kind==='monster'&&!e.superArmor&&distXZ(e.root.position,player.position)<12),
+controlUpdate(e,dt){const target=enemies.filter(t=>t!==e&&t.alive&&t.kind==='monster').sort((a,b)=>distXZ(a.root.position,e.root.position)-distXZ(b.root.position,e.root.position))[0];if(!target)return;walkTowards(e,target.root.position,3,dt);animateHumanoid(e.h,null,true,false,true,dt);e.controlAttackCd=Math.max(0,(e.controlAttackCd||0)-dt);if(distXZ(e.root.position,target.root.position)<3&&!e.controlAttackCd){applyHit(target,{dmg:25,from:e.root.position.clone(),kb:2,up:0,stun:.3});e.controlAttackCd=1;}}
+});
+specialUnlocked=false;buildHotbar();
+cityServices=buildCityServices({upgradeCar:v=>detailVehicle(v,'luxury'),firstPerson:()=>cameraView==='first',scene,box,makeTex,makePerson:makeHumanoid,makeVehicle,groundY,interactables,toast,
+canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!cityServices?.rider&&!inCar&&!sitting&&!riding&&!dungeon&&!action&&!transport?.rider&&!metro?.rider&&!spaceCentre?.rider,
+pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},
+board(){action=null;vy=0;pvel.set(0,0,0);},carry:p=>player.position.copy(p),leave(p){player.position.copy(p);player.position.y=groundY(p.x,p.z,p.y);collide(player.position,.4);vy=0;},
+pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,
+waypoint(name,x,z){setWaypoint({name,x,z});},attractions:name=>townPlaces.destinations.filter(d=>name==='Capital'?/capital|capitol|museum|government/i.test(d.name):name==='Poison Land'?/poison/i.test(d.name):name==='Riverside'?/riverside|bridge/i.test(d.name):/market|airport|port|clock|park|school/i.test(d.name)).slice(0,12),
+addSeat(x,z){box(3,.15,.7,x,.7,z,0x6b5846,false);box(3,.6,.1,x,1,z+.3,0x6b5846,false);sitSpots.push({x,z,seatY:.8,yaw:Math.PI,label:'Sit at transport hub'});},
+resolve:resolveRoadMovement,
+redSignal(p,target){if(p.distanceTo(target)<4)return false;const axis=Math.abs(target.x-p.x)>Math.abs(target.z-p.z)?'x':'z';return trafficLights.some(t=>t.axis===axis&&t.phase>=3&&Math.hypot(t.x-p.x,t.z-p.z)<15);},
+makeProfession(role,x,z,bounds){const h=makeHumanoid({outfit:/Scientist|Doctor/.test(role)?0xe2e7e9:/Imam|Sufi|priest|monk|Rabbi|minister|Theologian/.test(role)?0x98886b:0x526c81,hair:0x46362a,pants:0x2e3c4a});h.root.position.set(x,groundY(x,z),z);const node=nearestCorner(h.root.position,bounds);h.root.position.copy(cornerPos(node));h.root.position.y=groundY(h.root.position.x,h.root.position.z);const next=nextCorner(node,null,bounds),e=makeEnemy({kind:'npc',labelName:role,h,root:h.root,radius:.35,height:1.9,maxHp:50,flashMats:h.flashMats,profession:role,ped:{state:'wander',node:next,prev:node,target:cornerPos(next),speed:1.2,panicT:0,waitT:0,stop:null,bus:null,bounds}});peds.push(e);return e;}
+});
+onlinePlayers=createOnlineAvatars({classLook:index=>characters[index]?{outfit:characters[index].color,hair:characters[index].hair}:null,camera,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),dispose:disposeObj,position:()=>player.position,active:()=>onlinePlayReady&&!!hosting.room,firstPerson:()=>cameraView==='first',local:()=>({name:playerUsername||'Guest',alignment:playerAlignment()})});
+worldAudio=createWorldAudio({volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),state:()=>({playing:locked,position:player.position,birds,weather:weatherState,driving:inCar,speed:driving?.speed||0,swimming,airborne:!onGround,indoor:!!spaceCentre?.inSpace||!!metro?.underground||!!sewers?.underground||!!inCivicInterior,lava:Math.hypot(player.position.x-155,player.position.z-520)<35})});
+for(let z=BRIDGE_Z0;z<BRIDGE_Z1;z+=8)if(z<GAP0||z>=GAP1)planeBlocks.push({minX:BRIDGE_X-BRIDGE_HALF_W,maxX:BRIDGE_X+BRIDGE_HALF_W,minZ:z,maxZ:z+8,bottom:BRIDGE_Y-.5,top:BRIDGE_Y+.25});
+for(const side of [1,-1]){const b={minX:BRIDGE_X-BRIDGE_HALF_W,maxX:BRIDGE_X+BRIDGE_HALF_W,minZ:side===1?GAP0:(GAP0+GAP1)/2,maxZ:side===1?(GAP0+GAP1)/2:GAP1,bottom:BRIDGE_Y-.5,top:BRIDGE_Y+.4,side};liftPlaneBlocks.push(b);planeBlocks.push(b);}
+bridgeTraffic=buildBridgeTraffic({makeVehicle,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),groundY,harbourHeight:harbourBridge.heightAt,vehicles,resolve:resolveRoadMovement,liftWarning:()=>bridgeLiftState!=='down'});
+const equippedGun=new THREE.Group();P.armR.pivot.add(equippedGun);equippedGun.position.copy(P.armR.end.position);equippedGun.rotation.x=1;mesh(new THREE.BoxGeometry(.12,.12,.65),0x293541,equippedGun).position.z=.25;mesh(new THREE.BoxGeometry(.1,.22,.14),0x394853,equippedGun).position.y=-.08;equippedGun.visible=false;
+adventureServices=buildAdventureServices({illegalPurchase:()=>raiseWanted(60),showEquipment(id){swordGrip.visible=id==='sword'||!id&&!!origin?.weapon;equippedGun.visible=id==='pistol'||id==='rifle';equippedGun.scale.setScalar(id==='rifle'?1.5:1);},scene,box,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),sign:signboard,destinations:townPlaces.destinations,interactables,playerPosition:()=>player.position,toast,
+pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons}),pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},reward(gold,xp){stats.gold+=gold;gainXp(xp);},changed(){saveSolo();},
+repair(price){const car=vehicles.find(v=>isRoadVehicle(v)&&!v.disabled&&!v.noSteal&&distXZ(v.group.position,player.position)<12);if(!car){toast('Bring an operational car within 12 metres of the shop.');return;}if(stats.gold<price){toast('Not enough gold.');return;}stats.gold-=price;car.health=100;applyVehicleCondition(car);toast('Vehicle repaired. Full power and steering restored.');},
+swordAttack(){callout('SWORD STRIKE',0xe5f2ff);hitCone(player.position,aimForward(),5,.1,new Set(),{dmg:35,kb:5,stun:.5,from:player.position.clone()},3);},
+shoot(range,damage){const origin=at(player.position,1.5),dir=aimForward().normalize(),ray=new THREE.Raycaster(origin,dir,.1,range),obstacle=ray.intersectObjects(camBlockers,true)[0],limit=obstacle?.distance??range;
+ const objects=[...enemies.filter(e=>e.alive&&!e.hidden).map(e=>({entity:e,position:at(e.root.position,1),radius:(e.radius||.4)+.4})),...vehicles.filter(v=>!v.disabled).map(v=>({vehicle:v,position:at(v.group.position,.8),radius:v.radius||2}))];
+ const target=objects.map(o=>{const delta=o.position.clone().sub(origin),along=delta.dot(dir),side=delta.clone().addScaledVector(dir,-along).length();return {...o,along,side};}).filter(o=>o.along>0&&o.along<limit&&o.side<o.radius).sort((a,b)=>a.along-b.along)[0];
+ const end=origin.clone().addScaledVector(dir,target?.along??limit),tracer=new THREE.Line(new THREE.BufferGeometry().setFromPoints([origin,end]),new THREE.LineBasicMaterial({color:0xffe29a}));scene.add(tracer);setTimeout(()=>disposeObj(tracer),90);worldAudio?.impact(6);if(target?.entity)applyHit(target.entity,{dmg:damage,kb:2,stun:.2,from:origin});else monsterEnvironmentDamage(end,damage,1,true);
+},
+walk(h,target,speed,dt){const d=target.clone().sub(h.root.position).setY(0),distance=d.length();if(distance>.5){h.root.position.addScaledVector(d.normalize(),Math.min(distance,speed*dt));h.root.rotation.y=Math.atan2(d.x,d.z);collide(h.root.position,.4);}h.root.position.y=groundY(h.root.position.x,h.root.position.z,h.root.position.y);},
+makeRaidMonster(pos){const e=makeMonster('demon',8,pos);e.npcRaid=true;return e;},raidHit(e,damage){applyHit(e,{dmg:damage,kb:1,from:e.root.position.clone().add(new THREE.Vector3(0,0,1)),police:true,fromPlayer:false});},removeEnemy
+});
+const regionalTransportContext={scene,box,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),destinations:townPlaces.destinations,interactables,planeBlocks,
+ canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!cityServices?.rider&&!spaceCentre?.rider&&!metro?.rider&&!transport?.rider&&!inCar&&!sitting&&!action&&!dungeon&&!adventureServices?.parachuting,
+ prepare(){action=null;swimming=false;vy=0;pvel.set(0,0,0);},move(p){player.position.copy(p);vy=0;pvel.set(0,0,0);swimming=false;},carry:p=>player.position.copy(p),toast,
+ addSeat(x,z,y){box(3,.15,.7,x,y+.65,z,0x69727c,false);box(3,.6,.1,x,y+1,z+.3,0x69727c,false);sitSpots.push({x,z,seatY:y+.75,yaw:Math.PI,label:'Sit at railway station'});}};
+navy=buildNavy({...regionalTransportContext,input:()=>locked?{forward:keys.KeyW?1:0,back:keys.KeyS?1:0,left:keys.KeyA?1:0,right:keys.KeyD?1:0,dive:keys.ShiftLeft||keys.ShiftRight?1:0,surface:keys.Space?1:0}:{forward:0,back:0,left:0,right:0,dive:0,surface:0},water:(x,z,h,l,w)=>waterFootprint(x,z,h,l,w,navigableSea),clearPassage:(v,next)=>shipCanAdvance({x:v.g.position.x,z:v.g.position.z,length:v.length},next.x,BRIDGE_X,GAP0,GAP1,bridgeLiftAngle)});
+intercityRail=buildIntercityRail(regionalTransportContext);
+for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
+for(const v of cityServices.traffic)if(v.kind==='car'&&(v.group.position.z>640&&v.group.position.x<500))detailVehicle(v,'luxury');
+regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareSite(x,z,w,d){for(const b of buildings)if(b.alive&&Math.abs(b.x-x)<(b.w+w)/2&&Math.abs(b.z-z)<(b.d+d)/2){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[])m.visible=false;for(const [list,item]of [[colliders,b.collider],[planeBlocks,b.planeBlock]]){const i=list.indexOf(item);if(i>=0)list.splice(i,1);}for(const block of b.blocks||[]){const i=planeBlocks.indexOf(block);if(i>=0)planeBlocks.splice(i,1);}}},civicBuildings,fence:fenceRect,reception:()=>{if(wanted>0)arrestPlayer();else toast('Police reception: reporting desk, patrol office and custody suite.');},addPolice(x,z){const v=makeVehicle('police',0xf5f6fa);v.group.position.set(x,groundY(x,z),z);v.stationHome=v.group.position.clone();v.ai={parked:true,cruise:12,ramCd:0,stopTimer:0};}});
+npcConversations=createNpcConversations({people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+worldExpansion=buildWorldExpansion({...regionalTransportContext,civicBuildings,fence:fenceRect,talk:(name,text)=>npcConversations.show(name,text),playerPosition:()=>player.position,makeMonster,light:addTrafficLight,tree:addTree,seat:(x,z)=>addBench(x,z,Math.PI),heal(){stats.hp=maxHp();toast('Medical treatment complete.');},food:()=>buyFood(15,20),killPlayer(){stats.hp=-1;toast('Strategic security: lethal exclusion zone breached.');},civilians:()=>peds,killCivilian(e){e.alive=false;e.hp=0;e.respawn=30;e.ped.state='down';}});
+townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
+registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
+worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosition:()=>player.position});worldAdvertising.update(0);adBalloon.visible=false;
+const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>worldMap.show();document.body.append(mapButton);
+for(const it of interactables)if(it.label==='Open town travel board')it.action=()=>worldMap.show();
+movieTv=createMovieTv({interactables,position:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});movieTv.register(civicTvScreen,new THREE.Vector3(CIVIC_OFFSET.x,.3,CIVIC_OFFSET.z-7));
+const homeTv=mesh(new THREE.PlaneGeometry(2.8,1.6),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(HOME.x,1.85,HOME.maxZ-.25);homeTv.rotation.y=Math.PI;box(3.1,1.9,.15,HOME.x,1.85,HOME.maxZ-.16,0x172432,false);movieTv.register(homeTv,new THREE.Vector3(HOME.x,CURB,HOME.maxZ-2));
+onlineAccount=createOnlineAccount({client:supabase,active:()=>onlinePlayReady&&!!hosting.room,snapshot:()=>({prog:{...prog},stats:{...stats},inventory,hasBag,adventure:adventureServices.snapshot(),support:supportSkills.snapshot(),supportCounters,monsterQuestKills,heroDungeonKills,villainKills,ownedCars:cityServices.snapshot().owned,quests:cityLife.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target}))})});
 applyLayout();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
 if (location.hash === '#test') { locked = true; startEl.style.display = 'none'; }
@@ -6604,11 +6745,12 @@ let slowFrameTime=0,lastFrameAt=performance.now(),perfWarmup=0;
 function frame() {
   const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
   if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low');slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
-  if(document.hidden){clock.getDelta();requestAnimationFrame(frame);return;}
+  if(document.hidden&&!(onlinePlayReady&&hosting.room)){clock.getDelta();requestAnimationFrame(frame);return;}
+  const running=locked||(onlinePlayReady&&!!hosting.room);
   const rawDt = Math.min(clock.getDelta(), 0.05);
   let dt = rawDt;
   if (hitStop > 0) { hitStop -= rawDt; dt = 0; }   // freeze the world for a split second on big hits
-  if (locked) {
+  if (running) {
     dayTime = (dayTime + dt / DAY_LEN) % 1;
     reconstructionDays += dt / DAY_LEN;
     reconstruction.update(reconstructionDays, dt);
@@ -6640,7 +6782,7 @@ function frame() {
     spaceCentre?.update(dt);
     transport.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
@@ -6650,16 +6792,20 @@ function frame() {
     updateTasks(dt);
     updateParticles(dt);
   }
-  worldAudio?.update(locked?rawDt:0);
+  worldAudio?.update(running?rawDt:0);
   mobileControls?.update();
-  townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar, reconstructionDays * DAY_LEN, locked ? rawDt : 0);
-  if(locked) harbour.update(reconstructionDays * DAY_LEN, rawDt);
-  updateCamera(locked ? rawDt : 0);
-  updateWorldLight(locked ? dt : 0);
-  updatePops(locked ? rawDt : 0);
+  townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar, reconstructionDays * DAY_LEN, running ? rawDt : 0);
+  if(running) harbour.update(reconstructionDays * DAY_LEN, rawDt);
+  movieTv?.update();
+  onlineAccount?.update(rawDt);
+  roomChat.update(rawDt);
+  updateCamera(running ? rawDt : 0);
+  updateWorldLight(running ? dt : 0);
+  updatePops(running ? rawDt : 0);
   updateLabels();
+  onlinePlayers?.update(rawDt);
   drawSpeedLines(rawDt);
-  updateHud(locked ? rawDt : 0);
+  updateHud(running ? rawDt : 0);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

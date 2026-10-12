@@ -13,7 +13,7 @@ export function buildTransport(ctx){
  const board=arrivalBoard(ctx,s.name.toUpperCase()+' STOP '+(s.stops.indexOf(x)+1),x-5,2.2,platformZ-1.2);stopBoards.push({s,x,board});
  if(ctx.makeTex){const map=ctx.makeTex(512,96,g=>{g.fillStyle='#243949';g.fillRect(0,0,512,96);g.fillStyle='white';g.font='bold 30px sans-serif';g.textAlign='center';g.fillText(s.name.toUpperCase()+' STOP',256,60);});const sign=new THREE.Mesh(new THREE.PlaneGeometry(6,1.1),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));sign.position.set(x,2.7,platformZ-1.5);scene.add(sign);}box(22,.25,4,x,.125,platformZ,0x9b9d94,false);box(20,.2,4,x,3.4,platformZ,0x4b636b,false);for(const dx of [-8,8])box(.15,3.4,.15,x+dx,1.7,platformZ-1.4,0x4b636b,false);}
  const plane=vehicle('Scheduled regional flight',-550,-400,20,0xd8e3e8);plane.g.rotation.y=Math.PI/2;plane.add(3,.2,23,0,1.4,0,0xcedbe1);plane.add(.2,4,3,-8,3,0,0x456b93);plane.g.position.y=60;
- const airport={...plane,state:'approach',timer:0,doors:false,pathIndex:0,passengerPhase:0};
+ plane.g.position.set(-617,0,24);const airport={...plane,state:'parked',timer:0,doors:false,pathIndex:0,passengerPhase:0};
  const people=[];for(let i=0;i<8;i++){const h=makePerson({outfit:[0x8b6353,0x517f6c,0x6e6892][i%3],hair:0x44362b,pants:0x344455});h.root.visible=false;people.push({h,phase:i});}
  const transit={services,airport,people,rider:null};
  for(const s of [...services,airport]){const interaction={pos:new THREE.Vector3(),r:4,label:'Board '+s.name,action:()=>{if(transit.rider===s){if(!s.doors){toast('Wait until the vehicle stops and its doors open.');return;}ctx.leave(s.g.position.clone().add(new THREE.Vector3(0,0,s.name==='Train'?5:-5)));transit.rider=null;return;}if(!s.doors){toast('Wait for arrival and boarding.');return;}if(transit.rider||!ctx.canBoard()){toast('Finish your current action before boarding.');return;}transit.rider=s;ctx.board();toast('Aboard '+s.name+'. Use Interact at a stop to leave.');}};s.interaction=interaction;interactables.push(interaction);}
@@ -24,13 +24,14 @@ export function buildTransport(ctx){
 
   for(const s of services){const previousX=s.g.position.x;if(s.collisionStop>0){s.collisionStop=Math.max(0,s.collisionStop-dt);s.velocityX=0;continue;}if(s.doors){s.wait-=dt;if(s.wait<=0){s.doors=false;s.direction=s.index===s.stops.length-1?-1:s.index===0?1:s.direction;s.index+=s.direction;}}else{const target=s.stops[s.index],distance=Math.abs(target-s.g.position.x);s.speed=Math.min(s.name==='Train'?18:8,Math.sqrt(2*3*distance));s.g.position.x+=Math.sign(target-s.g.position.x)*Math.min(distance,Math.max(.2,s.speed)*dt);if(distance<.1){s.g.position.x=target;s.doors=true;s.wait=10;s.speed=0;}}s.velocityX=dt>0?(s.g.position.x-previousX)/dt:0;}
   const a=airport;a.timer+=dt;
-  if(a.state==='approach'){if(moveTo(a,new THREE.Vector3(-550,0,-220),18,dt)){a.state='taxi-in';a.pathIndex=0;a.timer=0;}}
+  if(a.state==='parked'&&a.timer>45){a.state='boarding';a.doors=true;a.timer=0;}
+  else if(a.state==='approach'){if(moveTo(a,new THREE.Vector3(-550,0,-220),18,dt)){a.state='taxi-in';a.pathIndex=0;a.timer=0;}}
   else if(a.state==='taxi-in'){if(moveTo(a,taxi[a.pathIndex],7,dt)){a.pathIndex++;if(a.pathIndex===taxi.length){a.state='unloading';a.doors=true;a.timer=0;}}}
-  else if(a.state==='unloading'&&a.timer>=14){a.state='boarding';a.timer=0;}
+  else if(a.state==='unloading'&&a.timer>=14){a.state='parked';a.doors=false;a.timer=0;}
   else if(a.state==='boarding'&&a.timer>=20){a.state='taxi-out';a.pathIndex=taxi.length-2;a.doors=false;a.timer=0;}
   else if(a.state==='taxi-out'){if(moveTo(a,taxi[a.pathIndex],7,dt)){a.pathIndex--;if(a.pathIndex<0){a.state='takeoff';a.timer=0;}}}
   else if(a.state==='takeoff'){if(moveTo(a,new THREE.Vector3(-550,70,390),28,dt)){a.state='cruise';a.timer=0;}}
-  else if(a.state==='cruise'&&a.timer>30){a.g.position.set(-550,60,-400);a.state='approach';a.timer=0;}
+  else if(a.state==='cruise'){if(moveTo(a,new THREE.Vector3(-550,60,-400),30,dt)){a.state='approach';a.timer=0;}}
   for(const p of people){const unloading=a.state==='unloading',boarding=a.state==='boarding',progress=Math.min(1,a.timer/10);p.h.root.visible=unloading||boarding;if(p.h.root.visible){const t=boarding?1-progress:progress;p.h.root.position.set(-623-t*25,0,24+t*30+p.phase*.6);p.h.root.rotation.y=boarding?Math.PI/2:-Math.PI/2;animatePerson(p.h,true,dt);}}
   for(const s of [...services,a]){s.interaction.pos.copy(s.g.position).add(new THREE.Vector3(0,0,s.name==='Train'?3:-3));s.interaction.label=transit.rider===s?'Leave '+s.name:'Board '+s.name;s.g.visible=!(transit.rider===s&&ctx.firstPerson());}
  boardTimer-=dt;if(boardTimer<=0){boardTimer=1;for(const {s,x,board}of stopBoards){const eta=railArrival(s,x);board.update(eta?.boarding?'BOARDING NOW':eta?'ARRIVAL ~'+formatWait(eta.seconds):'NO SERVICE',eta?.boarding?'Doors close in '+Math.ceil(eta.seconds)+' seconds':'Estimated from vehicle location');}}
