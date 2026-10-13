@@ -516,7 +516,7 @@ const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, 2.2, 7);
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
 const leafMats = [0x3f8f3a, 0x4f9d3f, 0x2f7a35, 0x5aa845].map(c => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.9 }));
 function addTree(x, z, s = 1, trafficIsland=false) {
-  if(!trafficIsland){const safe=roadsidePosition(x,z,9.7);x=safe.x;z=safe.z;}
+  if(!trafficIsland){const safe=roadsidePosition(x,z,13);x=safe.x;z=safe.z;}
   const y0 = groundY(x, z);
   const trunk = mesh(trunkGeo, trunkMat);
   trunk.scale.setScalar(s);
@@ -726,7 +726,8 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
 // STREET LAMPS (instanced so hundreds cost almost nothing)
 // =====================================================================
 const lampSpots = [];
-const LAMP_OFFSETS = [[-10.2,0],[10.2,0],[0,-10.2],[0,10.2]];
+// Poles sit at the inner pavement edge, leaving the curbside walking lane clear.
+const LAMP_OFFSETS = [[-9,0],[9,0],[0,-9],[0,9]];
 for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++)
   for (const [ox, oz] of LAMP_OFFSETS) lampSpots.push(new THREE.Vector3(cx * 40 + 20 + ox, 0, cz * 40 + 20 + oz));
 // Riverside and the Capital are outside the main town grid and had no lamps at
@@ -817,7 +818,7 @@ lampSpots.forEach(placeLampInstance);
 // a pole/lantern/cap instance and can be broken like any other streetlight.
 function addLampSpot(x, y, z) {
   const onBridge=Math.abs(x-BRIDGE_X)<BRIDGE_HALF_W&&z>=BRIDGE_Z0&&z<=BRIDGE_Z1&&Math.abs(y-BRIDGE_Y)<.1;
-  if(!onBridge){const safe=roadsidePosition(x,z);x=safe.x;z=safe.z;}
+  if(!onBridge){const safe=roadsidePosition(x,z,11);x=safe.x;z=safe.z;}
   const p = new THREE.Vector3(x,onBridge?y:z>=640&&z<=950?(x>=120?.4:.2):(y||CURB),z);
   const existing=lampSpots.find(q=>q.distanceTo(p)<.5);if(existing)return existing;
   const i = lampSpots.length;
@@ -1242,9 +1243,12 @@ houseRoof.position.set(HOME.x, CURB + 3, HOME.z);
 houseRoof.castShadow = houseRoof.receiveShadow = true;
 scene.add(houseRoof);
 
-const doorPath = mesh(new THREE.PlaneGeometry(2, 11.5), pathMat);
+// The raised pavement starts at z=8; keep the entrance path off the road.
+const doorPathStartZ = 8;
+const doorPathEndZ = HOME.minZ;
+const doorPath = mesh(new THREE.PlaneGeometry(2, doorPathEndZ - doorPathStartZ), pathMat);
 doorPath.rotation.x = -Math.PI / 2;
-doorPath.position.set(HOME.x, CURB + 0.02, 11);
+doorPath.position.set(HOME.x, CURB + 0.02, (doorPathStartZ + doorPathEndZ) / 2);
 doorPath.castShadow = false;
 
 // Furniture
