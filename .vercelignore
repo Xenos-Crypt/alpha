@@ -5,3 +5,11 @@
 # (confirm.html, assets/map/tiles/*.json, etc). Excluding it lets Vercel fall
 # back to its normal static-files + /api-serverless-functions convention.
 server.cjs
+
+# Local verification artifacts and development-only scripts.
+test-results/
+verify*.cjs
+*.test.mjs
+capture-auth-gameplay.cjs
+.npm-cache/
+.env*
