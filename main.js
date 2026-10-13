@@ -1,5 +1,5 @@
 import {buildWorldExpansion,insideExclusionZone} from './world-expansion.js';
-import {duplicateEmailMessage} from './auth-feedback.js';
+import {duplicateEmailMessage,verificationEmailMessage} from './auth-feedback.js';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {upgradeWorldMaterials} from './visual-upgrade.js';
 import {transitArrestTarget} from './transit-police.js';
@@ -1882,7 +1882,7 @@ function showAuthScreen() {
       catch { error = { message: 'Could not connect. Check your connection and try again.' }; }
       btn.disabled = false; btn.textContent = mode === 'signup' ? 'Create account' : 'Continue your story';
       if(mode==='signup'){const duplicate=duplicateEmailMessage(data,error);if(duplicate){setMode('login');$('authEmail').value=email;err.textContent=duplicate;return;}}
-      if (error) { err.textContent = error.message; return; }
+      if (error) { err.textContent = verificationEmailMessage(error) || error.message; return; }
       if (mode === 'signup' && !data.session) {
         // Don't make them retype everything: switch straight to the login form, email
         // already filled in, so coming back to this tab after confirming is one click.
@@ -2145,6 +2145,7 @@ function offlinePlayerSession(){let id=localStorage.getItem('lastSoloPlayer')||l
 async function boot() {
   let session=null;
   if(navigator.onLine){try{const result=await Promise.race([supabase.auth.getSession(),new Promise(resolve=>setTimeout(()=>resolve(null),8000))]);session=result?.data?.session||null;}catch{}}
+  window.gameLoading?.hide();
   const activeSession = navigator.onLine?(session||await showAuthScreen()):offlinePlayerSession();
   alignmentUserId=activeSession.user.id;try{const role=JSON.parse(localStorage.getItem('alignment:'+alignmentUserId));if(role){heroDungeonKills=role.heroDungeonKills||0;villainKills=role.villainKills||0;isVillain=villainKills>0;}}catch{}
   playerUsername = activeSession.user.isGuest?(localStorage.getItem('lastPlayerName')||'Guest'):await requireUsername(supabase);
@@ -2154,18 +2155,21 @@ async function boot() {
   const existingSave = loadSolo(activeSession.user.id);
   const restoringUpdate=sessionStorage.getItem('resumeAfterUpdate')===activeSession.user.id&&!!existingSave;sessionStorage.removeItem('resumeAfterUpdate');
   const mode = restoringUpdate?'continue':await showMenu(!!existingSave);
+  window.gameLoading?.show(10,'Preparing your adventure...');
   if (mode === 'continue') {
     applySoloSave(existingSave);
     wanted = 0; pursuitBackupCooldown = 0;   // a reload should never resume with police already after you
   } else if (mode === 'new') {
     clearSolo(activeSession.user.id);
+    window.gameLoading?.hide();
     await runSpawnScreen(activeSession.user.id, false);
+    window.gameLoading?.show(35,'Creating your character data...');
   }
   if(mode==='host'||mode==='join'){
     let account=await onlineAccount.load();
     origin={roll:null,family:null,backstory:null,stats:{confidence:50,peace:50,karma:50,wisdom:50},perk:null,wealthTier:'working',housing:'Online resident',startingGold:150,maxHealth:100,weapon:null};
     stats.gold=150;stats.hp=maxHp();
-    if(!account){await showClassSelect({online:true,saveChoice:index=>onlineAccount.claim(index)});account=onlineAccount.account;}
+    if(!account){window.gameLoading?.hide();await showClassSelect({online:true,saveChoice:index=>onlineAccount.claim(index)});account=onlineAccount.account;}
     charIdx=account.class_index;unlockedCharIndices=[charIdx];const c=characters[charIdx];P.mats.outfit.color.set(c.color);P.mats.hair.color.set(c.hair);swordGrip.visible=false;
     const onlineSave=account.progress||{};
     if(onlineSave.prog)Object.assign(prog,onlineSave.prog);if(onlineSave.stats)Object.assign(stats,onlineSave.stats);
@@ -2180,10 +2184,18 @@ async function boot() {
   window.addEventListener('pagehide',saveSolo);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)saveSolo();});
   onlinePlayReady=mode==='host'||mode==='join';
+  window.gameLoading?.show(60,'Preparing buildings, vehicles and textures...');
+  await visualAssetsReady;
+  window.gameLoading?.show(85,'Saving your progress...');
+  if(soloMode&&!saveSolo())throw new Error('Unable to save progress on this device.');
+  renderer.render(scene,camera);
+  await window.gameLoading?.complete();
   $('start').style.display = 'flex';
+  if(mobileControls?.mobile)requestGameControl();
+  else {locked=true;freeMouse=true;$('start').style.display='none';$('mouseHint').textContent='Click the game to control the camera';$('mouseHint').style.display='block';renderer.domElement.addEventListener('click',()=>{setFreeMouse(false);requestGameControl();},{once:true});}
 }
 addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();}})());});
-boot();
+boot().catch(error=>window.gameLoading?.fail(error.message));
 const maxHp = () => (origin?.maxHealth ?? 100) + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
 // A roll of 1 drains hunger/energy 50% faster for this profile, forever; a roll of 6 drains 30% slower.
