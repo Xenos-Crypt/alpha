@@ -1,4 +1,8 @@
 import {buildWorldExpansion,insideExclusionZone} from './world-expansion.js';
+import {duplicateEmailMessage} from './auth-feedback.js';
+import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {upgradeWorldMaterials} from './visual-upgrade.js';
+import {transitArrestTarget} from './transit-police.js';
 import {createNpcConversations} from './npc-conversations.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
@@ -1593,18 +1597,18 @@ function makeHumanoid({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes =
   root.add(rig);
   const mats = { outfit: stdMat(outfit), hair: stdMat(hair), skin: stdMat(skin), pants: stdMat(pants), dark: stdMat(shoes) };
 
-  mesh(new THREE.CapsuleGeometry(0.24, 0.4, 4, 12), mats.outfit, rig).position.y = 1.27;
+  mesh(new THREE.CapsuleGeometry(0.21, 0.4, 4, 12), mats.outfit, rig).position.y = 1.27;
   mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.08, 14), 0x3b2a1e, rig).position.y = 1.02;
   // Face: the old hair sphere (0.265) was bigger than the head itself (0.24) and
   // wrapped almost all the way around it, which read as an animal mask/hood rather
   // than hair. Shrunk to sit just on top/back of the head, and added eyebrows + a
   // mouth so there's an actual face instead of two dots on a blank sphere.
-  mesh(new THREE.SphereGeometry(0.24, 20, 16), mats.skin, rig).position.y = 1.82;
-  mesh(new THREE.SphereGeometry(0.235, 20, 16), mats.hair, rig).position.set(0, 1.9, -0.08);
-  mesh(new THREE.BoxGeometry(0.36, 0.09, 0.14), mats.hair, rig).position.set(0, 2.0, 0.14);
-  for (const s of [-1, 1]) mesh(new THREE.SphereGeometry(0.035, 8, 6), mats.dark, rig).position.set(s * 0.085, 1.84, 0.215);
-  for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.075, 0.018, 0.02), mats.hair, rig).position.set(s * 0.085, 1.895, 0.218);
-  mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), mats.dark, rig).position.set(0, 1.735, 0.225);
+  mesh(new THREE.SphereGeometry(0.19, 18, 12), mats.skin, rig).position.y = 1.82;
+  mesh(new THREE.SphereGeometry(0.18, 18, 12), mats.hair, rig).position.set(0, 1.9, -0.06);
+  mesh(new THREE.BoxGeometry(0.27, 0.06, 0.09), mats.hair, rig).position.set(0, 1.98, 0.08);
+  for (const s of [-1, 1]) mesh(new THREE.SphereGeometry(0.024, 8, 6), mats.dark, rig).position.set(s * 0.064, 1.84, 0.177);
+  for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.06, 0.012, 0.018), mats.hair, rig).position.set(s * 0.064, 1.885, 0.166);
+  mesh(new THREE.BoxGeometry(0.075, 0.014, 0.018), mats.dark, rig).position.set(0, 1.75, 0.168);
 
   function limb(x, y, len, radius, mat, endMat, endGeo) {
     const pivot = new THREE.Group();
@@ -1877,6 +1881,7 @@ function showAuthScreen() {
       }
       catch { error = { message: 'Could not connect. Check your connection and try again.' }; }
       btn.disabled = false; btn.textContent = mode === 'signup' ? 'Create account' : 'Continue your story';
+      if(mode==='signup'){const duplicate=duplicateEmailMessage(data,error);if(duplicate){setMode('login');$('authEmail').value=email;err.textContent=duplicate;return;}}
       if (error) { err.textContent = error.message; return; }
       if (mode === 'signup' && !data.session) {
         // Don't make them retype everything: switch straight to the login form, email
@@ -2268,9 +2273,10 @@ function makeVehicle(kind, color) {
     mesh(new THREE.BoxGeometry(W + 0.02, 0.35, L + 0.02), 0xf2f2f2, g).position.y = 1.0;            // white stripe
     mesh(new THREE.BoxGeometry(0.05, 2.0, 1.2), glassMat, g).position.set(W / 2 + 0.02, 1.4, L / 2 - 1.5); // door (kerb side)
   } else {
-    mesh(new THREE.BoxGeometry(W, 0.55, L), paint, g).position.y = 0.6;
-    mesh(new THREE.BoxGeometry(1.76, 0.6, 2.1), glassMat, g).position.set(0, 1.15, -0.25);
-    mesh(new THREE.BoxGeometry(1.8, 0.08, 1.9), paint, g).position.set(0, 1.48, -0.25);
+    mesh(new RoundedBoxGeometry(W, 0.6, L, 2, .08), paint, g).position.y = 0.6;
+    const cabin=mesh(new RoundedBoxGeometry(1.76,.62,2.1,2,.06),glassMat,g);cabin.position.set(0,1.2,-.25);const vertices=cabin.geometry.attributes.position;for(let i=0;i<vertices.count;i++)if(vertices.getY(i)>0){vertices.setX(i,vertices.getX(i)*.83);vertices.setZ(i,vertices.getZ(i)*.8);}vertices.needsUpdate=true;cabin.geometry.computeVertexNormals();
+    mesh(new RoundedBoxGeometry(1.48,.08,1.65,1,.035),paint,g).position.set(0,1.52,-.25);
+    mesh(new RoundedBoxGeometry(1.9,.18,1.15,1,.05),paint,g).position.set(0,.89,1.35);
     for (const z of [2.15, -2.15]) mesh(new THREE.BoxGeometry(2.04, 0.25, 0.2), 0x222222, g).position.set(0, 0.45, z);
   }
   for (const s of [-1, 1]) {
@@ -5331,7 +5337,7 @@ function resolveInteractTarget() {
   if(adventureServices?.parachuting)return {label:'Parachute: steer to land',action:()=>toast('Use movement controls to steer the parachute toward clear ground.')};
   if(navy?.rider)return {label:'Leave naval vessel at dock',action:()=>navy.leave()};
   if(intercityRail?.rider)return {label:'Leave intercity train at station',action:()=>intercityRail.leave()};
-  if(wanted>0&&vehicles.some(v=>v.kind==='police'&&distXZ(v.group.position,player.position)<25))return {label:'Surrender to police',action:()=>{if(inCar&&Math.abs(driving.speed)>1){toast('Stop the car before surrendering.');return;}if(inCar)exitVehicle(true);arrestPlayer();}};
+  if(wanted>0&&!transitArrestTarget(transport)&&vehicles.some(v=>v.kind==='police'&&distXZ(v.group.position,player.position)<25))return {label:'Surrender to police',action:()=>{if(inCar&&Math.abs(driving.speed)>1){toast('Stop the car before surrendering.');return;}if(inCar)exitVehicle(true);arrestPlayer();}};
   if(cityServices?.rider)return {label:cityServices.rider.bus?'Leave city bus':'Leave taxi',action:()=>cityServices.leave()};
   if(spaceCentre?.rider)return {label:spaceCentre.state==='landed'?'Leave rocket':spaceCentre.state==='boarding'?'Leave rocket cabin':spaceCentre.state==='countdown'?'Abort launch':'Rocket flight in progress',action:()=>spaceCentre.interact()};
   if (metro?.rider) return { label: 'Leave the subway', action: () => metro.leave() };
@@ -6147,7 +6153,7 @@ function resolveRailCollision(v,start){
  const vel=vehicleVelocity(v),relative=Math.hypot(vel.x-(rail.velocityX||0),vel.z);
  p.copy(q);p.z=r.z+side*(1.5+v.radius+.05);
  if(!v.crashCooldown)damageVehicle(v,relative,p);
- v.speed=0;if(v.ai)v.ai.stopTimer=3;rail.collisionStop=3;rail.speed=0;return;
+ v.speed=0;if(v.ai)v.ai.stopTimer=3;if(v.kind!=='police'){rail.collisionStop=3;rail.speed=0;}return;
  }
  }
 }
@@ -6291,6 +6297,7 @@ function requestPoliceBackup() {
   unit.ai.chasing = true; pursuitBackupCooldown = 15;
 }
 function updatePursuit(dt) {
+  if(wanted>0&&transitArrestTarget(transport))wanted=Math.max(wanted,30);
   pursuitBackupCooldown = Math.max(0, pursuitBackupCooldown - dt);
   if (wanted <= 0) return;
   const target = inCar && driving ? driving.group.position : player.position;
@@ -6315,14 +6322,15 @@ function arrestPlayer() {
 }
 function policeChase(v, dt) {
   const ai = v.ai, p = v.group.position;
+  const transitTarget=transitArrestTarget(transport);
   ai.chasing = true; ai.parked = false;
   ai.ramCd -= dt;
   const actualTarget = inCar ? driving.group.position : player.position;
-  const tp = !inCivicInterior && policeCanSee(v, actualTarget) ? actualTarget : policeLastSeen;
+  const tp = transitTarget?.position||(!inCivicInterior && policeCanSee(v, actualTarget) ? actualTarget : policeLastSeen);
   const want = Math.atan2(tp.x - p.x, tp.z - p.z);
   v.group.rotation.y += clamp(angleDiff(v.group.rotation.y, want), -2.2 * dt, 2.2 * dt);
   const d = distXZ(p, tp);
-  const captureSpeed=inCar?Math.min(24,Math.max(0,Math.abs(driving.speed)+2)):Math.min(16,Math.sqrt(4*Math.max(0,d-3)));
+  const captureSpeed=transitTarget?Math.min(22,Math.sqrt(4*Math.max(0,d-3))):inCar?Math.min(24,Math.max(0,Math.abs(driving.speed)+2)):Math.min(16,Math.sqrt(4*Math.max(0,d-3)));
   v.speed=lerp(v.speed,captureSpeed,1-Math.exp(-3*dt));
   ai.warningTimer=(ai.warningTimer||0)-dt;if(ai.warningTimer<=0&&d<35){toast('Police: stop and surrender. Use Interact near an officer.');ai.warningTimer=10;}
   if(inCar&&d<6&&Math.abs(driving.speed)<1){exitVehicle(true);arrestPlayer();return;}
@@ -6332,6 +6340,7 @@ function policeChase(v, dt) {
   // Road collisions are resolved centrally after movement.
   p.y = groundY(p.x, p.z);
   for (const w of v.wheels) w.rotation.x += v.speed * dt / 0.4;
+  if(transitTarget){if(d<6&&transitTarget.doors){v.speed=0;const officer=v.transitOfficer??=makeHumanoid({outfit:0x243c58,hair:0x382d24,pants:0x1c2f43});if(!ai.officerDeployed){officer.root.position.copy(p).add(new THREE.Vector3(1,0,0));officer.root.visible=true;ai.officerDeployed=true;}const door=new THREE.Vector3(transitTarget.position.x,0,transitTarget.service.z+(transitTarget.service.name==='Train'?5:-3)),delta=door.sub(officer.root.position).setY(0),distance=delta.length();if(distance>.6){officer.root.position.addScaledVector(delta.normalize(),Math.min(distance,2.4*dt));officer.root.rotation.y=Math.atan2(delta.x,delta.z);collide(officer.root.position,.3);officer.root.position.y=groundY(officer.root.position.x,officer.root.position.z);animateHumanoid(officer,null,true,false,true,dt);}else{transport.leave();arrestPlayer();addTask({dur:3,end(){officer.root.visible=false;ai.officerDeployed=false;}});}}else if(v.transitOfficer){v.transitOfficer.root.visible=false;ai.officerDeployed=false;}return;}
   if (d < 3 && ai.ramCd <= 0) {
     ai.ramCd = 1.5;
     if (inCar) { /* Central collision response handles vehicle impacts. */ }
@@ -6628,7 +6637,7 @@ interactables.push({pos:companion.home.clone(),r:3,label:'Adopt companion dog',a
 harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex});
 townPlaces.destinations.push({name:'Harbour bridge',x:220,z:85});
 transport=buildTransport({scene,box,makeTex,sitSpots,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
- canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!inCar&&!sitting&&!action&&!swimming&&wanted===0,firstPerson:()=>cameraView==='first',board(){action=null;vy=0;pvel.set(0,0,0);},
+ canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!inCar&&!sitting&&!action&&!swimming,firstPerson:()=>cameraView==='first',board(){action=null;vy=0;pvel.set(0,0,0);},
  carry(pos){player.position.copy(pos);},leave(pos){player.position.copy(pos);player.position.y=groundY(pos.x,pos.z);collide(player.position,.4);vy=0;pvel.set(0,0,0);}
 });
 urban=buildUrban({scene,box,camBlockers,planeBlocks,sitSpots,interactables,makeTex,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,buyFood:()=>buyFood(12,15),destinations:townPlaces.destinations,busStops,busRoute:BUS_ROUTE,vehicles,playerPos:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')||80)/100))});
@@ -6724,6 +6733,7 @@ worldExpansion=buildWorldExpansion({...regionalTransportContext,civicBuildings,f
 townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
 metro.cutSurfaces();
+const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
 worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosition:()=>player.position});worldAdvertising.update(0);adBalloon.visible=false;
 const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>worldMap.show();document.body.append(mapButton);
@@ -6813,7 +6823,7 @@ function frame() {
   onlinePlayers?.update(rawDt);
   drawSpeedLines(rawDt);
   updateHud(running ? rawDt : 0);
-  renderer.render(scene, camera);
+  if($('auth').style.display!=='flex')renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 frame();

@@ -1,0 +1,4 @@
+const panel=document.getElementById('auth'),video=document.getElementById('authGameplayVideo'),button=document.getElementById('authVideoToggle'),reduce=matchMedia('(prefers-reduced-motion: reduce)');let paused=reduce.matches;
+video.muted=video.defaultMuted=true;
+function update(){const visible=getComputedStyle(panel).display!=='none'&&!document.hidden,play=visible&&!paused;button.textContent=play?'Pause video':'Play video';button.setAttribute('aria-pressed',String(!play));if(play)video.play().catch(()=>{});else video.pause();}
+button.addEventListener('click',()=>{paused=!paused;update();});new MutationObserver(update).observe(panel,{attributes:true,attributeFilter:['style','hidden']});document.addEventListener('visibilitychange',update);reduce.addEventListener('change',()=>{paused=reduce.matches;update();});video.addEventListener('loadeddata',update);update();

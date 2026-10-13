@@ -356,13 +356,16 @@
   </div>
 </div>
 <div id="auth">
+  <video id="authGameplayVideo" autoplay muted loop playsinline webkit-playsinline preload="metadata" poster="./assets/auth-gameplay-poster.jpg" aria-hidden="true"><source src="./assets/auth-gameplay.mp4" type="video/mp4"></video>
+  <div class="auth-video-shade" aria-hidden="true"></div>
+  <button id="authVideoToggle" type="button" aria-pressed="false">Pause video</button>
   <div class="auth-shell">
     <section class="auth-hero" aria-label="About Another World">
       <div class="auth-brand">ANOTHER WORLD</div>
       <h2>One life.<br>A world of<br><span>possibilities.</span></h2>
       <p>Discover your powers. Explore the city, take to the skies, or find your own path along the coast. Every story starts somewhere.</p>
       <div class="auth-tags"><span>Explore a living city</span><span>Master your powers</span><span>Drive, fly &amp; swim</span></div>
-      <div class="auth-scene" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="auth-gameplay-caption">FLY. DRIVE. EXPLORE.</div>
       <div class="auth-caption">Your next adventure starts in Ashford.</div>
     </section>
     <section class="auth-card">
@@ -425,5 +428,6 @@ document.body.appendChild(cloakedBtn);
 
 <script type="module" src="./offline.js"></script>
 <script type="module" src="./dist/bundle.js"></script>
+<script type="module" src="./auth-video.js"></script>
 </body>
 </html>
