@@ -7,8 +7,8 @@ namespace AnotherWorld.World
         public static void House(Transform parent,Vector3 location)
         {
             var root=new GameObject("Hidrok courtyard residence").transform;root.SetParent(parent,false);root.localPosition=location;
-            var brick=WorldShapes.Material("Pearl ceramic",new Color(.7f,.8f,.82f),null,.5f);var trim=WorldShapes.Material("Limestone",new Color(.78f,.75f,.66f));
-            var roof=WorldShapes.Material("Photovoltaic roof",new Color(.07f,.19f,.26f),null,.75f);var dark=WorldShapes.Material("Frame",new Color(.16f,.2f,.2f));var glass=WorldShapes.Material("Glass",new Color(.28f,.4f,.46f),null,.82f);
+            var brick=WorldShapes.Material("Pearl ceramic",new Color(.88f,.91f,.93f),null,.45f);var trim=WorldShapes.Material("Limestone",new Color(.82f,.84f,.86f));
+            var roof=WorldShapes.Material("Photovoltaic roof",new Color(.07f,.19f,.26f),null,.75f);var dark=WorldShapes.Material("Frame",new Color(.16f,.2f,.2f));var glass=WorldShapes.Material("Glass",new Color(.3f,.5f,.6f),null,.9f);
             var wood=WorldShapes.Material("Floor",Color.white,"wood");var pavement=WorldShapes.Material("Path",Color.white,"paving");
             WorldShapes.Box(root,"Floor",new Vector3(12,.1f,10),new Vector3(0,.1f,0),wood,true);
             WorldShapes.Box(root,"Back",new Vector3(12,3,.3f),new Vector3(0,1.65f,5),brick,true);
@@ -29,6 +29,14 @@ namespace AnotherWorld.World
             var roofRoot=new GameObject("Roof").transform;roofRoot.SetParent(root,false);
             WorldShapes.Box(roofRoot,"Floating ceramic roof",new Vector3(12.8f,.22f,10.8f),new Vector3(0,3.3f,0),trim);
             WorldShapes.Box(roofRoot,"Inset solar roof",new Vector3(11.6f,.08f,9.6f),new Vector3(0,3.46f,0),roof);
+            // Glowing roofline edge — the shared signature across all three house
+            // tiers (common/presidential/mansion) in the reference concepts.
+            var glow=WorldShapes.Material("Roofline glow",new Color(.1f,.8f,.92f),null,.4f);
+            foreach(int side in new[]{-1,1})
+            {
+                WorldShapes.Box(roofRoot,"Roofline glow strip",new Vector3(12.9f,.05f,.06f),new Vector3(0,3.185f,side*5.42f),glow);
+                WorldShapes.Box(roofRoot,"Roofline glow strip",new Vector3(.06f,.05f,10.9f),new Vector3(side*6.42f,3.185f,0),glow);
+            }
             WorldShapes.Box(roofRoot,"Living roof garden",new Vector3(4,.12f,2.1f),new Vector3(3.2f,3.55f,3.1f),WorldShapes.Material("Roof garden",new Color(.25f,.42f,.22f)));
             WorldShapes.Box(roofRoot,"Roof pergola",new Vector3(3.5f,.12f,2.5f),new Vector3(-3.4f,4.35f,2.9f),dark);
             foreach(int side in new[]{-1,1})WorldShapes.Box(roofRoot,"Pergola upright",new Vector3(.08f,.9f,.08f),new Vector3(-3.4f+side*1.65f,3.9f,3.9f),dark);
