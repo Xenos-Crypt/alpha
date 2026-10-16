@@ -1,34 +1,56 @@
 namespace AnotherWorld.Traffic
 {
-    // UK Highway Code / Road Traffic Act moving-offence catalogue. Fixed
-    // Penalty Notice amounts and penalty points reflect real current UK
-    // tariffs (DVSA/Gov.uk): most moving traffic offences are a flat £100 FPN
-    // + 3 points; pavement driving (Highway Code rule 145 / Road Traffic Act
-    // 1835 s.72) is a non-endorsable nuisance offence, £50 and no points.
-    public enum Offence { RedSignal, PedestrianCrossing, WrongWay, Pavement, CycleLane, RoundaboutYield, RoundaboutIsland, Speeding, TramYield }
+    // Another World's own traffic code — not a real-world jurisdiction's. Fine
+    // amounts are in Coins (the game's existing currency, NeighbourhoodPlayer.Coins),
+    // matching the CR scale 1:1. Only the subset the engine can actually detect
+    // is wired to enforcement; the other ~90 offences in the source rulebook
+    // need systems (seatbelts, phones, insurance papers, cargo, flight
+    // corridors, autonomous-vehicle software) that don't exist in this game yet.
+    public enum Offence
+    {
+        Speeding1, Speeding2, Speeding3, Speeding4,   // Category 1 #1-4
+        RedSignal,                                     // Category 2 #11
+        FailGiveWay,                                    // Category 2 #13 (roundabout/junction give-way)
+        WrongWay,                                        // Category 3 #27
+        CycleLane,                                        // Category 3 #25
+        BlockingIntersection,                              // Category 3 #26
+        TramYield,                                          // not in the source list — same detectable shape as a give-way failure, costed the same
+        FailGiveWayPedestrian,                               // Category 5 #44
+        UnlicensedDriving,                                    // Category 6 #51
+        SuspendedDriving,                                      // Category 6 #52
+    }
     public readonly struct OffenceInfo
     {
-        public readonly string Reason; public readonly int Fine; public readonly int Points;
-        public OffenceInfo(string reason, int fine, int points) { Reason = reason; Fine = fine; Points = points; }
+        public readonly string Reason; public readonly int Fine; public readonly int Points; public readonly bool ImmediateSuspension;
+        public OffenceInfo(string reason, int fine, int points, bool immediateSuspension = false)
+        { Reason = reason; Fine = fine; Points = points; ImmediateSuspension = immediateSuspension; }
     }
     public static class TrafficOffences
     {
         public static OffenceInfo Describe(Offence o) => o switch
         {
-            Offence.RedSignal => new("ran a red traffic signal — Highway Code rule 109", 100, 3),
-            Offence.PedestrianCrossing => new("failed to stop for pedestrians crossing — rule 195", 100, 3),
-            Offence.WrongWay => new("drove against the flow of traffic — rule 143", 100, 3),
-            Offence.Pavement => new("drove on the pavement — rule 145", 50, 0),
-            Offence.CycleLane => new("drove in a mandatory cycle lane — rule 140", 100, 3),
-            Offence.RoundaboutYield => new("failed to give way at a roundabout — rule 186", 100, 3),
-            Offence.RoundaboutIsland => new("cut across a roundabout island — rule 188", 100, 3),
-            Offence.Speeding => new("exceeded the speed limit — rule 124", 100, 3),
-            Offence.TramYield => new("failed to give way to a tram — rule 300", 100, 3),
-            _ => new("committed a traffic offence", 60, 0),
+            Offence.Speeding1 => new("exceeded the speed limit by 1-10 km/h", 100, 1),
+            Offence.Speeding2 => new("exceeded the speed limit by 11-20 km/h", 250, 2),
+            Offence.Speeding3 => new("exceeded the speed limit by 21-40 km/h", 600, 4),
+            Offence.Speeding4 => new("exceeded the speed limit by over 40 km/h", 1500, 6, true),
+            Offence.RedSignal => new("ran a red light", 600, 3),
+            Offence.FailGiveWay => new("ignored a give-way at a junction", 250, 2),
+            Offence.WrongWay => new("drove on the wrong side of the road", 1000, 5),
+            Offence.CycleLane => new("drove in a cycle lane", 400, 2),
+            Offence.BlockingIntersection => new("blocked an intersection", 250, 1),
+            Offence.TramYield => new("failed to give way to a tram", 500, 2),
+            Offence.FailGiveWayPedestrian => new("failed to give way to pedestrians", 500, 3),
+            Offence.UnlicensedDriving => new("drove without a valid licence", 1500, 0, true),
+            Offence.SuspendedDriving => new("drove while suspended", 3000, 0, true),
+            _ => new("committed a traffic offence", 100, 1),
         };
-        // UK licences are revoked ("totting up") at 12 points within 3 years —
-        // modelled here as a timed suspension rather than tracking years.
-        public const int DisqualifyAtPoints = 12;
-        public const float DisqualificationSeconds = 120;
+        // Points stay on the record for this long before expiring (a rolling
+        // window, not a lifetime total) — matches "12 points within a rolling
+        // period" rather than tracking real calendar years.
+        public const float PointRollingWindow = 300;
+        public const int SuspendAtPoints = 12;
+        public const float SuspensionSeconds = 120;
+        // A 2nd offence of the SAME type within this window costs 1.5x the fine, a 3rd costs 2x.
+        public const float RepeatWindow = 180;
     }
 }
