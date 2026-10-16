@@ -199,7 +199,7 @@ namespace AnotherWorld.World
         {
             if(Swimming)GUI.Label(new Rect(14,110,800,25),"Swimming | Stamina "+Mathf.CeilToInt(Stamina)+" | WASD to shore, Shift to swim faster | Tide uses less stamina");
             GUI.Label(new Rect(14,14,850,28),"Another World — WASD move · Right mouse look · E enter / leave � G steal road vehicle · F camera");
-            if(IsDriving)GUI.Label(new Rect(14,Screen.height-32,850,24),(SeatbeltOn?"Seat belt ON":"Seat belt OFF — press B")+"   ·   Hold P: use phone (distracted driving)");
+            if(IsDriving)GUI.Label(new Rect(14,Screen.height-56,850,24),(SeatbeltOn?"Seat belt ON":"Seat belt OFF — press B")+"   ·   Hold P: use phone (distracted driving)");
             if(!IsDriving&&!tram&&!bus&&!(ScalableQuality.Instance&&ScalableQuality.Instance.MenuOpen)&&!(CityServices.Instance&&CityServices.Instance.MenuOpen))
             {
                 var button=RoadNetwork.Instance.NearestButton(transform.position);
