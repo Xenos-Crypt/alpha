@@ -146,8 +146,36 @@ namespace AnotherWorld.Traffic
                 if(lane>TrafficRules.CarLane+1.5f&&lane<=TrafficRules.RoadHalfWidth)Report(driver,Offence.CycleLane);
             }
         }
+        // Seatbelt, phone, insurance, cargo and air-corridor offences aren't
+        // one-off boundary crossings like a red light — they're an ongoing
+        // state that's wrong for as long as it holds. Checked periodically
+        // (every 4s, via Update()) rather than every frame; Report()'s own
+        // per-driver cooldowns stop this from citing the same offender twice
+        // in the same window.
+        void ScanCompliance()
+        {
+            if(Player&&Player.IsDriving)
+            {
+                if(Player.VehicleSpeed>2&&!Player.SeatbeltOn)Report(Player.transform,Offence.NoSeatbelt);
+                if(Player.PhoneInUse)Report(Player.transform,Offence.HandheldPhone);
+            }
+            foreach(var car in RoadNetwork.Instance.Vehicles)
+            {
+                if(car.Abandoned||car.Sinking)continue;
+                // A player-driven car's own transform isn't Player.transform —
+                // route the citation to the actual driver either way.
+                var driver=car.PlayerControlled&&Player!=null?Player.transform:car.transform;
+                if(car.Speed>2&&!car.Insured)Report(driver,Offence.NoInsurance);
+                if(car.HasCargo&&!car.CargoSecured&&car.Speed>2)Report(driver,Offence.UnsecuredCargo);
+                if(car.CanFly&&car.transform.position.y>AirCorridor.ControlledAltitude&&!AirCorridor.InPermittedCorridor(car.transform.position))
+                    Report(driver,Offence.ProhibitedAirCorridor);
+            }
+        }
+        float complianceTimer;
         void Update()
         {
+            complianceTimer-=Time.deltaTime;
+            if(complianceTimer<=0){complianceTimer=4;ScanCompliance();}
             if(Wanted==0||!responding||!offender)return;
             float distance=Vector3.Distance(responding.transform.position,offender.position);
             reroute-=Time.deltaTime;

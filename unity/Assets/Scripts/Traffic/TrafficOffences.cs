@@ -18,6 +18,11 @@ namespace AnotherWorld.Traffic
         FailGiveWayPedestrian,                               // Category 5 #44
         UnlicensedDriving,                                    // Category 6 #51
         SuspendedDriving,                                      // Category 6 #52
+        NoInsurance,                                             // Category 6 #54
+        NoSeatbelt,                                               // Category 5 #42
+        HandheldPhone,                                             // Category 5 #41
+        UnsecuredCargo,                                             // Category 7 #68
+        ProhibitedAirCorridor,                                       // Category 10 #96
     }
     public readonly struct OffenceInfo
     {
@@ -42,6 +47,11 @@ namespace AnotherWorld.Traffic
             Offence.FailGiveWayPedestrian => new("failed to give way to pedestrians", 500, 3),
             Offence.UnlicensedDriving => new("drove without a valid licence", 1500, 0, true),
             Offence.SuspendedDriving => new("drove while suspended", 3000, 0, true),
+            Offence.NoInsurance => new("drove without required insurance", 1000, 0),
+            Offence.NoSeatbelt => new("failed to wear a seat belt", 300, 2),
+            Offence.HandheldPhone => new("used a handheld phone while driving", 500, 3),
+            Offence.UnsecuredCargo => new("carried an unsecured load", 600, 3),
+            Offence.ProhibitedAirCorridor => new("entered a prohibited air corridor", 3000, 0, true),
             _ => new("committed a traffic offence", 100, 1),
         };
         // Points stay on the record for this long before expiring (a rolling

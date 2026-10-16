@@ -31,6 +31,10 @@ namespace AnotherWorld.World
         public bool Swimming=>!driving&&!tram&&!bus&&!ferry&&!train&&transform.position.y<.6f&&WorldGeography.IsWater(transform.position);
         public float Stamina=100;
         public PlayerPowers Powers { get; private set; }
+        // Unbuckled by default on entering a vehicle — matches the real risk
+        // the offence models (you have to deliberately buckle up). B toggles,
+        // P holds for handheld-phone use while driving.
+        public bool SeatbeltOn,PhoneInUse;
         float touchMove,touchTurn,touchLift;
         void Awake(){body=GetComponent<CharacterController>();Powers=gameObject.AddComponent<PlayerPowers>();}
         public void Face(Vector3 point)
@@ -44,6 +48,8 @@ namespace AnotherWorld.World
             if(Input.GetKeyDown(KeyCode.F))thirdPerson=!thirdPerson;
             if(!menu&&!Powers.Invulnerable&&Input.GetKeyDown(KeyCode.E))Interact();
             if(!menu&&!Powers.Invulnerable&&Input.GetKeyDown(KeyCode.G)&&!IsDriving&&!IsRidingTransit)TryStealNearby();
+            if(!menu&&IsDriving&&Input.GetKeyDown(KeyCode.B))SeatbeltOn=!SeatbeltOn;
+            PhoneInUse=!menu&&IsDriving&&Input.GetKey(KeyCode.P);
             if(menu){touchMove=touchTurn=touchLift=0;return;}
             var before=transform.position;
             float dt=Time.deltaTime,forward=Mathf.Clamp(Input.GetAxisRaw("Vertical")+touchMove,-1,1),side=Mathf.Clamp(Input.GetAxisRaw("Horizontal")+touchTurn,-1,1);
@@ -171,7 +177,7 @@ namespace AnotherWorld.World
                 var person=WorldShapes.Person(car.transform.parent,new Color(.18f,.24f,.28f));person.position=p;
                 person.gameObject.AddComponent<CrossingWalker>().Waypoints=new[]{p,p+new Vector3(0,0,local.z>=0?18:-18)};
             }
-            driving=car;car.Stolen=!car.Owned;car.Abandoned=false;car.PlayerControlled=true;car.Speed=0;
+            driving=car;car.Stolen=!car.Owned;car.Insured=car.Owned;car.Abandoned=false;car.PlayerControlled=true;car.Speed=0;SeatbeltOn=false;
             body.enabled=false;driveSpeed=0;thirdPerson=true;
             if(car.Kind=="motorcycle"||car.Kind=="bicycle")
             {drivingRider=WorldShapes.Person(car.transform,new Color(.2f,.45f,.38f),true);drivingRider.localPosition=new Vector3(0,.2f,-.31f);}
@@ -193,6 +199,7 @@ namespace AnotherWorld.World
         {
             if(Swimming)GUI.Label(new Rect(14,110,800,25),"Swimming | Stamina "+Mathf.CeilToInt(Stamina)+" | WASD to shore, Shift to swim faster | Tide uses less stamina");
             GUI.Label(new Rect(14,14,850,28),"Another World — WASD move · Right mouse look · E enter / leave � G steal road vehicle · F camera");
+            if(IsDriving)GUI.Label(new Rect(14,Screen.height-32,850,24),(SeatbeltOn?"Seat belt ON":"Seat belt OFF — press B")+"   ·   Hold P: use phone (distracted driving)");
             if(!IsDriving&&!tram&&!bus&&!(ScalableQuality.Instance&&ScalableQuality.Instance.MenuOpen)&&!(CityServices.Instance&&CityServices.Instance.MenuOpen))
             {
                 var button=RoadNetwork.Instance.NearestButton(transform.position);

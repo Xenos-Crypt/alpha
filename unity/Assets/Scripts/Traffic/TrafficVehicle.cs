@@ -10,6 +10,9 @@ namespace AnotherWorld.Traffic
         public int Segment;
         public float Progress;
         public bool PlayerControlled,DoorsOpen,DispatchHold,Stolen,Abandoned,CanFly,Owned;
+        // Insurance lapses the moment a vehicle is stolen (no policy covers a
+        // thief); cargo only applies to "truck" kind, unsecured until loaded.
+        public bool Insured=true,HasCargo,CargoSecured=true;
         public float MaxDriveSpeed=18,LiftSpeed=4,TurnRate=65;
         public bool Sinking { get; private set; }
         public float Integrity=100;
