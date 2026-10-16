@@ -9,6 +9,10 @@ namespace AnotherWorld.Traffic
     public sealed class TrafficRules
     {
         public const float Spacing=64, RoadHalfWidth=14, CarLane=7.4f, BicycleLane=11.8f, TrackHalfWidth=1.65f;
+        // Modelled urban limit (rule 124). NPC CruiseSpeed (9) sits comfortably
+        // under it; only deliberately fast driving (the player, or a vehicle
+        // forced faster) trips it.
+        public const float SpeedLimit=12;
         public const float CrossingOffset=18, StopLine=20.5f, ClearanceSeconds=1.5f, WalkSeconds=24;
         public JunctionPhase Phase { get; private set; }=JunctionPhase.Clearance;
         public JunctionPhase NextPhase { get; private set; }=JunctionPhase.CarsX;

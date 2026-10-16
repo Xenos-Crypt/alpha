@@ -20,6 +20,10 @@ namespace AnotherWorld.World
         public int Health {get=>health;set{if(value<health&&Powers&&Powers.Invulnerable)return;health=Mathf.Clamp(value,0,100);}}
         float yaw=-110,pitch=3,verticalSpeed,driveSpeed,pendingLaunch,drowningDamage;
         bool thirdPerson=true;
+        public bool IsThirdPerson=>thirdPerson;
+        public bool TouchControlsVisible=>Application.isMobilePlatform||Screen.width<=900;
+        public Rect InteractTouchRect=>new Rect(Screen.width-84,Screen.height-220,60,52);
+        public bool PointerOverInteract=>TouchControlsVisible&&InteractTouchRect.Contains(new Vector2(Input.mousePosition.x,Screen.height-Input.mousePosition.y));
         public bool IsDriving=>driving!=null;
         public bool IsRidingTransit=>tram!=null||bus!=null||ferry!=null||train!=null;
         public float VehicleSpeed=>driving?driving.Speed:0;
@@ -154,6 +158,9 @@ namespace AnotherWorld.World
         public bool TakeVehicle(TrafficVehicle car)
         {
             if(Powers.Invulnerable||!car||car.Sinking||car.Integrity<=0||IsDriving||IsRidingTransit||car.Kind=="tram"||car.Kind=="train"||car.PlayerControlled||car.Speed>2.5f)return false;
+            // Licences are only required for motor vehicles — a suspended driver can still cycle.
+            if(car.Kind!="bicycle"&&Traffic.PoliceDispatch.Instance&&Traffic.PoliceDispatch.Instance.Disqualified)
+            {CityServices.Instance.Notify("Licence suspended — too many penalty points. Can't drive for "+Mathf.CeilToInt(Traffic.PoliceDispatch.Instance.DisqualifiedUntil-Time.time)+"s.");return false;}
             if(car.Rider)
             {
                 // Retire the seated rig and create a walking civilian on the nearest safe footway.
@@ -191,12 +198,12 @@ namespace AnotherWorld.World
                 var button=RoadNetwork.Instance.NearestButton(transform.position);
                 if(button)
                 {
-                    GUI.Label(new Rect(18,Screen.height-172,650,28),"Press a crossing button and wait for that direction's green.");
+                    GUI.Label(new Rect(18,Screen.height-300,650,28),"Press a crossing button and wait for that direction's green.");
                     float width=Mathf.Min(150,(Screen.width-48)/3f);
                     var d=transform.position-button.Junction.Position;
-                    if(GUI.Button(new Rect(18,Screen.height-140,width,42),d.x>0?"Cross west":"Cross east"))button.Junction.Rules.RequestCrossing(TravelAxis.X);
-                    if(GUI.Button(new Rect(24+width,Screen.height-140,width,42),d.z>0?"Cross south":"Cross north"))button.Junction.Rules.RequestCrossing(TravelAxis.Z);
-                    if(GUI.Button(new Rect(30+width*2,Screen.height-140,width,42),"Both crossings")){button.Junction.Rules.RequestCrossing(TravelAxis.X);button.Junction.Rules.RequestCrossing(TravelAxis.Z);}
+                    if(GUI.Button(new Rect(18,Screen.height-268,width,42),d.x>0?"Cross west":"Cross east"))button.Junction.Rules.RequestCrossing(TravelAxis.X);
+                    if(GUI.Button(new Rect(24+width,Screen.height-268,width,42),d.z>0?"Cross south":"Cross north"))button.Junction.Rules.RequestCrossing(TravelAxis.Z);
+                    if(GUI.Button(new Rect(30+width*2,Screen.height-268,width,42),"Both crossings")){button.Junction.Rules.RequestCrossing(TravelAxis.X);button.Junction.Rules.RequestCrossing(TravelAxis.Z);}
                 }
                 var place=CityServices.Instance.Nearby(transform.position);if(place)GUI.Label(new Rect(18,Screen.height-40,600,25),"E — Enter "+place.Name);
             }
@@ -208,7 +215,7 @@ namespace AnotherWorld.World
             if(GUI.RepeatButton(new Rect(84,y,60,56),"▶"))touchTurn=1;
             if(GUI.RepeatButton(new Rect(Screen.width-150,y,60,56),"▼"))touchMove=-1;
             if(GUI.RepeatButton(new Rect(Screen.width-84,y,60,56),"▲"))touchMove=1;
-            if(GUI.Button(new Rect(Screen.width-84,y-62,60,52),"E"))Interact();
+            if(GUI.Button(InteractTouchRect,"E"))Interact();
             if(driving&&driving.CanFly)
             {
                 if(GUI.RepeatButton(new Rect(Screen.width-220,y-62,60,52),"Up"))touchLift=1;

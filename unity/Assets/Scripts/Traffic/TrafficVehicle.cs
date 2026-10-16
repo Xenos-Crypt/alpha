@@ -45,7 +45,13 @@ namespace AnotherWorld.Traffic
             var direction=delta.normalized;float requested=Mathf.Min(CruiseSpeed*Time.deltaTime,delta.magnitude);
             float travel=RoadNetwork.Instance.Limit(transform.position,direction,requested,User,Length,this);
             travel=ClearTravel(direction,travel);
+            var before=transform.position;
             transform.position+=direction*travel;Speed=Time.deltaTime>0?travel/Time.deltaTime:0;
+            // Same Highway Code enforcement the player gets (NeighbourhoodPlayer
+            // calls the equivalent Observe for on-foot/player-driven travel) —
+            // police on an active stop are exempt, matching rule 219's emergency
+            // vehicle allowance; everyone else is held to the same rules.
+            if(Kind!="police"&&PoliceDispatch.Instance)PoliceDispatch.Instance.Observe(transform,before,transform.position,User,Length,Speed);
             transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(direction),150*Time.deltaTime);
             if(Wheels!=null)foreach(var wheel in Wheels)wheel.Rotate(Vector3.right,travel/(User==RoadUser.Bicycle?.365f:.43f)*Mathf.Rad2Deg,Space.Self);
             if(Kind=="bus"&&Stops!=null)for(int i=0;i<Stops.Length;i++)
