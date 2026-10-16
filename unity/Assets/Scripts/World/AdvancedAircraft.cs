@@ -46,6 +46,12 @@ namespace AnotherWorld.World
             var model=HoverVehicleModel.Create("car",moving,new Color(.7f,.8f,.88f),out var wheels);model.name="Flyable Hidrok skycar";model.transform.position=new Vector3(-176,.1f,-276);
             var car=model.AddComponent<TrafficVehicle>();car.Kind="skycar";car.CanFly=true;car.Abandoned=true;car.Wheels=wheels;
             WorldShapes.Label(scenery,"SKYCAR PAD / G TO TAKE / SPACE UP / CTRL DOWN",new Vector3(-176,3,-276),.08f);
+            // Second one parked right by the player's home (spawn at 32,.3,16; this
+            // sits just south of the house, clear of its ~12x10 footprint) so
+            // there's always one within walking distance to test flight/the air corridor with.
+            var homeModel=HoverVehicleModel.Create("car",moving,new Color(.7f,.8f,.88f),out var homeWheels);homeModel.name="Flyable Hidrok skycar (home)";homeModel.transform.position=new Vector3(32,.1f,8);
+            var homeCar=homeModel.AddComponent<TrafficVehicle>();homeCar.Kind="skycar";homeCar.CanFly=true;homeCar.Abandoned=true;homeCar.Wheels=homeWheels;
+            WorldShapes.Label(scenery,"SKYCAR PAD / G TO TAKE / SPACE UP / CTRL DOWN",new Vector3(32,3,8),.08f);
         }
     }
 }

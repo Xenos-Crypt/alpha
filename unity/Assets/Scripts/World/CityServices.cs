@@ -11,9 +11,10 @@ namespace AnotherWorld.World
         WorldFacility selected,waypoint;string message="";float until;
         Vector2 scroll;
         bool regionalMap;
+        string search="";
         void Awake(){Instance=this;}
         void OnDestroy(){if(Instance==this)Instance=null;}
-        void Update(){if(Input.GetKeyDown(KeyCode.M)){MenuOpen=!MenuOpen;selected=null;}MilitaryAlert.Update(Time.deltaTime);}
+        void Update(){if(Input.GetKeyDown(KeyCode.M)){MenuOpen=!MenuOpen;selected=null;search="";}MilitaryAlert.Update(Time.deltaTime);}
         public WorldFacility Nearby(Vector3 p){foreach(var place in Places)if(Vector3.Distance(p,place.Door)<3||(place.Kind=="space"||place.Kind=="hangar"||place.Kind=="rail")&&Mathf.Abs(p.x-place.transform.position.x)<10&&Mathf.Abs(p.z-place.transform.position.z)<8)return place;return null;}
         [System.Serializable] sealed class IndustryDiagnostic {public int[] Stock;public int RunningJobs,OwnedVehicles;}
         public void ReportIndustry()
@@ -34,7 +35,7 @@ namespace AnotherWorld.World
             if(Player.IsDriving||Player.IsRidingTransit){Notify("Leave your vehicle before travelling.");return;}
             if(Traffic.PoliceDispatch.Instance.Wanted>0){Notify("Cannot travel during a police pursuit.");return;}
             if(GovernmentTeleport.InUsa(place.Door)!=GovernmentTeleport.InUsa(Player.transform.position)){Notify("Use the government teleport circle to travel between Antarctica and the USA.");return;}
-            var controller=Player.GetComponent<CharacterController>();controller.enabled=false;Player.transform.position=place.Door+Vector3.back*2;controller.enabled=true;Player.Face(place.Kind=="zoo"?place.Door+Vector3.back*30:place.transform.position+Vector3.forward*30);MenuOpen=false;waypoint=place;
+            var controller=Player.GetComponent<CharacterController>();controller.enabled=false;Player.transform.position=place.Door+Vector3.back*2;controller.enabled=true;Player.Face(place.HasLookAt?place.LookAt:place.Kind=="zoo"?place.Door+Vector3.back*30:place.transform.position+Vector3.forward*30);MenuOpen=false;waypoint=place;
         }
         void OnGUI()
         {
@@ -54,15 +55,26 @@ namespace AnotherWorld.World
                 return;
             }
             if(GUI.Button(new Rect(x+15,99,180,25),regionalMap?"Show Ashford streets":"Show regional map"))regionalMap=!regionalMap;
+            float searchWidth=Mathf.Min(220,width-15-180-30);
+            GUI.Label(new Rect(x+15+185,100,searchWidth,22),"Search:");
+            search=GUI.TextField(new Rect(x+15+185+56,99,searchWidth-56,25),search,40);
             bool narrow=width<550;float mapSize=Mathf.Min(275,width-30);var map=new Rect(x+15,132,mapSize,mapSize);DrawMap(map);
             var list=narrow?new Rect(x+15,145+mapSize,width-30,Mathf.Max(90,Screen.height-mapSize-180)):new Rect(x+305,132,width-320,Screen.height-160);
-            scroll=GUI.BeginScrollView(list,scroll,new Rect(0,0,list.width-20,Places.Count*42));
-            int n=0;foreach(var p in Places)
+            var query=search.Trim().ToLowerInvariant();
+            var matches=new List<WorldFacility>();
+            foreach(var p in Places)
             {
                 if(GovernmentTeleport.InUsa(p.Door)!=GovernmentTeleport.InUsa(Player.transform.position))continue;
-                if(GUI.Button(new Rect(0,n*42,list.width-22,35),p.Name)){waypoint=p;regionalMap=Mathf.Abs(p.Door.x)>208||Mathf.Abs(p.Door.z)>208;}
-                n++;
+                if(query.Length>0&&!p.Name.ToLowerInvariant().Contains(query))continue;
+                matches.Add(p);
             }
+            scroll=GUI.BeginScrollView(list,scroll,new Rect(0,0,list.width-20,matches.Count*42));
+            for(int n=0;n<matches.Count;n++)
+            {
+                var p=matches[n];
+                if(GUI.Button(new Rect(0,n*42,list.width-22,35),p.Name)){waypoint=p;regionalMap=Mathf.Abs(p.Door.x)>208||Mathf.Abs(p.Door.z)>208;}
+            }
+            if(matches.Count==0)GUI.Label(new Rect(10,10,list.width-30,24),query.Length>0?"No destinations match \""+search+"\".":"No destinations available.");
             GUI.EndScrollView();
             if(waypoint&&GUI.Button(new Rect(x+15,Screen.height-48,270,30),"Travel to "+waypoint.Name))
             {
