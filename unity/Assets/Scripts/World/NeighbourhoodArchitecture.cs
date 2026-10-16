@@ -11,31 +11,49 @@ namespace AnotherWorld.World
             var roof=WorldShapes.Material("Photovoltaic roof",new Color(.07f,.19f,.26f),null,.75f);var dark=WorldShapes.Material("Frame",new Color(.16f,.2f,.2f));var glass=WorldShapes.Material("Glass",new Color(.3f,.5f,.6f),null,.9f);
             var wood=WorldShapes.Material("Floor",Color.white,"wood");var pavement=WorldShapes.Material("Path",Color.white,"paving");
             WorldShapes.Box(root,"Floor",new Vector3(12,.1f,10),new Vector3(0,.1f,0),wood,true);
-            WorldShapes.Box(root,"Back",new Vector3(12,3,.3f),new Vector3(0,1.65f,5),brick,true);
+            // Back and side walls were fully solid brick — nothing like the
+            // glass-pavilion reference. Now a low kickplate + a full glass band
+            // up to the roofline, same language as the front windows.
+            // Low sill, not a kickplate — the reference's glass runs almost to
+            // the ground, no chunky masonry band eating the bottom third.
+            WorldShapes.Box(root,"Back sill",new Vector3(12,.15f,.3f),new Vector3(0,.075f,5),trim,true);
+            WorldShapes.Box(root,"Back glazing",new Vector3(11.6f,2.75f,.16f),new Vector3(0,1.575f,5),glass,true);
+            WorldShapes.Box(root,"Back lintel",new Vector3(12,.2f,.3f),new Vector3(0,3,5),brick,false);
             foreach(int side in new[]{-1,1})
             {
-                WorldShapes.Box(root,"Side wall",new Vector3(.3f,3,10),new Vector3(side*6,1.65f,0),brick,true);
-                // Openings in the front wall are assembled from sill, lintel and jamb sections.
-                float cx=side*3.5f;WorldShapes.Box(root,"Window sill wall",new Vector3(5,.98f,.3f),new Vector3(cx,.64f,-5),brick,true);
-                WorldShapes.Box(root,"Window lintel wall",new Vector3(5,.75f,.3f),new Vector3(cx,2.78f,-5),brick,true);
-                foreach(float offset in new[]{-1.8f,1.8f})WorldShapes.Box(root,"Jamb wall",new Vector3(1.4f,1.27f,.3f),new Vector3(cx+offset,1.765f,-5),brick,true);
-                Window(root,new Vector3(cx,1.76f,-5.01f),trim,dark,glass);
-                WorldShapes.Box(root,"Stone corner",new Vector3(.44f,3,.44f),new Vector3(side*6,1.65f,-5),trim);
+                WorldShapes.Box(root,"Side sill",new Vector3(.3f,.15f,10),new Vector3(side*6,.075f,0),trim,true);
+                WorldShapes.Box(root,"Side glazing",new Vector3(.16f,2.75f,9.6f),new Vector3(side*6,1.575f,0),glass,true);
+                WorldShapes.Box(root,"Side lintel",new Vector3(.3f,.2f,10),new Vector3(side*6,3,0),brick,false);
+                WorldShapes.Box(root,"Stone corner",new Vector3(.3f,3,.3f),new Vector3(side*6,1.5f,-5),trim);
             }
-            WorldShapes.Box(root,"Door lintel",new Vector3(2,.75f,.3f),new Vector3(0,2.78f,-5),brick);
+            // Front wall: same full-height glazing either side of the door,
+            // replacing the old small punched windows.
+            WorldShapes.Box(root,"Front sill",new Vector3(12,.15f,.3f),new Vector3(0,.075f,-5),trim,true);
+            WorldShapes.Box(root,"Front lintel",new Vector3(12,.2f,.3f),new Vector3(0,3,-5),brick,false);
+            foreach(int side in new[]{-1,1})WorldShapes.Box(root,"Front glazing",new Vector3(3.7f,2.75f,.16f),new Vector3(side*4,1.575f,-5),glass,true);
             foreach(int side in new[]{-1,1})WorldShapes.Box(root,"Door frame",new Vector3(.12f,2.24f,.36f),new Vector3(side*1.04f,1.28f,-5.04f),trim);
+            WorldShapes.Box(root,"Door lintel",new Vector3(2,.75f,.3f),new Vector3(0,2.78f,-5),brick);
             WorldShapes.Box(root,"Porch canopy",new Vector3(2.8f,.15f,1.1f),new Vector3(0,2.55f,-5.4f),dark);
-            WorldShapes.Box(root,"Path",new Vector3(2,.04f,5),new Vector3(0,.18f,-7.5f),pavement);
+            WorldShapes.Box(root,"Path",new Vector3(2,.04f,2.4f),new Vector3(0,.18f,-6.2f),pavement);
+            // Small reflecting pool off to one side of the entrance path — was
+            // sized almost as wide as the house itself and showed as a giant
+            // flat slab with the water colour invisible; much smaller and
+            // offset now, water raised clear of its rim so it actually reads as water.
+            WorldShapes.Box(root,"Pool edge",new Vector3(3.6f,.14f,2.6f),new Vector3(4.4f,.07f,-8.8f),trim,true);
+            WorldShapes.Box(root,"Pool water",new Vector3(3.2f,.06f,2.2f),new Vector3(4.4f,.12f,-8.8f),WorldShapes.Material("Pool water",new Color(.05f,.3f,.42f),null,.9f));
             var roofRoot=new GameObject("Roof").transform;roofRoot.SetParent(root,false);
             WorldShapes.Box(roofRoot,"Floating ceramic roof",new Vector3(12.8f,.22f,10.8f),new Vector3(0,3.3f,0),trim);
             WorldShapes.Box(roofRoot,"Inset solar roof",new Vector3(11.6f,.08f,9.6f),new Vector3(0,3.46f,0),roof);
             // Glowing roofline edge — the shared signature across all three house
             // tiers (common/presidential/mansion) in the reference concepts.
             var glow=WorldShapes.Material("Roofline glow",new Color(.1f,.8f,.92f),null,.4f);
+            // Pushed clear of the roof slab's own edges (±6.4/±5.4) so it never
+            // shares a plane with another mesh — coplanar geometry there caused
+            // shadow-acne z-fighting along the whole roofline.
             foreach(int side in new[]{-1,1})
             {
-                WorldShapes.Box(roofRoot,"Roofline glow strip",new Vector3(12.9f,.05f,.06f),new Vector3(0,3.185f,side*5.42f),glow);
-                WorldShapes.Box(roofRoot,"Roofline glow strip",new Vector3(.06f,.05f,10.9f),new Vector3(side*6.42f,3.185f,0),glow);
+                WorldShapes.Box(roofRoot,"Roofline glow strip",new Vector3(13,.1f,.1f),new Vector3(0,3.3f,side*5.55f),glow,false,false);
+                WorldShapes.Box(roofRoot,"Roofline glow strip",new Vector3(.1f,.1f,11),new Vector3(side*6.55f,3.3f,0),glow,false,false);
             }
             WorldShapes.Box(roofRoot,"Living roof garden",new Vector3(4,.12f,2.1f),new Vector3(3.2f,3.55f,3.1f),WorldShapes.Material("Roof garden",new Color(.25f,.42f,.22f)));
             WorldShapes.Box(roofRoot,"Roof pergola",new Vector3(3.5f,.12f,2.5f),new Vector3(-3.4f,4.35f,2.9f),dark);
