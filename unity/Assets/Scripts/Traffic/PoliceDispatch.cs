@@ -167,7 +167,7 @@ namespace AnotherWorld.Traffic
                 var driver=car.PlayerControlled&&Player!=null?Player.transform:car.transform;
                 if(car.Speed>2&&!car.Insured)Report(driver,Offence.NoInsurance);
                 if(car.HasCargo&&!car.CargoSecured&&car.Speed>2)Report(driver,Offence.UnsecuredCargo);
-                if(car.CanFly&&car.transform.position.y>AirCorridor.ControlledAltitude&&!AirCorridor.InPermittedCorridor(car.transform.position))
+                if(car.CanFly&&car.transform.position.y>AirCorridor.Floor&&!AirCorridor.InPermittedCorridor(car.transform.position))
                     Report(driver,Offence.ProhibitedAirCorridor);
             }
         }
