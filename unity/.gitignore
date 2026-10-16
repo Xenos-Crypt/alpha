@@ -1,0 +1,14 @@
+/Library/
+/Temp/
+/Obj/
+/Logs/
+/UserSettings/
+/Builds/
+/.vs/
+*.csproj
+*.sln
+*.slnx
+!/Checks/TrafficChecks.csproj
+/Checks/bin/
+/Checks/obj/
+/TempAudio/

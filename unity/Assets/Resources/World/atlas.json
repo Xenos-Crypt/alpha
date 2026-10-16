@@ -1,0 +1,10 @@
+{
+  "countries": [
+    {
+      "id": "country-01",
+      "name": "Hidrok",
+      "source": "fictional-antarctic-enclave",
+      "cities": ["Ashford", "Riverside", "Ashford Capital", "Northhaven", "Poison Land"]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Another World</title>
+<style>html,body{margin:0;width:100%;height:100%;background:#122528;color:#f1ecd9;font-family:system-ui}canvas{width:100%;height:100%;display:block}#loading{position:fixed;inset:0;display:grid;place-content:center;gap:18px;background:#122528;text-align:center}h1{font-size:38px;margin:0}p{color:#bccbc7;margin:0}progress{width:min(360px,80vw);height:12px;accent-color:#76baa5}#error{color:#ffc4a6;max-width:500px;white-space:pre-wrap}</style></head>
+<body><canvas id="unity-canvas" tabindex="-1"></canvas><div id="loading"><h1>Another World</h1><p>Preparing your neighbourhood</p><progress id="progress" max="1" value="0"></progress><p id="error"></p></div>
+<script>
+const canvas=document.getElementById('unity-canvas'),script=document.createElement('script');
+script.src='Build/{{{ LOADER_FILENAME }}}';
+script.onload=()=>createUnityInstance(canvas,{dataUrl:'Build/{{{ DATA_FILENAME }}}',frameworkUrl:'Build/{{{ FRAMEWORK_FILENAME }}}',codeUrl:'Build/{{{ CODE_FILENAME }}}',streamingAssetsUrl:'StreamingAssets',companyName: {{{ JSON.stringify(COMPANY_NAME) }}},productName: {{{ JSON.stringify(PRODUCT_NAME) }}},productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},matchWebGLToCanvasSize:true},p=>document.getElementById('progress').value=p).then(instance=>{window.unityInstance=instance;instance.SendMessage('City services','TravelTo','Ashford city centre');document.getElementById('loading').remove();canvas.focus();}).catch(error=>document.getElementById('error').textContent=error);
+script.onerror=()=>document.getElementById('error').textContent='The game build could not load. Reload to try again.';
+document.body.append(script);canvas.addEventListener('contextmenu',e=>e.preventDefault());
+</script></body></html>
