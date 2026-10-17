@@ -132,17 +132,18 @@ namespace AnotherWorld.World
             SmoothShapes.Part(root,"Warm floor lamp shade",SmoothShapes.Profile("Villa lamp shade",new[]{new Vector2(.38f,0),new Vector2(.24f,.45f)},16),Vector3.one,new Vector3(-5.3f,Floor+1.65f,.5f),Warm,true);
             Planter(root,new Vector3(5.25f,Floor,2.6f),.55f);
             if(!interactive)return;
-            Interact(root,"Bed","bed","Press E to sleep and restore health and stamina.",new Vector3(-3.6f,Floor,4.6f));
-            Interact(root,"Sofa","sofa","Press E to sit and rest a while.",new Vector3(-2.7f,Floor,-1f));
-            Interact(root,"Television","television","Press E to watch a movie.",new Vector3(-5f,Floor,-1.7f),new Vector3(-5.72f,Floor+1.22f,-1.7f));
+            Interact(root,"Bed","bed","Press E to sleep and restore health and stamina.",new Vector3(-3.6f,Floor,4.6f),null,new Vector3(-3.6f,Floor+.56f,3.5f));
+            Interact(root,"Sofa","sofa","Press E to sit and rest a while.",new Vector3(-2.7f,Floor,-1f),null,new Vector3(-2.7f,Floor+.3f,.25f));
+            Interact(root,"Television","television","Press E to watch a movie.",new Vector3(-5f,Floor,-1.7f),new Vector3(-5.72f,Floor+1.22f,-1.7f),new Vector3(-4.9f,Floor+.48f,-2.8f));
             Interact(root,"Kitchen cooktop","kitchen","Press E to cook a meal from your groceries.",new Vector3(3.5f,Floor,3.6f));
             Interact(root,"Refrigerator","fridge","Press E to grab a snack from your groceries.",new Vector3(1.18f,Floor,3.6f));
         }
-        static void Interact(Transform root,string name,string kind,string description,Vector3 door,Vector3? lookAt=null)
+        static void Interact(Transform root,string name,string kind,string description,Vector3 door,Vector3? lookAt=null,Vector3? useAt=null)
         {
             var spot=new GameObject(name+" interaction").transform;spot.SetParent(root,false);spot.localPosition=door;
             var facility=spot.gameObject.AddComponent<WorldFacility>();facility.Name=name;facility.Kind=kind;facility.Description=description;facility.Action=name;facility.Door=spot.position;
             if(lookAt.HasValue){var at=new GameObject(name+" look target").transform;at.SetParent(root,false);at.localPosition=lookAt.Value;facility.HasLookAt=true;facility.LookAt=at.position;}
+            if(useAt.HasValue){var use=new GameObject(name+" use spot").transform;use.SetParent(root,false);use.localPosition=useAt.Value;facility.HasUseAt=true;facility.UseAt=use.position;}
             CityServices.Instance.Places.Add(facility);
         }
         static void Curtains(Transform parent)
