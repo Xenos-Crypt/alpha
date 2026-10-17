@@ -63,10 +63,18 @@ namespace AnotherWorld.World
                 WorldShapes.Box(scenery,"Garden",new Vector3(28,.025f,28),p+Vector3.up*.19f,grass);
                 int facility=-1;for(int n=0;n<sites.Length;n++)if(sites[n]==new Vector2Int(bx,bz))facility=n;
                 if(facility>=0)CivicArchitecture.Build(scenery,p,kinds[facility],names[facility]);
-                else if(bx==0&&bz==0)NeighbourhoodArchitecture.House(scenery,p);
-                else if((bx+bz)%3==0){NeighbourhoodArchitecture.House(scenery,p+new Vector3(-7.5f,0,2));NeighbourhoodArchitecture.House(scenery,p+new Vector3(7.5f,0,2));}
-                else {NeighbourhoodArchitecture.Apartments(scenery,p+new Vector3(-8,0,0),3);NeighbourhoodArchitecture.Apartments(scenery,p+new Vector3(8,0,0),4);}
-                WorldShapes.Tree(scenery,p+new Vector3(-12,.18f,-12));WorldShapes.Tree(scenery,p+new Vector3(12,.18f,12));
+                else if(bx==0&&bz==0)NeighbourhoodArchitecture.House(scenery,p,1,true);
+                else if((bx+bz)%3==0){NeighbourhoodArchitecture.House(scenery,p+new Vector3(-6.4f,0,2),.75f);NeighbourhoodArchitecture.House(scenery,p+new Vector3(6.4f,0,2),.75f);}
+                else
+                {
+                    for(int row=-1;row<=1;row+=2)
+                    {
+                        NeighbourhoodArchitecture.Apartments(scenery,p+new Vector3(-8,0,row*8),5+Mathf.Abs(bx+bz+row)%3);
+                        NeighbourhoodArchitecture.Apartments(scenery,p+new Vector3(8,0,row*8),6+Mathf.Abs(bx-bz+row)%3);
+                    }
+                }
+                LandscapeDesign.Plot(scenery,p);
+                WorldShapes.Tree(scenery,p+new Vector3(-14.6f,.18f,-4));WorldShapes.Tree(scenery,p+new Vector3(14.6f,.18f,4));
                 foreach(int side in new[]{-1,1})
                 {
                     WorldShapes.Box(scenery,"Streetlight mast",new Vector3(.09f,4.7f,.09f),p+new Vector3(side*17,2.53f,0),metal);
@@ -140,10 +148,8 @@ namespace AnotherWorld.World
         {
             var root=new GameObject("Tram").transform;root.SetParent(moving,false);root.position=new Vector3(-160,0,0);
             var paint=WorldShapes.Material("Tram paint",new Color(.18f,.44f,.46f));var glass=WorldShapes.Material("Tram glass",new Color(.18f,.27f,.32f),null,.7f);var ivory=WorldShapes.Material("Tram trim",new Color(.82f,.83f,.76f));
-            WorldShapes.Box(root,"Carriage",new Vector3(14.8f,2.35f,2.7f),new Vector3(0,1.58f,0),paint,true,false);WorldShapes.Box(root,"Roof",new Vector3(14.7f,.32f,2.69f),new Vector3(0,2.89f,0),ivory,false,false);
-            foreach(int end in new[]{-1,1})SmoothShapes.Part(root,"Aerodynamic maglev nose",SmoothShapes.Ellipsoid,new Vector3(3.2f,2.35f,2.7f),new Vector3(end*7.4f,.405f,0),paint);
+            var visual=new GameObject("Pearl hover tram body").transform;visual.SetParent(root,false);visual.localRotation=Quaternion.Euler(0,90,0);TransportDesign.Rail(visual,18,2.7f,2.1f);
             var tramHull=root.gameObject.AddComponent<BoxCollider>();tramHull.size=new Vector3(18,2.35f,2.7f);tramHull.center=new Vector3(0,1.58f,0);
-            foreach(int side in new[]{-1,1})for(float x=-6.3f;x<7;x+=1.8f)WorldShapes.Box(root,"Window",new Vector3(1.4f,1,.035f),new Vector3(x,2,side*1.37f),glass,false,false);
             foreach(float x in new[]{-160f,-96f,-32f,32f,96f,160f})foreach(int side in new[]{-1,1})
             {
                 var stop=new GameObject("Median tram platform").transform;stop.SetParent(scenery,false);stop.position=new Vector3(x,0,side*3.25f);
@@ -164,3 +170,4 @@ namespace AnotherWorld.World
         }
     }
 }
+
