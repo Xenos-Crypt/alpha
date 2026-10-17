@@ -23,6 +23,7 @@ namespace AnotherWorld.Traffic
         HandheldPhone,                                             // Category 5 #41
         UnsecuredCargo,                                             // Category 7 #68
         ProhibitedAirCorridor,                                       // Category 10 #96
+        PavementDriving,                                              // Category 3 — driving off the road onto the pedestrian pavement
     }
     public readonly struct OffenceInfo
     {
@@ -52,6 +53,7 @@ namespace AnotherWorld.Traffic
             Offence.HandheldPhone => new("used a handheld phone while driving", 500, 3),
             Offence.UnsecuredCargo => new("carried an unsecured load", 600, 3),
             Offence.ProhibitedAirCorridor => new("entered a prohibited air corridor", 3000, 0, true),
+            Offence.PavementDriving => new("drove on the pedestrian pavement", 250, 3),
             _ => new("committed a traffic offence", 100, 1),
         };
         // Points stay on the record for this long before expiring (a rolling

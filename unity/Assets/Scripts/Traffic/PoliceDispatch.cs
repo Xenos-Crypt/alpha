@@ -144,6 +144,7 @@ namespace AnotherWorld.Traffic
                 if(Vector3.Dot(offset,LaneRoute.Right(direction))<-2)Report(driver,Offence.WrongWay);
                 float lane=Mathf.Abs(Vector3.Dot(offset,LaneRoute.Right(direction)));
                 if(lane>TrafficRules.CarLane+1.5f&&lane<=TrafficRules.RoadHalfWidth)Report(driver,Offence.CycleLane);
+                else if(lane>TrafficRules.RoadHalfWidth&&lane<=TrafficRules.RoadHalfWidth+8)Report(driver,Offence.PavementDriving);
             }
         }
         // Seatbelt, phone, insurance, cargo and air-corridor offences aren't

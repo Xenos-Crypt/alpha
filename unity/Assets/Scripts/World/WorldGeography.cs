@@ -13,8 +13,11 @@ namespace AnotherWorld.World
         }
         public static readonly Island[] Islands={new Island("Driftwood Island",-220,500,24),new Island("Palm Cove",-70,545,19),new Island("Pine Rock",-165,820,26),new Island("Gull Rest",95,300,17),new Island("Ember Island",155,520,29),new Island("Boneharrow Island",-80,480,26)};
         public static readonly Rect[] Districts={new Rect(-128,640,192,192),new Rect(192,640,320,320),new Rect(576,192,256,256),new Rect(960,-384,256,320)};
+        static readonly List<(Vector3 Centre,Vector2 Size)> LocalPools=new();
+        public static void RegisterPool(Vector3 centre,Vector2 size)=>LocalPools.Add((centre,size));
         public static bool IsWater(Vector3 p)
         {
+            foreach(var pool in LocalPools)if(Mathf.Abs(p.x-pool.Centre.x)<pool.Size.x*.5f&&Mathf.Abs(p.z-pool.Centre.z)<pool.Size.y*.5f)return true;
             if(p.x<=-300||p.x>=300||p.z<=208||p.z>=900)return false;
             foreach(var r in Districts)if(Rect.MinMaxRect(r.xMin-14,r.yMin-14,r.xMax+14,r.yMax+14).Contains(new Vector2(p.x,p.z)))return false;
             foreach(var island in Islands)if(Vector2.Distance(new Vector2(p.x,p.z),new Vector2(island.Centre.x,island.Centre.z))<island.Radius)return false;
@@ -55,7 +58,7 @@ namespace AnotherWorld.World
                 Destination(root,island.Name,new Vector3(0,.35f,-island.Radius+5));
                 for(int n=0;n<5;n++){float a=n*Mathf.PI*.4f;WorldShapes.Tree(root,new Vector3(Mathf.Cos(a)*island.Radius*.5f,.32f,Mathf.Sin(a)*island.Radius*.5f));}
                 if(island.Name=="Boneharrow Island")
-                {for(int n=0;n<3;n++)NeighbourhoodArchitecture.House(root,new Vector3((n-1)*12,.32f,5));Destination(root,"Ghost Town",new Vector3(0,.35f,-5));CivicArchitecture.Build(root,island.Centre+new Vector3(0,.32f,20),"crypt","The Bone Crypt");}
+                {for(int n=0;n<3;n++)NeighbourhoodArchitecture.House(root,new Vector3((n-1)*15,.32f,5));Destination(root,"Ghost Town",new Vector3(0,.35f,-5));CivicArchitecture.Build(root,island.Centre+new Vector3(0,.32f,20),"crypt","The Bone Crypt");}
                 if(island.Name=="Ember Island")
                 {
                     var cone=SmoothShapes.Profile("Volcano cone",new[]{new Vector2(17,0),new Vector2(6,18)} ,24);
@@ -114,6 +117,7 @@ namespace AnotherWorld.World
                     if(names[plot]=="Capitol"){SmoothShapes.Part(root,"Capitol civic drum",SmoothShapes.Tube,new Vector3(10,3,10),p+new Vector3(0,4.3f,0),paving,true);SmoothShapes.Part(root,"Capitol crown",SmoothShapes.Profile("Hidrok Capitol crown",new[]{new Vector2(5,0),new Vector2(4.5f,1),new Vector2(3,2.5f),new Vector2(0,3.4f)},24),Vector3.one,p+new Vector3(0,7.3f,0),paving,true);}
                 }
                 else NeighbourhoodArchitecture.House(root,p);
+                LandscapeDesign.Plot(root,p);
                 WorldShapes.Tree(root,p+new Vector3(12,.18f,12));
                 WorldShapes.Box(root,"Lamp post",new Vector3(.09f,4.7f,.09f),p+new Vector3(17,2.53f,0),paving,true);
                 WorldShapes.Box(root,"Lamp",new Vector3(.7f,.15f,.3f),p+new Vector3(17,4.85f,0),paving);

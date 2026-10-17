@@ -112,10 +112,10 @@ namespace AnotherWorld.World
             if(GUI.Button(new Rect(x+30+buttonWidth,400,buttonWidth,35),"Energy +10 (10 coins)"))industry.BuySupplies(IndustrialResource.Energy);
             GUI.Label(new Rect(x+20,490,width-40,75),"Shared stock: Materials "+industry.Ledger[IndustrialResource.Materials]+" | Energy "+industry.Ledger[IndustrialResource.Energy]+" | Components "+industry.Ledger[IndustrialResource.Components]+"\nHovercraft "+industry.Ledger[IndustrialResource.Hovercraft]+" | Airframes "+industry.Ledger[IndustrialResource.Airframes]+" | Saucers "+industry.Ledger[IndustrialResource.Saucers]);
         }
-        void SitAt(WorldFacility p)
+        void SitAt(WorldFacility p,float seconds)
         {
             if(!p.HasUseAt)return;
-            var body=Player.GetComponent<CharacterController>();body.enabled=false;Player.transform.position=p.UseAt;Player.Face(p.HasLookAt?p.LookAt:p.Door);body.enabled=true;
+            Player.Rest(p.UseAt,p.HasLookAt?p.LookAt:p.Door,seconds);
         }
         void Use(WorldFacility p)
         {
@@ -132,9 +132,9 @@ namespace AnotherWorld.World
             else if(p.Kind=="space")
             {p.Level=(p.Level+1)%9;var body=Player.GetComponent<CharacterController>();body.enabled=false;Player.transform.position=p.transform.position+new Vector3(0,.4f+p.Level*4,-5);body.enabled=true;Notify("Space centre lift: floor "+(p.Level+1));}
             else if(p.Kind=="market"){if(Player.Coins<10){Notify("Groceries cost 10 coins.");return;}Player.Coins-=10;Player.Groceries++;Notify("Bought groceries.");}
-            else if(p.Kind=="bed"){SitAt(p);Player.Health=100;Player.Stamina=100;Notify("You lie down and sleep soundly. Health and stamina fully restored.");}
-            else if(p.Kind=="sofa"){SitAt(p);Player.Stamina=Mathf.Min(100,Player.Stamina+40);Notify("You sit on the sofa and rest a while. Stamina restored.");}
-            else if(p.Kind=="television"){SitAt(p);Notify("You sit down and watch a movie, unwinding for a bit.");}
+            else if(p.Kind=="bed"){SitAt(p,4);Player.Health=100;Player.Stamina=100;Notify("You lie down and sleep soundly. Health and stamina fully restored.");}
+            else if(p.Kind=="sofa"){SitAt(p,3);Player.Stamina=Mathf.Min(100,Player.Stamina+40);Notify("You sit on the sofa and rest a while. Stamina restored.");}
+            else if(p.Kind=="television"){SitAt(p,4);Notify("You sit down and watch a movie, unwinding for a bit.");}
             else if(p.Kind=="kitchen"){if(Player.Groceries<1){Notify("No groceries to cook with.");return;}Player.Groceries--;Player.Health=Mathf.Min(100,Player.Health+30);Notify("You cook a meal. Health restored.");}
             else if(p.Kind=="fridge"){if(Player.Groceries<1){Notify("No groceries in the fridge.");return;}Player.Groceries--;Player.Stamina=Mathf.Min(100,Player.Stamina+20);Notify("You grab a quick snack. Stamina restored.");}
             else if(p.Kind=="hospital"){if(Player.Coins<5){Notify("Treatment costs 5 coins.");return;}Player.Coins-=5;Player.Health=100;Notify("Treatment completed.");}

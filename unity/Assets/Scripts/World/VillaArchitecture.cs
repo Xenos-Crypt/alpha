@@ -72,6 +72,9 @@ namespace AnotherWorld.World
             if(Vector3.Distance(root.position,new Vector3(32,0,32))<.5f)
             {
                 var destination=root.gameObject.AddComponent<WorldFacility>();destination.Name="Hidrok Glass Villa";destination.Kind="home";destination.Action="Explore villa";destination.Description="Walk through the open entrance into a furnished glass pavilion, with cyan roof lighting, warm interiors and reflecting pools.";destination.Door=root.TransformPoint(new Vector3(-7,.3f,-10.5f));destination.HasLookAt=true;destination.LookAt=root.position;CityServices.Instance.Places.Add(destination);
+                WorldGeography.RegisterPool(root.TransformPoint(new Vector3(-4.05f,0,-9.4f)),new Vector2(5.25f,3.65f)*scale);
+                WorldGeography.RegisterPool(root.TransformPoint(new Vector3(4.05f,0,-9.4f)),new Vector2(5.25f,3.65f)*scale);
+                WorldGeography.RegisterPool(root.TransformPoint(new Vector3(6.92f,0,-.1f)),new Vector2(.85f,10.6f)*scale);
             }
         }
         static GameObject Box(Transform parent,string name,Vector3 size,Vector3 position,Material material,bool collider=false)=>WorldShapes.Box(parent,name,size,position,material,collider);

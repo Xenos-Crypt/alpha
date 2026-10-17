@@ -36,7 +36,16 @@ namespace AnotherWorld.World
         // P holds for handheld-phone use while driving.
         public bool SeatbeltOn,PhoneInUse;
         float touchMove,touchTurn,touchLift;
-        void Awake(){body=GetComponent<CharacterController>();Powers=gameObject.AddComponent<PlayerPowers>();}
+        bool resting;float restTimer;Vector3 restPosition;Vector3 avatarBaseScale=Vector3.one,avatarBaseLocalPos;
+        void Awake(){body=GetComponent<CharacterController>();Powers=gameObject.AddComponent<PlayerPowers>();if(Avatar){avatarBaseScale=Avatar.localScale;avatarBaseLocalPos=Avatar.localPosition;}}
+        // No skeletal animation exists for sitting/lying — approximated by
+        // pinning position and squashing the avatar for a held duration,
+        // the same cheap trick non-animated character controllers use.
+        public void Rest(Vector3 position,Vector3 facing,float seconds)
+        {
+            resting=true;restTimer=seconds;restPosition=position;Face(facing);
+            if(Avatar){Avatar.localScale=new Vector3(avatarBaseScale.x,avatarBaseScale.y*.55f,avatarBaseScale.z);Avatar.localPosition=avatarBaseLocalPos+Vector3.down*avatarBaseScale.y*.18f;}
+        }
         public void Face(Vector3 point)
         {
             var direction=point-transform.position;direction.y=0;if(direction.sqrMagnitude<.01f)return;
@@ -44,6 +53,12 @@ namespace AnotherWorld.World
         }
         void Update()
         {
+            if(resting)
+            {
+                restTimer-=Time.deltaTime;transform.position=restPosition;touchMove=touchTurn=touchLift=0;
+                if(restTimer<=0){resting=false;if(Avatar){Avatar.localScale=avatarBaseScale;Avatar.localPosition=avatarBaseLocalPos;}CityServices.Instance.Notify("You get up.");}
+                return;
+            }
             bool menu=ScalableQuality.Instance&&ScalableQuality.Instance.MenuOpen||CityServices.Instance&&CityServices.Instance.MenuOpen;
             if(Input.GetKeyDown(KeyCode.F))thirdPerson=!thirdPerson;
             if(!menu&&!Powers.Invulnerable&&Input.GetKeyDown(KeyCode.E))Interact();
