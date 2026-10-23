@@ -1,0 +1,19 @@
+{
+  "instances": 2274,
+  "material_spatial_groups": 288,
+  "materials": 201,
+  "source_buildings": 177,
+  "destinations": 177,
+  "map": "/Game/Maps/HidrokWebsite",
+  "render_verified": false,
+  "gameplay_ported": false,
+  "scope": "Ashford base construction only; regional cities and later systems pending",
+  "textures": 9,
+  "limits": [
+    "Ashford base construction only. Other cities and later landmarks pending.",
+    "Primitive shapes only; custom meshes omitted, partial spheres approximated.",
+    "Canvas diffuse textures imported; normal maps, transparency and per-face material splits pending.",
+    "Ordinary static mesh actors; instancing optimization pending.",
+    "Collisions use primitive meshes, not the website collision rules."
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "map": "/Game/Maps/HidrokFuture",
+  "buildings": 177,
+  "detailed_plots": 12,
+  "playable_cars": [
+    "Aurora X9",
+    "Skyline X7",
+    "Aerodynex X12"
+  ],
+  "road_hardware": {
+    "wheels_per_car": 4,
+    "nominal_wheel_diameter_cm": 84,
+    "tyre_width_cm": 32,
+    "wheelbase_cm": 360,
+    "track_cm": 250,
+    "separate_parking_pads_per_car": 4
+  },
+  "static_transport": 2,
+  "orion_services": 2,
+  "orion_lifts": 4,
+  "glass_pavilions": 2,
+  "instances": 15140,
+  "batches": 121,
+  "saved_reload": true,
+  "references": [
+    "unity/References/Landscaping-concept.png",
+    "unity/References/Transport-concept.png",
+    "unity/Assets/Scripts/World/FutureArchitecture.cs",
+    "unreal/References/Aurora-X9.png",
+    "unreal/References/Variant-A.png",
+    "unreal/References/Variant-B.png"
+  ],
+  "limits": [
+    "Procedural architecture is a first design pass, not photographic fidelity.",
+    "Shield remains a visual prototype. Orion has two operating routes and one station per route; full networks and signalling remain pending.",
+    "Pavilion interiors and detailed prop collision remain pending."
+  ]
+}

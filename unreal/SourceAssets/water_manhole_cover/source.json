@@ -1,0 +1,39 @@
+{
+  "id": "water_manhole_cover",
+  "source": "https://polyhaven.com/a/water_manhole_cover",
+  "license": "CC0",
+  "license_url": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "files": [
+    {
+      "path": "water_manhole_cover/water_manhole_cover_1k.gltf",
+      "bytes": 4253,
+      "md5": "a8efd69493f5919ca44b2e56df448500",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/water_manhole_cover/water_manhole_cover_1k.gltf"
+    },
+    {
+      "path": "water_manhole_cover/textures/water_manhole_cover_arm_1k.jpg",
+      "bytes": 669586,
+      "md5": "e94e96f6f560b6f0a5d95f99a4b98e82",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/water_manhole_cover/water_manhole_cover_arm_1k.jpg"
+    },
+    {
+      "path": "water_manhole_cover/textures/water_manhole_cover_nor_gl_1k.jpg",
+      "bytes": 1008913,
+      "md5": "9cf9265a949ae4affd6f2542277e3902",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/water_manhole_cover/water_manhole_cover_nor_gl_1k.jpg"
+    },
+    {
+      "path": "water_manhole_cover/textures/water_manhole_cover_diff_1k.jpg",
+      "bytes": 448420,
+      "md5": "bec6433403d16d5f7c20887d87075890",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/water_manhole_cover/water_manhole_cover_diff_1k.jpg"
+    },
+    {
+      "path": "water_manhole_cover/water_manhole_cover.bin",
+      "bytes": 202320,
+      "md5": "5262562d69ba05d21228aec9f5b0306d",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/water_manhole_cover/water_manhole_cover.bin"
+    }
+  ]
+}

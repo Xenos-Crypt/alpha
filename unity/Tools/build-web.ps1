@@ -1,11 +1,8 @@
 param([string]$EditorPath='', [switch]$SkipBurst)
 $ErrorActionPreference='Stop'
 $projectRoot=[System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-if(-not $EditorPath){
-    $portableEditor=Join-Path $projectRoot '../.unity-editor/Editor/Unity.exe'
-    $EditorPath=if(Test-Path -LiteralPath $portableEditor){$portableEditor}else{'C:\Program Files\Unity\Hub\Editor\6000.5.1f1\Editor\Unity.exe'}
-}
-if(-not (Test-Path -LiteralPath $EditorPath)){throw 'Unity Editor is missing. Install Unity 6000.5.1f1 with Web Build Support in Unity Hub, then pass -EditorPath if needed.'}
+. (Join-Path $PSScriptRoot 'resolve-editor.ps1')
+$EditorPath=Resolve-HidrokEditor -EditorPath $EditorPath -RequireWeb
 $logDirectory=Join-Path $projectRoot 'Logs'
 New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 $arguments=@('-batchmode','-nographics','-quit','-buildTarget','WebGL','-projectPath',('"'+$projectRoot+'"'),'-executeMethod','AnotherWorld.Editor.ProjectSetup.BuildWeb','-logFile',('"'+(Join-Path $logDirectory 'web-build.log')+'"'))

@@ -9,6 +9,7 @@ namespace AnotherWorld.World
         public static HidrokClimate Instance { get; private set; }
         public static readonly Vector3 Centre=new Vector3(200,0,250);
         public const float Radius=1700;
+        public const float ShieldHeight=480;
         public NeighbourhoodPlayer Player;
         public Camera View;
         Camera shieldView;
@@ -34,7 +35,7 @@ namespace AnotherWorld.World
             for(int ring=0;ring<=rings;ring++)for(int side=0;side<=sides;side++)
             {
                 float elevation=ring*Mathf.PI*.5f/rings,angle=side*Mathf.PI*2/sides;
-                vertices.Add(new Vector3(Mathf.Cos(angle)*Mathf.Cos(elevation)*Radius,Mathf.Sin(elevation)*Radius,Mathf.Sin(angle)*Mathf.Cos(elevation)*Radius));uv.Add(new Vector2((float)side/sides,(float)ring/rings));
+                vertices.Add(new Vector3(Mathf.Cos(angle)*Mathf.Cos(elevation)*Radius,Mathf.Sin(elevation)*ShieldHeight,Mathf.Sin(angle)*Mathf.Cos(elevation)*Radius));uv.Add(new Vector2((float)side/sides,(float)ring/rings));
                 if(ring<rings&&side<sides){int i=ring*(sides+1)+side;triangles.AddRange(new[]{i,i+sides+1,i+1,i+1,i+sides+1,i+sides+2});}
             }
             var mesh=new Mesh{name="Hidrok protective hemisphere"};mesh.SetVertices(vertices);mesh.SetUVs(0,uv);mesh.SetTriangles(triangles,0);mesh.RecalculateNormals();mesh.RecalculateBounds();

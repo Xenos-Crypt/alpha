@@ -71,7 +71,9 @@ namespace AnotherWorld.World
             if(Input.GetMouseButton(1)){yaw+=Input.GetAxis("Mouse X")*2.4f;pitch=Mathf.Clamp(pitch-Input.GetAxis("Mouse Y")*2,-55,65);}
             if(driving)
             {
-                driveSpeed=Mathf.MoveTowards(driveSpeed,driving.Integrity<=0||driving.Stunned?0:forward*(forward<0?6:driving.MaxDriveSpeed),dt*(forward==0?10:6));
+                bool nitro=forward>0&&(Input.GetKey(KeyCode.LeftShift)||Input.GetKey(KeyCode.RightShift));
+                float topSpeed=forward<0?6:driving.MaxDriveSpeed*(nitro?1.75f:1);
+                driveSpeed=Mathf.MoveTowards(driveSpeed,driving.Integrity<=0||driving.Stunned?0:forward*topSpeed,dt*(forward==0?10:nitro?12:6));
                 driving.transform.Rotate(0,side*driving.TurnRate*dt*(driving.CanFly?1:Mathf.Min(1,Mathf.Abs(driveSpeed)/3)),0);
                 Vector3 direction=driving.transform.forward*Mathf.Sign(driveSpeed);
                 float travel=driving.CanFly&&driving.transform.position.y>5?Mathf.Abs(driveSpeed)*dt:RoadNetwork.Instance.Limit(driving.transform.position,direction,Mathf.Abs(driveSpeed)*dt,RoadUser.Car,driving.Length,driving,false);
@@ -81,7 +83,7 @@ namespace AnotherWorld.World
                 if(driving.Sinking){EscapeSinkingVehicle();return;}
                 if(driving.CanFly)
                 {
-                    float lift=Input.GetKey(KeyCode.Space)?1:Input.GetKey(KeyCode.LeftControl)?-1:touchLift;
+                    float lift=Input.GetKey(KeyCode.Space)?1:Input.GetKey(KeyCode.Q)?-1:touchLift;
                     var vertical=Vector3.up*lift;float amount=driving.ClearTravel(vertical,Mathf.Abs(lift)*driving.LiftSpeed*dt);
                     var next=driving.transform.position+vertical*amount;next.y=Mathf.Clamp(next.y,.1f,100);driving.transform.position=next;
                 }
@@ -95,7 +97,7 @@ namespace AnotherWorld.World
             {
                 yaw+=touchTurn*70*dt;
                 var movement=Quaternion.Euler(0,yaw,0)*new Vector3(side,0,forward);if(movement.sqrMagnitude>1)movement.Normalize();
-                MoveOnFoot(movement,Input.GetKey(KeyCode.LeftShift),dt);
+                MoveOnFoot(movement,Input.GetKey(KeyCode.LeftShift)||Input.GetKey(KeyCode.RightShift),dt);
                 if(Avatar&&movement.sqrMagnitude>.01f)Avatar.rotation=Quaternion.LookRotation(movement);
             }
             touchMove=touchTurn=touchLift=0;
@@ -214,7 +216,7 @@ namespace AnotherWorld.World
         {
             if(Swimming)GUI.Label(new Rect(14,110,800,25),"Swimming | Stamina "+Mathf.CeilToInt(Stamina)+" | WASD to shore, Shift to swim faster | Tide uses less stamina");
             GUI.Label(new Rect(14,14,850,28),"Another World — WASD move · Right mouse look · E enter / leave � G steal road vehicle · F camera");
-            if(IsDriving)GUI.Label(new Rect(14,Screen.height-56,850,24),(SeatbeltOn?"Seat belt ON":"Seat belt OFF — press B")+"   ·   Hold P: use phone (distracted driving)");
+            if(IsDriving)GUI.Label(new Rect(14,Screen.height-56,1100,24),(SeatbeltOn?"Seat belt ON":"Seat belt OFF — press B")+"   ·   Hold Shift: nitro"+(driving.CanFly?"   ·   Space up / Q down":"")+"   ·   Hold P: use phone (distracted driving)");
             if(!IsDriving&&!tram&&!bus&&!(ScalableQuality.Instance&&ScalableQuality.Instance.MenuOpen)&&!(CityServices.Instance&&CityServices.Instance.MenuOpen))
             {
                 var button=RoadNetwork.Instance.NearestButton(transform.position);

@@ -1,0 +1,40 @@
+﻿{
+    "map":  "/Game/Maps/HidrokStreet",
+    "upgraded_buildings":  6,
+    "source_positions":  [
+                             {
+                                 "x":  -14.5,
+                                 "z":  54.5
+                             },
+                             {
+                                 "x":  14.5,
+                                 "z":  54.5
+                             },
+                             {
+                                 "x":  -25.5,
+                                 "z":  54.5
+                             },
+                             {
+                                 "x":  25.5,
+                                 "z":  54.5
+                             },
+                             {
+                                 "x":  -14.5,
+                                 "z":  65.5
+                             },
+                             {
+                                 "x":  14.5,
+                                 "z":  65.5
+                             }
+                         ],
+    "lighting":  "Movable daylight and HDR environment",
+    "render_verified":  true,
+    "limits":  [
+                   "Procedural masonry modules, not scanned architecture.",
+                   "Six buildings only; citywide visual replacement pending.",
+                   "Opaque reflective glazing; no live interior reflections.",
+                   "No Lumen on the DirectX 11 compatibility preview."
+               ],
+    "screenshot":  "AnotherWorld/Saved/Screenshots/StreetReviewFinal.png",
+    "assessment":  "Eye-level DX11 render inspected. Lighting and surface stretch corrected. Architecture remains repetitive and procedural; Bodycam realism target is not met."
+}

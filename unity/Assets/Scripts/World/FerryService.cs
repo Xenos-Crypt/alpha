@@ -17,10 +17,13 @@ namespace AnotherWorld.World
         {
             Vessel=new GameObject("Driftwood passenger ferry").transform;Vessel.SetParent(parent,false);Vessel.position=route[0];
             var hull=WorldShapes.Material("Ferry blue",new Color(.12f,.28f,.4f));
-            WorldShapes.Box(Vessel,"Hull",new Vector3(7,1.2f,15),Vector3.up*.6f,hull,true,false);
+            TransportDesign.Marine(Vessel);
+            var collision=Vessel.gameObject.AddComponent<BoxCollider>();collision.size=new Vector3(7,1.2f,15);collision.center=Vector3.up*.6f;
             WorldShapes.Box(Vessel,"Passenger deck",new Vector3(6.4f,.15f,14),Vector3.up*1.3f,trim,true,false);
-            WorldShapes.Box(Vessel,"Cabin",new Vector3(5,2.1f,5),new Vector3(0,2.4f,3),hull,true,false);
-            WorldShapes.Label(Vessel,"DRIFTWOOD FERRY",new Vector3(0,3.8f,3),.12f);
+
+            var cabin=Vessel.gameObject.AddComponent<BoxCollider>();cabin.size=new Vector3(5,2.1f,5);cabin.center=new Vector3(0,2.4f,3);
+
+            foreach(int side in new[]{-1,1})WorldShapes.Box(Vessel,"Marine cyan waterline",new Vector3(.045f,.09f,11.2f),new Vector3(side*3.45f,.65f,0),TransportDesign.Cyan,false,false);
         }
         void Update()
         {
@@ -39,3 +42,4 @@ namespace AnotherWorld.World
         }
     }
 }
+

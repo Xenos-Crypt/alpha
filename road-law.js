@@ -99,7 +99,7 @@ export function createRoadLaw(ctx) {
     const inBox = q => Math.abs(q.x - cx * 40) < 5 && Math.abs(q.z - cz * 40) < 5;
     if (prevPos && signalised(cx, cz) && inBox(p) && !inBox(prevPos)) {
       const axis = Math.abs(prevPos.x - cx * 40) > Math.abs(prevPos.z - cz * 40) ? 'x' : 'z';
-      if (signalState(cx, cz, axis, ctx.signalTime()) === 'red') charge('redLight');
+      if (ctx.isRedLight(cx, cz, axis)) charge('redLight');
     }
     prevPos = { x: p.x, z: p.z };
   }

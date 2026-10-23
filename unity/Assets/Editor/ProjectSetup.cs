@@ -22,6 +22,7 @@ namespace AnotherWorld.Editor
         [MenuItem("Another World/Set up URP project")]
         public static void Setup()
         {
+            LandscapeAssets.Ensure();
             Directory.CreateDirectory("Assets/Scenes");Directory.CreateDirectory("Assets/Resources/Quality");Directory.CreateDirectory("Assets/Resources/Materials");AssetDatabase.Refresh();
             string rendererPath="Assets/Resources/Quality/WebRenderer.asset";
             var renderer=AssetDatabase.LoadAssetAtPath<UniversalRendererData>(rendererPath);
@@ -72,6 +73,11 @@ namespace AnotherWorld.Editor
             string windPath="Assets/Resources/Materials/WindAir.mat";
             if(!AssetDatabase.LoadAssetAtPath<Material>(windPath))
                 AssetDatabase.CreateAsset(new Material(Shader.Find("AnotherWorld/WindAir")),windPath);
+            foreach(string name in new[]{"VillaGlass","VillaWater"})
+            {
+                string path="Assets/Resources/Materials/"+name+".mat";
+                if(!AssetDatabase.LoadAssetAtPath<Material>(path))AssetDatabase.CreateAsset(new Material(Shader.Find("AnotherWorld/"+name)),path);
+            }
             if(!AssetDatabase.LoadAssetAtPath<Material>(skyPath))
                 AssetDatabase.CreateAsset(new Material(Shader.Find("Skybox/Procedural")),skyPath);
             // Runtime-created renderers are absent from the authored scene during build stripping.
@@ -117,6 +123,14 @@ namespace AnotherWorld.Editor
             var report=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=new[]{ScenePath},target=BuildTarget.WebGL,locationPathName="Builds/Web",options=BuildOptions.None});
             if(report.summary.result!=BuildResult.Succeeded)throw new BuildFailedException("Unity Web build failed. See the Editor log.");
             Debug.Log("Web build ready: "+Path.GetFullPath("Builds/Web/index.html"));
+        }
+        [MenuItem("Another World/Build Windows preview")]
+        public static void BuildWindows()
+        {
+            Setup();Directory.CreateDirectory("Builds/Windows");
+            var report=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=new[]{ScenePath},target=BuildTarget.StandaloneWindows64,locationPathName="Builds/Windows/AnotherWorld.exe",options=BuildOptions.None});
+            if(report.summary.result!=BuildResult.Succeeded)throw new BuildFailedException("Unity Windows build failed. See the Editor log.");
+            Debug.Log("Windows build ready: "+Path.GetFullPath("Builds/Windows/AnotherWorld.exe"));
         }
     }
 }

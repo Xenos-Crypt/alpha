@@ -1,0 +1,267 @@
+{
+  "samples": 120,
+  "timing": [
+    {
+      "name": "FrameTime",
+      "mean": 176.8011466666666,
+      "median": 171.7942,
+      "p95": 219.5473
+    },
+    {
+      "name": "RenderThreadTime",
+      "mean": 164.11357999999998,
+      "median": 159.2033,
+      "p95": 201.3298
+    },
+    {
+      "name": "GameThreadTime",
+      "mean": 6.015358333333333,
+      "median": 5.243,
+      "p95": 10.4033
+    },
+    {
+      "name": "GPUTime",
+      "mean": 176.74055166666668,
+      "median": 174.0016,
+      "p95": 223.7051
+    },
+    {
+      "name": "RenderThreadTime_CriticalPath",
+      "mean": 164.114265,
+      "median": 159.2033,
+      "p95": 201.3298
+    },
+    {
+      "name": "GameThreadTime_CriticalPath",
+      "mean": 6.015358333333333,
+      "median": 5.243,
+      "p95": 10.4033
+    },
+    {
+      "name": "RHIThreadTime",
+      "mean": 152.65282749999997,
+      "median": 153.2119,
+      "p95": 184.2456
+    }
+  ],
+  "gpu": [
+    {
+      "name": "GPU/TemporalSuperResolution",
+      "mean": 150.03822416666665,
+      "median": 149.0588,
+      "p95": 175.8712
+    },
+    {
+      "name": "GPU/Unaccounted",
+      "mean": 9.803255833333337,
+      "median": 8.8594,
+      "p95": 13.0753
+    },
+    {
+      "name": "GPU/Basepass",
+      "mean": 3.6951041666666655,
+      "median": 2.8624,
+      "p95": 7.8438
+    },
+    {
+      "name": "GPU/ReflectionEnvironment",
+      "mean": 2.350826666666668,
+      "median": 2.3373,
+      "p95": 3.1435
+    },
+    {
+      "name": "GPU/Postprocessing",
+      "mean": 1.699826666666667,
+      "median": 1.5428,
+      "p95": 3.0716
+    },
+    {
+      "name": "GPU/Lights",
+      "mean": 1.6007833333333332,
+      "median": 1.4161,
+      "p95": 3.4032
+    },
+    {
+      "name": "GPU/SkyAtmosphereEditor",
+      "mean": 1.1964766666666664,
+      "median": 1.1696,
+      "p95": 1.7643
+    },
+    {
+      "name": "GPU/ShadowProjection",
+      "mean": 0.9292841666666666,
+      "median": 0.8414,
+      "p95": 1.3887
+    },
+    {
+      "name": "GPU/ShadowDepths",
+      "mean": 0.8693058333333331,
+      "median": 0.6014,
+      "p95": 3.0395
+    },
+    {
+      "name": "GPU/Prepass",
+      "mean": 0.7250333333333331,
+      "median": 0.655,
+      "p95": 0.9394
+    },
+    {
+      "name": "GPU/SkyAtmosphereLUTs",
+      "mean": 0.5576425,
+      "median": 0.4429,
+      "p95": 0.7093
+    },
+    {
+      "name": "GPU/SkyAtmosphere",
+      "mean": 0.5556441666666667,
+      "median": 0.0474,
+      "p95": 3.526
+    },
+    {
+      "name": "GPU/RenderDeferredLighting",
+      "mean": 0.3623200000000001,
+      "median": 0.0963,
+      "p95": 2.6187
+    },
+    {
+      "name": "GPU/BuildRenderingCommandsDeferred",
+      "mean": 0.2974383333333333,
+      "median": 0.2903,
+      "p95": 0.4022
+    },
+    {
+      "name": "GPU/TranslucentLighting",
+      "mean": 0.19329083333333333,
+      "median": 0.0236,
+      "p95": 1.5156
+    },
+    {
+      "name": "GPU/Translucency",
+      "mean": 0.11744999999999997,
+      "median": 0.1156,
+      "p95": 0.1507
+    },
+    {
+      "name": "GPU/LightGrid",
+      "mean": 0.08566333333333337,
+      "median": 0.0824,
+      "p95": 0.1192
+    },
+    {
+      "name": "GPU/BeginOcclusionTests",
+      "mean": 0.05977750000000003,
+      "median": 0.0604,
+      "p95": 0.102
+    }
+  ],
+  "cpu": [
+    {
+      "name": "Exclusive/GameThread/EventWait",
+      "mean": 170.95055166666668,
+      "median": 166.0317,
+      "p95": 215.0466
+    },
+    {
+      "name": "Exclusive/RenderThread/EventWait",
+      "mean": 87.16477833333336,
+      "median": 139.4556,
+      "p95": 169.3119
+    },
+    {
+      "name": "Exclusive/RenderThread/RenderOther",
+      "mean": 67.59276083333332,
+      "median": 4.9839,
+      "p95": 173.7723
+    },
+    {
+      "name": "Exclusive/RenderThread/FetchVisibilityForPrimitives",
+      "mean": 12.859924166666667,
+      "median": 12.9602,
+      "p95": 21.3809
+    },
+    {
+      "name": "Exclusive/RenderThread/RDG",
+      "mean": 5.203514166666667,
+      "median": 1.7054,
+      "p95": 15.713
+    },
+    {
+      "name": "Exclusive/RenderThread/RDG_Execute",
+      "mean": 0.7107941666666666,
+      "median": 0.4967,
+      "p95": 1.568
+    },
+    {
+      "name": "Exclusive/GameThread/UI",
+      "mean": 0.6492291666666666,
+      "median": 0.5805,
+      "p95": 1.0882
+    },
+    {
+      "name": "Exclusive/RenderThread/ShadowInitDynamic",
+      "mean": 0.510765,
+      "median": 0.4595,
+      "p95": 0.9535
+    },
+    {
+      "name": "Exclusive/RenderThread/InitViews_Scene",
+      "mean": 0.4629849999999999,
+      "median": 0.3977,
+      "p95": 0.8813
+    },
+    {
+      "name": "Exclusive/RenderThread/RenderThreadOther",
+      "mean": 0.45299333333333325,
+      "median": 0.4124,
+      "p95": 0.7095
+    },
+    {
+      "name": "Exclusive/RenderThread/RenderPostProcessing",
+      "mean": 0.39836916666666666,
+      "median": 0.348,
+      "p95": 0.7746
+    },
+    {
+      "name": "Exclusive/GameThread/DebugHUD",
+      "mean": 0.3973575,
+      "median": 0.3448,
+      "p95": 0.6931
+    },
+    {
+      "name": "Exclusive/GameThread/EventWait/EndPhysics",
+      "mean": 0.3516458333333333,
+      "median": 0.1767,
+      "p95": 0.9805
+    },
+    {
+      "name": "Exclusive/GameThread/ViewportMisc",
+      "mean": 0.2928549999999999,
+      "median": 0.2705,
+      "p95": 0.4947
+    },
+    {
+      "name": "Exclusive/RenderThread/RenderLighting",
+      "mean": 0.22415000000000004,
+      "median": 0.2055,
+      "p95": 0.3548
+    },
+    {
+      "name": "Exclusive/GameThread/EngineTickMisc",
+      "mean": 0.18906,
+      "median": 0.1634,
+      "p95": 0.2914
+    },
+    {
+      "name": "Exclusive/RenderThread/RenderShadows",
+      "mean": 0.18686416666666678,
+      "median": 0.1642,
+      "p95": 0.3495
+    },
+    {
+      "name": "Exclusive/GameThread/TickActors",
+      "mean": 0.16173583333333336,
+      "median": 0.1487,
+      "p95": 0.2735
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "map": "/Game/Maps/HidrokPlayable",
+  "building_blockers": 177,
+  "spawn": [
+    160,
+    4400,
+    120
+  ],
+  "saved_map_reload": true,
+  "persisted_hierarchical_instances": 39700,
+  "spatial_clusters": 108,
+  "limitations": [
+    "Building interiors are blocked pending interior migration.",
+    "Traffic, vehicles, powers and NPC interactions are not yet ported.",
+    "Street props are decorative; detailed prop collision is pending.",
+    "Playable preview architecture culls beyond 180 metres."
+  ]
+}

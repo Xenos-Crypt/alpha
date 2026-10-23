@@ -1,0 +1,88 @@
+[
+  {
+    "name": "asphalt",
+    "id": "asphalt_02",
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/asphalt_02",
+    "files": {
+      "diff": "assets/asphalt-diff.jpg",
+      "normal": "assets/asphalt-normal.jpg",
+      "rough": "assets/asphalt-rough.jpg"
+    }
+  },
+  {
+    "name": "brick",
+    "id": "brick_wall_001",
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/brick_wall_001",
+    "files": {
+      "diff": "assets/brick-diff.jpg",
+      "normal": "assets/brick-normal.jpg",
+      "rough": "assets/brick-rough.jpg"
+    }
+  },
+  {
+    "name": "paving",
+    "id": "pavement_01",
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/pavement_01",
+    "files": {
+      "diff": "assets/paving-diff.jpg",
+      "normal": "assets/paving-normal.jpg",
+      "rough": "assets/paving-rough.jpg"
+    }
+  },
+  {
+    "name": "wood",
+    "id": "wood_planks",
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/wood_planks",
+    "files": {
+      "diff": "assets/wood-diff.jpg",
+      "normal": "assets/wood-normal.jpg",
+      "rough": "assets/wood-rough.jpg"
+    }
+  },
+  {
+    "name": "plaster",
+    "id": "plastered_wall",
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/plastered_wall",
+    "files": {
+      "diff": "assets/plaster-diff.jpg",
+      "normal": "assets/plaster-normal.jpg",
+      "rough": "assets/plaster-rough.jpg"
+    }
+  },
+  {
+    "name": "roof",
+    "id": "ceramic_roof_01",
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/ceramic_roof_01",
+    "files": {
+      "diff": "assets/roof-diff.jpg",
+      "normal": "assets/roof-normal.jpg",
+      "rough": "assets/roof-rough.jpg"
+    }
+  },
+  {
+    "name": "grass",
+    "id": "aerial_grass_rock",
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/aerial_grass_rock",
+    "files": {
+      "diff": "assets/grass-diff.jpg",
+      "normal": "assets/grass-normal.jpg",
+      "rough": "assets/grass-rough.jpg"
+    }
+  },
+  {
+    "name": "sky",
+    "id": "kloofendal_48d_partly_cloudy_puresky",
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+    "files": {
+      "hdri": "assets/sky.hdr"
+    }
+  }
+]

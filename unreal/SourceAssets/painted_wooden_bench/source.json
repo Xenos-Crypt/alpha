@@ -1,0 +1,39 @@
+{
+  "id": "painted_wooden_bench",
+  "source": "https://polyhaven.com/a/painted_wooden_bench",
+  "license": "CC0",
+  "license_url": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "files": [
+    {
+      "path": "painted_wooden_bench/painted_wooden_bench_1k.gltf",
+      "bytes": 2835,
+      "md5": "784a49250144aa5299a93c1f3b6968d7",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/painted_wooden_bench/painted_wooden_bench_1k.gltf"
+    },
+    {
+      "path": "painted_wooden_bench/textures/painted_wooden_bench_diff_1k.jpg",
+      "bytes": 545216,
+      "md5": "60c7d0f34f52b1003345d318e35f468d",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_bench/painted_wooden_bench_diff_1k.jpg"
+    },
+    {
+      "path": "painted_wooden_bench/textures/painted_wooden_bench_nor_gl_1k.jpg",
+      "bytes": 830104,
+      "md5": "08b74bebcff262c14beae35a4f7b3405",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_bench/painted_wooden_bench_nor_gl_1k.jpg"
+    },
+    {
+      "path": "painted_wooden_bench/textures/painted_wooden_bench_arm_1k.jpg",
+      "bytes": 586040,
+      "md5": "754ecc7f47b1e5d032e45e22334954f1",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_bench/painted_wooden_bench_arm_1k.jpg"
+    },
+    {
+      "path": "painted_wooden_bench/painted_wooden_bench.bin",
+      "bytes": 25444,
+      "md5": "ed331b50f955852f007313c1a75c2e2d",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/painted_wooden_bench/painted_wooden_bench.bin"
+    }
+  ]
+}

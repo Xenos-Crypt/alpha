@@ -1,0 +1,78 @@
+{
+  "map": "/Game/Maps/HidrokFuture",
+  "succeeded": 2,
+  "failed": 0,
+  "tests": [
+    {
+      "name": "StreetWalking",
+      "state": "Success"
+    },
+    {
+      "name": "VehicleFlight",
+      "state": "Success"
+    }
+  ],
+  "reference": "https://chatgpt.com/s/m_6ada4b2b0a6c8191b1bbd8adcfe8c8b9",
+  "captures": [
+    "Saved/Screenshots/WindowsEditor/AuroraX9_Road.png",
+    "Saved/Screenshots/WindowsEditor/AuroraX9_ParkedService.png",
+    "Saved/Screenshots/WindowsEditor/AuroraX9_BootObstruction.png",
+    "Saved/Screenshots/WindowsEditor/AuroraX9_Flight.png",
+    "Saved/Screenshots/WindowsEditor/SkylineX7_Road.png",
+    "Saved/Screenshots/WindowsEditor/SkylineX7_ParkedService.png",
+    "Saved/Screenshots/WindowsEditor/SkylineX7_BootObstruction.png",
+    "Saved/Screenshots/WindowsEditor/SkylineX7_Flight.png",
+    "Saved/Screenshots/WindowsEditor/AerodynexX12_Road.png",
+    "Saved/Screenshots/WindowsEditor/AerodynexX12_ParkedService.png",
+    "Saved/Screenshots/WindowsEditor/AerodynexX12_BootObstruction.png",
+    "Saved/Screenshots/WindowsEditor/AerodynexX12_Flight.png"
+  ],
+  "limits": [
+    "Further visual realism and detail work remain.",
+    "Autonomy, safety systems and passenger simulation remain pending.",
+    "Cockpit uses reflective compatibility material with camera proximity masking.",
+    "Suspension/load-bearing physics, tyre load certification and fully engineered wiring and backup systems remain unfinished."
+  ],
+  "steering_checks": [
+    "D turns toward camera-right for every model",
+    "A turns toward camera-left for every model"
+  ],
+  "models": [
+    "Aurora X9",
+    "Skyline X7",
+    "Aerodynex X12"
+  ],
+  "references": [
+    {
+      "image": "References/Aurora-X9.png",
+      "url": "https://chatgpt.com/s/m_6ada4b2b0a6c8191b1bbd8adcfe8c8b9",
+      "sha256": "0d0f5ab475301b2ee69c7dcc53cbde41acdb101d48758c38f9b959a4cdf05b10"
+    },
+    {
+      "image": "References/Variant-A.png",
+      "url": "https://chatgpt.com/s/m_6ada696fcbe481918d0a3e349bd56883",
+      "sha256": "a41669b7515346b9c13786c77195864e40a31d745cde2addb5b8cb376c9fb7cc"
+    },
+    {
+      "image": "References/Variant-B.png",
+      "url": "https://chatgpt.com/s/m_6ada6af13e4081918b2f80feeb6e7c33",
+      "sha256": "0c257523bd2e694dd165e38eeb325d33de743e6a25103c316eda699319fd5678"
+    },
+    {
+      "image": "References/Mechanical-reference.png",
+      "url": "https://chatgpt.com/s/m_6adb006f7244819184810adae57e6ac3",
+      "sha256": "108b604d806a133ffc12d30624873da7bb61d68ff92ed7afea6aea98b9f87fa6"
+    }
+  ],
+  "mechanical_checks": [
+    "840 x 320 mm imported tyre dimensions",
+    "Road wheel contact error below 2 cm",
+    "Parking pads deploy and retract separately",
+    "Parking/service interlocks prevent motion and takeoff",
+    "Boot releases, opens, closes, latches and locks",
+    "Real blocking object causes boot reversal and prevents locking",
+    "Boot relatches after obstruction removal",
+    "Normal flight, landing and exit remain functional"
+  ],
+  "service_document": "VEHICLE-SERVICE.md"
+}

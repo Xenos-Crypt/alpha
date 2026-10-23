@@ -9,6 +9,10 @@ namespace AnotherWorld.World
         static readonly Dictionary<Vector3,Mesh> texturedBoxes=new Dictionary<Vector3,Mesh>();
         public static Material Material(string name,Color color,string texture=null,float smoothness=.15f)
         {
+            if(texture=="grass"||texture=="paving"||texture=="asphalt")
+            {
+                var shared=LandscapeDesign.Surface(texture=="grass"?"Grass":texture=="paving"?"Light paving":"Dark asphalt");if(shared)return shared;
+            }
             string key=name+"|"+color+"|"+texture+"|"+smoothness;if(materials.TryGetValue(key,out var result))return result;
             var reference=Resources.Load<Material>("Materials/URPReference");result=reference?new Material(reference):new Material(Shader.Find("Universal Render Pipeline/Lit"));
             result.name=name;result.enableInstancing=true;result.DisableKeyword("_NORMALMAP");result.DisableKeyword("_EMISSION");result.SetColor("_BaseColor",color);result.SetFloat("_Smoothness",smoothness);
@@ -19,7 +23,7 @@ namespace AnotherWorld.World
         public static GameObject Box(Transform parent,string name,Vector3 size,Vector3 position,Material material,bool collider=false,bool batching=true)
         {
             var go=GameObject.CreatePrimitive(PrimitiveType.Cube);go.name=name;go.transform.SetParent(parent,false);go.transform.localPosition=position;go.transform.localScale=size;
-            if(material.GetTexture("_BaseMap"))
+            if(material.HasProperty("_BaseMap")&&material.GetTexture("_BaseMap"))
             {
                 if(!texturedBoxes.TryGetValue(size,out var mesh))
                 {
@@ -43,6 +47,7 @@ namespace AnotherWorld.World
         }
         public static void Tree(Transform parent,Vector3 p)
         {
+            if(Resources.Load<GameObject>("Landscaping/Tree")){LandscapeDesign.Plant(parent,"Tree",p);return;}
             var bark=Material("Bark",new Color(.32f,.24f,.17f),"wood");var leaf=Material("Leaves",new Color(.28f,.4f,.24f));
             Box(parent,"Trunk",new Vector3(.28f,3.1f,.28f),p+Vector3.up*1.55f,bark,true);
             for(int i=0;i<4;i++)Sphere(parent,"Canopy",new Vector3(2.3f,1.9f,2.25f),p+new Vector3(Mathf.Cos(i*2.1f)*.65f,3.25f+i*.28f,Mathf.Sin(i*2.1f)*.65f),leaf);

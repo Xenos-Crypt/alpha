@@ -13,3 +13,11 @@ verify*.cjs
 capture-auth-gameplay.cjs
 .npm-cache/
 .env*
+
+# Unity source and editor caches are not browser-hosting artifacts.
+unity/
+.unity-install/
+.unity-editor/
+
+# Unreal source and native assets are not browser-hosting artifacts.
+unreal/

@@ -16,6 +16,15 @@ namespace AnotherWorld.Rendering
             public readonly Matrix4x4[] Matrices=new Matrix4x4[500];
         }
         static GpuMeshBatch instance;
+        #if UNITY_EDITOR
+        // Offscreen SRP render requests do not replay explicit instanced draws.
+        // Editor reference captures use the same meshes via ordinary renderers.
+        public static void PreviewRenderers()
+        {
+            if(!instance)return;instance.enabled=false;
+            foreach(var batch in instance.batches.Values)foreach(var part in batch.Transforms)if(part)part.GetComponent<MeshRenderer>().enabled=true;
+        }
+        #endif
         readonly Dictionary<string,Batch> batches=new Dictionary<string,Batch>();
         public static void Register(MeshRenderer renderer)
         {
@@ -27,6 +36,7 @@ namespace AnotherWorld.Rendering
             if(!instance.batches.TryGetValue(key,out var batch))
             {batch=new Batch{Mesh=mesh,Material=material};instance.batches[key]=batch;}
             if(renderer.GetComponentInParent<AnotherWorld.World.ResidentGait>())batch.MaxDistance=160;
+            var vegetation=renderer.GetComponentInParent<AnotherWorld.World.VegetationAsset>();if(vegetation)batch.MaxDistance=vegetation.ViewDistance;
             batch.Transforms.Add(renderer.transform);renderer.enabled=false;
         }
         void LateUpdate()

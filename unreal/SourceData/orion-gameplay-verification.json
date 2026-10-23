@@ -1,0 +1,40 @@
+{
+  "map": "/Game/Maps/HidrokFuture",
+  "renderer": "D3D11_SM5",
+  "succeeded": 3,
+  "failed": 0,
+  "tests": [
+    {
+      "name": "AnotherWorld.Gameplay.OrionTransit",
+      "state": "Success"
+    },
+    {
+      "name": "AnotherWorld.Gameplay.StreetWalking",
+      "state": "Success"
+    },
+    {
+      "name": "AnotherWorld.Gameplay.VehicleFlight",
+      "state": "Success"
+    }
+  ],
+  "captures": [
+    {
+      "path": "AnotherWorld/Saved/Screenshots/WindowsEditor/Orion_UndergroundStation.png",
+      "sha256": "0659f6177bbf2008627691b0e4ecf2e7e1ca1727ed06d0384243d94f77fae54f"
+    },
+    {
+      "path": "AnotherWorld/Saved/Screenshots/WindowsEditor/Orion_RegionalRide.png",
+      "sha256": "ea1c42eb13de3adce663776aeb503e07ecec827620918661a37f381d5a37f4a2"
+    },
+    {
+      "path": "AnotherWorld/Saved/Screenshots/WindowsEditor/Orion_ElevatedPlatform.png",
+      "sha256": "8ab37efc91bc511cf7bb9a480b7f18f92f4f0a2eae4d6b80179fa4c434077dbf"
+    },
+    {
+      "path": "AnotherWorld/Saved/Screenshots/WindowsEditor/Orion_TramRide.png",
+      "sha256": "7c52cb107c6b0cc7f7c994a738b34c117dc46cdf5036f09a89bf36b726712428"
+    }
+  ],
+  "visualReview": "All four warmed DX11 captures inspected. Materials loaded; underground lighting reduced. Procedural interiors and station finishes still need an art pass for photorealism.",
+  "profile": "profile-orion.json"
+}

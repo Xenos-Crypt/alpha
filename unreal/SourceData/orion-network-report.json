@@ -1,0 +1,27 @@
+{
+  "regional": {
+    "route": "underground",
+    "sections": 8,
+    "nominal_length_m": 200,
+    "running_surface_z_cm": -1800,
+    "tunnel_length_m": 1300,
+    "platform_length_m": 240
+  },
+  "tram": {
+    "route": "elevated",
+    "sections": 4,
+    "nominal_length_m": 40,
+    "running_surface_z_cm": 900,
+    "guideway_length_m": 400,
+    "platform_length_m": 50
+  },
+  "access_lifts": 4,
+  "structural_colliders": 174,
+  "reference": "References/Orion-transit.png",
+  "limits": [
+    "One Central passenger station per line; terminal positions are turnbacks.",
+    "Lift interaction transfers the player between landings; a moving lift cabin is not simulated.",
+    "Guideway-constrained kinematics and braking are game controllers, not certified maglev engineering.",
+    "Full city-to-city networks, evacuation simulation and signalling interlocking remain pending."
+  ]
+}

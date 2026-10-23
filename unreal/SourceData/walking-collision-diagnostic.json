@@ -1,0 +1,135 @@
+[
+  {
+    "name": "StaticMeshActor_0",
+    "label": "Website geometry 0000 sphere",
+    "mesh": "/Engine/BasicShapes/Sphere.Sphere",
+    "center": [
+      0.0,
+      0.0034332275390625,
+      0.0
+    ],
+    "extent": [
+      45000.0,
+      45000.0,
+      45000.0
+    ],
+    "scale": "<Struct 'Vector' (0x0000013FB16D2A40) {x: 900.000000, y: 900.000000, z: 900.000000}>",
+    "rotation": "<Struct 'Rotator' (0x0000013FB16D2A40) {pitch: 0.000000, yaw: 0.000000, roll: 0.000000}>",
+    "collision": "<CollisionEnabled.NO_COLLISION: 0>",
+    "profile": "Custom"
+  },
+  {
+    "name": "StaticMeshActor_3",
+    "label": "Website geometry 0003 cube",
+    "mesh": "/Engine/BasicShapes/Cube.Cube",
+    "center": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "extent": [
+      90000.0,
+      105000.00000004274,
+      1.2535939969800223
+    ],
+    "scale": "<Struct 'Vector' (0x0000013FA73DD640) {x: 1800.000000, y: 0.025000, z: 2100.000000}>",
+    "rotation": "<Struct 'Rotator' (0x0000013FA73DD640) {pitch: 0.000000, yaw: 0.000000, roll: -89.999998}>",
+    "collision": "<CollisionEnabled.QUERY_AND_PHYSICS: 3>",
+    "profile": "BlockAll"
+  },
+  {
+    "name": "StaticMeshActor_4",
+    "label": "Website geometry 0004 cube",
+    "mesh": "/Engine/BasicShapes/Cube.Cube",
+    "center": [
+      0.0,
+      0.0,
+      2.0
+    ],
+    "extent": [
+      16500.0,
+      16500.00000004278,
+      1.2505647709540035
+    ],
+    "scale": "<Struct 'Vector' (0x000001401497A590) {x: 330.000000, y: 0.025000, z: 330.000000}>",
+    "rotation": "<Struct 'Rotator' (0x000001401497A590) {pitch: 0.000000, yaw: 0.000000, roll: -89.999998}>",
+    "collision": "<CollisionEnabled.QUERY_AND_PHYSICS: 3>",
+    "profile": "BlockAll"
+  },
+  {
+    "name": "StaticMeshActor_6817",
+    "label": "Street art / asphalt road",
+    "mesh": "/Engine/BasicShapes/Cube.Cube",
+    "center": [
+      0.0,
+      0.0,
+      3.0
+    ],
+    "extent": [
+      775.0,
+      16500.0,
+      4.0
+    ],
+    "scale": "<Struct 'Vector' (0x0000014014979410) {x: 15.500000, y: 330.000000, z: 0.080000}>",
+    "rotation": "<Struct 'Rotator' (0x0000014014979410) {pitch: 0.000000, yaw: 0.000000, roll: 0.000000}>",
+    "collision": "<CollisionEnabled.QUERY_AND_PHYSICS: 3>",
+    "profile": "BlockAll"
+  },
+  {
+    "name": "StaticMeshActor_6820",
+    "label": "Street art / asphalt road",
+    "mesh": "/Engine/BasicShapes/Cube.Cube",
+    "center": [
+      0.0,
+      4000.0,
+      3.0
+    ],
+    "extent": [
+      16500.0,
+      775.0,
+      4.0
+    ],
+    "scale": "<Struct 'Vector' (0x000001401497AFE0) {x: 330.000000, y: 15.500000, z: 0.080000}>",
+    "rotation": "<Struct 'Rotator' (0x000001401497AFE0) {pitch: 0.000000, yaw: 0.000000, roll: 0.000000}>",
+    "collision": "<CollisionEnabled.QUERY_AND_PHYSICS: 3>",
+    "profile": "BlockAll"
+  },
+  {
+    "name": "StaticMeshActor_21",
+    "label": "Authored / photographic HDR sky",
+    "mesh": "/Engine/BasicShapes/Sphere.Sphere",
+    "center": [
+      0.0,
+      0.0152587890625,
+      0.0
+    ],
+    "extent": [
+      200000.0,
+      200000.0,
+      200000.0
+    ],
+    "scale": "<Struct 'Vector' (0x000001401497B0D0) {x: 4000.000000, y: 4000.000000, z: 4000.000000}>",
+    "rotation": "<Struct 'Rotator' (0x000001401497B0D0) {pitch: 0.000000, yaw: 0.000000, roll: 0.000000}>",
+    "collision": "<CollisionEnabled.NO_COLLISION: 0>",
+    "profile": "Custom"
+  },
+  {
+    "name": "StaticMeshActor_22",
+    "label": "Traversal / Ashford ground support",
+    "mesh": "/Engine/BasicShapes/Cube.Cube",
+    "center": [
+      0.0,
+      0.0,
+      -50.0
+    ],
+    "extent": [
+      20000.0,
+      20000.0,
+      50.0
+    ],
+    "scale": "<Struct 'Vector' (0x000001401497B170) {x: 400.000000, y: 400.000000, z: 1.000000}>",
+    "rotation": "<Struct 'Rotator' (0x000001401497B170) {pitch: 0.000000, yaw: 0.000000, roll: 0.000000}>",
+    "collision": "<CollisionEnabled.QUERY_AND_PHYSICS: 3>",
+    "profile": "BlockAll"
+  }
+]
