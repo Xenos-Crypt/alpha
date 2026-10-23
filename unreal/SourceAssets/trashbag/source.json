@@ -1,0 +1,39 @@
+{
+  "id": "trashbag",
+  "source": "https://polyhaven.com/a/trashbag",
+  "license": "CC0",
+  "license_url": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "files": [
+    {
+      "path": "trashbag/trashbag_1k.gltf",
+      "bytes": 2738,
+      "md5": "c29158e170beeeb6bb518fe8d4407fe5",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/trashbag/trashbag_1k.gltf"
+    },
+    {
+      "path": "trashbag/textures/trashbag_nor_gl_1k.jpg",
+      "bytes": 573449,
+      "md5": "e576356779a07ac478126012544ab7b7",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/trashbag/trashbag_nor_gl_1k.jpg"
+    },
+    {
+      "path": "trashbag/textures/trashbag_diff_1k.jpg",
+      "bytes": 332301,
+      "md5": "255360a490bf3838f55e7f21c7ab57ab",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/trashbag/trashbag_diff_1k.jpg"
+    },
+    {
+      "path": "trashbag/textures/trashbag_arm_1k.jpg",
+      "bytes": 684660,
+      "md5": "1efc021580dd12ef73a27b5d974056aa",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/trashbag/trashbag_arm_1k.jpg"
+    },
+    {
+      "path": "trashbag/trashbag.bin",
+      "bytes": 106316,
+      "md5": "ad6ebbf5b9aa0179feeea87a4bd289a3",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/trashbag/trashbag.bin"
+    }
+  ]
+}

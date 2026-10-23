@@ -1,0 +1,1083 @@
+﻿{
+    "map":  "/Game/Maps/HidrokAuthoredStreet",
+    "buildings":  [
+                      {
+                          "x":  -14.5,
+                          "z":  54.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  65.5,
+                          "floors":  14,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  54.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  65.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  54.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  65.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  54.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  65.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  94.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  94.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  94.5,
+                          "floors":  2,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  94.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  105.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  105.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  105.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  105.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  54.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  65.5,
+                          "floors":  8,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  25.5,
+                          "floors":  19,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  94.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  94.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  54.5,
+                          "floors":  9,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  65.5,
+                          "floors":  8,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  14.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  105.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  25.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  94.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  94.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  134.5,
+                          "floors":  6,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  134.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  134.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  14.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  105.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  145.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  145.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  145.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  145.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  -14.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  134.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  -14.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  54.5,
+                          "floors":  6,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  65.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  54.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  65.5,
+                          "floors":  6,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  -14.5,
+                          "floors":  18,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  -14.5,
+                          "floors":  9,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  134.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  25.5,
+                          "floors":  8,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  94.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  94.5,
+                          "floors":  10,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  -25.5,
+                          "floors":  14,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  145.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  -25.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  145.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  14.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  105.5,
+                          "floors":  2,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  105.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  54.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  65.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  105.5,
+                          "z":  54.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  105.5,
+                          "z":  65.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  -25.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  145.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  145.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  25.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  105.5,
+                          "z":  94.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  14.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  105.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  105.5,
+                          "z":  105.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  -54.5,
+                          "floors":  9,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  -54.5,
+                          "floors":  6,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  -14.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  -14.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  134.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  -65.5,
+                          "floors":  12,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  -54.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  -54.5,
+                          "floors":  2,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  -25.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  145.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  145.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  -65.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  -65.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  -14.5,
+                          "floors":  11,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  134.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  105.5,
+                          "z":  -14.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  105.5,
+                          "z":  134.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  -54.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  -54.5,
+                          "floors":  8,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  54.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  65.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  145.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  105.5,
+                          "z":  -25.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  -65.5,
+                          "floors":  14,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  -65.5,
+                          "floors":  12,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  25.5,
+                          "floors":  12,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  94.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  -65.5,
+                          "floors":  11,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  -65.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  14.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  105.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  54.5,
+                          "floors":  6,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  65.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  -54.5,
+                          "floors":  16,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  -54.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  25.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  25.5,
+                          "floors":  8,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  94.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  14.5,
+                          "floors":  10,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  14.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  105.5,
+                          "floors":  7,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  -14.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  134.5,
+                          "floors":  8,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  134.5,
+                          "floors":  2,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  -94.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  -94.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  -54.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  -94.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  -94.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  94.5,
+                          "z":  -65.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  -25.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  145.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  -14.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  134.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  134.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  -94.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  -65.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  -105.5,
+                          "floors":  11,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  -105.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  -105.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  -105.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  -94.5,
+                          "floors":  6,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  -25.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  145.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  -25.5,
+                          "floors":  5,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  145.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  -105.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  -54.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  -54.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  -105.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  -94.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  -65.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  -65.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  -54.5,
+                          "floors":  2,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  -54.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  -94.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  -105.5,
+                          "floors":  2,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  -65.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  -65.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  -134.5,
+                          "floors":  6,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  -134.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  -134.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  -105.5,
+                          "floors":  2,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  -134.5,
+                          "floors":  5,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  -134.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  -134.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -14.5,
+                          "z":  -145.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  14.5,
+                          "z":  -145.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -25.5,
+                          "z":  -145.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  25.5,
+                          "z":  -145.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  -94.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -54.5,
+                          "z":  -145.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  54.5,
+                          "z":  -145.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  -105.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -65.5,
+                          "z":  -145.5,
+                          "floors":  3,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  65.5,
+                          "z":  -145.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  -134.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  -105.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  -134.5,
+                          "floors":  4,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -94.5,
+                          "z":  -145.5,
+                          "floors":  7,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -105.5,
+                          "z":  -145.5,
+                          "floors":  12,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  -134.5,
+                          "floors":  2,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  -134.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  -134.5,
+                          "floors":  4,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  -134.5,
+                          "z":  -145.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  134.5,
+                          "z":  -145.5,
+                          "floors":  3,
+                          "kit":  "modular_urban_apartments_facade"
+                      },
+                      {
+                          "x":  -145.5,
+                          "z":  -145.5,
+                          "floors":  2,
+                          "kit":  "modular_factory_facade"
+                      },
+                      {
+                          "x":  145.5,
+                          "z":  -145.5,
+                          "floors":  6,
+                          "kit":  "modular_urban_apartments_facade"
+                      }
+                  ],
+    "counts":  {
+                   "modules":  38288,
+                   "props":  593,
+                   "detail_parts":  820
+               },
+    "instances":  39700,
+    "instance_batches":  108,
+    "render_verified":  true,
+    "asset_credits":  "SourceAssets/CREDITS.json",
+    "limits":  [
+                   "All 177 imported Ashford buildings are treated; the other website cities still need porting.",
+                   "Props are static; their interactions and destruction are not ported.",
+                   "DX11 preview does not use Lumen. No Bodycam-equivalent fidelity or frame rate is claimed."
+               ],
+    "screenshot":  "AnotherWorld/Saved/Screenshots/HidrokAuthoredStreet.png",
+    "render_notes":  "Inspected actual eye-level DX11 render. No shader errors, attachment warnings or unbuilt-lighting banner. Performance has not been benchmarked."
+}

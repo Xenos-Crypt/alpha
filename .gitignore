@@ -7,4 +7,14 @@ test-results/
 .npm-cache/
 .smoke-test.cjs
 dist/
+.unity-install/
+.unity-editor/
+unreal/**/Saved/
+unreal/**/Intermediate/
+unreal/**/DerivedDataCache/
+unreal/**/Binaries/
+unreal/**/*.log
+unreal/Toolchain/
 wasm-physics/target/
+
+unreal/SourceData/profile-*.csv

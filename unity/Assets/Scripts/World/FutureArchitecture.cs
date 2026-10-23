@@ -17,17 +17,47 @@ namespace AnotherWorld.World
         }
         public static void Apartments(Transform root,int floors)
         {
-            var glass=WorldShapes.Material("Balcony glass",new Color(.13f,.32f,.4f),null,.85f);
-            foreach(int side in new[]{-1,1})
+            var shell=WorldShapes.Material("Hidrok pearl armour",new Color(.58f,.64f,.75f),null,.45f);
+            var dark=WorldShapes.Material("Hidrok graphite recess",new Color(.045f,.065f,.105f),null,.6f);
+            var glass=WorldShapes.Material("Hidrok midnight glazing",new Color(.065f,.15f,.23f),null,.85f);
+            var glow=ElementalVisuals.Paint("Hidrok architectural glow",new Color(.08f,.88f,.86f),true);
+            shell.SetFloat("_Metallic",.3f);dark.SetFloat("_Metallic",.45f);
+            float height=floors*3;
+            WorldShapes.Box(root,"Structural graphite core",new Vector3(8.7f,height,8.7f),new Vector3(0,height*.5f+.15f,0),dark,true);
+            for(int floor=0;floor<floors;floor++)
             {
-                WorldShapes.Box(root,"Full height facade rib",new Vector3(.18f,floors*3+.5f,.4f),new Vector3(side*4.35f,floors*1.5f,-4.65f),Alloy);
-                for(int floor=0;floor<floors;floor++)
+                float y=floor*3;
+                WorldShapes.Box(root,"Layered cantilever floor",new Vector3(10.1f,.28f,10.1f),new Vector3(0,y+.3f,0),shell,true);
+                for(int face=0;face<4;face++)
                 {
-                    WorldShapes.Box(root,"Cantilevered balcony",new Vector3(7.7f,.16f,1.1f),new Vector3(0,floor*3+.45f,side*4.9f),Alloy);
-                    WorldShapes.Box(root,"Balcony balustrade",new Vector3(7.4f,.65f,.07f),new Vector3(0,floor*3+.85f,side*5.4f),glass);
-                    WorldShapes.Box(root,"Floor light ribbon",new Vector3(8.6f,.055f,.04f),new Vector3(0,(floor+1)*3+.22f,side*4.74f),Light);
+                    var facade=new GameObject("Armoured facade module").transform;facade.SetParent(root,false);facade.localRotation=Quaternion.Euler(0,face*90,0);
+                    WorldShapes.Box(facade,"Recessed panoramic glazing",new Vector3(8.65f,1.18f,.12f),new Vector3(0,y+1.2f,-4.45f),glass);
+                    WorldShapes.Box(facade,"Titanium spandrel panel",new Vector3(9.45f,.85f,.42f),new Vector3(0,y+2.3f,-4.52f),shell);
+                    WorldShapes.Box(facade,"Dark panel reveal",new Vector3(8.9f,.07f,.025f),new Vector3(0,y+2.27f,-4.745f),dark);
+                    WorldShapes.Box(facade,"Cyan service ribbon",new Vector3(9.1f,.065f,.045f),new Vector3(0,y+.52f,-4.73f),glow);
+                    for(int n=-1;n<=1;n++)
+                    {
+                        WorldShapes.Box(facade,"Glazing mullion",new Vector3(.12f,1.2f,.18f),new Vector3(n*2.8f,y+1.2f,-4.55f),dark);
+                        WorldShapes.Box(facade,"Panel joint",new Vector3(.055f,.64f,.03f),new Vector3(n*2.8f,y+2.3f,-4.75f),dark);
+                    }
+                    foreach(int side in new[]{-1,1})
+                    {
+                        var brace=WorldShapes.Box(facade,"Angled corner armour",new Vector3(.42f,2.5f,.52f),new Vector3(side*4.5f,y+1.65f,-4.55f),shell);
+                        brace.transform.localRotation=Quaternion.Euler(0,0,side*9);
+                    }
                 }
             }
+            WorldShapes.Box(root,"Overhanging armoured crown",new Vector3(10.3f,.36f,10.3f),new Vector3(0,height+.3f,0),shell,true);
+            WorldShapes.Box(root,"Recessed roof machinery",new Vector3(7.4f,.85f,6.6f),new Vector3(0,height+.9f,0),dark);
+            WorldShapes.Box(root,"Stepped crown cap",new Vector3(7.9f,.18f,7.1f),new Vector3(0,height+1.4f,0),shell);
+            for(int n=-2;n<=2;n++)WorldShapes.Box(root,"Roof heat exchanger",new Vector3(5.8f,.12f,.13f),new Vector3(0,height+1.52f,n*.85f),Alloy);
+            if(floors>=7)
+            {
+                var tower=SmoothShapes.Profile("Hidrok octagonal crown",new[]{new Vector2(0,0),new Vector2(2.2f,0),new Vector2(2.2f,7),new Vector2(0,7)},16);
+                SmoothShapes.Part(root,"Cylindrical communications crown",tower,Vector3.one,new Vector3(0,height+1.5f,0),dark,true);
+                for(int n=0;n<5;n++)SmoothShapes.Part(root,"Crown cyan band",SmoothShapes.Tube,new Vector3(4.5f,.12f,4.5f),new Vector3(0,height+1.8f+n*1.4f,0),glow,true);
+            }
+            // Stay within each existing plot: no skybridges across traffic lanes.
         }
         public static void Civic(Transform root,Transform roof,string kind)
         {
@@ -65,3 +95,4 @@ namespace AnotherWorld.World
         }
     }
 }
+

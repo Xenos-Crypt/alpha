@@ -408,24 +408,6 @@
 </div>
 <div id="start"><h1>Open World Starter</h1><p>Click to play</p></div>
 
-<script>
-function openCloaked() {
-  const win = window.open('about:blank');
-  if (!win) return alert('Allow popups');
-  const iframe = win.document.createElement('iframe');
-  iframe.style = 'border:0;width:100vw;height:100vh';
-  iframe.src = 'https://anotherword.word';
-  win.document.body.style.margin = '0';
-  win.document.body.appendChild(iframe);
-}
-
-const cloakedBtn = document.createElement('button');
-cloakedBtn.textContent = 'Open in Study Mode';
-cloakedBtn.style = 'position:fixed;left:16px;bottom:16px;z-index:9999;padding:10px 14px;border-radius:10px;border:0;background:#3867d6;color:#fff;font:13px system-ui;cursor:pointer';
-cloakedBtn.onclick = openCloaked;
-document.body.appendChild(cloakedBtn);
-</script>
-
 <script type="module" src="./offline.js"></script>
 <script src="./game-loading.js"></script>
 <script type="module" src="./dist/bundle.js"></script>

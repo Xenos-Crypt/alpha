@@ -27,15 +27,11 @@ namespace AnotherWorld.World
             var root=new GameObject("Public intercity maglev train").transform;root.SetParent(moving,false);root.position=new Vector3(-128,6,-520);
             for(int n=-1;n<=1;n++)
             {
-                SmoothShapes.Part(root,"Streamlined maglev carriage",SmoothShapes.Ellipsoid,new Vector3(9,2.6f,2.7f),new Vector3(n*9.4f,.3f,0),metal);
-                foreach(int side in new[]{-1,1})
-                {
-                    WorldShapes.Box(root,"Magnetic suspension strip",new Vector3(8.2f,.1f,.08f),new Vector3(n*9.4f,.28f,side*1.2f),glow,false,false);
-                    for(int w=-2;w<=2;w++)WorldShapes.Box(root,"Train window",new Vector3(1.1f,.7f,.03f),new Vector3(n*9.4f+w*1.5f,1.8f,side*1.3f),WorldShapes.Material("Maglev glass",new Color(.06f,.19f,.27f),null,.8f),false,false);
-                }
+                var carriage=new GameObject("Pearl elevated maglev carriage").transform;carriage.SetParent(root,false);carriage.localPosition=new Vector3(n*9.4f,0,0);carriage.localRotation=Quaternion.Euler(0,90,0);TransportDesign.Rail(carriage,9,2.7f,2.1f,true);
                 WorldShapes.Box(root,"Train collision hull",new Vector3(9,2.6f,2.7f),new Vector3(n*9.4f,1.6f,0),metal,true,false).GetComponent<Renderer>().enabled=false;
             }
             root.gameObject.AddComponent<IntercityMaglev>();
+            foreach(int side in new[]{-1,1})WorldShapes.Box(root,"Flexible inter-car gangway",new Vector3(.55f,1.7f,1.45f),new Vector3(side*4.7f,1.38f,0),TransportDesign.Graphite,false,false);
             string[] names={"Ashford Maglev Station","Capital Maglev Station","Northhaven Maglev Station"};float[] stops={-128,448,1088};
             for(int i=0;i<stops.Length;i++)
             {
@@ -50,3 +46,4 @@ namespace AnotherWorld.World
         }
     }
 }
+

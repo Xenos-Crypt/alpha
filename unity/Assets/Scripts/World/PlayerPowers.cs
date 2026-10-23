@@ -32,7 +32,7 @@ namespace AnotherWorld.World
             if(Input.GetKeyDown(KeyCode.T))SelectElement((Element+1)%4);
             for(int i=0;i<4;i++)if(Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1+i)))Cast(i);
             if(Input.GetKeyDown(KeyCode.R))CastUltimate();
-            if(!Presentation.Targeting&&Input.GetMouseButtonDown(0)&&Input.mousePosition.y>150&&!(Input.mousePosition.x>Screen.width-150&&Input.mousePosition.y>Screen.height-70))Punch();
+            if(!Presentation.Targeting&&!player.PointerOverInteract&&Input.GetMouseButtonDown(0)&&Input.mousePosition.y>150&&!(Input.mousePosition.x>Screen.width-150&&Input.mousePosition.y>Screen.height-70))Punch();
         }
         public void SelectElement(int element)
         {if(Active)return;if(Presentation)Presentation.CancelTarget();if(EarthWind)EarthWind.ClearBuffs();if(element!=0&&Inferno)Inferno.End();Element=Mathf.Clamp(element,0,3);PlayerPrefs.SetInt("HidrokPowerElement",Element);}

@@ -1,0 +1,448 @@
+{
+  "modular_urban_apartments_facade": [
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/base_standard_01.base_standard_01",
+      "name": "base_standard_01",
+      "centre": [
+        -150.0,
+        10.0,
+        37.5
+      ],
+      "extent": [
+        150.0,
+        10.0,
+        37.5
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_trim_01"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/cornice_standard_standard_01.cornice_standard_standard_01",
+      "name": "cornice_standard_standard_01",
+      "centre": [
+        -150.0,
+        2.0,
+        9.999951362609863
+      ],
+      "extent": [
+        150.0,
+        2.0,
+        9.999999046325684
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_trim_01"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/crown_standard_standard_01.crown_standard_standard_01",
+      "name": "crown_standard_standard_01",
+      "centre": [
+        -150.00010347366333,
+        11.500001907348633,
+        37.5
+      ],
+      "extent": [
+        150.00007963180542,
+        21.499998092651367,
+        37.5
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_trim_02"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/dado_standard_standard_01.dado_standard_standard_01",
+      "name": "dado_standard_standard_01",
+      "centre": [
+        -150.0,
+        2.0000016689300537,
+        25.00000100583793
+      ],
+      "extent": [
+        150.0,
+        2.0000016689300537,
+        24.99999899416207
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_trim_01"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/door_centered_small_01.door_centered_small_01",
+      "name": "door_centered_small_01",
+      "centre": [
+        -150.0,
+        -1.9999980926513672,
+        140.49998474121094
+      ],
+      "extent": [
+        74.00028991699219,
+        22.000001907348633,
+        140.49998474121094
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_objects",
+        "modular_urban_apartments_facade_glass"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/wall_door_centered_small_01.wall_door_centered_small_01",
+      "name": "wall_door_centered_small_01",
+      "centre": [
+        -150.00003051757812,
+        2.185569883295102e-06,
+        150.00003051757812
+      ],
+      "extent": [
+        150.00003051757812,
+        2.185569883295102e-06,
+        150.00003051757812
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_plaster"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/wall_standard_standard_01.wall_standard_standard_01",
+      "name": "wall_standard_standard_01",
+      "centre": [
+        -150.00003051757812,
+        0.0,
+        150.00003051757812
+      ],
+      "extent": [
+        150.00003051757812,
+        0.0,
+        150.00003051757812
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_plaster"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/wall_window_centered_large_01.wall_window_centered_large_01",
+      "name": "wall_window_centered_large_01",
+      "centre": [
+        -150.00003051757812,
+        0.0,
+        150.00003051757812
+      ],
+      "extent": [
+        150.00003051757812,
+        0.0,
+        150.00003051757812
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_plaster"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/wall_window_centered_small_01.wall_window_centered_small_01",
+      "name": "wall_window_centered_small_01",
+      "centre": [
+        -150.00003051757812,
+        0.0,
+        150.00003051757812
+      ],
+      "extent": [
+        150.00003051757812,
+        0.0,
+        150.00003051757812
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_plaster"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/window_centered_large_01.window_centered_large_01",
+      "name": "window_centered_large_01",
+      "centre": [
+        -150.0,
+        -4.499626636505127,
+        114.99995997548103
+      ],
+      "extent": [
+        106.00094604492188,
+        19.500373363494873,
+        114.99999424815178
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_objects",
+        "modular_urban_apartments_facade_glass"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_urban_apartments_facade/street-kit/StaticMeshes/window_centered_small_01.window_centered_small_01",
+      "name": "window_centered_small_01",
+      "centre": [
+        -149.99999237060547,
+        -4.499626636505127,
+        114.99995997548103
+      ],
+      "extent": [
+        56.000953674316406,
+        19.500373363494873,
+        114.99999424815178
+      ],
+      "materials": [
+        "modular_urban_apartments_facade_objects",
+        "modular_urban_apartments_facade_glass"
+      ]
+    }
+  ],
+  "modular_factory_facade": [
+    {
+      "path": "/Game/AuthoredStreet/modular_factory_facade/street-kit/StaticMeshes/base_standard_standard_01.base_standard_standard_01",
+      "name": "base_standard_standard_01",
+      "centre": [
+        -150.0,
+        10.0,
+        37.5
+      ],
+      "extent": [
+        150.0,
+        10.0,
+        37.5
+      ],
+      "materials": [
+        "modular_factory_facade_trim_01"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_factory_facade/street-kit/StaticMeshes/cornice02_standard_standard_01.cornice02_standard_standard_01",
+      "name": "cornice02_standard_standard_01",
+      "centre": [
+        -149.99999475479126,
+        -2.9687726497650146,
+        8.000035531818867
+      ],
+      "extent": [
+        150.000066280365,
+        8.656185388565063,
+        8.000008337199688
+      ],
+      "materials": [
+        "modular_factory_facade_trim_01"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_factory_facade/street-kit/StaticMeshes/crown_standard_standard_01.crown_standard_standard_01",
+      "name": "crown_standard_standard_01",
+      "centre": [
+        -150.0,
+        6.5,
+        15.999971091747284
+      ],
+      "extent": [
+        150.0,
+        6.5,
+        16.000009834766388
+      ],
+      "materials": [
+        "modular_factory_facade_trim_01"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_factory_facade/street-kit/StaticMeshes/door_centered_small_01.door_centered_small_01",
+      "name": "door_centered_small_01",
+      "centre": [
+        -150.0000114440918,
+        -8.750003576278687,
+        116.49996948242188
+      ],
+      "extent": [
+        62.99983596801758,
+        11.750005960464478,
+        116.49996948242188
+      ],
+      "materials": [
+        "modular_factory_facade_windows",
+        "modular_factory_facade_brick_doors"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_factory_facade/street-kit/StaticMeshes/wall_door_centered_small_01.wall_door_centered_small_01",
+      "name": "wall_door_centered_small_01",
+      "centre": [
+        -150.00004839897156,
+        0.0,
+        149.99998807907104
+      ],
+      "extent": [
+        150.0000126361847,
+        0.0,
+        150.00001192092896
+      ],
+      "materials": [
+        "modular_factory_facade_brick"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_factory_facade/street-kit/StaticMeshes/wall_standard_standard_01.wall_standard_standard_01",
+      "name": "wall_standard_standard_01",
+      "centre": [
+        -150.0,
+        0.0,
+        150.0
+      ],
+      "extent": [
+        150.0,
+        0.0,
+        150.0
+      ],
+      "materials": [
+        "modular_factory_facade_brick"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_factory_facade/street-kit/StaticMeshes/wall_window_centered_large_01.wall_window_centered_large_01",
+      "name": "wall_window_centered_large_01",
+      "centre": [
+        -150.00018310546875,
+        -10.0,
+        149.99996948242188
+      ],
+      "extent": [
+        150.00018310546875,
+        10.0,
+        149.99996948242188
+      ],
+      "materials": [
+        "modular_factory_facade_brick"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/modular_factory_facade/street-kit/StaticMeshes/window_centered_large_01.window_centered_large_01",
+      "name": "window_centered_large_01",
+      "centre": [
+        -149.99999618530273,
+        -7.833334684371948,
+        146.26524353027344
+      ],
+      "extent": [
+        110.99982070922852,
+        10.833333253860474,
+        87.23466491699219
+      ],
+      "materials": [
+        "modular_factory_facade_windows",
+        "modular_factory_facade_windows_glass"
+      ]
+    }
+  ],
+  "painted_wooden_bench": [
+    {
+      "path": "/Game/AuthoredStreet/painted_wooden_bench/street-kit/StaticMeshes/street-kit.street-kit",
+      "name": "street-kit",
+      "centre": [
+        0.6410732269287109,
+        -0.542724609375,
+        44.414623249322176
+      ],
+      "extent": [
+        58.24717903137207,
+        24.8271541595459,
+        44.46457291767001
+      ],
+      "materials": [
+        "painted_wooden_bench"
+      ]
+    }
+  ],
+  "street_lamp_02": [
+    {
+      "path": "/Game/AuthoredStreet/street_lamp_02/street-kit/StaticMeshes/street-kit.street-kit",
+      "name": "street-kit",
+      "centre": [
+        -2.86102294921875e-06,
+        40.33946112412855,
+        44.25974082946777
+      ],
+      "extent": [
+        19.324658393859863,
+        40.33946343641833,
+        83.75209999084473
+      ],
+      "materials": [
+        "street_lamp_02",
+        "street_lamp_02_glass",
+        "street_lamp_02_bulb"
+      ]
+    }
+  ],
+  "metal_trash_can": [
+    {
+      "path": "/Game/AuthoredStreet/metal_trash_can/street-kit/StaticMeshes/street-kit.street-kit",
+      "name": "street-kit",
+      "centre": [
+        0.09297752380371094,
+        0.0010271072387695312,
+        45.314041832694784
+      ],
+      "extent": [
+        30.571332931518555,
+        27.430312156677246,
+        45.30786826252006
+      ],
+      "materials": [
+        "metal_trash_can_rust"
+      ]
+    }
+  ],
+  "water_manhole_cover": [
+    {
+      "path": "/Game/AuthoredStreet/water_manhole_cover/street-kit/StaticMeshes/water_manhole_cover.water_manhole_cover",
+      "name": "water_manhole_cover",
+      "centre": [
+        0.0,
+        0.0,
+        2.657623291015625
+      ],
+      "extent": [
+        30.477275848388672,
+        29.991689682006836,
+        1.2280192375183105
+      ],
+      "materials": [
+        "water_manhole_cover"
+      ]
+    },
+    {
+      "path": "/Game/AuthoredStreet/water_manhole_cover/street-kit/StaticMeshes/water_manhole_cover_frame.water_manhole_cover_frame",
+      "name": "water_manhole_cover_frame",
+      "centre": [
+        0.0,
+        0.0,
+        0.5009140968322754
+      ],
+      "extent": [
+        34.53802490234375,
+        34.53802490234375,
+        3.377051591873169
+      ],
+      "materials": [
+        "water_manhole_cover"
+      ]
+    }
+  ],
+  "trashbag": [
+    {
+      "path": "/Game/AuthoredStreet/trashbag/street-kit/StaticMeshes/street-kit.street-kit",
+      "name": "street-kit",
+      "centre": [
+        0.35645484924316406,
+        -0.8373327255249023,
+        28.604552999138832
+      ],
+      "extent": [
+        26.40350341796875,
+        23.14465045928955,
+        28.749969705939293
+      ],
+      "materials": [
+        "trashbag"
+      ]
+    }
+  ]
+}

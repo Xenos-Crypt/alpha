@@ -2,6 +2,10 @@
 
 ## Target
 
+The setting is the advanced civilization established in the Unity version: layered white and graphite architecture, panoramic glass, cyan service lighting, landscaped public spaces, glass villas, levitating transport, elevated maglev and a transparent honeycomb climate/cloaking canopy. Carry that identity into Unreal with believable materials, lighting and human scale. The earlier period brick streetscape is a preserved experiment. See `unreal/FUTURE-DIRECTION.md` for the reviewed Unity references and current migration limits.
+
+Current implementation direction: Unreal Engine 5.8. The browser requirements below describe the earlier prototype. Its layout is a migration reference, not an acceptable substitute for the realism target. Establish a reviewed street section with physical architectural depth, photographed PBR surfaces and grounded lighting before extending that treatment across the country. The Intel HD 530 / DirectX 11 workstation preview cannot validate the final high-end lighting target.
+
 Bodycam is a reference for environmental photorealism. The game's name is Another World. A body-camera recording interface, combat premise, or imitation of Bodycam's maps is not part of the requirement.
 
 References reviewed:

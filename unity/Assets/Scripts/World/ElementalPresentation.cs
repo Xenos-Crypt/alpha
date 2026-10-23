@@ -32,7 +32,7 @@ namespace AnotherWorld.World
             if(!Targeting)return;if(Menu||Input.GetKeyDown(KeyCode.Escape)){CancelTarget();return;}
             Vector2 pointer=Input.mousePosition;
             if(Input.touchCount>0)pointer=Input.GetTouch(0).position;
-            if(pointer.y<150||pointer.x>Screen.width-150&&pointer.y>Screen.height-70)return;
+            if(pointer.y<150||player.TouchControlsVisible&&player.InteractTouchRect.Contains(new Vector2(pointer.x,Screen.height-pointer.y))||pointer.x>Screen.width-150&&pointer.y>Screen.height-70)return;
             aim=PointerGround(pointer);
             if(!marker){marker=ElementalVisuals.Ring(aim,2.8f,Color.red);ElementalVisuals.Blob(marker.transform,"Red impact dot",Vector3.zero,Vector3.one*.16f,Color.red);}
             var ring=marker.GetComponent<LineRenderer>();for(int n=0;n<49;n++){float a=n*Mathf.PI/24;ring.SetPosition(n,aim+new Vector3(Mathf.Cos(a)*2.8f,.035f,Mathf.Sin(a)*2.8f));}marker.transform.GetChild(0).position=aim+Vector3.up*.08f;

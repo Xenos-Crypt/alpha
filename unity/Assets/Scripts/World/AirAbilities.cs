@@ -41,7 +41,7 @@ namespace AnotherWorld.World
             if(lockMovement)return;
             if(Flying)
             {
-                float lift=Input.GetKey(KeyCode.Space)?1:Input.GetKey(KeyCode.LeftControl)?-1:touchLift;
+                float lift=Input.GetKey(KeyCode.Space)?1:Input.GetKey(KeyCode.Q)?-1:touchLift;
                 body.Move((direction*(Empowered?10:8)+Vector3.up*(lift*6+.2f))*dt);
                 if(transform.position.y>80)body.Move(Vector3.down*(transform.position.y-80));
             }
@@ -131,7 +131,7 @@ namespace AnotherWorld.World
         void OnDisable(){Clear();}
         void OnGUI()
         {
-            if(Flying||Landing){GUI.Label(new Rect(14,168,900,25),Landing?"GALE FLIGHT | controlled landing":"GALE FLIGHT | WASD steer, Space up, Ctrl down | "+FlightRemaining.ToString("0.0")+" s");if(Flying&&(Application.isMobilePlatform||Screen.width<=900)){if(GUI.RepeatButton(new Rect(Screen.width-220,Screen.height-220,60,50),"Up"))player.RequestLift(1);if(GUI.RepeatButton(new Rect(Screen.width-288,Screen.height-220,60,50),"Down"))player.RequestLift(-1);}}
+            if(Flying||Landing){GUI.Label(new Rect(14,168,900,25),Landing?"GALE FLIGHT | controlled landing":"GALE FLIGHT | WASD steer, Space up, Q down | "+FlightRemaining.ToString("0.0")+" s");if(Flying&&(Application.isMobilePlatform||Screen.width<=900)){if(GUI.RepeatButton(new Rect(Screen.width-220,Screen.height-220,60,50),"Up"))player.RequestLift(1);if(GUI.RepeatButton(new Rect(Screen.width-288,Screen.height-220,60,50),"Down"))player.RequestLift(-1);}}
             if(Empowered)GUI.Label(new Rect(14,196,700,24),"SKY DOMINION | "+DominionRemaining.ToString("0.0")+" s | empowered Air abilities");
         }
     }

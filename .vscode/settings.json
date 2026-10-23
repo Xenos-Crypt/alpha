@@ -1,0 +1,20 @@
+{
+  "files.watcherExclude": {
+    "**/.unity-editor/**": true,
+    "**/unity/Library/**": true,
+    "**/unity/Temp/**": true,
+    "**/unity/Builds/**": true
+  },
+  "search.exclude": {
+    "**/.unity-editor/**": true,
+    "**/unity/Library/**": true,
+    "**/unity/Temp/**": true,
+    "**/unity/Builds/**": true
+  },
+  "C_Cpp.files.exclude": {
+    "**/.unity-editor/**": true,
+    "**/unity/Library/**": true,
+    "**/unity/Temp/**": true,
+    "**/unity/Builds/**": true
+  }
+}

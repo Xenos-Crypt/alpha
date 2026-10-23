@@ -1,0 +1,15 @@
+{
+    "map":  "/Game/Maps/HidrokFuture",
+    "passed":  true,
+    "rendered_and_inspected":  true,
+    "render_review_passes":  2,
+    "startup_fps_sample":  7.11,
+    "gpu":  "Intel HD Graphics 530",
+    "screenshot":  "AnotherWorld/Saved/Screenshots/WindowsEditor/HidrokFuture.png",
+    "limits":  [
+                   "Early procedural design pass, not photographic fidelity.",
+                   "Shield, train and hover cars are visual prototypes.",
+                   "Detailed vegetation, vehicle gameplay and pavilion traversal are pending.",
+                   "Startup FPS sample is not a full performance benchmark."
+               ]
+}

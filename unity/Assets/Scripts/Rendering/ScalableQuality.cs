@@ -51,6 +51,9 @@ namespace AnotherWorld.Rendering
         {
             if(!System.Enum.TryParse(name,true,out QualityPreset next))return;
             Preset=next;var pipeline=pipelines[(int)Preset];
+            view.farClipPlane=Preset==QualityPreset.Low?330:Preset==QualityPreset.Medium?480:650;
+            RenderSettings.fogStartDistance=Preset==QualityPreset.Low?140:220;
+            RenderSettings.fogEndDistance=view.farClipPlane-30;
             QualitySettings.renderPipeline=pipeline;GraphicsSettings.defaultRenderPipeline=pipeline;
             QualitySettings.globalTextureMipmapLimit=Preset==QualityPreset.Low?1:0;
             QualitySettings.anisotropicFiltering=Preset==QualityPreset.Low?AnisotropicFiltering.Disable:AnisotropicFiltering.ForceEnable;

@@ -1,0 +1,57 @@
+{
+  "id": "metal_trash_can",
+  "source": "https://polyhaven.com/a/metal_trash_can",
+  "license": "CC0",
+  "license_url": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "files": [
+    {
+      "path": "metal_trash_can/metal_trash_can_1k.gltf",
+      "bytes": 15481,
+      "md5": "c322802832a61ad7b17711dfbbc52e6b",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/metal_trash_can/metal_trash_can_1k.gltf"
+    },
+    {
+      "path": "metal_trash_can/textures/metal_trash_can_diff_1k.jpg",
+      "bytes": 551939,
+      "md5": "55d375d8d51b268b6ed8a4308155959c",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_diff_1k.jpg"
+    },
+    {
+      "path": "metal_trash_can/textures/metal_trash_can_rust_diff_1k.jpg",
+      "bytes": 768161,
+      "md5": "8b90447d250cb790ca537748a2b16691",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_rust_diff_1k.jpg"
+    },
+    {
+      "path": "metal_trash_can/textures/metal_trash_can_arm_1k.jpg",
+      "bytes": 731776,
+      "md5": "af676572c13fae2bb584538f03175efc",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_arm_1k.jpg"
+    },
+    {
+      "path": "metal_trash_can/textures/metal_trash_can_rust_nor_gl_1k.jpg",
+      "bytes": 1085844,
+      "md5": "25187818d1236815d4a34fd743cadc29",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_rust_nor_gl_1k.jpg"
+    },
+    {
+      "path": "metal_trash_can/textures/metal_trash_can_nor_gl_1k.jpg",
+      "bytes": 842945,
+      "md5": "fa6db04e021f6335ae2d9ad501120cae",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_nor_gl_1k.jpg"
+    },
+    {
+      "path": "metal_trash_can/metal_trash_can.bin",
+      "bytes": 378288,
+      "md5": "fbde1679a66ea644223b97ebc8336a77",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/metal_trash_can/metal_trash_can.bin"
+    },
+    {
+      "path": "metal_trash_can/textures/metal_trash_can_rust_arm_1k.jpg",
+      "bytes": 620549,
+      "md5": "ed9f635917cde411f235d4585c90b310",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_rust_arm_1k.jpg"
+    }
+  ]
+}

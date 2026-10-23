@@ -1,0 +1,24 @@
+{
+    "map":  "/Game/Maps/HidrokPlayable",
+    "native_build":  "Development Editor Win64",
+    "functional_test":  "AnotherWorld.Gameplay.StreetWalking",
+    "passed":  true,
+    "rendered_and_inspected":  true,
+    "checks":  [
+                   "Grounded spawn",
+                   "177 building collision footprints",
+                   "Street walking",
+                   "Sprint covers greater distance",
+                   "Jump clears street",
+                   "Landing remains grounded"
+               ],
+    "startup_fps_observed":  5.78,
+    "gpu":  "Intel HD Graphics 530",
+    "graphics":  "DX11 compatibility preview, 70 percent internal resolution",
+    "screenshot":  "AnotherWorld/Saved/Screenshots/WindowsEditor/AshfordPlayable.png",
+    "limits":  [
+                   "Preview performance remains low; this is not a smooth performance target.",
+                   "Vehicles, NPC gameplay, powers and interiors are pending.",
+                   "Small prop collision is pending."
+               ]
+}

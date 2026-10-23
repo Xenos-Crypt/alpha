@@ -9,7 +9,7 @@ const server=http.createServer((req,res)=>{
  fs.stat(file,(err,stat)=>{
   if(err||!stat.isFile()){res.writeHead(404);res.end();return;}
   const type=file.endsWith('.framework.js.unityweb')||file.endsWith('.js')?'application/javascript':file.endsWith('.wasm.unityweb')?'application/wasm':file.endsWith('.html')?'text/html':'application/octet-stream';
-  const headers={'Content-Type':type,'Content-Length':stat.size};if(file.endsWith('.unityweb'))headers['Content-Encoding']='gzip';
+  const headers={'Content-Type':type,'Content-Length':stat.size,'Cache-Control':'no-store'};if(file.endsWith('.unityweb'))headers['Content-Encoding']='gzip';
   res.writeHead(200,headers);fs.createReadStream(file).pipe(res);
  });
 });

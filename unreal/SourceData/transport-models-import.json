@@ -1,0 +1,407 @@
+{
+  "induction_car": {
+    "path": "/Game/FutureTransport/induction_car/induction_car/StaticMeshes/induction_car.induction_car",
+    "extent": [
+      112.5,
+      230.0,
+      62.735595703125
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      94.7001953125
+    ],
+    "materials": 5,
+    "triangles": 10420
+  },
+  "flying_car": {
+    "path": "/Game/FutureTransport/flying_car/flying_car/StaticMeshes/flying_car.flying_car",
+    "extent": [
+      182.54588317871094,
+      230.0,
+      62.735595703125
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      94.7001953125
+    ],
+    "materials": 5,
+    "triangles": 10508
+  },
+  "aurora_x9_body": {
+    "path": "/Game/FutureTransport/aurora_x9_body/aurora_x9_body/StaticMeshes/aurora_x9_body.aurora_x9_body",
+    "extent": [
+      119.19579315185547,
+      290.0,
+      69.652099609375
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      93.597900390625
+    ],
+    "materials": 8,
+    "triangles": 16110
+  },
+  "skyline_x7_body": {
+    "path": "/Game/FutureTransport/skyline_x7_body/skyline_x7_body/StaticMeshes/skyline_x7_body.skyline_x7_body",
+    "extent": [
+      151.10403442382812,
+      290.6624755859375,
+      79.53125
+    ],
+    "origin": [
+      0.0,
+      0.6624755859375,
+      95.21875
+    ],
+    "materials": 8,
+    "triangles": 14256
+  },
+  "aerodynex_x12_body": {
+    "path": "/Game/FutureTransport/aerodynex_x12_body/aerodynex_x12_body/StaticMeshes/aerodynex_x12_body.aerodynex_x12_body",
+    "extent": [
+      151.10403442382812,
+      290.6624755859375,
+      74.53125
+    ],
+    "origin": [
+      0.0,
+      0.6624755859375,
+      90.21875
+    ],
+    "materials": 9,
+    "triangles": 12930
+  },
+  "luggage_boot_lid": {
+    "path": "/Game/FutureTransport/luggage_boot_lid/luggage_boot_lid/StaticMeshes/luggage_boot_lid.luggage_boot_lid",
+    "extent": [
+      78.85902786254883,
+      57.61247777938843,
+      5.624999940395355
+    ],
+    "origin": [
+      2.564647674560547,
+      46.283663272857666,
+      -5.375000059604645
+    ],
+    "materials": 3,
+    "triangles": 616
+  },
+  "forward_service_lid": {
+    "path": "/Game/FutureTransport/forward_service_lid/forward_service_lid/StaticMeshes/forward_service_lid.forward_service_lid",
+    "extent": [
+      33.83333206176758,
+      50.33333444595337,
+      3.974999785423279
+    ],
+    "origin": [
+      0.0,
+      -48.500001430511475,
+      -4.725000023841858
+    ],
+    "materials": 2,
+    "triangles": 380
+  },
+  "cabin_door": {
+    "path": "/Game/FutureTransport/cabin_door/cabin_door/StaticMeshes/cabin_door.cabin_door",
+    "extent": [
+      6.958333253860474,
+      68.6666692495346,
+      20.00000023841858
+    ],
+    "origin": [
+      1.5416667461395264,
+      66.50000250339508,
+      -14.999999761581421
+    ],
+    "materials": 3,
+    "triangles": 472
+  },
+  "retractable_road_gear": {
+    "path": "/Game/FutureTransport/retractable_road_gear/retractable_road_gear/StaticMeshes/retractable_road_gear.retractable_road_gear",
+    "extent": [
+      18.400514602661133,
+      26.102530479431152,
+      34.6434211730957
+    ],
+    "origin": [
+      0.0,
+      -1.3025312423706055,
+      9.843421936035156
+    ],
+    "materials": 4,
+    "triangles": 1476
+  },
+  "road_wheel": {
+    "path": "/Game/FutureTransport/road_wheel/road_wheel/StaticMeshes/road_wheel.road_wheel",
+    "extent": [
+      16.0,
+      42.0,
+      42.0
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "materials": 2,
+    "triangles": 9792
+  },
+  "skyline_x7_motor": {
+    "path": "/Game/FutureTransport/skyline_x7_motor/skyline_x7_motor/StaticMeshes/skyline_x7_motor.skyline_x7_motor",
+    "extent": [
+      56.0,
+      56.0,
+      11.810512065887451
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      -2.2516655921936035
+    ],
+    "materials": 4,
+    "triangles": 2332
+  },
+  "aerodynex_x12_motor": {
+    "path": "/Game/FutureTransport/aerodynex_x12_motor/aerodynex_x12_motor/StaticMeshes/aerodynex_x12_motor.aerodynex_x12_motor",
+    "extent": [
+      56.0,
+      56.0,
+      11.810512065887451
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      -2.2516655921936035
+    ],
+    "materials": 4,
+    "triangles": 2332
+  },
+  "aurora_x9_motor": {
+    "path": "/Game/FutureTransport/aurora_x9_motor/aurora_x9_motor/StaticMeshes/aurora_x9_motor.aurora_x9_motor",
+    "extent": [
+      57.937503814697266,
+      55.0,
+      10.361344337463379
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      -2.148909568786621
+    ],
+    "materials": 4,
+    "triangles": 3204
+  },
+  "aurora_x9_rotor": {
+    "path": "/Game/FutureTransport/aurora_x9_rotor/aurora_x9_rotor/StaticMeshes/aurora_x9_rotor.aurora_x9_rotor",
+    "extent": [
+      47.125465393066406,
+      43.752567291259766,
+      2.950000047683716
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      0.4500000476837158
+    ],
+    "materials": 1,
+    "triangles": 264
+  },
+  "aurora_x9_wing": {
+    "path": "/Game/FutureTransport/aurora_x9_wing/aurora_x9_wing/StaticMeshes/aurora_x9_wing.aurora_x9_wing",
+    "extent": [
+      55.14533233642578,
+      31.098922729492188,
+      9.0
+    ],
+    "origin": [
+      50.64533233642578,
+      3.495227813720703,
+      0.0
+    ],
+    "materials": 3,
+    "triangles": 340
+  },
+  "aurora_x9_gear": {
+    "path": "/Game/FutureTransport/aurora_x9_gear/aurora_x9_gear/StaticMeshes/aurora_x9_gear.aurora_x9_gear",
+    "extent": [
+      19.0,
+      24.0,
+      24.499999966472387
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      24.500000033527613
+    ],
+    "materials": 2,
+    "triangles": 756
+  },
+  "hover_bike": {
+    "path": "/Game/FutureTransport/hover_bike/hover_bike/StaticMeshes/hover_bike.hover_bike",
+    "extent": [
+      41.645652770996094,
+      112.5,
+      61.7499994635582
+    ],
+    "origin": [
+      0.0,
+      1.0,
+      60.2500005364418
+    ],
+    "materials": 4,
+    "triangles": 5648
+  },
+  "maglev_carriage": {
+    "path": "/Game/FutureTransport/maglev_carriage/maglev_carriage/StaticMeshes/maglev_carriage.maglev_carriage",
+    "extent": [
+      137.58799743652344,
+      450.0,
+      123.25999641418457
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      159.9159984588623
+    ],
+    "materials": 4,
+    "triangles": 6512
+  },
+  "hover_tram": {
+    "path": "/Game/FutureTransport/hover_tram/hover_tram/StaticMeshes/hover_tram.hover_tram",
+    "extent": [
+      132.39599609375,
+      370.0,
+      120.63800239562988
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      157.29400444030762
+    ],
+    "materials": 4,
+    "triangles": 6136
+  },
+  "hover_bus": {
+    "path": "/Game/FutureTransport/hover_bus/hover_bus/StaticMeshes/hover_bus.hover_bus",
+    "extent": [
+      129.8000030517578,
+      340.0,
+      115.39399909973145
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      152.05000114440918
+    ],
+    "materials": 4,
+    "triangles": 5760
+  },
+  "orion_regional_cab": {
+    "path": "/Game/FutureTransport/orion_regional_cab/orion_regional_cab/StaticMeshes/orion_regional_cab.orion_regional_cab",
+    "extent": [
+      174.64273071289062,
+      1255.75,
+      207.79800462722778
+    ],
+    "origin": [
+      0.0,
+      5.75,
+      215.79800367355347
+    ],
+    "materials": 8,
+    "triangles": 32892
+  },
+  "orion_regional_coach": {
+    "path": "/Game/FutureTransport/orion_regional_coach/orion_regional_coach/StaticMeshes/orion_regional_coach.orion_regional_coach",
+    "extent": [
+      174.43922424316406,
+      1333.49609375,
+      204.00000047683716
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      211.99999952316284
+    ],
+    "materials": 7,
+    "triangles": 39316
+  },
+  "orion_tram_cab": {
+    "path": "/Game/FutureTransport/orion_tram_cab/orion_tram_cab/StaticMeshes/orion_tram_cab.orion_tram_cab",
+    "extent": [
+      144.18882751464844,
+      505.74998474121094,
+      157.79800462722778
+    ],
+    "origin": [
+      0.0,
+      5.7499847412109375,
+      165.79800367355347
+    ],
+    "materials": 8,
+    "triangles": 17852
+  },
+  "orion_tram_coach": {
+    "path": "/Game/FutureTransport/orion_tram_coach/orion_tram_coach/StaticMeshes/orion_tram_coach.orion_tram_coach",
+    "extent": [
+      143.8392333984375,
+      533.3984375,
+      154.00000047683716
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      161.99999952316284
+    ],
+    "materials": 7,
+    "triangles": 20516
+  },
+  "rotorless_shuttle": {
+    "path": "/Game/FutureTransport/rotorless_shuttle/rotorless_shuttle/StaticMeshes/rotorless_shuttle.rotorless_shuttle",
+    "extent": [
+      250.46875,
+      400.0,
+      115.9575309753418
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      142.7924690246582
+    ],
+    "materials": 3,
+    "triangles": 5648
+  },
+  "airliner": {
+    "path": "/Game/FutureTransport/airliner/airliner/StaticMeshes/airliner.airliner",
+    "extent": [
+      1022.3727416992188,
+      1030.0,
+      256.51116943359375
+    ],
+    "origin": [
+      0.0,
+      -30.0,
+      229.94866943359375
+    ],
+    "materials": 3,
+    "triangles": 11812
+  },
+  "catamaran_ferry": {
+    "path": "/Game/FutureTransport/catamaran_ferry/catamaran_ferry/StaticMeshes/catamaran_ferry.catamaran_ferry",
+    "extent": [
+      206.87498474121094,
+      500.0,
+      187.4393310546875
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      136.4688720703125
+    ],
+    "materials": 4,
+    "triangles": 6072
+  }
+}

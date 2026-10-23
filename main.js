@@ -2,6 +2,12 @@ import {buildWorldExpansion,insideExclusionZone} from './world-expansion.js';
 import {duplicateEmailMessage,verificationEmailMessage} from './auth-feedback.js';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {upgradeWorldMaterials} from './visual-upgrade.js';
+import {detailHome,detailNearbyTower} from './neighbourhood-design.js';
+import {createJunctionControl,ROAD_LAYOUT} from './junction-control.js';
+import {makeStreetSignal} from './street-signals.js';
+import {buildRoadVehicle} from './road-vehicle-models.js';
+import {buildStreetDesign} from './street-design.js';
+import {buildActiveRoadUsers} from './active-road-users.js';
 import {transitArrestTarget} from './transit-police.js';
 import {createNpcConversations} from './npc-conversations.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
@@ -19,7 +25,7 @@ import {createWorldMap} from './world-map.js';
 import {createMovieTv} from './movie-tv.js';
 import {createOnlineAccount} from './online-account.js';
 import {createSupportSkills} from './support-skills.js';
-import {buildCityServices} from './city-services.js';
+import {buildCityServices,taxiRoute} from './city-services.js';
 import {requireUsername,createOnlineAvatars} from './online-players.js';
 import {createRoomChat} from './room-chat.js';
 import {buildCityLife,waterFootprint} from './city-life.js';
@@ -426,7 +432,7 @@ const liftPlaneBlocks=[];
 let bridgeLeafNorth = null, bridgeLeafSouth = null, bridgeLiftAngle = 0, bridgeLiftState = 'down', bridgeLiftT = 20;
 const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
-const ROUNDABOUT_CENTRES=[[0,0],[-80,-80],[80,80],[-80,80]];
+const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
@@ -511,10 +517,10 @@ function pavement(x, z, innerMat) {
 // =====================================================================
 // TREES
 // =====================================================================
-const leafGeo = new THREE.IcosahedronGeometry(1, 0);
+const leafGeo = new THREE.IcosahedronGeometry(1, 2);
 const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, 2.2, 7);
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
-const leafMats = [0x3f8f3a, 0x4f9d3f, 0x2f7a35, 0x5aa845].map(c => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.9 }));
+const leafMats = [0x4a683c, 0x537442, 0x405d36, 0x607849].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
 function addTree(x, z, s = 1, trafficIsland=false) {
   if(!trafficIsland){const safe=roadsidePosition(x,z,13);x=safe.x;z=safe.z;}
   const y0 = groundY(x, z);
@@ -557,6 +563,7 @@ function addTower(x, baseY, z, w, h, d, f, collide) {
   m.castShadow = m.receiveShadow = true;
   scene.add(m);
   camBlockers.push(m);
+  if(Math.abs(x-20)<65&&Math.abs(z-22)<65)detailNearbyTower({box,x,z,w,h,d,baseY,parent:m});
   if (collide) colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
   planeBlocks.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, top: baseY + h + 0.4 });
   box(w + 0.4, 0.4, d + 0.4, x, baseY + h + 0.2, z, f.style.frame, false);   // cornice
@@ -744,27 +751,25 @@ for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++)
 // vehicle behavior.
 // =====================================================================
 const trafficLights = [];
+let activeRoadUsers=null;
+const junctionControl=createJunctionControl({vehicles:()=>vehicles,pedestrians:()=>[
+ ...peds.filter(e=>e.alive&&!e.hidden&&['wander','toStop'].includes(e.ped.state)).map(e=>({position:e.root.position,target:e.ped.target})),
+ ...(!inCar?[{position:player.position}]:[])],cycles:()=>activeRoadUsers?.cycles||[],trams:()=>transport?.services.filter(s=>s.name==='Tram')||[]});
 const TL_MAT = { red: new THREE.MeshStandardMaterial({ color: 0x2a0a0a, emissive: 0xff2020, emissiveIntensity: 0 }),
   amber: new THREE.MeshStandardMaterial({ color: 0x2a1c0a, emissive: 0xffaa20, emissiveIntensity: 0 }),
   green: new THREE.MeshStandardMaterial({ color: 0x0a2a10, emissive: 0x20ff50, emissiveIntensity: 0 }) };
 function addTrafficLight(x, z, faceY,baseY=0,phase=null) {
  const cx=Math.round(x/40)*40,cz=Math.round(z/40)*40,sx=x<cx?-1:1,sz=z<cz?-1:1;if(Math.abs(Math.sin(faceY))>.7){x=cx+sx*13;z=cz+sz*9.6;}else{x=cx+sx*9.6;z=cz+sz*13;}
-  box(0.14, 5, 0.14, x, baseY+2.5, z, 0x2b2f33, false);   // taller mast — more visible from a distance/while driving
-  const head = new THREE.Group(); head.position.set(x, baseY+5, z); head.rotation.y = faceY; scene.add(head);
-  mesh(new THREE.BoxGeometry(0.55, 1.3, 0.4), 0x1a1c1e, head);
-  const lamps = {};
-  let i = 0;
-  for (const key of ['red', 'amber', 'green']) {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(0.17, 14), TL_MAT[key].clone());
-    m.position.set(0, 0.4 - i * 0.4, 0.21); head.add(m); lamps[key] = m.material; i++;
-  }
-  const signal={phase:phase??rand()*6,lamps,x,z,axis:Math.abs(Math.sin(faceY))>.7?'x':'z'};trafficLights.push(signal);return signal;
+  const existing=trafficLights.find(t=>Math.abs(t.x-x)<.1&&Math.abs(t.z-z)<.1);if(existing)return existing;
+  const axis=Math.abs(Math.sin(faceY))>.7?'x':'z';
+  const junction=junctionControl.register(cx,cz,{tram:cz===0&&cx>=0&&cx<=600});
+  const signal=makeStreetSignal({scene,makeTex,x,z,y:baseY,rotation:faceY,junction,axis,controller:junctionControl});trafficLights.push(signal);return signal;
 }
 // A handful of roundabouts instead of light-controlled intersections.
-const ROUNDABOUT_CELLS = new Set(['0,0', '-2,-2', '2,2', '-2,2']);
-for (let cx = -3; cx < 4; cx++) for (let cz = -3; cz < 4; cz++) {
+const ROUNDABOUT_CELLS = new Set();
+for (let cx = -4; cx <= 4; cx++) for (let cz = -4; cz <= 4; cz++) {
   if (ROUNDABOUT_CELLS.has(cx + ',' + cz)) continue;   // roundabouts replace lights at a few intersections
-  addTrafficLight(cx * 40 - 9.5, cz * 40 - 9.5, Math.PI * 0.75);
+  for(const [dx,dz,rot]of [[9.5,9.5,Math.PI],[-9.5,-9.5,0],[-9.5,9.5,Math.PI/2],[9.5,-9.5,-Math.PI/2]])addTrafficLight(cx*40+dx,cz*40+dz,rot);
 }
 for (const key of ROUNDABOUT_CELLS) {
   const [cx, cz] = key.split(',').map(Number);
@@ -778,11 +783,7 @@ for (const key of ROUNDABOUT_CELLS) {
   const apron=mesh(new THREE.CircleGeometry(9.5,48),0x3a3c40);apron.rotation.x=-Math.PI/2;apron.position.set(x,.17,z);apron.castShadow=false;
 }
 function updateTrafficLights(dt) {
-  for (const t of trafficLights) {
-    t.phase = (t.phase + dt) % 6;   // 3s green, 1s amber, 2s red (offset per light so they're not synced)
-    const state = t.phase < 3 ? 'green' : t.phase < 4 ? 'amber' : 'red';
-    for (const key in t.lamps) t.lamps[key].emissiveIntensity = key === state ? (key === 'amber' ? 3 : 2) : 0;
-  }
+  junctionControl.update(dt);for(const t of trafficLights)t.update();
 }
 
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x2b2f33, roughness: 0.6 });
@@ -1223,11 +1224,6 @@ box(2, 0.8, 0.3, HOME.x, CURB + 2.6, HOME.minZ, wallMat, false); // above door
 
 const houseWindowMat = new THREE.MeshStandardMaterial({ color: 0x8fb3cc, roughness: 0.1, emissive: 0xffd58a, emissiveIntensity: 0 });
 glowMats.push(houseWindowMat);
-for (const z of [20, 24.5]) {
-  box(0.06, 1.1, 1.6, HOME.minX - 0.17, CURB + 1.7, z, houseWindowMat, false);
-  box(0.06, 1.1, 1.6, HOME.maxX + 0.17, CURB + 1.7, z, houseWindowMat, false);
-}
-for (const x of [16.5, 23.5]) box(1.6, 1.1, 0.06, x, CURB + 1.7, HOME.minZ - 0.17, houseWindowMat, false);
 
 const floor = mesh(new THREE.PlaneGeometry(11.7, 9.7), new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.7 }));
 floor.rotation.x = -Math.PI / 2;
@@ -1242,11 +1238,12 @@ const houseRoof = new THREE.Mesh(roofGeo, [wallMat, new THREE.MeshStandardMateri
 houseRoof.position.set(HOME.x, CURB + 3, HOME.z);
 houseRoof.castShadow = houseRoof.receiveShadow = true;
 scene.add(houseRoof);
+const homeDesign=detailHome({scene,box,makeTex,home:HOME,curb:CURB,wallMat,roof:houseRoof,glowMats});
 
 // The raised pavement starts at z=8; keep the entrance path off the road.
 const doorPathStartZ = 8;
 const doorPathEndZ = HOME.minZ;
-const doorPath = mesh(new THREE.PlaneGeometry(2, doorPathEndZ - doorPathStartZ), pathMat);
+const doorPath = mesh(new THREE.PlaneGeometry(2, doorPathEndZ - doorPathStartZ), homeDesign.pathMaterial);
 doorPath.rotation.x = -Math.PI / 2;
 doorPath.position.set(HOME.x, CURB + 0.02, (doorPathStartZ + doorPathEndZ) / 2);
 doorPath.castShadow = false;
@@ -2260,6 +2257,9 @@ const ambWhite = new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xf
 const ambCrossMat = new THREE.MeshStandardMaterial({ color: 0xe84118, roughness: 0.5 });
 
 function makeVehicle(kind, color) {
+  if(['car','police','ambulance','motorcycle','bicycle'].includes(kind)){
+   const v=buildRoadVehicle({scene,makeTex,kind,color,headMat,tailMat,sirenRed,sirenBlue,ambRed,ambWhite});vehicles.push(v);return v;
+  }
   const g = new THREE.Group();
   scene.add(g);
   const isBus = kind === 'bus', isTank = kind === 'tank';
@@ -2333,7 +2333,7 @@ function makeVehicle(kind, color) {
 }
 
 // Road network: an intersection every 40m. Traffic drives on the LEFT, like in the UK.
-const LANE = 3.6;
+const LANE = ROAD_LAYOUT.carLane;
 const nodePos = (i, j) => new THREE.Vector3(i * 40, 0, j * 40);
 function nextNode(cur, prev) {
   const opts = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([di, dj]) => [cur[0] + di, cur[1] + dj])
@@ -3779,12 +3779,26 @@ function reactBystanders(center, criminal) {
 // A badly hurt NPC goes 'down' instead of just fleeing; a nearby bystander will
 // come give CPR, and if nobody's close (or CPR runs long enough) an ambulance
 // gets called in from the hospital to pick them up.
+function moveAmbulance(v,target,dt){
+ const p=v.group.position,key=target.x+','+target.z;
+ if(v.navigation?.key!==key){
+  const nodes=taxiRoute(p,target),points=[];
+  for(let i=1;i<nodes.length;i++){const d=nodes[i].clone().sub(nodes[i-1]).normalize();points.push(nodes[i].clone().add(new THREE.Vector3(d.z,0,-d.x).multiplyScalar(ROAD_LAYOUT.carLane)));}
+  points.push(target.clone());v.navigation={key,points,index:0};
+ }
+ const n=v.navigation,waypoint=n.points[n.index],dir=waypoint.clone().sub(p).setY(0),distance=dir.length();
+ if(distance<1){if(n.index<n.points.length-1)n.index++;v.speed=0;return;}
+ dir.normalize();const travel=roadTravelLimit(p,dir,Math.min(distance,11*dt),v),start=p.clone();
+ p.addScaledVector(dir,travel);p.y=groundY(p.x,p.z,p.y);v.speed=dt>0?travel/dt:0;
+ v.group.rotation.y=lerpAngle(v.group.rotation.y,Math.atan2(dir.x,dir.z),1-Math.exp(-5*dt));resolveRoadMovement(v,start,dt);
+}
 function dispatchAmbulance(victim) {
   if (!HOSPITAL_POS || victim.ped.ambulanceDispatched) return;
   victim.ped.ambulanceDispatched = true;
   const dest = victim.root.position.clone();
   const amb = makeVehicle('ambulance', 0xffffff);
   amb.ai = null;
+  amb.taskDriven = true;
   amb.group.position.copy(HOSPITAL_POS); amb.group.position.y = 0;
   toast('An ambulance has been dispatched to the scene.');
   const st = { phase: 1, exit: HOSPITAL_POS.clone() };
@@ -3792,8 +3806,7 @@ function dispatchAmbulance(victim) {
     const p = amb.group.position, target = st.phase === 1 ? dest : st.exit;
     const dir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z), d = dir.length();
     if (d > 2) {
-      dir.normalize(); p.addScaledVector(dir, 11 * dt);
-      amb.group.rotation.y = lerpAngle(amb.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
+      moveAmbulance(amb,target,dt);
     } else if (st.phase === 1) {
       st.phase = 2;
       victim.hidden = true; victim.root.visible = false; victim.root.position.copy(HIDDEN);
@@ -3810,14 +3823,14 @@ function dispatchDeathAmbulance(e) {
   const dest = e.root.position.clone();
   const amb = makeVehicle('ambulance', 0xffffff);
   amb.ai = null;
+  amb.taskDriven = true;
   amb.group.position.copy(HOSPITAL_POS); amb.group.position.y = 0;
   const st = { phase: 1, exit: HOSPITAL_POS.clone() };
   addTask({ dur: 60, update(dt, t, task) {
     const p = amb.group.position, target = st.phase === 1 ? dest : st.exit;
     const dir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z), d = dir.length();
     if (d > 2) {
-      dir.normalize(); p.addScaledVector(dir, 11 * dt);
-      amb.group.rotation.y = lerpAngle(amb.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
+      moveAmbulance(amb,target,dt);
     } else if (st.phase === 1) {
       st.phase = 2;
       if (e.h) e.root.visible = false;   // only if still the same body — e.respawn's own reset will re-show it later
@@ -3879,7 +3892,7 @@ function updatePed(e, dt) {
     }
     case 'wander':
     case 'toStop':
-      if(p.z>=640&&s.node&&s.prev&&(s.node.bx!==s.prev.bx||s.node.bz!==s.prev.bz)){const centre=p.clone().add(s.target).multiplyScalar(.5),axis=s.node.bx!==s.prev.bx?'z':'x',signal=trafficLights.filter(t=>t.axis===axis).find(t=>Math.hypot(t.x-centre.x,t.z-centre.z)<22);const car=vehicles.find(v=>!v.disabled&&Math.abs(v.speed)>2&&distXZ(v.group.position,centre)<16);const beforeCross=s.node.bx!==s.prev.bx?Math.abs(p.x-Math.round(p.x/40)*40)>=8:Math.abs(p.z-Math.round(p.z/40)*40)>=8;if(beforeCross&&((signal&&signal.phase<4)||car)){animateHumanoid(e.h,null,false,false,true,dt);break;}}
+      if(!junctionControl.pedestrianMayCross(p,s.target)){animateHumanoid(e.h,null,false,false,true,dt);break;}
       moving = walkTowards(e, s.target, speed, dt);
       if (distXZ(p, s.target) < 0.5) {
         if (s.state === 'toStop') { s.state = 'waiting'; s.waitT = 0; break; }
@@ -6038,7 +6051,7 @@ function updatePlayer(dt) {
 const busDoor = v => v.group.localToWorld(new THREE.Vector3(2.0, 0, v.length / 2 - 1.5)).setY(CURB);
 
 // A vehicle you are driving, or one that is parked
-const isRoadVehicle = v => ['car', 'police', 'bus'].includes(v.kind);
+const isRoadVehicle = v => ['car', 'police', 'bus','ambulance','motorcycle'].includes(v.kind);
 function vehicleVelocity(v) { return v.slideVelocity||{ x: Math.sin(v.group.rotation.y) * v.speed, z: Math.cos(v.group.rotation.y) * v.speed }; }
 function damageVehicle(v, deltaSpeed, point) {
   if(deltaSpeed>3&&point.distanceTo(player.position)<60)worldAudio?.impact(deltaSpeed);
@@ -6249,19 +6262,35 @@ function trafficBlocked(v, pos, dir, left) {
   return false;
 }
 
+function roadTravelLimit(p,dir,distance,v){
+ let allowed=junctionControl.limitTravel(p,dir,distance,{kind:v.kind==='bicycle'?'bicycle':'car',length:v.length});
+ const left={x:dir.z,z:-dir.x};
+ for(const other of vehicles){
+  if(other===v||other.disabled||other.displayCar||Math.abs(other.group.position.y-p.y)>2)continue;
+  const dx=other.group.position.x-p.x,dz=other.group.position.z-p.z,ahead=dx*dir.x+dz*dir.z,lateral=Math.abs(dx*left.x+dz*left.z);
+  if(ahead>0&&lateral<((v.width||2)+(other.width||2))/2+.2)allowed=Math.min(allowed,Math.max(0,ahead-(v.length+other.length)/2-1.5));
+ }
+ for(const rail of transport?.services||[]){
+  const r=rail.g.position;if(Math.abs(r.y-p.y)>2||Math.abs(dir.z)<.7)continue;
+  if(Math.abs(p.x-r.x)<(rail.length||18)/2+(v.width||2)/2+2){const gap=(r.z-p.z)*Math.sign(dir.z);if(gap>0)allowed=Math.min(allowed,Math.max(0,gap-1.6-v.length/2-1));}
+ }
+ return Math.max(0,allowed);
+}
+
 function trafficDrive(v, dt) {
   const ai = v.ai;
   let f = laneFrame(ai);
   let desired = ai.cruise*conditionFactors(v.health).topSpeed;
   ai.ignoreT -= dt;
   if (ai.stopTimer > 0) { ai.stopTimer -= dt; desired = 0; }
-  else if (ai.ignoreT <= 0 && trafficBlocked(v, v.group.position, f.dir, f.left)) {
+  else if (trafficBlocked(v, v.group.position, f.dir, f.left)) {
     desired = 0;
     ai.blockedT += dt;
-    if (ai.blockedT > 4) { ai.ignoreT = 1.5; ai.blockedT = 0; }   // avoid gridlock at junctions
   } else ai.blockedT = 0;
+  const limit=roadTravelLimit(f.pos,f.dir,100,v);desired=Math.min(desired,Math.sqrt(8*limit));
   v.speed = lerp(v.speed, desired, 1 - Math.exp(-(desired < v.speed ? 5 : 1.2) * dt));
-  ai.s += v.speed * dt;
+  const travel=Math.min(v.speed*dt,roadTravelLimit(f.pos,f.dir,v.speed*dt,v));
+  ai.s += travel;if(travel<v.speed*dt-.0001)v.speed=0;
 
   if (v.kind === 'bus' && !ai.stopped && BUS_STOP_SEGS.includes(ai.routeIdx) && ai.s >= 20) {
     ai.stopped = true;
@@ -6386,6 +6415,7 @@ function updateVehicles(dt) {
     if(isRoadVehicle(v)&&(v.health??100)<100)applyVehicleCondition(v);
     if(isRoadVehicle(v)&&!v.disabled&&v.health<35){v.conditionSmoke=(v.conditionSmoke||0)-dt;if(v.conditionSmoke<=0){v.conditionSmoke=.6;spawnParticle(at(v.group.position,1.3),new THREE.Vector3(0,1.5,0),0x5d6365,.25,.8,0);}}
     if(v.displayCar){v.speed=0;continue;}
+    if(v.taskDriven)continue;
     if(v.bridgeFlight){driveVehicle(v,dt);continue;}
     if(v.routeTraffic&&v!==driving)continue;
     if (v.disabled || (v.ai?.parked && !(v.kind==='police'&&wanted>0) && !(v.kind === 'tank' && militaryAlert > 0))) { v.speed = 0; continue; }
@@ -6653,11 +6683,14 @@ interactables.push({pos:companion.home.clone(),r:3,label:'Adopt companion dog',a
 harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex});
 townPlaces.destinations.push({name:'Harbour bridge',x:220,z:85});
 transport=buildTransport({scene,box,makeTex,sitSpots,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
+ tramTravelLimit(p,dir,distance,s){return junctionControl.limitTravel(p,dir,distance,{kind:'tram',length:s.length});},
  canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!inCar&&!sitting&&!action&&!swimming,firstPerson:()=>cameraView==='first',board(){action=null;vy=0;pvel.set(0,0,0);},
  carry(pos){player.position.copy(pos);},leave(pos){player.position.copy(pos);player.position.y=groundY(pos.x,pos.z);collide(player.position,.4);vy=0;pvel.set(0,0,0);}
 });
 urban=buildUrban({scene,box,camBlockers,planeBlocks,sitSpots,interactables,makeTex,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,buyFood:()=>buyFood(12,15),destinations:townPlaces.destinations,busStops,busRoute:BUS_ROUTE,vehicles,playerPos:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')||80)/100))});
 transport.update(0);urban.update(dayTime,0);
+const streetDesign=buildStreetDesign({scene,box,makeTex,addTrafficLight});
+activeRoadUsers=buildActiveRoadUsers({makeVehicle,makePerson:makeHumanoid,controller:junctionControl,travelLimit:roadTravelLimit,groundY});
 sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpots,interactables,makeTex,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,destinations:townPlaces.destinations,playerPos:()=>player.position,
  canEnter:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!inCar&&!transport?.rider&&!sitting&&!action,
  moveTo(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);yaw=0;}
@@ -6714,7 +6747,8 @@ pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style
 waypoint(name,x,z){setWaypoint({name,x,z});},attractions:name=>townPlaces.destinations.filter(d=>name==='Capital'?/capital|capitol|museum|government/i.test(d.name):name==='Poison Land'?/poison/i.test(d.name):name==='Riverside'?/riverside|bridge/i.test(d.name):/market|airport|port|clock|park|school/i.test(d.name)).slice(0,12),
 addSeat(x,z){box(3,.15,.7,x,.7,z,0x6b5846,false);box(3,.6,.1,x,1,z+.3,0x6b5846,false);sitSpots.push({x,z,seatY:.8,yaw:Math.PI,label:'Sit at transport hub'});},
 resolve:resolveRoadMovement,
-redSignal(p,target){if(p.distanceTo(target)<4)return false;const axis=Math.abs(target.x-p.x)>Math.abs(target.z-p.z)?'x':'z';return trafficLights.some(t=>t.axis===axis&&t.phase>=3&&Math.hypot(t.x-p.x,t.z-p.z)<15);},
+travelLimit:roadTravelLimit,
+redSignal(p,target){const dir=target.clone().sub(p).setY(0).normalize();return junctionControl.limitTravel(p,dir,1,{length:4.2})<.01;},
 makeProfession(role,x,z,bounds){const h=makeHumanoid({outfit:/Scientist|Doctor/.test(role)?0xe2e7e9:/Imam|Sufi|priest|monk|Rabbi|minister|Theologian/.test(role)?0x98886b:0x526c81,hair:0x46362a,pants:0x2e3c4a});h.root.position.set(x,groundY(x,z),z);const node=nearestCorner(h.root.position,bounds);h.root.position.copy(cornerPos(node));h.root.position.y=groundY(h.root.position.x,h.root.position.z);const next=nextCorner(node,null,bounds),e=makeEnemy({kind:'npc',labelName:role,h,root:h.root,radius:.35,height:1.9,maxHp:50,flashMats:h.flashMats,profession:role,ped:{state:'wander',node:next,prev:node,target:cornerPos(next),speed:1.2,panicT:0,waitT:0,stop:null,bus:null,bounds}});peds.push(e);return e;}
 });
 onlinePlayers=createOnlineAvatars({classLook:index=>characters[index]?{outfit:characters[index].color,hair:characters[index].hair}:null,camera,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),dispose:disposeObj,position:()=>player.position,active:()=>onlinePlayReady&&!!hosting.room,firstPerson:()=>cameraView==='first',local:()=>({name:playerUsername||'Guest',alignment:playerAlignment()})});
@@ -6800,10 +6834,10 @@ function frame() {
     if (inCivicInterior) updateCivicTv(dt);
     updateSitPrompt();
     updateWaypoint();
+    updateTrafficLights(dt);
     updateVehicles(dt);
     updateParkLife(dt);
     updateBridgeLift(dt);
-    updateTrafficLights(dt);
     updateWeather(dt);
     updateFirefighters(dt);
     updateFireDamage(dt);
@@ -6814,6 +6848,7 @@ function frame() {
     updateShips(dt);
     spaceCentre?.update(dt);
     transport.update(dt);
+    activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
     metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);
     urban.update(dayTime,dt);

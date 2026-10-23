@@ -1,0 +1,10 @@
+﻿{
+    "saved_map_reload":  true,
+    "source_footprints_preserved":  177,
+    "persisted_instances":  39700,
+    "persisted_batches":  108,
+    "render_verified":  true,
+    "performance_benchmarked":  false,
+    "screenshot":  "AnotherWorld/Saved/Screenshots/HidrokAuthoredStreet.png",
+    "render_notes":  "Inspected actual eye-level DX11 render. No shader errors, attachment warnings or unbuilt-lighting banner. Performance has not been benchmarked."
+}

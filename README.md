@@ -1,5 +1,7 @@
 # Another World
 
+World development is moving to **Unreal Engine 5.8**. See [the Unreal project guide](unreal/README.md). The browser game below and the Unity project remain migration references.
+
 A browser town simulation with a first-person body, phone selfie, powers and autonomous residents. Bodycam is the environmental realism reference; this is a playable visual foundation, not equivalent photorealism.
 
 ## Play

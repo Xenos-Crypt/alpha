@@ -1,0 +1,167 @@
+{
+  "reference": "unity/References/Transport-concept.png",
+  "models": [
+    {
+      "name": "induction_car",
+      "triangles": 10420,
+      "bytes": 347504,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "flying_car",
+      "triangles": 10508,
+      "bytes": 357008,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "aurora_x9_body",
+      "triangles": 16110,
+      "bytes": 1068968,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "skyline_x7_body",
+      "triangles": 14256,
+      "bytes": 1015936,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "aerodynex_x12_body",
+      "triangles": 12930,
+      "bytes": 974040,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "luggage_boot_lid",
+      "triangles": 616,
+      "bytes": 48192,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "forward_service_lid",
+      "triangles": 380,
+      "bytes": 26640,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "cabin_door",
+      "triangles": 472,
+      "bytes": 43776,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "retractable_road_gear",
+      "triangles": 1476,
+      "bytes": 90000,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "road_wheel",
+      "triangles": 9792,
+      "bytes": 313952,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "skyline_x7_motor",
+      "triangles": 2332,
+      "bytes": 145776,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "aerodynex_x12_motor",
+      "triangles": 2332,
+      "bytes": 145776,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "aurora_x9_motor",
+      "triangles": 3204,
+      "bytes": 110160,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "aurora_x9_rotor",
+      "triangles": 264,
+      "bytes": 28512,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "aurora_x9_wing",
+      "triangles": 340,
+      "bytes": 29520,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "aurora_x9_gear",
+      "triangles": 756,
+      "bytes": 67248,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "hover_bike",
+      "triangles": 5648,
+      "bytes": 168512,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "maglev_carriage",
+      "triangles": 6512,
+      "bytes": 382208,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "hover_tram",
+      "triangles": 6136,
+      "bytes": 341600,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "hover_bus",
+      "triangles": 5760,
+      "bytes": 300992,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "orion_regional_cab",
+      "triangles": 32892,
+      "bytes": 3184336,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "orion_regional_coach",
+      "triangles": 39316,
+      "bytes": 3935120,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "orion_tram_cab",
+      "triangles": 17852,
+      "bytes": 1560016,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "orion_tram_coach",
+      "triangles": 20516,
+      "bytes": 1904720,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "rotorless_shuttle",
+      "triangles": 5648,
+      "bytes": 165568,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "airliner",
+      "triangles": 11812,
+      "bytes": 933872,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    },
+    {
+      "name": "catamaran_ferry",
+      "triangles": 6072,
+      "bytes": 193824,
+      "license": "Original project-authored geometry; design reference supplied by user."
+    }
+  ]
+}
