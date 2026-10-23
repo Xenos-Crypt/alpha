@@ -1,0 +1,35 @@
+# Publishes the web game to anotherworld.world whenever main changes.
+#
+# Vercel's free (Hobby) plan can't auto-deploy repos owned by a GitHub organisation such as
+# Xenos-Crypt, so this workflow uploads the repo with the Vercel CLI instead. Vercel then runs
+# `npm run build` itself (see vercel.json). Unity, Unreal and other non-web folders are left out
+# by .vercelignore.
+#
+# Needs three repository secrets (Settings → Secrets and variables → Actions):
+#   VERCEL_TOKEN       a token from https://vercel.com/account/tokens
+#   VERCEL_ORG_ID      the Vercel team id
+#   VERCEL_PROJECT_ID  the id of the "aworldgame" project
+name: Deploy web game to Vercel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # also lets you run it by hand from the Actions tab
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Deploy to production
+        run: npx --yes vercel@latest deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}"
