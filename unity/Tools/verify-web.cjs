@@ -19,7 +19,7 @@ const types={'.html':'text/html','.js':'application/javascript','.wasm':'applica
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  let browser,page,loaded=false,productionVerified=false,portalVerified=false,swimmingVerified=false,powersVerified=false;const errors=[],messages=[],warnings=[],regions=[],industryReports=[],movementReports=[];
  try{
-  browser=await chromium.launch({executablePath:'C:/Users/WINDOWS11/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Users/WINDOWS11/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
   page=await browser.newPage({viewport:{width:1100,height:700}});
   page.on('pageerror',e=>errors.push(e.message));
   page.on('console',m=>{

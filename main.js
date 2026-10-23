@@ -31,6 +31,8 @@ import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
+import { installMatrixCache } from './matrix-cache.js';
+installMatrixCache(THREE);   // ~50k mostly-static objects: don't rebuild unchanged matrices every frame
 import { createPerformanceBudget } from './performance-budget.js';
 import { powerTier, tierLabel, objectPowerScale } from './power-tiers.js';
 import { createRoadLaw, signalState, signalStopPoint } from './road-law.js';
@@ -3945,15 +3947,32 @@ function updatePed(e, dt) {
   animateHumanoid(e.h, null, moving, speed > 3, true, dt);
 }
 
+// Level of detail: residents and monsters far from you think less often (and catch up on the
+// time they skipped), which saves several ms per frame in a world of 600+ characters.
+let enemyLodFrame = 0;
 function updateEnemies(dt) {
-  for (const e of enemies) {
+  enemyLodFrame++;
+  const focus = inCar && driving ? driving.group.position : player.position;
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i], p = e.root.position;
+    const d = Math.abs(p.x - focus.x) + Math.abs(p.z - focus.z);
+    const step = d < 140 ? 1 : d < 300 ? 2 : 4;
+    e.lodDt = (e.lodDt || 0) + dt;
+    if (step > 1 && (enemyLodFrame + i) % step !== 0) continue;
+    const edt = Math.min(e.lodDt, 0.25);
+    e.lodDt = 0;
+    updateEnemy(e, edt);
+  }
+}
+function updateEnemy(e, dt) {
+  {
     e.flash = Math.max(0, e.flash - dt * 5);
     e.stun = Math.max(0, e.stun - dt);
     e.carCd -= dt;
     e.thrown = Math.max(0, (e.thrown || 0) - dt);
-    if (e.hidden) continue;                                   // riding a bus
+    if (e.hidden) return;                                     // riding a bus
     if (e.held && action?.name !== 'psy') e.held = false;
-    if (e.held) { for (const m of e.flashMats) m.emissive.setRGB(0.35, 0.1, 0.6); continue; }   // floating in Psychic Grip
+    if (e.held) { for (const m of e.flashMats) m.emissive.setRGB(0.35, 0.1, 0.6); return; }   // floating in Psychic Grip
 
     if (!e.alive) {
       e.respawn -= dt;
@@ -3968,7 +3987,7 @@ function updateEnemies(dt) {
         if (e.h) e.h.rig.rotation.set(0, 0, 0);
         if (e.h && e.kind !== 'npc') { e.root.rotation.y = -Math.PI / 2; popText(at(e.root.position, 2.4), 'RESET', 'info'); }
       }
-      continue;
+      return;
     }
 
     enemyPhysics(e, dt);

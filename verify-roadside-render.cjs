@@ -16,7 +16,7 @@ const esbuild=require('esbuild');
  return result;
  };`;
  const build=await esbuild.build({stdin:{contents:source,resolveDir:process.cwd(),sourcefile:'main.js'},bundle:true,write:false,format:'esm',platform:'browser',external:['node:fs/promises','node:url'],loader:{'.wasm':'dataurl'},plugins:[{name:'addons',setup(b){b.onResolve({filter:/^three\/addons\//},a=>({path:path.join(process.cwd(),'node_modules/three/examples/jsm',a.path.slice('three/addons/'.length))}));}}]});
- const browser=await chromium.launch({executablePath:'C:/Users/WINDOWS11/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Users/WINDOWS11/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  try{
  const page=await browser.newPage({viewport:{width:1000,height:650},serviceWorkers:'block'}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
