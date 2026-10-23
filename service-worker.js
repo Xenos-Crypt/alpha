@@ -1,5 +1,5 @@
 // Installed only after every core game file has been cached successfully.
-const CACHE='another-world-offline-1fd76657178674e6';
+const CACHE='another-world-offline-2d09273fdb4e303d';
 const CORE=['./game-loading.js','./','./index.html','./responsive-ui.css','./offline.js','./auth-video.js','./dist/bundle.js','./dist/wasm_physics_bg.wasm','./assets/auth-gameplay.mp4','./assets/auth-gameplay-poster.jpg','./assets/grass-diff.jpg','./assets/paving-diff.jpg','./assets/wood-diff.jpg','./assets/roof-diff.jpg','./assets/asphalt-normal.jpg','./assets/brick-normal.jpg'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(CACHE);await cache.addAll(CORE);})()));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const key of await caches.keys())if(key.startsWith('another-world-offline-')&&key!==CACHE)await caches.delete(key);await self.clients.claim();})()));

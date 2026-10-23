@@ -31,6 +31,11 @@ import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
+import { createPerformanceBudget } from './performance-budget.js';
+import { powerTier, tierLabel, objectPowerScale } from './power-tiers.js';
+import { createRoadLaw, signalState, signalStopPoint } from './road-law.js';
+import { createHunterGuilds } from './hunter-guilds.js';
+import { buildFrontierWorld } from './frontier-world.js';
 import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physics.js';
 import { buildPlaces } from './places.js';
 import { createReconstruction } from './reconstruction.js';
@@ -123,6 +128,8 @@ function setGraphicsQuality(level) {
   gfxQuality = GFX_PRESETS[level] ? level : 'medium';
   const p = GFX_PRESETS[gfxQuality];
   renderer.setPixelRatio(Math.min(devicePixelRatio, p.pr));
+  perfBudget?.setBasePixelRatio(Math.min(devicePixelRatio, p.pr));
+  perfBudget?.setQuality(gfxQuality);
   renderer.shadowMap.enabled = p.shadows;
   applyShadowMapSize();   // no-op before `sun` exists; the sun's own setup applies the initial size instead
   localStorage.setItem('gfxQuality', gfxQuality);
@@ -133,6 +140,7 @@ function setGraphicsQuality(level) {
 // time that runs (declared further down this file); the sun's own setup below
 // calls this once more right after creating it, using the already-chosen quality.
 let manualGraphics=false;
+let perfBudget=null;   // created once the scene exists (see below)
 let sunReady = false;   // `sun` is declared further down this module; guards against touching it before then
 function applyShadowMapSize() {
   if (!sunReady) return;
@@ -221,6 +229,12 @@ for (let i = 0; i < 22; i++) {
   scene.add(c);
   clouds.push(c);
 }
+
+perfBudget = createPerformanceBudget({ THREE, scene, camera, renderer, mobile: touchDevice, exclude: [sky, sunDisc, moonDisc, spaceStars, ...clouds] });
+perfBudget.setBasePixelRatio(renderer.getPixelRatio());
+perfBudget.setQuality(gfxQuality);
+perfBudget.attachSky(sky, [sunDisc, moonDisc]);
+if (new URLSearchParams(location.search).has('debug')) window.__aw = { renderer, scene, camera, perfBudget, get player() { return player; }, get game() { return { hunterGuilds, roadLaw, frontier, prog, stats, vehicles, trafficLights, get militaryAlert() { return militaryAlert; }, setYaw(y, p) { yaw = y; pitch = p; } }; } };
 
 // =====================================================================
 // PROCEDURAL TEXTURES (drawn on canvases, so no image files are needed)
@@ -372,6 +386,7 @@ const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford C
 let supportSkills=null,cityServices=null,supportCounters={dungeons:0,bosses:0};
 function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localStorage.setItem('support:'+alignmentUserId,JSON.stringify({skill:supportSkills.snapshot(),counters:supportCounters,kills:monsterQuestKills}));}catch{}}
 let cityLife=null,monsterQuestKills=0;
+let roadLaw=null,hunterGuilds=null,frontier=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
@@ -744,6 +759,8 @@ for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++)
 // vehicle behavior.
 // =====================================================================
 const trafficLights = [];
+const signalJunctions = new Set();   // junctions controlled by lights (AI cars obey them)
+let signalClock = 0;               // seconds of running game time that drive every signal
 const TL_MAT = { red: new THREE.MeshStandardMaterial({ color: 0x2a0a0a, emissive: 0xff2020, emissiveIntensity: 0 }),
   amber: new THREE.MeshStandardMaterial({ color: 0x2a1c0a, emissive: 0xffaa20, emissiveIntensity: 0 }),
   green: new THREE.MeshStandardMaterial({ color: 0x0a2a10, emissive: 0x20ff50, emissiveIntensity: 0 }) };
@@ -758,7 +775,7 @@ function addTrafficLight(x, z, faceY,baseY=0,phase=null) {
     const m = new THREE.Mesh(new THREE.CircleGeometry(0.17, 14), TL_MAT[key].clone());
     m.position.set(0, 0.4 - i * 0.4, 0.21); head.add(m); lamps[key] = m.material; i++;
   }
-  const signal={phase:phase??rand()*6,lamps,x,z,axis:Math.abs(Math.sin(faceY))>.7?'x':'z'};trafficLights.push(signal);return signal;
+  const signal={phase:phase??0,lamps,x,z,jx:Math.round(cx/40),jz:Math.round(cz/40),axis:Math.abs(Math.sin(faceY))>.7?'x':'z'};trafficLights.push(signal);signalJunctions.add(signal.jx+','+signal.jz);return signal;
 }
 // A handful of roundabouts instead of light-controlled intersections.
 const ROUNDABOUT_CELLS = new Set(['0,0', '-2,-2', '2,2', '-2,2']);
@@ -778,10 +795,15 @@ for (const key of ROUNDABOUT_CELLS) {
   const apron=mesh(new THREE.CircleGeometry(9.5,48),0x3a3c40);apron.rotation.x=-Math.PI/2;apron.position.set(x,.17,z);apron.castShadow=false;
 }
 function updateTrafficLights(dt) {
+  // UK sequence per junction: green 20s, amber 3s, red (with ~1s all-red), red+amber 2s.
+  // The crossing road is offset by half a cycle, so the two directions never both show green.
+  signalClock += dt;
   for (const t of trafficLights) {
-    t.phase = (t.phase + dt) % 6;   // 3s green, 1s amber, 2s red (offset per light so they're not synced)
-    const state = t.phase < 3 ? 'green' : t.phase < 4 ? 'amber' : 'red';
-    for (const key in t.lamps) t.lamps[key].emissiveIntensity = key === state ? (key === 'amber' ? 3 : 2) : 0;
+    const state = signalState(t.jx, t.jz, t.axis, signalClock);
+    t.state = state;
+    t.lamps.red.emissiveIntensity = state === 'red' || state === 'redamber' ? 2 : 0;
+    t.lamps.amber.emissiveIntensity = state === 'amber' || state === 'redamber' ? 3 : 0;
+    t.lamps.green.emissiveIntensity = state === 'green' ? 2 : 0;
   }
 }
 
@@ -2085,7 +2107,7 @@ function saveSolo() {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
       adventure:adventureServices?.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
-      metro:metro?.snapshot(),sewer:sewers?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
+      metro:metro?.snapshot(),sewer:sewers?.snapshot(),law:roadLaw?.snapshot(),hunter:hunterGuilds?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
       navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
       driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
       dungeon:dungeon?{gate:{name:dungeon.gate.name,level:dungeon.gate.level,rank:dungeon.gate.rank,stars:dungeon.gate.stars,theme:dungeon.gate.theme,tier:dungeon.gate.tier,finalBoss:dungeon.gate.finalBoss,persistent:dungeon.gate.persistent},wave:dungeon.wave,waves:dungeon.waves,cleared:dungeon.cleared,nextT:dungeon.nextT,entryLevel:dungeon.entryLevel,secretBonus:dungeon.secretBonus,returnPos:dungeon.returnPos.toArray(),mobs:dungeon.mobs.map(m=>({type:m.type,level:m.level,hp:m.hp,alive:m.alive,position:m.root.position.toArray(),boss:m===dungeon.boss}))}:null,
@@ -2118,6 +2140,7 @@ function applySoloSave(save) {
   navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
   if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
   adventureServices?.restore(save.adventure);
+  roadLaw?.restore(save.law);hunterGuilds?.restore(save.hunter);
   cityServices?.restore(save.cityServices);
   if(save.driving){const v=save.driving.ownedId?vehicles.find(v=>v.ownedId===save.driving.ownedId):vehicles[save.driving.index]?.kind===save.driving.kind?vehicles[save.driving.index]:null;if(v&&!v.disabled){v.group.position.fromArray(save.driving.position);v.group.rotation.fromArray(save.driving.rotation);v.health=save.driving.health??v.health;v.speed=save.driving.speed||0;if(save.driving.alt!=null)v.alt=save.driving.alt;driving=v;inCar=true;v.ai=null;activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};}}
   if(save.dungeon){const d=save.dungeon;dungeon={...d,returnPos:new THREE.Vector3().fromArray(d.returnPos),mobs:[],boss:null};applyTheme(d.gate.theme);for(const saved of d.mobs){if(!MONSTERS[saved.type])continue;const m=makeMonster(saved.type,saved.level,new THREE.Vector3().fromArray(saved.position));m.hp=saved.hp;m.alive=saved.alive;m.root.visible=saved.alive;m.respawn=saved.alive?0:Infinity;dungeon.mobs.push(m);if(saved.boss)dungeon.boss=m;}setGateColor(exitGate,d.cleared?0xffd166:0xffffff);}
@@ -2192,6 +2215,7 @@ async function boot() {
   await visualAssetsReady;
   window.gameLoading?.show(85,'Saving your progress...');
   if(soloMode&&!saveSolo())throw new Error('Unable to save progress on this device.');
+  perfBudget.start();
   renderer.render(scene,camera);
   await window.gameLoading?.complete();
   $('start').style.display = 'flex';
@@ -4018,7 +4042,7 @@ function hitVehicles(center, range, hits, h, maxDy, dir = null, minDot = -1) {
     const delta = v.group.position.clone().sub(center).setY(0), distance = delta.length();
     if (distance > range + v.radius || Math.abs(v.group.position.y + 0.8 - center.y) > maxDy) continue;
     if (dir && distance > 0.6 && delta.normalize().dot(dir) < minDot) continue;
-    hits?.add(v); damageVehiclePower(v, Number(h.dmg) || 0, center,!h.police&&h.fromPlayer!==false); count++;
+    const byPlayer=!h.police&&h.fromPlayer!==false;hits?.add(v); damageVehiclePower(v, (Number(h.dmg) || 0)*(byPlayer?objectPowerScale(prog.level):1), center,byPlayer); if(byPlayer)roadLaw?.powerDamage(); count++;
   }
   return count;
 }
@@ -5587,7 +5611,7 @@ function renderBoard() {
   $('tabStats').style.display = boardTab === 'stats' ? '' : 'none';
   $('tabSkills').style.display = boardTab === 'skills' ? '' : 'none';
 
-  $('lvlText').textContent = `Level ${prog.level}: ${prog.xp} / ${xpToNext()} XP`;
+  $('lvlText').textContent = `Level ${prog.level} · ${tierLabel(prog.level)}: ${prog.xp} / ${xpToNext()} XP. ${powerTier(prog.level).feat}${hunterGuilds?.licensed?' · Hunter rank '+hunterGuilds.rank:''}`;
   $('xpBar').style.width = (prog.xp / xpToNext() * 100) + '%';
   $('pointsText').textContent = `Points to spend: ${prog.points} (3 per level; defeat enemies and dummies for XP)`;
   const rows = $('statRows');
@@ -6254,6 +6278,12 @@ function trafficDrive(v, dt) {
   let f = laneFrame(ai);
   let desired = ai.cruise*conditionFactors(v.health).topSpeed;
   ai.ignoreT -= dt;
+  let stopAt = null;
+  if (ai.to && signalJunctions.has(ai.to[0] + ',' + ai.to[1])) {
+    const axis = ai.from[0] !== ai.to[0] ? 'x' : 'z';
+    stopAt = signalStopPoint(signalState(ai.to[0], ai.to[1], axis, signalClock), ai.s, v.speed);
+    if (stopAt != null) desired = Math.min(desired, Math.max(0, (stopAt - ai.s) * 0.9));
+  }
   if (ai.stopTimer > 0) { ai.stopTimer -= dt; desired = 0; }
   else if (ai.ignoreT <= 0 && trafficBlocked(v, v.group.position, f.dir, f.left)) {
     desired = 0;
@@ -6262,6 +6292,7 @@ function trafficDrive(v, dt) {
   } else ai.blockedT = 0;
   v.speed = lerp(v.speed, desired, 1 - Math.exp(-(desired < v.speed ? 5 : 1.2) * dt));
   ai.s += v.speed * dt;
+  if (stopAt != null && ai.s > stopAt) { ai.s = stopAt; v.speed = 0; }   // never creep over the stop line on red
 
   if (v.kind === 'bus' && !ai.stopped && BUS_STOP_SEGS.includes(ai.routeIdx) && ai.s >= 20) {
     ai.stopped = true;
@@ -6410,16 +6441,51 @@ function updateVehicles(dt) {
   }
 }
 
+// Defence Force response to intruders at restricted sites. Tanks leave their bays,
+// close to firing range and shell the intruder until the alert expires; afterwards
+// they are quietly recovered to their bays once nobody is watching.
+let tankFireTimer=0;
+function tankChase(v,dt){
+  const target=inCar&&driving?driving.group.position:player.position,p=v.group.position;
+  const delta=target.clone().sub(p).setY(0),d=delta.length();
+  v.group.rotation.y=lerpAngle(v.group.rotation.y,Math.atan2(delta.x,delta.z),1-Math.exp(-2.5*dt));
+  const desired=d>28?9:0;v.speed=lerp(v.speed||0,desired,1-Math.exp(-2*dt));
+  const step=fwdOf(v.group).multiplyScalar(v.speed*dt);p.add(step);collide(p,v.radius||2.6);p.y=groundY(p.x,p.z,p.y);
+  for(const w of v.wheels||[])w.rotation.x+=v.speed*dt/0.4;
+  if(d<90){v.fireT=(v.fireT??2)-dt;if(v.fireT<=0){v.fireT=4;const miss=new THREE.Vector3((Math.random()-.5)*6,0,(Math.random()-.5)*6),impact=target.clone().add(d>40?miss:new THREE.Vector3());
+    fxSphere(at(impact,.5),0xffa040,4,.4);burst(at(impact,.5),30,[0xff8022,0x666666],10,.2,.6,9,2);shake=Math.max(shake,.45);worldAudio?.impact?.(10);
+    const hitD=distXZ(impact,target);if(hitD<4){if(inCar&&driving)damageVehiclePower(driving,45,impact,false);else hurtPlayer(26*(1-hitD/4),impact,8);}}}
+}
+function updateMilitary(dt){
+  if(militaryAlert>0){militaryAlert-=dt;if(militaryAlert<=0)toast('Defence Force alert stood down.');}
+  else for(const v of vehicles){if(!v.militaryHome||v.disabled)continue;
+    const away=distXZ(v.group.position,v.militaryHome)>3,watched=distXZ(player.position,v.group.position)<150||distXZ(player.position,v.militaryHome)<150;
+    if(away&&!watched){v.group.position.copy(v.militaryHome);v.group.rotation.y=v.militaryYaw;v.speed=0;}}
+}
+// Driver & Vehicle Licensing counter
+function openLawPanel(){
+  let panel=document.getElementById('lawPanel');
+  if(!panel){panel=document.createElement('section');panel.id='lawPanel';panel.hidden=true;panel.innerHTML='<div><h2>Driver &amp; Vehicle Licensing</h2><p id="lawSummary" role="status"></p><p>Town roads are 30 mph. Speeding and red lights: 100 gold and 3 points. Pavement driving: 100 gold. 12 points disqualifies you. Driving without a licence adds 300 gold and 6 points when you are caught.</p><div id="lawActions"></div><div id="lawHistory"></div><button id="lawClose" type="button">Close</button></div>';document.body.append(panel);
+    panel.querySelector('#lawClose').onclick=()=>{panel.hidden=true;if(!boardOpen&&!settingsOpen)requestGameControl();};}
+  const render=()=>{panel.querySelector('#lawSummary').textContent=roadLaw.summary();const actions=panel.querySelector('#lawActions');actions.replaceChildren();
+    for(const [label,fn] of [['Theory test (23 gold)',roadLaw.takeTheory],['Practical driving test (62 gold)',roadLaw.takePractical],['Pay outstanding fines',roadLaw.payDebt],['Complete disqualification and retest course (500 gold)',roadLaw.serveBan]]){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>{fn();render();saveSolo();};actions.append(b);}
+    const hist=panel.querySelector('#lawHistory');hist.replaceChildren();for(const h of roadLaw.licence.history){const p=document.createElement('p');p.className='supportSkillRow';p.textContent=`${h.key}: ${h.fine} gold${h.points?', '+h.points+' points':''}`;hist.append(p);}};
+  pauseForPanel();panel.hidden=false;render();
+}
+
 // Temporary testing toggles — requested as a "for now" state, meant to be
 // flipped back off later, not a permanent design change.
-const CHEAT_NO_NEEDS = true;    // hunger/energy stop draining
-const CHEAT_SPEED_MULT = 2.5;   // extra on-foot speed multiplier, stacks with speedMul()
+// Former test toggles, now off: needs drain and walking speed is human (powers add to it).
+const CHEAT_NO_NEEDS = false;
+const CHEAT_SPEED_MULT = 1;
 function updateNeeds(dt) {
   if (!CHEAT_NO_NEEDS) {
-    stats.hunger = clamp(stats.hunger - 100 / 180 * drainMul() * dt, 0, 100);   // empty after ~3 minutes
-    stats.energy = clamp(stats.energy - 100 / 240 * drainMul() * dt, 0, 100);   // empty after ~4 minutes
+    // Real rhythm on the game clock: hungry again after ~6 game-hours, empty after ~1.2 days;
+    // energy lasts about a waking day and a half before you must sleep.
+    stats.hunger = clamp(stats.hunger - 100 / (DAY_LEN * 1.2) * drainMul() * dt, 0, 100);
+    stats.energy = clamp(stats.energy - 100 / (DAY_LEN * 1.6) * drainMul() * dt, 0, 100);
   }
-  if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) stats.hp -= 2 * dt;
+  if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) stats.hp -= 0.5 * dt;   // starvation/exhaustion is slow, not instant
   else if (stats.hunger > 30) stats.hp += 1 * dt;
   // A frail birth (very low peace) bleeds health passively, roughly 1/sec at the floor,
   // tapering off above peace 25 — this is the one stat with a real, constant downside.
@@ -6477,8 +6543,8 @@ function updateWorldLight(dt) {
   scene.fog.color.copy(horizon);
   scene.fog.far = weatherState === 'rain' ? 300 : 600;
   sky.position.copy(camera.position);
-  sunDisc.position.copy(camera.position).addScaledVector(sunDir, 400);
-  moonDisc.position.copy(camera.position).addScaledVector(sunDir, -400);
+  sunDisc.position.copy(camera.position).addScaledVector(sunDir, perfBudget.celestialDistance());
+  moonDisc.position.copy(camera.position).addScaledVector(sunDir, -perfBudget.celestialDistance());
   sunDisc.visible = elev > -0.1 && weatherState !== 'rain';
   moonDisc.visible = elev < 0.1 && weatherState !== 'rain';
 
@@ -6578,7 +6644,7 @@ function updateCamera(dt) {
 
 function updateHud(dt) {
   const c = characters[charIdx];
-  $('charName').textContent = (playerUsername ? playerUsername + '  ·  ' : '') + (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level}` + (prog.points ? ' (C)' : '') + (isVillain ? '  ☠ Villain' : '');
+  $('charName').textContent = (playerUsername ? playerUsername + '  ·  ' : '') + (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level} ${powerTier(prog.level).rank}` + (prog.points ? ' (C)' : '') + (isVillain ? '  ☠ Villain' : '');
   $('charName').style.color = isVillain ? '#ff4d4d' : heroDungeonKills>0?'#67b3ff':'#fff';
   $('hpBar').style.width = clamp(stats.hp / maxHp() * 100, 0, 100) + '%';
   $('hpText').textContent = `${Math.max(0, Math.round(stats.hp))} / ${maxHp()}`;
@@ -6587,7 +6653,7 @@ function updateHud(dt) {
   const hours = (dayTime * 24 + 6) % 24;
   const hh = String(Math.floor(hours)).padStart(2, '0'), mm = String(Math.floor(hours % 1 * 60)).padStart(2, '0');
   $('clock').textContent = `Time ${hh}:${mm}  ·  Gold ${stats.gold}`;
-  $('extra').textContent = (inCar ? `Speed ${Math.round(Math.abs(driving.speed) * 3.6)} km/h${isRoadVehicle(driving) ? ' ? Condition ' + Math.ceil(driving.health ?? 100) + '%' : ''}`
+  $('extra').textContent = (inCar ? `Speed ${Math.round(Math.abs(driving.speed) * 2.237)} mph${isRoadVehicle(driving) ? ' · Condition ' + Math.ceil(driving.health ?? 100) + '%' : ''}`
       + (driving.kind === 'plane' ? `  ·  Alt ${Math.round(driving.alt)} m  ·  Throttle ${Math.round(driving.plane.throttle * 100)}%` : '')
     : awaken > 0 ? `AWAKENED ${awaken.toFixed(1)}s` : `Slimes defeated: ${kills}`)
     + (wanted > 0 ? `  ·  WANTED ${Math.ceil(wanted)}s` : '');
@@ -6620,7 +6686,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
   policeReception() { toast(wanted > 0 ? 'An active pursuit is in progress. Lose the pursuing units before returning to reception.' : 'Police reception: no active wanted alert. Public reception and custody viewing are open.'); },
   constructionShift() {
     if (performance.now() < nextConstructionShift) { toast('Next shift available in ' + Math.ceil((nextConstructionShift - performance.now()) / 1000) + ' seconds.'); return; }
-    nextConstructionShift = performance.now() + 60000; stats.gold += 75; stats.energy = Math.max(0, stats.energy - 15); gainXp(15); toast('Construction shift completed: +75 gold, +15 XP, ?15 energy.');
+    nextConstructionShift = performance.now() + 60000; stats.gold += 75; stats.energy = Math.max(0, stats.energy - 15); gainXp(15); toast('Construction shift completed: +75 gold, +15 XP, −15 energy.');
   },
   buyGroceries: () => buyFood(15, 10), buyMeal: () => buyFood(10, 20),
   restrictedEntry: () => raiseWanted(90),
@@ -6748,6 +6814,21 @@ npcConversations=createNpcConversations({people:()=>peds,scene,interactables,pla
 worldExpansion=buildWorldExpansion({...regionalTransportContext,civicBuildings,fence:fenceRect,talk:(name,text)=>npcConversations.show(name,text),playerPosition:()=>player.position,makeMonster,light:addTrafficLight,tree:addTree,seat:(x,z)=>addBench(x,z,Math.PI),heal(){stats.hp=maxHp();toast('Medical treatment complete.');},food:()=>buyFood(15,20),killPlayer(){stats.hp=-1;toast('Strategic security: lethal exclusion zone breached.');},civilians:()=>peds,killCivilian(e){e.alive=false;e.hp=0;e.respawn=30;e.ped.state='down';}});
 townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
+const pauseForPanel=()=>{locked=false;mouseHeld=false;for(const key in keys)keys[key]=false;document.exitPointerLock();$('start').style.display='none';};
+roadLaw=createRoadLaw({roundaboutCells:ROUNDABOUT_CELLS,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},toast,raiseWanted,time:()=>performance.now()/1000,signalTime:()=>signalClock,licensedHunter:()=>!!hunterGuilds?.licensed});
+frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,glowMats,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+ destinations:townPlaces.destinations,toast,playerPosition:()=>inCar&&driving?driving.group.position:player.position,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},sleep,buyFood,
+ authorised:()=>(hunterGuilds?.state.licensed&&hunterGuilds.state.rank>=3),
+ makeTank(x,z,ry){const v=makeVehicle('tank',0x4f5a3a);v.group.position.set(x,.2,z);v.group.rotation.y=ry;v.ai={parked:true};v.militaryHome=new THREE.Vector3(x,.2,z);v.militaryYaw=ry;v.noSteal=true;return v;},
+ makeMilitaryTruck(x,z,ry){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(x,.2,z);v.group.rotation.y=ry;v.ai={parked:true};return v;},
+ onIntrusion(zone){if(militaryAlert<=0)toast(`${zone.name}: INTRUDER ALERT. Armoured units deployed — leave the restricted zone now.`);militaryAlert=45;}});
+hunterGuilds=createHunterGuilds({level:()=>prog.level,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons,bosses:supportCounters.bosses}),money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},earn:n=>{stats.gold+=n;},gainXp,toast,
+ playerPosition:()=>player.position,checkpoints:{patrol:frontier.patrolPoints,spires:frontier.spires},interactables,heal(){stats.hp=maxHp();stats.energy=Math.max(stats.energy,60);},changed(){saveSolo();},
+ pause:pauseForPanel,resume(){if(!boardOpen&&!settingsOpen)requestGameControl();}});
+hunterGuilds.addDesk(frontier.desks.hq,'hq','Hunter Association reception (licences, ranks, contracts)');
+for(const id of ['aegis','lantern','thorn'])hunterGuilds.addDesk(frontier.desks[id],id,'Guild hall desk');
+hunterGuilds.addDesk(new THREE.Vector3(-200,.2,-474),'board','Read the hunter contract board');
+interactables.push({pos:frontier.desks.dvla,r:3,label:'Driver & Vehicle Licensing counter',action:()=>openLawPanel()});
 metro.cutSurfaces();
 const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
 worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
@@ -6804,6 +6885,10 @@ function frame() {
     updateParkLife(dt);
     updateBridgeLift(dt);
     updateTrafficLights(dt);
+    if(inCar&&driving&&isRoadVehicle(driving))roadLaw.monitorDriving(driving,dt);
+    hunterGuilds.update(dt);
+    frontier.update(dt,{sky,inSpace:!!spaceCentre?.inSpace,underground:!!(metro?.underground||sewers?.underground||dungeon||navy?.rider?.depth>2)});
+    updateMilitary(dt);
     updateWeather(dt);
     updateFirefighters(dt);
     updateFireDamage(dt);
@@ -6839,7 +6924,15 @@ function frame() {
   onlinePlayers?.update(rawDt);
   drawSpeedLines(rawDt);
   updateHud(running ? rawDt : 0);
-  if($('auth').style.display!=='flex')renderer.render(scene, camera);
+  perfBudget.applyViewDistance();
+  perfBudget.update(rawDt, frameMs, running);
+  // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
+  // whole canvas: drawing the city behind them every frame only burns battery/CPU.
+  if(!coveredByOverlay())renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
+const OVERLAY_IDS=['auth','menu','spawn','classSelect','gameLoading'];
+let overlayCheckAt=0,overlayCovered=true;
+function coveredByOverlay(){const now=performance.now();if(now-overlayCheckAt<250)return overlayCovered;overlayCheckAt=now;overlayCovered=overlayScan();return overlayCovered;}
+function overlayScan(){for(const id of OVERLAY_IDS){const el=document.getElementById(id);if(el&&el.isConnected&&!el.hidden&&getComputedStyle(el).display!=='none'&&getComputedStyle(el).visibility!=='hidden')return true;}return false;}
 frame();

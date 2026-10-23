@@ -139,7 +139,7 @@ export function buildPlaces(ctx) {
     for (let z = -76; z <= -62; z += 2) for (const side of [-1, 1]) box(.35, .5, .8, x + side * 1.2, 1.05, z, side < 0 ? 0xb06840 : 0x75a064, false);
   }
   sign('PRODUCE    GROCERIES    HOUSEHOLD', 590, 3.8, -79, 18);
-  desk(590, -53, 'Buy groceries (�15)', ctx.buyGroceries);
+  desk(590, -53, 'Buy groceries (£15)', ctx.buyGroceries);
   parking(590, -29, 44);
 
   const mall = room('ASHFORD GALLERIA', 625, 55, 70, 44, 0xd8d0c4, 8);
@@ -148,7 +148,7 @@ export function buildPlaces(ctx) {
     const i = [600, 616, 634, 650].indexOf(x);
     box(12, .9, 2, x, .45, 40, i === 3 ? 0xb08154 : 0x6d7786);
     sign(names[i], x, 3.5, 37, 11);
-    interactables.push({ pos: new THREE.Vector3(x, 0, 42), r: 2.4, label: i === 3 ? 'Buy meal (�10)' : 'Browse ' + names[i].toLowerCase(), action: i === 3 ? ctx.buyMeal : () => toast(['Clothing shop: civilian outfits on display.', 'Electronics shop: phones, computers and televisions.', 'Bookshop: local history and travel guides.'][i]) });
+    interactables.push({ pos: new THREE.Vector3(x, 0, 42), r: 2.4, label: i === 3 ? 'Buy meal (£10)' : 'Browse ' + names[i].toLowerCase(), action: i === 3 ? ctx.buyMeal : () => toast(['Clothing shop: civilian outfits on display.', 'Electronics shop: phones, computers and televisions.', 'Bookshop: local history and travel guides.'][i]) });
   }
   for (const x of [610, 640]) { bench(x, 57); box(1, 2, 1, x, 1, 50, 0x74916a); }
   // Glass clerestory and a broad entrance canopy.
@@ -162,7 +162,7 @@ export function buildPlaces(ctx) {
   fence(438,74,438,148,3.2); fence(510,74,510,148,3.2); fence(438,148,510,148,3.2);
   fence(438,74,458,74,3.2); fence(472,74,510,74,3.2);
   gates.push({name:'Military checkpoint',x:465,z:74,width:14});
-  sign('RESTRICTED AREA � AUTHORISED PERSONNEL', 466, 3, 75, 17, '#763529');
+  sign('RESTRICTED AREA · AUTHORISED PERSONNEL', 466, 3, 75, 17, '#763529');
   destinations.push({ name: 'Military base', x: 430, z: 78 });
 
   // Compact fictional regional airport: organised passenger and airside zones.

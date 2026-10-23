@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Ccircle cx=%2232%22 cy=%2232%22 r=%2228%22 fill=%22%230b1d33%22 stroke=%22%2356c8ff%22 stroke-width=%224%22/%3E%3Cpath d=%22M10 38c12-6 32-6 44 0%22 stroke=%22%2356c8ff%22 stroke-width=%223%22 fill=%22none%22/%3E%3C/svg%3E">
 <title>Another World</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; user-select: none; }
@@ -408,23 +409,6 @@
 </div>
 <div id="start"><h1>Open World Starter</h1><p>Click to play</p></div>
 
-<script>
-function openCloaked() {
-  const win = window.open('about:blank');
-  if (!win) return alert('Allow popups');
-  const iframe = win.document.createElement('iframe');
-  iframe.style = 'border:0;width:100vw;height:100vh';
-  iframe.src = 'https://anotherword.word';
-  win.document.body.style.margin = '0';
-  win.document.body.appendChild(iframe);
-}
-
-const cloakedBtn = document.createElement('button');
-cloakedBtn.textContent = 'Open in Study Mode';
-cloakedBtn.style = 'position:fixed;left:16px;bottom:16px;z-index:9999;padding:10px 14px;border-radius:10px;border:0;background:#3867d6;color:#fff;font:13px system-ui;cursor:pointer';
-cloakedBtn.onclick = openCloaked;
-document.body.appendChild(cloakedBtn);
-</script>
 
 <script type="module" src="./offline.js"></script>
 <script src="./game-loading.js"></script>
