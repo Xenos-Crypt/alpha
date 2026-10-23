@@ -21,3 +21,7 @@ unity/
 
 # Unreal source and native assets are not browser-hosting artifacts.
 unreal/
+
+# Offline design tooling and its source model; the web game never loads these.
+native-design/
+CITY+BUILDINGS.glb
