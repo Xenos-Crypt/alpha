@@ -16,7 +16,7 @@ const root=path.resolve(__dirname,'../Builds/Web'),logs=path.resolve(__dirname,'
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  let browser;const errors=[],reports=[];
  try{
-  browser=await chromium.launch({executablePath:'C:/Users/WINDOWS11/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Users/WINDOWS11/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
   const page=await browser.newPage({viewport:{width:1100,height:700}});
   page.on('pageerror',e=>errors.push(e.message));
   page.on('console',m=>{const match=m.text().match(/HIDROK_BRIDGE:(\{[^\n]+\})/);if(match)reports.push(JSON.parse(match[1]));if(m.type()==='error'&&!m.text().includes('favicon'))errors.push(m.text());});

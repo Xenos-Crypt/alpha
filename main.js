@@ -37,6 +37,8 @@ import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
+import { installMatrixCache } from './matrix-cache.js';
+installMatrixCache(THREE);   // ~50k mostly-static objects: don't rebuild unchanged matrices every frame
 import { createPerformanceBudget } from './performance-budget.js';
 import { powerTier, tierLabel, objectPowerScale } from './power-tiers.js';
 import { createRoadLaw } from './road-law.js';
@@ -115,6 +117,11 @@ const touchDevice = matchMedia('(pointer: coarse)').matches && navigator.maxTouc
 renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1 : 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// The shadow map is redrawn every 2nd frame (see frame()): drawing it walks the whole
+// ~50k-object scene a second time, and for a mostly static world the result is identical.
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
+let shadowFrame = 0;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 document.body.prepend(renderer.domElement);
@@ -129,8 +136,14 @@ const GFX_PRESETS = {
 // Phones default to Low (no shadows, lower pixel ratio) unless the player has
 // already picked a quality themselves -- "medium" for everyone was hammering
 // weaker phones, since shadow rendering is the single biggest GPU cost there.
-let gfxQuality = GFX_PRESETS[localStorage.getItem('gfxQuality')] ? localStorage.getItem('gfxQuality') : (touchDevice ? 'low' : 'medium');
-function setGraphicsQuality(level) {
+// Older builds also saved the automatic slow-frame downgrade, so desktop players could be
+// stuck on Low without choosing it. A saved 'low' only counts if it was picked in Settings.
+const savedGfx = localStorage.getItem('gfxQuality');
+const savedGfxChosen = localStorage.getItem('gfxQualityChosen') === '1' || touchDevice || savedGfx !== 'low';
+let gfxQuality = GFX_PRESETS[savedGfx] && savedGfxChosen ? savedGfx : (touchDevice ? 'low' : 'medium');
+// `persist` is false for the automatic slow-frame downgrade, so one slow moment (an area
+// streaming in, another app busy) doesn't leave the player on Low quality forever.
+function setGraphicsQuality(level, persist = true) {
   gfxQuality = GFX_PRESETS[level] ? level : 'medium';
   const p = GFX_PRESETS[gfxQuality];
   renderer.setPixelRatio(Math.min(devicePixelRatio, p.pr));
@@ -138,7 +151,7 @@ function setGraphicsQuality(level) {
   perfBudget?.setQuality(gfxQuality);
   renderer.shadowMap.enabled = p.shadows;
   applyShadowMapSize();   // no-op before `sun` exists; the sun's own setup applies the initial size instead
-  localStorage.setItem('gfxQuality', gfxQuality);
+  if (persist) localStorage.setItem('gfxQuality', gfxQuality);
 }
 // The shadow render target is only (re)created lazily at its current size —
 // changing mapSize after the first render needs the stale one disposed first.
@@ -3951,15 +3964,32 @@ function updatePed(e, dt) {
   animateHumanoid(e.h, null, moving, speed > 3, true, dt);
 }
 
+// Level of detail: residents and monsters far from you think less often (and catch up on the
+// time they skipped), which saves several ms per frame in a world of 600+ characters.
+let enemyLodFrame = 0;
 function updateEnemies(dt) {
-  for (const e of enemies) {
+  enemyLodFrame++;
+  const focus = inCar && driving ? driving.group.position : player.position;
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i], p = e.root.position;
+    const d = Math.abs(p.x - focus.x) + Math.abs(p.z - focus.z);
+    const step = d < 140 ? 1 : d < 300 ? 2 : 4;
+    e.lodDt = (e.lodDt || 0) + dt;
+    if (step > 1 && (enemyLodFrame + i) % step !== 0) continue;
+    const edt = Math.min(e.lodDt, 0.25);
+    e.lodDt = 0;
+    updateEnemy(e, edt);
+  }
+}
+function updateEnemy(e, dt) {
+  {
     e.flash = Math.max(0, e.flash - dt * 5);
     e.stun = Math.max(0, e.stun - dt);
     e.carCd -= dt;
     e.thrown = Math.max(0, (e.thrown || 0) - dt);
-    if (e.hidden) continue;                                   // riding a bus
+    if (e.hidden) return;                                     // riding a bus
     if (e.held && action?.name !== 'psy') e.held = false;
-    if (e.held) { for (const m of e.flashMats) m.emissive.setRGB(0.35, 0.1, 0.6); continue; }   // floating in Psychic Grip
+    if (e.held) { for (const m of e.flashMats) m.emissive.setRGB(0.35, 0.1, 0.6); return; }   // floating in Psychic Grip
 
     if (!e.alive) {
       e.respawn -= dt;
@@ -3974,7 +4004,7 @@ function updateEnemies(dt) {
         if (e.h) e.h.rig.rotation.set(0, 0, 0);
         if (e.h && e.kind !== 'npc') { e.root.rotation.y = -Math.PI / 2; popText(at(e.root.position, 2.4), 'RESET', 'info'); }
       }
-      continue;
+      return;
     }
 
     enemyPhysics(e, dt);
@@ -5739,7 +5769,7 @@ function toggleSettings(open) {
   else if (getComputedStyle($('menu')).display === 'none') requestGameControl();
 }
 document.querySelectorAll('#settingsPanel .tab').forEach(b => b.addEventListener('click', () => { settingsTab = b.dataset.stab; renderSettings(); }));
-document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { manualGraphics=true;setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
+document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { manualGraphics=true;localStorage.setItem('gfxQualityChosen','1');setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
 $('settingsBtn').addEventListener('click', () => toggleSettings(true));
 $('menuLagSettings').addEventListener('click', () => { settingsTab = 'graphics'; toggleSettings(true); });
 $('inventoryBtn').addEventListener('click', () => toggleInventory(true));
@@ -6878,7 +6908,7 @@ const clock = new THREE.Clock();
 let slowFrameTime=0,lastFrameAt=performance.now(),perfWarmup=0;
 function frame() {
   const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
-  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low');slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
+  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low',false);slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
   if(document.hidden&&!(onlinePlayReady&&hosting.room)){clock.getDelta();requestAnimationFrame(frame);return;}
   const running=locked||(onlinePlayReady&&!!hosting.room);
   const rawDt = Math.min(clock.getDelta(), 0.05);
@@ -6949,7 +6979,7 @@ function frame() {
   perfBudget.update(rawDt, frameMs, running);
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
-  if(!coveredByOverlay())renderer.render(scene, camera);
+  if(!coveredByOverlay()){if(++shadowFrame%2===0)renderer.shadowMap.needsUpdate=true;renderer.render(scene, camera);}
   requestAnimationFrame(frame);
 }
 const OVERLAY_IDS=['auth','menu','spawn','classSelect','gameLoading'];

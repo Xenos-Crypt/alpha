@@ -51,14 +51,13 @@ export function createPerformanceBudget({ THREE, scene, camera, renderer, mobile
     }
     while (proxies.length > n) proxies.pop().removeFromParent();
   }
-  function registerLights() {
-    scene.traverse(o => {
-      if (!o.isPointLight || known.has(o) || keep.has(o)) return;
-      known.add(o);
-      o.layers.set(HIDDEN_LAYER); // still writable by game code, never rendered directly
-      sources.push(o);
-    });
+  function registerLight(o) {
+    if (!o.isPointLight || known.has(o) || keep.has(o)) return;
+    known.add(o);
+    o.layers.set(HIDDEN_LAYER); // still writable by game code, never rendered directly
+    sources.push(o);
   }
+  function registerLights() { scene.traverse(registerLight); }
   function effectivelyOn(l) {
     if (!l.visible || !(l.intensity > 0)) return false;
     for (let p = l.parent; p; p = p.parent) { if (!p.visible) return false; if (p === scene) return true; }
@@ -99,24 +98,41 @@ export function createPerformanceBudget({ THREE, scene, camera, renderer, mobile
     }
     return false;
   }
+  function registerMesh(o, fresh) {
+    if (!o.isMesh || tracked.has(o)) return;
+    tracked.add(o);
+    if (o.isInstancedMesh || o.frustumCulled === false) return;
+    const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (mat && mat.fog === false) return;
+    if (isExcluded(o)) return;
+    const g = o.geometry;
+    if (!g) return;
+    if (!g.boundingSphere) g.computeBoundingSphere();
+    if (!g.boundingSphere) return;
+    if (fresh) o.updateWorldMatrix(true, false);   // may not have been rendered yet
+    scaleV.setFromMatrixScale(o.matrixWorld);
+    const r = g.boundingSphere.radius * Math.max(scaleV.x, scaleV.y, scaleV.z);
+    if (!(r < 12)) return;
+    detail.push({ m: o, r, cx: g.boundingSphere.center.x, cy: g.boundingSphere.center.y, cz: g.boundingSphere.center.z });
+  }
   function registerMeshes() {
     scene.updateMatrixWorld();
-    scene.traverse(o => {
-      if (!o.isMesh || tracked.has(o)) return;
-      tracked.add(o);
-      if (o.isInstancedMesh || o.frustumCulled === false) return;
-      const mat = Array.isArray(o.material) ? o.material[0] : o.material;
-      if (mat && mat.fog === false) return;
-      if (isExcluded(o)) return;
-      const g = o.geometry;
-      if (!g) return;
-      if (!g.boundingSphere) g.computeBoundingSphere();
-      if (!g.boundingSphere) return;
-      scaleV.setFromMatrixScale(o.matrixWorld);
-      const r = g.boundingSphere.radius * Math.max(scaleV.x, scaleV.y, scaleV.z);
-      if (!(r < 12)) return;
-      detail.push({ m: o, r, cx: g.boundingSphere.center.x, cy: g.boundingSphere.center.y, cz: g.boundingSphere.center.z });
-    });
+    scene.traverse(o => registerMesh(o, false));
+  }
+
+  // While playing, new lights/meshes (vehicles, effects, streamed areas) are found by walking
+  // the scene a slice at a time. Walking all ~50k objects in one frame every few seconds used
+  // to cause a regular 80 ms hitch.
+  const scanStack = [];
+  let scanIdle = 0;
+  function scanSlice(maxNodes) {
+    for (let n = 0; n < maxNodes && scanStack.length; n++) {
+      const o = scanStack.pop();
+      if (o.isPointLight) registerLight(o);
+      else if (o.isMesh) registerMesh(o, true);
+      const ch = o.children;
+      for (let i = 0; i < ch.length; i++) scanStack.push(ch[i]);
+    }
   }
   let cursor = 0;
   function updateDetail(slices) {
@@ -178,7 +194,7 @@ export function createPerformanceBudget({ THREE, scene, camera, renderer, mobile
   }
 
   // ---------- public ----------
-  let scanTimer = 0, lightTimer = 0, started = false;
+  let lightTimer = 0, started = false;
   function start() {
     started = true;
     registerLights();
@@ -193,8 +209,9 @@ export function createPerformanceBudget({ THREE, scene, camera, renderer, mobile
   function update(dt, frameMs, active) {
     if (!started) return;
     camera.getWorldPosition(camPos);
-    scanTimer += dt; lightTimer += dt;
-    if (scanTimer > 3) { scanTimer = 0; registerLights(); registerMeshes(); }
+    lightTimer += dt;
+    if (scanStack.length) scanSlice(2500);
+    else if ((scanIdle += dt) > 3) { scanIdle = 0; scanStack.push(scene); }
     if (lightTimer > 0.2) { lightTimer = 0; updateLights(); }
     updateDetail(10);
     updateResolution(frameMs, active);

@@ -9,7 +9,7 @@ const root=path.resolve(__dirname,'../Builds/Web'),logs=path.resolve(__dirname,'
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;const checks=[],errors=[];
  try{
-  browser=await chromium.launch({executablePath:'C:/Users/WINDOWS11/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe',headless:true,args:['--use-angle=d3d11','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']});
+  browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Users/WINDOWS11/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe',headless:true,args:['--use-angle=d3d11','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']});
   for(const mobile of [false,true]){
    const width=mobile?500:900,height=mobile?800:600,prefix=mobile?'touch':'desktop';const reports=[];
    const page=await browser.newPage({viewport:{width,height},hasTouch:mobile,isMobile:mobile,deviceScaleFactor:1});
