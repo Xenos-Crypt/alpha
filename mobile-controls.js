@@ -23,7 +23,7 @@ export function setupMobileControls(ctx){
  #mobileSwitch{position:absolute;left:50%;top:10px;transform:translateX(-50%);width:46px;height:44px}
  #mobileGateInfo{position:absolute;left:calc(50% + 58px);top:10px;width:44px;height:44px}
  #mobileTop{position:absolute;right:max(12px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));display:flex;gap:5px}
- #mobileRun{position:absolute;right:176px;bottom:115px;width:48px}#mobileControls.run-toggle #mobileRun{right:auto;left:55px;bottom:145px}
+ #mobileRun{position:absolute;right:196px;bottom:16px;width:52px;height:52px}#mobileControls.run-toggle #mobileRun{right:auto;left:55px;bottom:145px}
  #mobileDirections{position:absolute;left:22px;bottom:20px;display:grid;grid-template-columns:repeat(3,44px);gap:5px}#mobileDirections button{height:44px}#mobileForward{grid-column:2}#mobileLeft{grid-row:2;grid-column:1}#mobileBackward{grid-row:2;grid-column:2}#mobileRight{grid-row:2;grid-column:3}
  #mobileGears{position:absolute;left:50%;bottom:36px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;color:white;font:700 14px system-ui}
  #rotatePhone{position:fixed;inset:0;z-index:100;background:#101c2b;display:flex;align-items:center;justify-content:center;flex-direction:column;color:white;text-align:center;padding:24px;font:20px system-ui}#rotatePhone[hidden]{display:none}#rotatePhone p{font-size:15px;color:#b9cbdc;max-width:300px}
