@@ -18,7 +18,7 @@ await esbuild.build({
   bundle: true,
   format: 'esm',
   outfile: 'dist/bundle.js',
-  minify: true,
+  minify: process.env.NOMIN?false:true,
   sourcemap: true,
   platform: 'browser',
   loader: { '.wasm': 'file' },
