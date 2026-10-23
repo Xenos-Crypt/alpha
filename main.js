@@ -111,6 +111,11 @@ const touchDevice = matchMedia('(pointer: coarse)').matches && navigator.maxTouc
 renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1 : 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// The shadow map is redrawn every 2nd frame (see frame()): drawing it walks the whole
+// ~50k-object scene a second time, and for a mostly static world the result is identical.
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
+let shadowFrame = 0;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 document.body.prepend(renderer.domElement);
@@ -125,8 +130,14 @@ const GFX_PRESETS = {
 // Phones default to Low (no shadows, lower pixel ratio) unless the player has
 // already picked a quality themselves -- "medium" for everyone was hammering
 // weaker phones, since shadow rendering is the single biggest GPU cost there.
-let gfxQuality = GFX_PRESETS[localStorage.getItem('gfxQuality')] ? localStorage.getItem('gfxQuality') : (touchDevice ? 'low' : 'medium');
-function setGraphicsQuality(level) {
+// Older builds also saved the automatic slow-frame downgrade, so desktop players could be
+// stuck on Low without choosing it. A saved 'low' only counts if it was picked in Settings.
+const savedGfx = localStorage.getItem('gfxQuality');
+const savedGfxChosen = localStorage.getItem('gfxQualityChosen') === '1' || touchDevice || savedGfx !== 'low';
+let gfxQuality = GFX_PRESETS[savedGfx] && savedGfxChosen ? savedGfx : (touchDevice ? 'low' : 'medium');
+// `persist` is false for the automatic slow-frame downgrade, so one slow moment (an area
+// streaming in, another app busy) doesn't leave the player on Low quality forever.
+function setGraphicsQuality(level, persist = true) {
   gfxQuality = GFX_PRESETS[level] ? level : 'medium';
   const p = GFX_PRESETS[gfxQuality];
   renderer.setPixelRatio(Math.min(devicePixelRatio, p.pr));
@@ -134,7 +145,7 @@ function setGraphicsQuality(level) {
   perfBudget?.setQuality(gfxQuality);
   renderer.shadowMap.enabled = p.shadows;
   applyShadowMapSize();   // no-op before `sun` exists; the sun's own setup applies the initial size instead
-  localStorage.setItem('gfxQuality', gfxQuality);
+  if (persist) localStorage.setItem('gfxQuality', gfxQuality);
 }
 // The shadow render target is only (re)created lazily at its current size —
 // changing mapSize after the first render needs the stale one disposed first.
@@ -5752,7 +5763,7 @@ function toggleSettings(open) {
   else if (getComputedStyle($('menu')).display === 'none') requestGameControl();
 }
 document.querySelectorAll('#settingsPanel .tab').forEach(b => b.addEventListener('click', () => { settingsTab = b.dataset.stab; renderSettings(); }));
-document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { manualGraphics=true;setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
+document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { manualGraphics=true;localStorage.setItem('gfxQualityChosen','1');setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
 $('settingsBtn').addEventListener('click', () => toggleSettings(true));
 $('menuLagSettings').addEventListener('click', () => { settingsTab = 'graphics'; toggleSettings(true); });
 $('inventoryBtn').addEventListener('click', () => toggleInventory(true));
@@ -6877,7 +6888,7 @@ const clock = new THREE.Clock();
 let slowFrameTime=0,lastFrameAt=performance.now(),perfWarmup=0;
 function frame() {
   const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
-  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low');slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
+  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low',false);slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
   if(document.hidden&&!(onlinePlayReady&&hosting.room)){clock.getDelta();requestAnimationFrame(frame);return;}
   const running=locked||(onlinePlayReady&&!!hosting.room);
   const rawDt = Math.min(clock.getDelta(), 0.05);
@@ -6947,7 +6958,7 @@ function frame() {
   perfBudget.update(rawDt, frameMs, running);
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
-  if(!coveredByOverlay())renderer.render(scene, camera);
+  if(!coveredByOverlay()){if(++shadowFrame%2===0)renderer.shadowMap.needsUpdate=true;renderer.render(scene, camera);}
   requestAnimationFrame(frame);
 }
 const OVERLAY_IDS=['auth','menu','spawn','classSelect','gameLoading'];
