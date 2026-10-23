@@ -1,6 +1,6 @@
 const http=require('http'),fs=require('fs'),path=require('path');
 try{process.loadEnvFile();}catch{}
-const root=__dirname,types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.jpg':'image/jpeg','.png':'image/png','.json':'application/json','.glb':'model/gltf-binary','.hdr':'application/octet-stream'};
+const root=__dirname,types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.jpg':'image/jpeg','.png':'image/png','.json':'application/json','.glb':'model/gltf-binary','.hdr':'application/octet-stream','.wasm':'application/wasm','.mp4':'video/mp4','.css':'text/css','.mjs':'text/javascript','.webp':'image/webp','.svg':'image/svg+xml'};
 
 const NPC_MODEL='gpt-4o-mini';
 const NPC_SYSTEM=`You are the reaction engine for NPCs in a life-sim game town. Given an NPC's profile and what the player just said or did to them, reply with ONLY a JSON object, no prose outside it, matching exactly:
