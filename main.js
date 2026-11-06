@@ -44,14 +44,19 @@ import {buildHelipads} from './helipads.js';
 import {buildDrones} from './drones.js';
 import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
-import {buildBlackMarket} from './black-market.js';
+import {buildBlackMarket, NARROWS} from './black-market.js';
 import {buildMilitary, addNavyCrew} from './military.js';
 import {createConditions} from './condition.js';
 import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
 import {createRace} from './race.js';
 import {buildDoors} from './doors.js';
-import {buildHills} from './hills.js';
+import {buildHills, buildRidge} from './hills.js';
+import {buildVehicleDealers} from './vehicle-dealers.js';
+import {createMarketPanel} from './market-panel.js';
+import {createProperty} from './property.js';
+import {marketItems, applyStats, CAR_CATS, BIKE_CATS, AIR_CATS} from './vehicle-catalogue.js';
+import {styleCar, randomCarStyle} from './car-styles.js';
 import {createCarControls} from './car-controls.js';
 import {createSnackShop} from './snack-shop.js';
 import {createArcade} from './arcade-games.js';
@@ -492,6 +497,7 @@ const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const hillFloor=hills?.groundAt(x,z);if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
+  const ridgeFloor=ridge?.groundAt(x,z);if(ridgeFloor!=null)return ridgeFloor;   // Sunset Ridge
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
@@ -2169,7 +2175,7 @@ function saveSolo() {
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
-      adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
+      adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
       metro:metro?.snapshot(),sewer:sewers?.snapshot(),law:roadLaw?.snapshot(),hunter:hunterGuilds?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
       navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
       driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
@@ -2200,7 +2206,7 @@ function applySoloSave(save) {
   supportSkills?.restore(save.support);if(save.supportCounters)supportCounters=save.supportCounters;specialUnlocked=!!supportSkills?.equipped;buildHotbar();
   heroDungeonKills=save.heroDungeonKills||0;
   monsterQuestKills=save.monsterQuestKills||0;for(const q of cityLife?.quests||[]){const saved=save.questState?.find(s=>s.name===q.name);if(saved)Object.assign(q,saved);}
-  conditions?.restore(save.buildingCondition);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
+  conditions?.restore(save.buildingCondition);property?.restore(save.property);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
   if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
   adventureServices?.restore(save.adventure);
   roadLaw?.restore(save.law);hunterGuilds?.restore(save.hunter);
@@ -2333,7 +2339,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null;
+let ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, property = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -2351,10 +2357,11 @@ const ambRed = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff0
 const ambWhite = new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xffffff, emissiveIntensity: 0 });
 const ambCrossMat = new THREE.MeshStandardMaterial({ color: 0xe84118, roughness: 0.5 });
 
-function makeVehicle(kind, color) {
+function makeVehicle(kind, color, style) {
   if(['car','police','ambulance','motorcycle','bicycle'].includes(kind)){
    const v=buildRoadVehicle({scene,makeTex,kind,color,headMat,tailMat,sirenRed,sirenBlue,ambRed,ambWhite});
    hoverRoadVehicle(v, kind==='bicycle'||kind==='motorcycle' ? 0.35 : 0.45);   // cars and bikes hover
+   if(kind==='car')styleCar(v, style || randomCarStyle(), { headMat, tailMat });   // traffic is a mix of saloons, hatchbacks, SUVs, sports cars...
    vehicles.push(v);return v;
   }
   const g = new THREE.Group();
@@ -2495,7 +2502,7 @@ for (let i = 0; i < 14; i++) spawnTraffic('car', pick(CAR_COLORS));
 for (let i = 0; i < 2; i++) spawnTraffic('police', 0xf5f6fa);
 for (let i = 0; i < 2; i++) spawnTraffic('bus', 0x8b1a2b, BUS_ROUTE);
 
-const myCar = makeVehicle('car', 0xd63031);    // your own car, parked on the drive
+const myCar = makeVehicle('car', 0xd63031, 'saloon');    // your own car, parked on the drive
 myCar.group.position.set(12.4, CURB, 14.4);   // parked on the driveway, inside the gate
 myCar.group.rotation.y = Math.PI;
 
@@ -2509,7 +2516,7 @@ let flashlightOn = false;
 function toggleFlashlight() { flashlightOn = !flashlightOn; toast(flashlightOn ? 'Flashlight on (V to turn it off).' : 'Flashlight off.'); $('torchBtn')?.classList.toggle('on', flashlightOn); }
 const _fwd = new THREE.Vector3();
 function updateFlashlight() {
-  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; }
+  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } }
   flashlight.intensity = flashlightOn && !inCar ? 90 : 0;
   if (!flashlightOn) return;
   camera.getWorldDirection(_fwd);
@@ -3308,6 +3315,44 @@ function makeAircraft(a) {
   return v;
 }
 AIRCRAFT.forEach(makeAircraft);
+// A flyable helicopter: Space climbs, Shift descends, W/S fly forward/back, A/D turn. It hovers.
+function makeHelicopter({ name = 'Helicopter', color = 0x2f6f8f, x = 0, z = 0, yaw = 0 } = {}) {
+  const g = new THREE.Group(); g.rotation.order = 'YXZ'; scene.add(g);
+  const body = new THREE.MeshStandardMaterial({ color, metalness: 0.4, roughness: 0.35 }), dark = new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.6 });
+  const hull = new THREE.Mesh(new THREE.SphereGeometry(1.3, 16, 12), body); hull.scale.set(1, 0.85, 1.7); hull.position.y = 1.5; g.add(hull);
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(1.0, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1d3a5a, metalness: 0.6, roughness: 0.1, transparent: true, opacity: 0.8 })); glass.rotation.x = Math.PI / 2.4; glass.position.set(0, 1.75, 1.2); g.add(glass);
+  const boom = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 4.2), body); boom.position.set(0, 1.8, -3.4); g.add(boom);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.1, 0.7), body); fin.position.set(0, 2.3, -5.3); g.add(fin);
+  const tail = new THREE.Group(); tail.position.set(0.12, 2.3, -5.3); g.add(tail); for (const r of [0, Math.PI / 2]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.1, 0.12), dark); b.rotation.x = r; tail.add(b); }
+  for (const s of [-1, 1]) { const skid = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.2, 8), dark); skid.rotation.x = Math.PI / 2; skid.position.set(s * 0.95, 0.15, 0.2); g.add(skid); for (const zz of [-0.6, 1.0]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.65, 0.06), dark); st.position.set(s * 0.8, 0.45, zz); g.add(st); } }
+  const rotor = new THREE.Group(); rotor.position.y = 3.0; g.add(rotor);
+  for (let i = 0; i < 4; i++) { const arm = new THREE.Group(); arm.rotation.y = i * Math.PI / 2; const blade = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 5.2), dark); blade.position.z = 2.6; arm.add(blade); rotor.add(arm); }
+  g.position.set(x, groundY(x, z, 0), z); g.rotation.y = yaw;
+  const v = { kind: 'plane', heli: true, name, group: g, wheels: [], speed: 0, radius: 3, wingSpan: 6, length: 7, maxSpeed: 40, takeoff: 0, turnRate: 1.3, ai: null, passengers: null,
+    alt: g.position.y, crashed: false, prop: null, exhaust: null, rotor, tail, plane: { throttle: 0, pitch: 0, roll: 0, yaw }, home: { x, z, yaw } };
+  vehicles.push(v);
+  return v;
+}
+function flyHelicopter(v, dt) {
+  const P = v.plane, p = v.group.position, mine = v === driving;
+  const up = mine ? (keys.Space ? 1 : 0) - (keys.ShiftLeft || keys.ShiftRight ? 1 : 0) : -1;
+  const fwd = mine ? (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) : 0, turn = mine ? (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0) : 0;
+  P.throttle = lerp(P.throttle, mine ? 1 : 0, 1 - Math.exp(-0.8 * dt));   // rotor spins up when you're in it
+  const ground = groundY(p.x, p.z), spun = P.throttle > 0.6;
+  v.vy = lerp(v.vy || 0, spun ? up * 9 : -6, 1 - Math.exp(-2 * dt));
+  v.alt = Math.min(260, Math.max(ground, v.alt + v.vy * dt));
+  const airborne = v.alt > ground + 0.3;
+  v.speed = lerp(v.speed, airborne ? fwd * v.maxSpeed : 0, 1 - Math.exp(-1.2 * (v.stats?.accel || 1) * dt));
+  P.yaw += turn * v.turnRate * (v.stats?.handling || 1) * dt * (spun ? 1 : 0);
+  P.pitch = lerp(P.pitch, -v.speed / v.maxSpeed * 0.25, 1 - Math.exp(-3 * dt));   // nose dips when flying forward
+  P.roll = lerp(P.roll, airborne ? -turn * 0.25 : 0, 1 - Math.exp(-3 * dt));
+  p.x += Math.sin(P.yaw) * v.speed * dt; p.z += Math.cos(P.yaw) * v.speed * dt;
+  if (v.alt < ground + 4 && collide(p, 2.4) && Math.abs(v.speed) > 12) return crashPlane(v);
+  if (planeBlocks.some(b => p.x + 3 > b.minX && p.x - 3 < b.maxX && p.z + 3 > b.minZ && p.z - 3 < b.maxZ && v.alt + 1 > (b.bottom ?? 0) && v.alt - 1 < b.top)) { if (Math.abs(v.speed) > 15) return crashPlane(v); v.speed = 0; }
+  p.y = v.alt;
+  v.group.rotation.set(P.pitch, P.yaw, P.roll);
+  v.rotor.rotation.y += dt * 30 * P.throttle; v.tail.rotation.x += dt * 40 * P.throttle;
+}
 // Temporary: your own plane parked near home instead of the car, for testing
 // fast travel — same "for now, revert later" spirit as CHEAT_NO_NEEDS/SPEED.
 makeAircraft({ name: 'Your plane', color: 0xf5f6fa, accent: 0xd63031, maxSpeed: 60, takeoff: 24, turn: 0.95, jet: false, home: [RUNWAY.x, RUNWAY.z - 35] });
@@ -3344,6 +3389,7 @@ function crashPlane(v) {
 
 function flyPlane(v, dt) {
   if (v.crashed) return;
+  if (v.heli) return flyHelicopter(v, dt);
   const P = v.plane, p = v.group.position, mine = v === driving;
   if (mine) {
     if (keys.KeyW) P.throttle = Math.min(1, P.throttle + 0.5 * dt);
@@ -5687,10 +5733,24 @@ function updateBusRide(dt) {
   player.rotation.y = v.group.rotation.y;
 }
 // Using a vehicle that needs a licence you don't hold gets you reported (once per trip).
+// Stolen vehicles carry hot plates: a police car that gets a good look may flag them.
+function checkHotPlates(dt) {
+  if (!inCar || !driving?.hotPlates || driving.platesFlagged) return;
+  if (!vehicles.some(p => p.kind === 'police' && !p.disabled && distXZ(p.group.position, driving.group.position) < 30)) return;
+  if (Math.random() < dt * 0.12) { driving.platesFlagged = true; raiseWanted(55); toast('🚔 ANPR hit: the police flagged your plates as stolen!'); }
+}
 function checkVehicleLicences() {
   if (!inCar || !driving) return;
   const v = driving, need = v.kind === 'plane' ? 'pilot' : v.kind === 'boat' || v.kind === 'submarine' ? 'boat' : v.kind === 'motorcycle' ? 'motorbike' : null;
-  if (!need || v.licenceReported || licences.has(need)) return;
+  if (!need || v.licenceReported) return;
+  if (licences.has(need)) {
+    // a forged licence might get checked once per trip
+    if (licences.forged(need) && !v.licenceChecked && (v.kind === 'plane' ? v.group.position.y > 8 : Math.abs(v.speed) > 6)) {
+      v.licenceChecked = true;
+      licences.check(need, 0.25, need === 'pilot' ? '📡 Air traffic control' : need === 'boat' ? '⚓ The harbour master' : '🚔 A traffic officer');
+    }
+    return;
+  }
   const moving = v.kind === 'plane' ? v.group.position.y > 8 : Math.abs(v.speed) > 6;
   if (!moving) return;
   v.licenceReported = true;
@@ -5730,7 +5790,7 @@ function enterVehicle(v) {
   driving = v; inCar = true; action = null;
   if(cameraView==='first'){yaw=v.group.rotation.y+Math.PI;pitch=0;}
   player.visible = false;
-  if (v.kind === 'plane') toast('Q/R barrel roll in flight. W/S throttle · A/D turn · Space climb · Shift dive. Take off down the runway!');
+  if (v.kind === 'plane') toast(v.heli ? '🚁 Helicopter: Space climbs, Shift descends, W/S fly forward/back, A/D turn. Lift off anywhere.' : 'Q/R barrel roll in flight. W/S throttle · A/D turn · Space climb · Shift dive. Take off down the runway!');
   (v.hoverBody || v.group).add(headlight, headlight.target);
   headlight.position.set(0, 0.8, v.length / 2 + 0.1);
   headlight.target.position.set(0, 0, 14);
@@ -5915,6 +5975,27 @@ let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
 // Homes, shops and offices get real multi-room interiors (see interiors.js); civic
 // buildings keep the themed hall above.
 // Snack and drink menu used by shop tills, kiosks and vending machines.
+const market = createMarketPanel({ money: () => stats.gold, toast, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
+// Buy a vehicle from the filtered shop. place(v, entry) puts it where the seller keeps it.
+function openVehicleShop(title, cats, place, { priceMult = 1, illegal = false } = {}) {
+  market.open(title, marketItems(cats, { priceMult, tag: illegal ? 'Stolen, re-sprayed, fake plates.' : '' }), (item, colour) => {
+    const e = item.entry;
+    if (stats.gold < item.price) { toast('Not enough gold.'); return false; }
+    stats.gold -= item.price;
+    let v;
+    if (e.kind === 'car') v = makeVehicle('car', colour, e.style);
+    else if (e.kind === 'heli') v = makeHelicopter({ name: e.name, color: colour });
+    else if (e.kind === 'plane') v = makeAircraft({ name: e.name, color: colour, accent: 0x22262b, maxSpeed: e.mph * 0.42, takeoff: e.plane.takeoff, turn: e.plane.turn, jet: e.plane.jet, home: [0, 0] });
+    else v = makeVehicle(e.kind, colour);
+    applyStats(v, e); v.owned = true; v.ai = null;
+    if (illegal) { v.hotPlates = true; v.stolenGoods = true; }
+    place(v, e);
+    if (v.kind === 'plane') { v.alt = v.group.position.y; v.plane.yaw = v.group.rotation.y; v.home = { x: v.group.position.x, z: v.group.position.z, yaw: v.group.rotation.y }; }
+    if (isRoadVehicle(v) || v.kind === 'bicycle') cityServices?.ownedCars?.push(v);
+    toast(`${item.icon} ${e.name} is yours!${illegal ? ' Keep your head down: the plates are hot.' : ''} It's waiting outside.`);
+    return true;
+  }, { tag: illegal ? 'BLACK MARKET' : '' });
+}
 const casino = createCasino({ money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, earn: n => { stats.gold += n; }, toast, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const arcade = createArcade({ toast, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
   onFinish(kind, score, won, msg) {
@@ -5922,7 +6003,7 @@ const arcade = createArcade({ toast, pause: () => pauseForPanel(), resume: () =>
     tickets += won; try { localStorage.setItem('anotherworld-arcade-tickets', String(tickets)); } catch {}
     toast(`${msg} Score ${score}: +${won} tickets (${tickets} total). Swap 50 at the prize counter.`);
   } });
-const licences = createLicences({ money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, toast, day: () => reconstructionDays, wanted: () => wanted, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
+const licences = createLicences({ caught: () => raiseWanted(70), money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, toast, day: () => reconstructionDays, wanted: () => wanted, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const snackShop = createSnackShop({ stats, maxHp, toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
@@ -6063,7 +6144,8 @@ function nearestCivicBuilding() {
   return best;
 }
 async function enterCivicBuilding(b) {
-  if (doors && !doors.isOpen(b)) { toast(`${b.name} is closed. The shutters go up at 07:00.`); return; }
+  if (doors && !doors.isOpen(b) && !property?.owns(b.name)) { toast(`${b.name} is closed. The shutters go up at 07:00.`); return; }
+  if (property?.owns(b.name)) toast(`🔑 Welcome to your property, ${b.name}.`);
   if(b.structure&&!b.structure.alive){toast('Building closed for reconstruction.');return;}
   action = null;
   civicReturnPos = player.position.clone();
@@ -6334,6 +6416,7 @@ addEventListener('keydown', e => {
   if (!locked) return;
   if (inCar && isRoadVehicle(driving) && carControls.keydown(e.code)) return;   // gears, lights, indicators, horn
   if (e.code === 'KeyV') toggleFlashlight();
+  if (e.code === 'KeyY' && !inCar) cityServices?.callTaxi(player.position.clone());
   if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
@@ -6723,10 +6806,10 @@ function driveVehicle(v, dt) {
   const icy = isRoadVehicle(v) && weatherState === 'snow';   // less grip: slower to slow down, looser steering — cars can slide
   if (mine) {
     if (isRoadVehicle(v)) conditions?.wear(v, Math.abs(v.speed) * dt);
-    if (isRoadVehicle(v)) v.speed += carControls.drive(v, dt, keys, (v.kind === 'bus' ? 9 : 18) * conditionFactors(v.health).power);   // gears / selector decide what W and S do
-    else { if (keys.KeyW) v.speed += 18 * conditionFactors(v.health).power * dt; if (keys.KeyS) v.speed -= 24 * dt; }
+    if (isRoadVehicle(v)) v.speed += carControls.drive(v, dt, keys, (v.kind === 'bus' ? 9 : 18) * conditionFactors(v.health).power * (v.stats?.accel || 1));   // gears / selector decide what W and S do
+    else { if (keys.KeyW) v.speed += 18 * conditionFactors(v.health).power * (v.stats?.accel || 1) * dt; if (keys.KeyS) v.speed -= 24 * (v.stats?.brake || 1) * dt; }
     const steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
-    v.group.rotation.y += steer * (v.kind === 'bus' ? 1.1 : 1.8) * (icy ? 0.5 : 1) *conditionFactors(v.health).steering* dt * Math.min(1, Math.abs(v.speed) / 8) * Math.sign(v.speed);
+    v.group.rotation.y += steer * (v.kind === 'bus' ? 1.1 : 1.8) * (icy ? 0.5 : 1) *conditionFactors(v.health).steering* (v.stats?.handling || 1) * dt * Math.min(1, Math.abs(v.speed) / 8) * Math.sign(v.speed);
   }
   v.speed *= Math.max(0, 1 - (mine && (keys.KeyW || keys.KeyS) ? 0.3 : 1.5) * (icy ? 0.3 : 1) * dt);
   const condition=conditionFactors(v.health);if(mine&&isRoadVehicle(v))v.group.rotation.y+=condition.drift*Math.sin(performance.now()*.002)*dt*Math.min(1,Math.abs(v.speed)/8);
@@ -6964,6 +7047,7 @@ function updateVehicles(dt) {
     const roadStart = v.group.position.clone();
     if (v === driving || !v.ai) driveVehicle(v, dt);
     else if (v.kind === 'police' && wanted > 0 && !dungeon) policeChase(v, dt);
+    else if (!v.ai.from && !v.ai.chasing && v.kind !== 'tank' && !(v.kind === 'police' && v.stationHome)) { v.speed = 0; continue; }   // no lane route: just wait (never crash the traffic code)
     else if (v.kind === 'tank' && militaryAlert > 0 && !dungeon) tankChase(v, dt);
     else if(v.kind==='police'&&v.stationHome){const delta=v.stationHome.clone().sub(v.group.position).setY(0),distance=delta.length();if(distance<3){v.ai.parked=true;v.ai.chasing=false;v.speed=0;}else{v.group.rotation.y=Math.atan2(delta.x,delta.z);v.speed=Math.min(10,distance);v.group.position.addScaledVector(delta.normalize(),v.speed*dt);v.group.position.y=groundY(v.group.position.x,v.group.position.z);}}
     else {
@@ -7251,7 +7335,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
 capitalServiceBuildings=buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,civicBuildings,destinations:townPlaces.destinations});
-blackMarket = buildBlackMarket({ scene, colliders, interactables, sitSpots, makePerson: makeHumanoid, animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, groundY, toast, raiseWanted, stats, destinations: townPlaces.destinations, openMenu: (name, items) => snackShop.open(name, 'black', items) });
+blackMarket = buildBlackMarket({ openVehicleShop: (t, cats, place, o) => openVehicleShop(t, cats, place, o), openPropertyShop: kind => property?.openShop(kind), forgeLicence: id => { if (id === 'driving') { roadLaw.licence.held = true; roadLaw.licence.theory = true; roadLaw.licence.forged = true; roadLaw.licence.banned = false; } else licences.forge(id); }, hasLicence: id => id === 'driving' ? !!roadLaw?.licence.held : licences.has(id), scene, colliders, interactables, sitSpots, makePerson: makeHumanoid, animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, groundY, toast, raiseWanted, stats, destinations: townPlaces.destinations, openMenu: (name, items) => snackShop.open(name, 'black', items) });
 statSources.push(blackMarket);
 addEventListener('aw-clear-wanted', () => { wanted = 0; pursuitBackupCooldown = 0; });
 spaceCentre=buildSpaceCentre({safeFence:fenceRect,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
@@ -7329,7 +7413,7 @@ controlTarget:()=>enemies.find(e=>e.alive&&e.kind==='monster'&&!e.superArmor&&di
 controlUpdate(e,dt){const target=enemies.filter(t=>t!==e&&t.alive&&t.kind==='monster').sort((a,b)=>distXZ(a.root.position,e.root.position)-distXZ(b.root.position,e.root.position))[0];if(!target)return;walkTowards(e,target.root.position,3,dt);animateHumanoid(e.h,null,true,false,true,dt);e.controlAttackCd=Math.max(0,(e.controlAttackCd||0)-dt);if(distXZ(e.root.position,target.root.position)<3&&!e.controlAttackCd){applyHit(target,{dmg:25,from:e.root.position.clone(),kb:2,up:0,stun:.3});e.controlAttackCd=1;}}
 });
 specialUnlocked=false;buildHotbar();
-cityServices=buildCityServices({colliders,upgradeCar:v=>detailVehicle(v,'luxury'),firstPerson:()=>cameraView==='first',scene,box,makeTex,makePerson:makeHumanoid,makeVehicle,groundY,interactables,toast,
+cityServices=buildCityServices({openVehicleShop:(title,place)=>openVehicleShop(title,CAR_CATS,place),colliders,destinations:townPlaces.destinations,upgradeCar:v=>detailVehicle(v,'luxury'),firstPerson:()=>cameraView==='first',scene,box,makeTex,makePerson:makeHumanoid,makeVehicle,groundY,interactables,toast,
 canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!cityServices?.rider&&!inCar&&!sitting&&!riding&&!dungeon&&!action&&!transport?.rider&&!metro?.rider&&!spaceCentre?.rider,
 pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},
 board(){action=null;vy=0;pvel.set(0,0,0);},carry:p=>player.position.copy(p),leave(p){player.position.copy(p);player.position.y=groundY(p.x,p.z,p.y);collide(player.position,.4);vy=0;},
@@ -7347,7 +7431,7 @@ for(let z=BRIDGE_Z0;z<BRIDGE_Z1;z+=8)if(z<GAP0||z>=GAP1)planeBlocks.push({minX:B
 for(const side of [1,-1]){const b={minX:BRIDGE_X-BRIDGE_HALF_W,maxX:BRIDGE_X+BRIDGE_HALF_W,minZ:side===1?GAP0:(GAP0+GAP1)/2,maxZ:side===1?(GAP0+GAP1)/2:GAP1,bottom:BRIDGE_Y-.5,top:BRIDGE_Y+.4,side};liftPlaneBlocks.push(b);planeBlocks.push(b);}
 bridgeTraffic=buildBridgeTraffic({makeVehicle,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),groundY,harbourHeight:harbourBridge.heightAt,vehicles,resolve:resolveRoadMovement,liftWarning:()=>bridgeLiftState!=='down'});
 const equippedGun=new THREE.Group();P.armR.pivot.add(equippedGun);equippedGun.position.copy(P.armR.end.position);equippedGun.rotation.x=1;mesh(new THREE.BoxGeometry(.12,.12,.65),0x293541,equippedGun).position.z=.25;mesh(new THREE.BoxGeometry(.1,.22,.14),0x394853,equippedGun).position.y=-.08;equippedGun.visible=false;
-adventureServices=buildAdventureServices({licensed:id=>licences.has(id),openLicences:name=>licences.open(name),illegalPurchase:()=>raiseWanted(60),showEquipment(id){swordGrip.visible=id==='sword'||!id&&!!origin?.weapon;equippedGun.visible=id==='pistol'||id==='rifle';equippedGun.scale.setScalar(id==='rifle'?1.5:1);},scene,box,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),sign:signboard,destinations:townPlaces.destinations,interactables,playerPosition:()=>player.position,toast,
+adventureServices=buildAdventureServices({licensed:id=>licences.has(id),licenceCheck:(id,c,who)=>licences.check(id,c,who),openLicences:name=>licences.open(name),illegalPurchase:()=>raiseWanted(60),showEquipment(id){swordGrip.visible=id==='sword'||!id&&!!origin?.weapon;equippedGun.visible=id==='pistol'||id==='rifle';equippedGun.scale.setScalar(id==='rifle'?1.5:1);},scene,box,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),sign:signboard,destinations:townPlaces.destinations,interactables,playerPosition:()=>player.position,toast,
 pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons}),pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},reward(gold,xp){stats.gold+=gold;gainXp(xp);},changed(){saveSolo();},
 repair(price){const car=vehicles.find(v=>isRoadVehicle(v)&&!v.disabled&&!v.noSteal&&distXZ(v.group.position,player.position)<12);if(!car){toast('Bring an operational car within 12 metres of the shop.');return;}if(stats.gold<price){toast('Not enough gold.');return;}stats.gold-=price;car.health=100;applyVehicleCondition(car);toast('Vehicle repaired. Full power and steering restored.');},
 swordAttack(){callout('SWORD STRIKE',0xe5f2ff);hitCone(player.position,aimForward(),5,.1,new Set(),{dmg:35,kb:5,stun:.5,from:player.position.clone()},3);},
@@ -7368,12 +7452,18 @@ military = buildMilitary({ scene, colliders, interactables, civicBuildings, make
   playerPos: () => player.position, playerRig: () => P,
   addAircraft: a => makeAircraft(a),
   makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
+buildVehicleDealers({ openVehicleShop, scene, colliders, interactables, makeTex, makePerson: o => makeHumanoid(o), makeVehicle, makeHelicopter, makeAircraft, toast, money: () => stats.gold, sign: signboard, groundY, destinations: townPlaces.destinations,
+  shopPanel: (title, items) => snackShop.open(title, 'dealer', items), registerOwned: v => cityServices?.ownedCars?.push(v) });
+ridge = buildRidge({ scene, makeTex, interactables, sitSpots, toast, destinations: townPlaces.destinations });
 hills = buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position });
 conditions = createConditions({ buildings, collapse: b => collapseBuilding(b, false), toast, playerPos: () => player.position,
   nearVehicle: () => { let best = null, bd = 3.2; for (const v of vehicles) { if (v.disabled || !isRoadVehicle(v)) continue; const d = distXZ(v.group.position, player.position); if (d < bd) { bd = d; best = v; } } return best; } });
 for (const b of buildings) if (b.x > HOME.minX - 2 && b.x < HOME.maxX + 2 && b.z > HOME.minZ - 2 && b.z < HOME.maxZ + 2) { b.quality = 'solid'; b.ageYears = 0; }   // your own house is new and well built
 for (const b of civicBuildings) if (b.minX != null && b.minX < HOME.maxX && b.maxX > HOME.minX && b.minZ < HOME.maxZ && b.maxZ > HOME.minZ) b.noDoor = true;   // your house has its own door
 doors = buildDoors({ scene, buildings: civicBuildings, colliders, groundY, makeTex, playerPos: () => player.position, hourNow: () => (6 + dayTime * 24) % 24 });
+property = createProperty({ scene, buildings: civicBuildings, market, interactables, toast, colliders, groundY, sign: signboard, makePerson: o => makeHumanoid(o), narrows: NARROWS,
+  money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, earn: n => { stats.gold += n; }, playerPos: () => player.position, day: () => reconstructionDays,
+  wanted: () => wanted, clearWanted: () => { wanted = 0; }, raiseWanted, timeSkip: f => { dayTime = (dayTime + f) % 1; } });
 navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast });
 intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex});
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
@@ -7483,8 +7573,8 @@ function frame() {
     carControls.update(dt);
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
-    updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); race?.update(dt); doors?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
+    updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
+    blackMarket?.update(dt); football?.update(dt); race?.update(dt); doors?.update(dt); property?.update(); hills?.update(dt, inCar && driving ? driving.group.position : null);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }

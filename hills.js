@@ -133,3 +133,36 @@ export function buildHills({ scene, colliders, civicBuildings, interactables, ma
   function groundAt(x, z) { const dx = x - HILL.x, dz = z - HILL.z; if (dx * dx + dz * dz >= HILL.base * HILL.base) return null; return hillHeight(x, z); }
   return { update, groundAt, hill: HILL };
 }
+
+// Sunset Ridge: a long ridge south of the nightlife strip. The road from the boulevard climbs
+// over it (about 8% at the steepest) past a viewpoint car park at the crest.
+export const RIDGE = { x: 960, z: 800, half: 200, width: 70, top: 10, roadFrom: 1093, roadTo: 560 };
+export function ridgeHeight(x, z) {
+  const u = (z - RIDGE.z) / RIDGE.half, w = Math.abs(x - RIDGE.x);
+  if (Math.abs(u) >= 1 || w >= RIDGE.width) return 0;
+  const along = Math.cos(u * Math.PI / 2) ** 2, across = w < 30 ? 1 : 1 - smooth((w - 30) / (RIDGE.width - 30));
+  return RIDGE.top * along * across;
+}
+export function buildRidge({ scene, makeTex, interactables, sitSpots, toast, destinations }) {
+  const grass = makeTex(256, 256, g => { g.fillStyle = '#6b7a3e'; g.fillRect(0, 0, 256, 256); for (let i = 0; i < 4000; i++) { g.fillStyle = ['#778848', '#5f7036', '#82904e'][i % 3]; g.fillRect((i * 73) % 256, (i * 97 + (i >> 8) * 19) % 256, 1, 3); } });
+  grass.wrapS = grass.wrapT = THREE.RepeatWrapping; grass.repeat.set(8, 22);
+  const W = RIDGE.width * 2, L = RIDGE.half * 2, tg = new THREE.PlaneGeometry(W, L, 40, 100); tg.rotateX(-Math.PI / 2);
+  const pos = tg.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, ridgeHeight(pos.getX(i) + RIDGE.x, pos.getZ(i) + RIDGE.z) + 0.03);
+  tg.computeVertexNormals();
+  const terrain = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ map: grass, roughness: 1 })); terrain.position.set(RIDGE.x, 0, RIDGE.z); terrain.receiveShadow = true; scene.add(terrain);
+  // road ribbon following the ground
+  const ROAD = 9, N = 160, verts = [], idx = [];
+  for (let i = 0; i <= N; i++) { const z = RIDGE.roadFrom + (RIDGE.roadTo - RIDGE.roadFrom) * i / N; for (const s of [-1, 1]) { const x = RIDGE.x + s * ROAD / 2; verts.push(x, ridgeHeight(x, z) + 0.1, z); } }
+  for (let i = 0; i < N; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); rg.setIndex(idx); rg.computeVertexNormals();
+  scene.add(new THREE.Mesh(rg, new THREE.MeshStandardMaterial({ color: 0x34383c, roughness: 0.9, side: THREE.DoubleSide })));
+  const lineMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2 });
+  for (let z = RIDGE.roadFrom - 4; z > RIDGE.roadTo; z -= 9) { const a = new THREE.Vector3(RIDGE.x, ridgeHeight(RIDGE.x, z) + 0.13, z), b = new THREE.Vector3(RIDGE.x, ridgeHeight(RIDGE.x, z - 3.5) + 0.13, z - 3.5); const m = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 3.5), lineMat); m.position.copy(a).lerp(b, 0.5); m.lookAt(b); scene.add(m); }
+  // viewpoint lay-by at the crest
+  const lay = new THREE.Mesh(new THREE.BoxGeometry(12, 0.2, 24), new THREE.MeshStandardMaterial({ color: 0x55595c })); lay.position.set(RIDGE.x + 10.5, RIDGE.top + 0.05, RIDGE.z); scene.add(lay);
+  for (const dz of [-6, 0, 6]) { const bench = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.45, 2.2), new THREE.MeshStandardMaterial({ color: 0x6e6051 })); bench.position.set(RIDGE.x + 16, RIDGE.top + 0.35, RIDGE.z + dz); scene.add(bench); sitSpots?.push({ x: RIDGE.x + 16, z: RIDGE.z + dz, yaw: -Math.PI / 2, seatY: RIDGE.top + 0.95, label: 'Sit and watch the sunset' }); }
+  interactables.push({ pos: new THREE.Vector3(RIDGE.x + 12, RIDGE.top, RIDGE.z), r: 3, label: 'Look out from Sunset Ridge', action: () => toast('🌇 The whole city spreads out below you, all the way to the shimmer of the dome.') });
+  destinations?.push({ name: 'Sunset Ridge viewpoint', x: RIDGE.x + 10, z: RIDGE.z });
+  return { groundAt(x, z) { if (Math.abs(x - RIDGE.x) >= RIDGE.width || Math.abs(z - RIDGE.z) >= RIDGE.half) return null; const lay = Math.abs(x - RIDGE.x - 10.5) <= 6 && Math.abs(z - RIDGE.z) <= 12; return lay ? RIDGE.top + 0.15 : ridgeHeight(x, z); } };
+}

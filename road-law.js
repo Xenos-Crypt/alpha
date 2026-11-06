@@ -64,6 +64,18 @@ export function createRoadLaw(ctx) {
     const o = OFFENCES[key];
     if ((cooldown[key] || 0) > ctx.time()) return false;
     cooldown[key] = ctx.time() + 25;
+    // Every time you're stopped, the officer runs your licence: a forged one may not survive it.
+    if (licence.forged && Math.random() < 0.4) {
+      licence.held = false; licence.forged = false; licence.points = 0;
+      ctx.toast('🚔 The officer checks your licence number… it\'s a FORGERY. Licence seized and you\'re under arrest.');
+      ctx.raiseWanted(90);
+    }
+    // Every time you're stopped, the officer runs your licence: a forged one may not survive it.
+    if (licence.forged && Math.random() < 0.4) {
+      licence.held = false; licence.forged = false; licence.points = 0;
+      ctx.toast('🚔 The officer checks your licence number… it\'s a FORGERY. Licence seized and you\'re under arrest.');
+      ctx.raiseWanted(90);
+    }
     let fine = o.fine, points = o.points, note = '';
     if (!licence.held && key !== 'unlicensed' && key !== 'power' && key !== 'disqualified') {
       fine += OFFENCES.unlicensed.fine; points += OFFENCES.unlicensed.points; note = ' + no licence';

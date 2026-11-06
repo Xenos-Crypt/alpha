@@ -109,7 +109,8 @@ export function createCarControls({ headlight, headMat, tailMat, toast, isAuto, 
     if (v.battery <= 0 && keys.KeyW && !st.flatWarned) { st.flatWarned = true; toast('🔋 Battery flat! Coast to a charging point, or walk.'); }
     const W = !!keys.KeyW && v.battery > 0;
     let dv = 0;
-    const brake = () => { dv += -Math.sign(sp) * Math.min(Math.abs(sp), 30 * dt); };
+    const brakeK = v.stats?.brake || 1;   // better brakes stop you sooner
+    const brake = () => { dv += -Math.sign(sp) * Math.min(Math.abs(sp), 30 * brakeK * dt); };
     st.braking = S; st.reversing = false;
     // Like most games (and how drivers expect it): hold S at a standstill to back up, W at a standstill to go forward again.
     const stopped = Math.abs(sp) < 0.6;

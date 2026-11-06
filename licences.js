@@ -34,7 +34,7 @@ export const LICENCES = {
 };
 const PROCESS_DAYS = 0.5;
 
-export function createLicences({ money, spend, toast, day, wanted, pause, resume }) {
+export function createLicences({ money, spend, toast, day, wanted, pause, resume, caught }) {
   const state = {};   // id -> { status: 'pending'|'held'|'revoked', ready: day }
   const panel = typeof document !== 'undefined' ? document.createElement('section') : null;
   if (panel) {
@@ -57,7 +57,18 @@ export function createLicences({ money, spend, toast, day, wanted, pause, resume
   function refresh() {
     for (const id in state) if (state[id].status === 'pending' && day() >= state[id].ready) { state[id].status = 'held'; toast(`${LICENCES[id].icon} Your ${LICENCES[id].name.toLowerCase()} has been issued.`); }
   }
-  const has = id => { refresh(); return state[id]?.status === 'held'; };
+  // A forged licence works like the real thing until someone checks it properly.
+  const has = id => { refresh(); return state[id]?.status === 'held' || state[id]?.status === 'forged'; };
+  const forged = id => state[id]?.status === 'forged';
+  function forge(id) { state[id] = { status: 'forged' }; }
+  // Run a check against a licence: if it's forged, there's a `chance` it's spotted (and taken).
+  function check(id, chance, who = 'The officer') {
+    if (!forged(id) || Math.random() >= chance) return false;
+    state[id] = { status: 'revoked' };
+    toast(`${who} runs your ${LICENCES[id].name.toLowerCase()} through the system… it's a FORGERY! It's confiscated and the police are called.`);
+    caught?.(id);
+    return true;
+  }
   let title = 'Licensing Office';
   function list() {
     refresh();
@@ -65,9 +76,9 @@ export function createLicences({ money, spend, toast, day, wanted, pause, resume
     for (const [id, L] of Object.entries(LICENCES)) {
       const row = el('div', null, 'row'), s = state[id];
       const nm = el('span', `${L.icon} ${L.name}`, 'nm');
-      nm.append(el('small', s?.status === 'held' ? 'Held ✓' : s?.status === 'pending' ? `Processing… ready in about ${Math.max(1, Math.ceil((s.ready - day()) * 24))} game hours` : s?.status === 'revoked' ? 'Revoked. You can re-apply.' : `Fee ${L.fee} gold · Requirements: ${L.needs}`));
+      nm.append(el('small', s?.status === 'forged' ? 'Held ✓ (forged: don\'t let anyone look too closely)' : s?.status === 'held' ? 'Held ✓' : s?.status === 'pending' ? `Processing… ready in about ${Math.max(1, Math.ceil((s.ready - day()) * 24))} game hours` : s?.status === 'revoked' ? 'Revoked. You can re-apply.' : `Fee ${L.fee} gold · Requirements: ${L.needs}`));
       row.append(nm);
-      if (!s || s.status === 'revoked') { const b = el('button', 'Apply'); b.onclick = () => apply(id); row.append(b); }
+      if (!s || s.status === 'revoked' || s.status === 'forged') { const b = el('button', 'Apply'); b.onclick = () => apply(id); row.append(b); }
       box.append(row);
     }
     const c = el('button', 'Close', 'ghost'); c.onclick = close; box.append(c);
@@ -75,6 +86,7 @@ export function createLicences({ money, spend, toast, day, wanted, pause, resume
   function apply(id) {
     const L = LICENCES[id];
     if (id === 'firearms' && wanted() > 0) { toast('Application refused: you are wanted by the police.'); return; }
+    if (forged(id) && Math.random() < 0.6) { state[id] = { status: 'revoked' }; toast('The clerk looks up your existing licence… it\'s a forgery! It\'s cancelled and reported.'); caught?.(id); list(); return; }
     if (money() < L.fee) { toast(`The fee is ${L.fee} gold.`); return; }
     spend(L.fee);
     quiz(id, [...L.questions].sort(() => Math.random() - 0.5).slice(0, 3), 0, 0);
@@ -94,7 +106,7 @@ export function createLicences({ money, spend, toast, day, wanted, pause, resume
   function open(name = 'Licensing Office') { if (!panel) return; title = name; list(); panel.hidden = false; pause?.(); }
   function close() { if (!panel || panel.hidden) return; panel.hidden = true; resume?.(); }
   return {
-    has, open, close, revoke(id) { if (state[id]) state[id].status = 'revoked'; },
+    has, forged, forge, check, open, close, revoke(id) { if (state[id]) state[id].status = 'revoked'; },
     snapshot() { return JSON.parse(JSON.stringify(state)); },
     restore(s) { if (s && typeof s === 'object') for (const k in s) if (LICENCES[k]) state[k] = s[k]; },
   };

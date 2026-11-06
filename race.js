@@ -65,10 +65,10 @@ export function createRace({ scene, venues, makeVehicle, removeVehicle, enterVeh
     spend(ENTRY_FEE);
     const grid = (i) => { const row = Math.floor(i / 2), lane = i % 2 ? -1 : 1; const g = track.at(startS - 8 - row * 9, RW.r + lane * RW.w / 4); return g; };
     // your car takes the back of the grid; the AI fills the front
-    const mine = makeVehicle('car', 0xd0281f); mine.raceCar = true; mine.maxSpeed = 62;
+    const mine = makeVehicle('car', 0xd0281f, 'sports'); mine.raceCar = true; mine.maxSpeed = 62;
     const gp = grid(5); mine.group.position.set(gp.x, 0.2, gp.z); mine.group.rotation.y = gp.yaw; mine.speed = 0;
     const ai = AI_NAMES.map((name, i) => {
-      const v = makeVehicle('car', AI_COLOURS[i]); v.taskDriven = true; v.noSteal = true; v.raceCar = true;
+      const v = makeVehicle('car', AI_COLOURS[i], i % 2 ? 'supercar' : 'sports'); v.taskDriven = true; v.noSteal = true; v.raceCar = true;
       const lane = i % 2 ? -1 : 1, g = grid(i);
       v.group.position.set(g.x, 0.2, g.z); v.group.rotation.y = g.yaw;
       return { v, name, s: startS - 8 - Math.floor(i / 2) * 9, lane: lane * RW.w / 4, top: 50 + Math.random() * 9, bend: 41 + Math.random() * 7, speed: 0, laps: -1, done: null };   // the grid is behind the line: crossing it starts lap 1

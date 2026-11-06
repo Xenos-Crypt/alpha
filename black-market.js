@@ -20,7 +20,7 @@ export const STIMS = [
   { name: 'Blue Lotus', icon: '🪷', price: 30, instant: { energy: 100 }, comedown: { hp: -15 }, desc: 'Full energy at once. Comedown: −15 health' },
 ];
 
-export function buildBlackMarket({ scene, colliders, interactables, sitSpots, makePerson, animatePerson, makeTex, groundY, toast, openMenu, raiseWanted, stats, destinations }) {
+export function buildBlackMarket({ openVehicleShop, openPropertyShop, forgeLicence, hasLicence, scene, colliders, interactables, sitSpots, makePerson, animatePerson, makeTex, groundY, toast, openMenu, raiseWanted, stats, destinations }) {
   const { x: CX, z: CZ } = NARROWS, Y = groundY(CX, CZ);
   const mats = new Map();
   const mat = (c, o = {}) => { const k = c + JSON.stringify(o); if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.9, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1, map: o.map ?? null })); return mats.get(k); };
@@ -92,9 +92,20 @@ export function buildBlackMarket({ scene, colliders, interactables, sitSpots, ma
   } }));
   stall(CX + 6, CZ + 6, -Math.PI / 2, 0x0f2a1a); dealer(CX + 8.2, CZ + 6, -Math.PI / 2, 0x1f3a2a, 'Talk to Doc Sable (street stims)', () => openMenu('Doc Sable\'s stims', stimItems));
 
-  const forger = [{ name: 'Clean record (fake papers)', icon: '📄', price: 150, desc: 'Wipes your wanted level', onBuy: s => { if (stats.gold < s.price) return false; window.dispatchEvent(new CustomEvent('aw-clear-wanted')); toast('📄 New papers, new face. The police lose interest in you.'); } },
+  // Ink also forges licences: instant, no test, no queue. Works until a proper check spots it.
+  const FAKES = [['driving', 'Fake driving licence', '🚗', 250], ['firearms', 'Fake firearms licence', '🔫', 220], ['pilot', 'Fake pilot licence', '✈️', 400], ['boat', 'Fake boat licence', '⛵', 120], ['motorbike', 'Fake motorbike licence', '🏍️', 110], ['business', 'Fake trading licence', '🏪', 160]];
+  const fakeItems = FAKES.map(([id, name, icon, price]) => ({ name, icon, price, desc: 'Instant, no test. Police or clerks may spot it.', owned: () => !!hasLicence?.(id), onBuy: s => { if (stats.gold < s.price) return false; forgeLicence?.(id); toast(`${icon} ${name}: it looks perfect. Mostly. Don't hand it to anyone who checks properly.`); risk(0.1, 'forged documents'); } }));
+  const forger = [...fakeItems, { name: 'Clean record (fake papers)', icon: '📄', price: 150, desc: 'Wipes your wanted level', onBuy: s => { if (stats.gold < s.price) return false; window.dispatchEvent(new CustomEvent('aw-clear-wanted')); toast('📄 New papers, new face. The police lose interest in you.'); } },
     { name: 'Hot-wire kit', icon: '🔧', price: 80, desc: 'Lockpicks and a scanner. (For show. Mostly.)', onBuy: s => { if (stats.gold < s.price) return false; toast('🔧 A hot-wire kit. You feel like a criminal mastermind.'); risk(0.1, 'stolen gear'); } }];
-  stall(CX + 6, CZ - 10, -Math.PI / 2, 0x1a1a3a); dealer(CX + 8.2, CZ - 10, -Math.PI / 2, 0x2a2a4a, 'Talk to Ink (forger)', () => openMenu('Ink the forger', forger));
+  stall(CX + 6, CZ - 10, -Math.PI / 2, 0x1a1a3a); dealer(CX + 8.2, CZ - 10, -Math.PI / 2, 0x2a2a4a, 'Talk to Ink (forged licences and papers)', () => openMenu('Ink the forger', forger));
+  // Razor's chop shop: stolen cars and bikes, re-sprayed with fake plates, about half price.
+  stall(CX - 6, CZ + 14, Math.PI / 2, 0x2a2a2a); dealer(CX - 8.2, CZ + 14, Math.PI / 2, 0x3a2a1a, "Talk to Razor (stolen vehicles, chop shop)", () => {
+    let spot = 0;
+    openVehicleShop?.("Razor's Chop Shop", ['Hatchback', 'Saloon', 'SUV', 'Sports car', 'Supercar', 'Electric', 'Pickup', 'Bicycle', 'Motorbike'], v => { const x = CX - 10 + (spot++ % 5) * 5, z = CZ + 34; v.group.position.set(x, Y, z); v.group.rotation.y = Math.PI; }, { priceMult: 0.55, illegal: true });
+    risk(0.12, 'stolen car deal');
+  });
+  // Fixer: unregistered hideouts (see property.js)
+  stall(CX + 6, CZ + 22, -Math.PI / 2, 0x1a1a1a); dealer(CX + 8.2, CZ + 22, -Math.PI / 2, 0x111111, 'Talk to the Fixer (off-the-books property)', () => openPropertyShop?.('illegal'));
   // Lookouts watching the alleys
   for (const [x, z, ry] of [[0, -30, 0], [0, 30, Math.PI], [-10, 75, Math.PI / 2], [10, -80, -Math.PI / 2]]) dealer(CX + x, CZ + z, ry, 0x1a1a1a, 'Talk to the lookout', () => toast(['"Keep walking. You didn\'t see me."', '"Viktor\'s got new stock. Square\'s that way."', '"Cops? We\'d hear them a mile off."'][Math.floor(Math.random() * 3)]));
   destinations?.push({ name: 'The Narrows', x: CX + 40, z: CZ - 225 });

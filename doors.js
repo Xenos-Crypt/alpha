@@ -48,7 +48,15 @@ export function buildDoors({ scene, buildings, colliders, groundY, playerPos, ho
     ];
     if (b.doorFace) return faces.find(f => f.nz === b.doorFace && f.nx === 0) || faces[0];
     let best = faces[0], bs = Infinity;
-    for (const f of faces) { const sc = clutter(f.x + f.nx * 4, f.z + f.nz * 4, null) - (f.nz === 1 ? 0.5 : 0); if (sc < bs) { bs = sc; best = f; } }
+    // Entrances face the street: roads run every 40 m, so prefer the side whose front is
+    // closest to a road line, and avoid sides that open straight onto other buildings.
+    const toRoad = (v) => { const m = ((v % 40) + 40) % 40; return Math.min(m, 40 - m); };
+    for (const f of faces) {
+      const px = f.x + f.nx * 3, pz = f.z + f.nz * 3;
+      const roadGap = f.nx !== 0 ? toRoad(px) : toRoad(pz);
+      const sc = clutter(f.x + f.nx * 4, f.z + f.nz * 4, null) * 1.5 + roadGap * 0.6 - (f.nz === 1 ? 0.3 : 0);
+      if (sc < bs) { bs = sc; best = f; }
+    }
     return best;
   }
 
