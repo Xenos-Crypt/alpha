@@ -787,6 +787,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (/arcade|amusement|games/.test(t)) return layouts.arcade;
       if (/^(casino|gambling)$/.test(t)) return layouts.casino;
       if (/^(church|chapel|cathedral|place_of_worship)$/.test(t)) return layouts.church;
+      if (/^(mansion|villa|estate)$/.test(t)) return layouts.home;
       if (/^(nightclub|night_club|club|disco)$/.test(t)) return layouts.nightclub;
       if (/^(pub|bar|inn|tavern|biergarten)$/.test(t)) return layouts.pub;
       if (/^(restaurant|diner|cafe|café|bistro|fast_food|food_court|takeaway)$/.test(t)) return layouts.restaurant;

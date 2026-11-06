@@ -50,6 +50,8 @@ import {createConditions} from './condition.js';
 import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
 import {createRace} from './race.js';
+import {buildDoors} from './doors.js';
+import {buildHills} from './hills.js';
 import {createCarControls} from './car-controls.js';
 import {createSnackShop} from './snack-shop.js';
 import {createArcade} from './arcade-games.js';
@@ -489,6 +491,7 @@ const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
+  const hillFloor=hills?.groundAt(x,z);if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
@@ -1273,7 +1276,31 @@ interactables.push({ pos: new THREE.Vector3(HOME.x, CURB, HOME.minZ), r: 2.2, ge
   const i = colliders.indexOf(homeDoorCollider);
   if (homeDoorOpen && i >= 0) colliders.splice(i, 1); else if (!homeDoorOpen && i < 0) colliders.push(homeDoorCollider);
 } });
-function updateHomeDoor(dt) { homeDoor.rotation.y += ((homeDoorOpen ? -Math.PI / 2 : 0) - homeDoor.rotation.y) * Math.min(1, dt * 6); }
+// Front garden gates: a double gate across the driveway (wide enough for the car) and a small
+// gate on the path. They swing open when you, or your car, come up to them.
+const homeGates = [];
+{ const iron = new THREE.MeshStandardMaterial({ color: 0x1f2326, metalness: 0.6, roughness: 0.4 });
+  const drive = mesh(new THREE.PlaneGeometry(3.8, 9), new THREE.MeshStandardMaterial({ color: 0x6f6a62, roughness: 0.95 })); drive.rotation.x = -Math.PI / 2; drive.position.set(12.6, CURB + 0.03, 12.6); drive.castShadow = false;
+  const gateLeaf = (hx, w, dir) => { const g = new THREE.Group(); g.position.set(hx, CURB, 11); scene.add(g);
+    for (const y of [0.15, 0.95]) mesh(new THREE.BoxGeometry(w, 0.07, 0.07), iron, g).position.set(dir * w / 2, y, 0);
+    for (let k = 0; k <= Math.round(w / 0.18); k++) mesh(new THREE.BoxGeometry(0.04, 1.05, 0.04), iron, g).position.set(dir * k * w / Math.round(w / 0.18), 0.55, 0);
+    return g; };
+  for (const x of [10.55, 14.65]) box(0.3, 1.3, 0.3, x, CURB + 0.65, 11, 0x8a8478);
+  const drive2 = { leaves: [gateLeaf(10.7, 1.92, 1), gateLeaf(14.5, 1.92, -1)], centre: new THREE.Vector3(12.6, 0, 11), car: true, collider: { minX: 10.7, maxX: 14.5, minZ: 10.85, maxZ: 11.15 }, open: 0 };
+  const path = { leaves: [gateLeaf(18.75, 2.5, 1)], centre: new THREE.Vector3(20, 0, 11), car: false, collider: { minX: 18.75, maxX: 21.25, minZ: 10.85, maxZ: 11.15 }, open: 0 };
+  for (const g of [drive2, path]) { colliders.push(g.collider); homeGates.push(g); } }
+function updateHomeGates(dt) {
+  for (const g of homeGates) {
+    const who = inCar && driving ? driving.group.position : player.position;
+    const near = distXZ(who, g.centre) < (inCar ? (g.car ? 9 : 0) : 3.2) || (g.car && distXZ(myCar.group.position, g.centre) < 3.5 && Math.abs(myCar.speed) > 0.5);
+    g.open += clamp((near ? 1 : 0) - g.open, -dt * 1.2, dt * 1.2);
+    g.leaves.forEach((l, i) => { l.rotation.y = (i === 0 ? -1 : 1) * g.open * 1.5; });
+    const solid = g.open < 0.7, i = colliders.indexOf(g.collider);
+    if (solid && i < 0) colliders.push(g.collider); else if (!solid && i >= 0) colliders.splice(i, 1);
+  }
+}
+function updateHomeDoor(dt) {
+  updateHomeGates(dt); homeDoor.rotation.y += ((homeDoorOpen ? -Math.PI / 2 : 0) - homeDoor.rotation.y) * Math.min(1, dt * 6); }
 
 const houseWindowMat = new THREE.MeshStandardMaterial({ color: 0x8fb3cc, roughness: 0.1, emissive: 0xffd58a, emissiveIntensity: 0 });
 glowMats.push(houseWindowMat);
@@ -2306,7 +2333,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null;
+let blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -2469,7 +2496,7 @@ for (let i = 0; i < 2; i++) spawnTraffic('police', 0xf5f6fa);
 for (let i = 0; i < 2; i++) spawnTraffic('bus', 0x8b1a2b, BUS_ROUTE);
 
 const myCar = makeVehicle('car', 0xd63031);    // your own car, parked on the drive
-myCar.group.position.set(12.5, CURB, 9);
+myCar.group.position.set(12.4, CURB, 14.4);   // parked on the driveway, inside the gate
 myCar.group.rotation.y = Math.PI;
 
 const headlight = new THREE.SpotLight(0xfff2cc, 0, 45, 0.55, 0.6, 1.5);
@@ -6036,6 +6063,7 @@ function nearestCivicBuilding() {
   return best;
 }
 async function enterCivicBuilding(b) {
+  if (doors && !doors.isOpen(b)) { toast(`${b.name} is closed. The shutters go up at 07:00.`); return; }
   if(b.structure&&!b.structure.alive){toast('Building closed for reconstruction.');return;}
   action = null;
   civicReturnPos = player.position.clone();
@@ -7340,9 +7368,12 @@ military = buildMilitary({ scene, colliders, interactables, civicBuildings, make
   playerPos: () => player.position, playerRig: () => P,
   addAircraft: a => makeAircraft(a),
   makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
+hills = buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position });
 conditions = createConditions({ buildings, collapse: b => collapseBuilding(b, false), toast, playerPos: () => player.position,
   nearVehicle: () => { let best = null, bd = 3.2; for (const v of vehicles) { if (v.disabled || !isRoadVehicle(v)) continue; const d = distXZ(v.group.position, player.position); if (d < bd) { bd = d; best = v; } } return best; } });
 for (const b of buildings) if (b.x > HOME.minX - 2 && b.x < HOME.maxX + 2 && b.z > HOME.minZ - 2 && b.z < HOME.maxZ + 2) { b.quality = 'solid'; b.ageYears = 0; }   // your own house is new and well built
+for (const b of civicBuildings) if (b.minX != null && b.minX < HOME.maxX && b.maxX > HOME.minX && b.minZ < HOME.maxZ && b.maxZ > HOME.minZ) b.noDoor = true;   // your house has its own door
+doors = buildDoors({ scene, buildings: civicBuildings, colliders, groundY, makeTex, playerPos: () => player.position, hourNow: () => (6 + dayTime * 24) % 24 });
 navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast });
 intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex});
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
@@ -7453,7 +7484,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); race?.update(dt);
+    blackMarket?.update(dt); football?.update(dt); race?.update(dt); doors?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }

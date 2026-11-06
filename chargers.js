@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 
 export const CHARGER_SPOTS = [
-  [9.4, 13.2, 'Home charger'],
+  [10.1, 16.2, 'Home charger'],   // beside the driveway
   [210, -799, 'Stadium chargers'],
   [-186, -782, 'Raceway chargers'],
   [592, -832, 'Poolside chargers'],

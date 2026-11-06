@@ -198,11 +198,9 @@ export function buildVenues(ctx) {
     colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
     const fz = z + face * (d / 2);
     B(8, 0.3, 3, x, 3.6, fz + face * 1.5, mat(0x2b2f33));                                     // entrance canopy
-    B(2.4, 2.8, 0.1, x, 1.4, fz + face * 0.06, mat(0x1d2a33, { metal: 0.5, rough: 0.2 }));    // glass doors
-    B(0.05, 2.8, 0.12, x, 1.4, fz + face * 0.1, steel);
     signBoard(name.toUpperCase(), x, Math.min(h - 1.5, 9), fz + face * 0.15, Math.min(w - 2, 16), face > 0 ? 0 : Math.PI, sign, fg, sub);
     if (neon) { B(w + 0.2, 0.15, 0.15, x, 0.6, fz + face * 0.1, mat(neon, { emissive: neon, ei: 2 })); B(w + 0.2, 0.15, 0.15, x, h - 0.4, fz + face * 0.1, mat(neon, { emissive: neon, ei: 2 })); }
-    enterable(type, name, x, z, w, d);
+    enterable(type, name, x, z, w, d); civicBuildings.at(-1).doorFace = face;   // the real door is added by doors.js
     dest(name, x, fz + face * 6);
     towers.push({ name, x, z, w, d, h, face });
   };
