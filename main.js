@@ -687,7 +687,7 @@ function collapseBuilding(b,criminal=true) {
   callout('BUILDING DESTROYED', 0xff7a2f, true);
   if(criminal)raiseWanted(90);
   hitAround(base, size * 0.9, null, { dmg: 80, kb: 14, up: 8, stun: 2, heavy: true, impact: 1, guardBreak: true,police:!criminal,fromPlayer:criminal }, 60);
-  if (!inCar && distXZ(player.position, base) < size) hurtPlayer(30, base, 15);
+  if (!inCar && distXZ(player.position, base) < size) hurtPlayer(30, base, 15, 'Hit by a collapsing building');
   reactBystanders(base, false); // raiseWanted(90) above already covers the crime
   const start = b.meshes.map(m => m.position.clone());
   const fallAccel = 2 * (H + 3) / 16;   // reaches the ground in about 4 seconds
@@ -1582,20 +1582,10 @@ function fxSwoosh(pos, dir, color, flip) {
 // Impact frames: hit-stop + black/white inverted flash + speed lines + screen shake
 let hitStop = 0, shake = 0, linesT = 0, linesDark = false;
 let impactTimers = [];
-function impactFrame(power = 1) {
-  hitStop = Math.max(hitStop, 0.05 + 0.07 * power);
-  shake = Math.max(shake, 0.25 + 0.3 * power);
-  linesT = Math.max(linesT, 0.12 + 0.15 * power);
-  impactTimers.forEach(clearTimeout);
-  const c = renderer.domElement;
-  c.style.filter = 'grayscale(1) contrast(8) invert(1)';
-  linesDark = true;
-  impactTimers = [
-    setTimeout(() => { c.style.filter = 'grayscale(1) contrast(8)'; linesDark = false; }, 55),
-    setTimeout(() => { c.style.filter = 'saturate(1.7) contrast(1.25)'; }, 110),
-    setTimeout(() => { c.style.filter = ''; }, 200),
-  ];
-}
+// Impact frames (inverted black/white flash, freeze, speed lines, big shake) are
+// removed from the game entirely. Callers are kept so gameplay is unchanged; this
+// deliberately does nothing.
+function impactFrame(power = 1) {}
 let linesFrame = 0;
 function drawSpeedLines(dt) {
   linesT -= dt;
@@ -3226,7 +3216,7 @@ function crashPlane(v) {
     player.position.set(p.x + 3, 0, p.z);
     collide(player.position, 0.4);
     player.position.y = groundY(player.position.x, player.position.z);
-    stats.hp -= 40 * defMul();
+    stats.hp -= 40 * defMul(); noteHpLoss('Plane crash');
     toast('You crashed!');
   }
   v.group.visible = false;
@@ -3348,7 +3338,10 @@ function applyHit(e, h) {
   const dir = new THREE.Vector3(p.x - h.from.x, 0, p.z - h.from.z);
   if (dir.lengthSq() < 1e-4) dir.copy(fwdOf(player));
   dir.normalize();
-  let dmg = h.dmg * dmgMul()*(h.fromPlayer!==false&&!h.police?(supportSkills?.damageMultiplier||1):1);
+  // Did the player actually cause this hit? AI traffic, police, raids and other
+  // people's explosions must never count against (or for) the player.
+  const byPlayer = h.fromPlayer !== false && !h.police;
+  let dmg = h.dmg * dmgMul()*(byPlayer?(supportSkills?.damageMultiplier||1):1);
   e.lastHit = 0;
 
   // Blocking: only works against hits from the front
@@ -3363,14 +3356,13 @@ function applyHit(e, h) {
       e.vel.addScaledVector(dir, (h.kb || 0) * 0.2);
       popText(at(p, 2.2), 'BLOCK', 'block');
       burst(at(p, 1.3).addScaledVector(dir, -0.4), 6, [0x74b9ff, 0xffffff], 6, 0.1, 0.25, 0);
-      hitStop = Math.max(hitStop, 0.03);
+      if (byPlayer) hitStop = Math.max(hitStop, 0.03);
       e.hp -= dmg;
       if (e.guard >= 100) {
         e.guard = 0; e.stun = 2; e.blocking = false;
         popText(at(p, 2.6), 'GUARD BREAK', 'break');
-        impactFrame(0.7);
       }
-      if (e.hp <= 0) killEnemy(e);
+      if (e.hp <= 0) killEnemy(e, byPlayer);
       return true;
     }
   }
@@ -3392,7 +3384,7 @@ function applyHit(e, h) {
   if (e.kind === 'npc') {   // people run away, everyone nearby reacts, and the police get called
     if (e.hp > 0 && e.hp <= 15) { e.ped.state = 'down'; e.ped.downT = 0; }
     else { e.ped.state = 'panic'; e.ped.panicT = 6; }
-    reactBystanders(p, !h.police);
+    reactBystanders(p, byPlayer);
   }
 
   popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '');
@@ -3408,14 +3400,16 @@ function applyHit(e, h) {
   // which made routine kills feel as disruptive as a boss fight. Kills (any kind)
   // never get the full flash now, even though the kill counter/combo still count.
   const killingBlow = e.hp <= 0;
-  if (h.heavy && e.kind !== 'slime' && !killingBlow) impactFrame(h.impact ?? 1);
-  else { hitStop = Math.max(hitStop, 0.035); shake = Math.max(shake, 0.08); }
+  // Impact frames are removed from the game entirely. Only the player's own hits
+  // get a tiny hit-stop/shake; AI traffic or other people's fights never freeze
+  // or shake the player's screen.
+  if (byPlayer) { hitStop = Math.max(hitStop, 0.035); shake = Math.max(shake, 0.08); }
 
-  if (killingBlow) killEnemy(e);
+  if (killingBlow) killEnemy(e, byPlayer);
   return true;
 }
 
-function killEnemy(e) {
+function killEnemy(e, byPlayer = true) {
   if(e.npcRaid){e.alive=false;e.hp=0;e.root.visible=false;e.respawn=Infinity;return;}
   if (e.kind === 'standing') {           // the standing dummy never dies
     e.hp = e.maxHp;
@@ -3461,10 +3455,14 @@ function killEnemy(e) {
     e.respawn = 20;
     popText(at(e.root.position, 2.2), 'K.O.', 'break');
     dispatchDeathAmbulance(e);
-    gainXp(10);
-    villainKills++; localStorage.setItem('villainKills', String(villainKills));
-    saveAlignment();
-    if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); }
+    // Only the player's own attacks make them a villain. A resident knocked out by
+    // AI traffic, police or someone else's explosion is not the player's crime.
+    if (byPlayer) {
+      gainXp(10);
+      villainKills++; localStorage.setItem('villainKills', String(villainKills));
+      saveAlignment();
+      if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); }
+    }
     const n = randomCorner();   // comes back later somewhere else in town
     e.spot = cornerPos(n);
     Object.assign(e.ped, { state: 'wander', node: n, prev: null, target: cornerPos(n), stop: null, bus: null });
@@ -3609,7 +3607,7 @@ function updateWildlife(e, dt) {
   p.y = groundY(p.x, p.z);
   e.touchCd -= dt;
   if (!inCar && e.stun <= 0 && dist < (e.animal === 'snake' ? 1.1 : 1.6) && Math.abs(p.y - player.position.y) < 1.5 && e.touchCd <= 0) {
-    hurtPlayer(def.dmg, p, def.kb);
+    hurtPlayer(def.dmg, p, def.kb, 'Attacked by a wild ' + (e.animal || 'animal'));
     e.touchCd = e.animal === 'snake' ? 1.6 : 1.2;
   }
 }
@@ -3652,7 +3650,7 @@ function updateSlime(e, dt) {
   e.body.scale.set(1 + 0.15 * (1 - h), 0.75 + 0.25 * h, 1 + 0.15 * (1 - h));
   e.touchCd -= dt;
   if (!inCar && e.stun <= 0 && dist < 1.3 && Math.abs(p.y - player.position.y) < 1.5 && e.touchCd <= 0) {
-    hurtPlayer(6, p, 6);
+    hurtPlayer(6, p, 6, 'Attacked by a slime');
     e.touchCd = 1;
   }
 }
@@ -3723,7 +3721,7 @@ function updateFighter(e, dt) {
           const to = new THREE.Vector3(player.position.x - p.x, 0, player.position.z - p.z);
           const last = ai.combo === 2;
           if (to.length() < 2.5 && to.normalize().dot(f) > 0.3 && Math.abs(player.position.y - p.y) < 1.5) {
-            hurtPlayer(last ? 12 : 6, p, last ? 16 : 4);
+            hurtPlayer(last ? 12 : 6, p, last ? 16 : 4, 'Attacked by ' + (e.labelName || 'a fighter'));
           }
           fxSwoosh(at(p, 1.3).addScaledVector(f, 0.8), f, 0xff7675, ai.combo % 2);
         }
@@ -3800,7 +3798,9 @@ function reactBystanders(center, criminal) {
     if (d < 15) { o.ped.state = 'panic'; o.ped.panicT = 5 + Math.random() * 2; }
     else if (d < 45 && o.ped.state !== 'panic') {
       const r = Math.random();
-      if (r < 0.3) { o.ped.state = 'call'; o.ped.reactT = 4 + Math.random() * 3; o.ped.lookAt = center.clone(); }
+      // Remember whether this was the player's crime: a witness phoning in a car
+      // crash or someone else's fight must not put the player on the wanted list.
+      if (r < 0.3) { o.ped.state = 'call'; o.ped.reportsPlayer = !!criminal; o.ped.reactT = 4 + Math.random() * 3; o.ped.lookAt = center.clone(); }
       else if (r < 0.6) { o.ped.state = 'record'; o.ped.reactT = 5 + Math.random() * 4; o.ped.lookAt = center.clone(); }
     }
   }
@@ -3895,7 +3895,8 @@ function updatePed(e, dt) {
       if (s.lookAt) e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(s.lookAt.x - p.x, s.lookAt.z - p.z), 1 - Math.exp(-4 * dt));
       animateHumanoid(e.h, 'phone', false, false, e.onGround, dt);
       if (s.reactT <= 0) {
-        if (s.state === 'call') raiseWanted(30);
+        if (s.state === 'call' && s.reportsPlayer) raiseWanted(30);
+        s.reportsPlayer = false;
         s.state = 'wander'; s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node);
       }
       break;
@@ -4044,7 +4045,11 @@ function updateLabels() {
 // =====================================================================
 // PLAYER COMBAT
 // =====================================================================
-function hurtPlayer(dmg, from, kb) {
+// Every health loss records why, so the stats panel can tell the player what is
+// hurting them instead of HP silently going down.
+let hpLossReason = '', hpLossAt = -Infinity;
+function noteHpLoss(reason) { hpLossReason = reason; hpLossAt = performance.now(); }
+function hurtPlayer(dmg, from, kb, reason = 'Attacked') {
   if(inCar&&driving){monsterEnvironmentDamage(driving.group.position,dmg,2);return;}
   if (iFrames > 0) return;
   dmg *= defMul()*(supportSkills?.defenseMultiplier||1)*(adventureServices?.armour||1);
@@ -4063,7 +4068,7 @@ function hurtPlayer(dmg, from, kb) {
     setTimeout(() => $('hurt').style.opacity = 0, 150);
     popText(at(player.position, 2.2), Math.round(dmg), 'taken');
   }
-  stats.hp -= dmg;
+  stats.hp -= dmg; noteHpLoss(reason);
   pvel.addScaledVector(dir, kb);
   shake = Math.max(shake, 0.2);
 }
@@ -4093,7 +4098,7 @@ function explodeVehicle(v, criminal = true) {
   if (v.exploded) return;
   v.exploded = true; v.disabled = true; v.health = 0; v.speed = 0;
   const center = at(v.group.position, 0.8), radius = v.kind === 'bus' ? 8 : 6;
-  if (v === driving) { stats.hp = Math.max(0, stats.hp - 35); exitVehicle(true); }
+  if (v === driving) { stats.hp = Math.max(0, stats.hp - 35); noteHpLoss('Your vehicle exploded'); exitVehicle(true); }
   // Mark the wreck before applying blast damage so chain reactions run once.
   v.group.traverse(obj => {
     if (!obj.isMesh) return;
@@ -4115,7 +4120,7 @@ function explodeVehicle(v, criminal = true) {
     for (const e of v.passengers) { e.hidden = false; e.root.visible = true; e.root.position.copy(v.group.position).add(new THREE.Vector3(v.radius + 1, 0, 0)); collide(e.root.position, e.radius); e.ped.state = 'panic'; e.ped.panicT = 10; applyHit(e, { dmg: 45, from: center, kb: 6, up: 2, stun: 2, police: !criminal }); }
     v.passengers = [];
   }
-  if (!inCar && player.position.distanceTo(center) < radius) hurtPlayer(50 * (1 - player.position.distanceTo(center) / radius), center, 10);
+  if (!inCar && player.position.distanceTo(center) < radius) hurtPlayer(50 * (1 - player.position.distanceTo(center) / radius), center, 10, 'Caught in a vehicle explosion');
   for (const other of vehicles) {
     if (other === v || other.exploded || !isRoadVehicle(other)) continue;
     const distance = other.group.position.distanceTo(center);
@@ -5046,7 +5051,7 @@ function updateEnemyShots(dt) {
     if (Math.random() < 0.5) spawnParticle(s.m.position, randUnit(), s.color, 0.1, 0.3);
     const environmentHit=vehicles.some(v=>!v.disabled&&Math.abs(v.group.position.y-s.m.position.y)<3&&distXZ(v.group.position,s.m.position)<(v.radius||2)+.5)||insideCollider(s.m.position);if(environmentHit)monsterEnvironmentDamage(s.m.position,s.dmg,2);
     const hitPlayer = !inCar && s.m.position.distanceTo(at(player.position, 1.1)) < 0.9;
-    if (hitPlayer) hurtPlayer(s.dmg, s.m.position, 5);
+    if (hitPlayer) hurtPlayer(s.dmg, s.m.position, 5, 'Hit by a monster attack');
     if (environmentHit || hitPlayer || s.life <= 0 || insideCollider(s.m.position) || s.m.position.y < 0) { disposeObj(s.m); enemyShots.splice(i, 1); }
   }
 }
@@ -5064,7 +5069,7 @@ function bossSpecial(e) {
   ai.state = Math.random() < 0.5 ? 'aoe' : 'volley';
   ai.t = 0; ai.fired = false;
   if (ai.state !== 'aoe') return;
-  if(e.mdef.poison){const c=player.position.clone();telegraph(c,6,1.2,0x92ed2a,()=>{if(!e.alive||!dungeon)return;fxRing(c,0x92ed2a,6,.8);monsterEnvironmentDamage(c,e.dmg*1.5,6);if(distXZ(player.position,c)<6)hurtPlayer(e.dmg*1.5,c,5);});return;}
+  if(e.mdef.poison){const c=player.position.clone();telegraph(c,6,1.2,0x92ed2a,()=>{if(!e.alive||!dungeon)return;fxRing(c,0x92ed2a,6,.8);monsterEnvironmentDamage(c,e.dmg*1.5,6);if(distXZ(player.position,c)<6)hurtPlayer(e.dmg*1.5,c,5,'Monster poison');});return;}
   if (e.type === 'archangel') {   // pillars of light around you
     for (let i = 0; i < 4; i++) {
       const c = player.position.clone().add(i ? new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8) : new THREE.Vector3());
@@ -5073,7 +5078,7 @@ function bossSpecial(e) {
         if (!dungeon || !e.alive) return;
         fxPillar(c, 0xfff2c0, 2.2, 20, 0.5);
         burst(at(c, 0.5), 15, [0xffe08a, 0xffffff], 8, 0.15, 0.5, 2);
-        if (distXZ(player.position, c) < 2.4) hurtPlayer(e.dmg * 1.6, c, 8);
+        if (distXZ(player.position, c) < 2.4) hurtPlayer(e.dmg * 1.6, c, 8, 'Hit by a monster attack');
       });
     }
   } else {                        // demon lord ground slam
@@ -5086,7 +5091,7 @@ function bossSpecial(e) {
       fxCrater(c, 4);
       burst(at(c, 0.3), 40, [0xff4020, 0x8a7d66, 0xffb02e], 14, 0.25, 0.8, 20, 6);
       shake = Math.max(shake, 0.6);
-      if (distXZ(player.position, c) < 7 && player.position.y - c.y < 2.5) hurtPlayer(e.dmg * 2, c, 20);
+      if (distXZ(player.position, c) < 7 && player.position.y - c.y < 2.5) hurtPlayer(e.dmg * 2, c, 20, 'Hit by a monster attack');
     });
   }
 }
@@ -5144,7 +5149,7 @@ function updateMonster(e, dt) {
         if (!ai.hitDone && ai.t >= 0.07) {
           ai.hitDone = true;
           const to = new THREE.Vector3(player.position.x - p.x, 0, player.position.z - p.z);
-          if (to.length() < reach + 0.8 && to.normalize().dot(f) > 0.2 && Math.abs(player.position.y - p.y) < 2) hurtPlayer(e.dmg, p, m.ai === 'boss' ? 12 : 5);
+          if (to.length() < reach + 0.8 && to.normalize().dot(f) > 0.2 && Math.abs(player.position.y - p.y) < 2) hurtPlayer(e.dmg, p, m.ai === 'boss' ? 12 : 5, 'Attacked by a monster');
           fxSwoosh(at(p, 1.3 * m.scale).addScaledVector(f, 0.8 * m.scale), f, m.horns ? 0xff4020 : 0xffe08a, ai.combo % 2);
         }
         if (ai.t >= 0.3) {
@@ -5970,7 +5975,7 @@ function updateFireDamage(dt) {
   if (charIdx === 0 || inCar) { fireBurnWarned = false; return; }
   const nearFire = activeFires.some(f => distXZ(f.pos, player.position) < 2.2);
   if (nearFire) {
-    stats.hp -= 12 * dt * defMul();
+    stats.hp -= 12 * dt * defMul(); noteHpLoss('Burning: move away from the fire');
     if (!fireBurnWarned) { fireBurnWarned = true; toast("You're burning! Get away from the fire."); }
   } else fireBurnWarned = false;
 }
@@ -6019,7 +6024,7 @@ function updateSwimming(dt) {
   player.position.addScaledVector(dir,(stats.energy<=0?1: sprint?4:2.3)*(waterPower?1.3:1)*dt);
   player.position.addScaledVector(pvel,dt);pvel.multiplyScalar(Math.max(0,1-4*dt));collide(player.position,.4);
   stats.energy=Math.max(0,stats.energy-dt*(waterPower ? .12 : sprint ? 1.8 : moving ? .65 : .2));
-  if(stats.energy===0){stats.hp=Math.max(0,stats.hp-12*dt);if(!waterExhausted){waterExhausted=true;toast('Exhausted in the water! Get to shore or a dock ladder.');}}
+  if(stats.energy===0){stats.hp=Math.max(0,stats.hp-12*dt);noteHpLoss('Exhausted while swimming: get to shore');if(!waterExhausted){waterExhausted=true;toast('Exhausted in the water! Get to shore or a dock ladder.');}}
   else waterExhausted=false;
   const targetY=stats.energy>0?-1.05:-1.35;player.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
   if(moving)player.rotation.y=lerpAngle(player.rotation.y,Math.atan2(dir.x,dir.z),1-Math.exp(-5*dt));
@@ -6073,7 +6078,7 @@ function updatePlayer(dt) {
     if (!onGround && vy < -14 && iFrames <= 0 && !isSeaWater(player.position.x, player.position.z)) {
       const fallDmg = Math.round((-vy - 14) * 2.2) * defMul();
       if (fallDmg > 0) {
-        stats.hp -= fallDmg;
+        stats.hp -= fallDmg; noteHpLoss('Fall damage');
         popText(at(player.position, 2.2), Math.round(fallDmg), 'taken');
         $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 150);
         shake = Math.max(shake, Math.min(0.5, fallDmg / 60));
@@ -6110,7 +6115,7 @@ function damageVehicle(v, deltaSpeed, point) {
   if (deltaSpeed > 5) burst(at(point, 0.7), Math.min(25, Math.ceil(deltaSpeed)), [0xffc266, 0x777777], 5, 0.08, 0.3, 8, 1);
   if (deltaSpeed > 8) breakLampsNear(point, 1.5);   // ram a lamp post hard enough and it goes down
   if (v === driving) {
-    stats.hp = Math.max(0, stats.hp - impactDamage(deltaSpeed, 0.12));
+    stats.hp = Math.max(0, stats.hp - impactDamage(deltaSpeed, 0.12)); noteHpLoss('Car crash');
     shake = Math.max(shake, Math.min(0.8, deltaSpeed / 35));
     toast('Crash! Vehicle condition: ' + Math.ceil(v.health) + '%');
   }
@@ -6150,7 +6155,7 @@ function hitStreetSeats(v, from, to) {
     if (seat.health > 0) continue;
     seat.broken = true;
     const i = colliders.indexOf(seat.collider); if (i >= 0) colliders.splice(i, 1);
-    if (sitting && activeSitSpot === seat) { toggleSit(null); hurtPlayer(Math.min(80, impactDamage(speed, .4)), v.group.position, Math.min(15, speed)); }
+    if (sitting && activeSitSpot === seat) { toggleSit(null); hurtPlayer(Math.min(80, impactDamage(speed, .4)), v.group.position, Math.min(15, speed), 'Hit by a car while sitting'); }
     const parts = [...seat.model.children];
     parts.forEach((part, i) => { part.position.y = .08 + i * .015; part.position.x += (i % 2 ? 1 : -1) * .25; part.position.z += (i - 1.5) * .22; part.rotation.set(i % 2 ? Math.PI / 2 : .12, i * .35, .1); });
     v.speed *= .85;
@@ -6500,7 +6505,7 @@ function tankChase(v,dt){
   for(const w of v.wheels||[])w.rotation.x+=v.speed*dt/0.4;
   if(d<90){v.fireT=(v.fireT??2)-dt;if(v.fireT<=0){v.fireT=4;const miss=new THREE.Vector3((Math.random()-.5)*6,0,(Math.random()-.5)*6),impact=target.clone().add(d>40?miss:new THREE.Vector3());
     fxSphere(at(impact,.5),0xffa040,4,.4);burst(at(impact,.5),30,[0xff8022,0x666666],10,.2,.6,9,2);shake=Math.max(shake,.45);worldAudio?.impact?.(10);
-    const hitD=distXZ(impact,target);if(hitD<4){if(inCar&&driving)damageVehiclePower(driving,45,impact,false);else hurtPlayer(26*(1-hitD/4),impact,8);}}}
+    const hitD=distXZ(impact,target);if(hitD<4){if(inCar&&driving)damageVehiclePower(driving,45,impact,false);else hurtPlayer(26*(1-hitD/4),impact,8,'Defence Force tank fire (restricted area)');}}}
 }
 function updateMilitary(dt){
   if(militaryAlert>0){militaryAlert-=dt;if(militaryAlert<=0)toast('Defence Force alert stood down.');}
@@ -6531,12 +6536,12 @@ function updateNeeds(dt) {
     stats.hunger = clamp(stats.hunger - 100 / (DAY_LEN * 1.2) * drainMul() * dt, 0, 100);
     stats.energy = clamp(stats.energy - 100 / (DAY_LEN * 1.6) * drainMul() * dt, 0, 100);
   }
-  if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) stats.hp -= 0.5 * dt;   // starvation/exhaustion is slow, not instant
+  if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) { stats.hp -= 0.5 * dt; noteHpLoss(stats.hunger === 0 ? 'Starving: eat something' : 'Exhausted: get some sleep'); }   // starvation/exhaustion is slow, not instant
   else if (stats.hunger > 30) stats.hp += 1 * dt;
   // A frail birth (very low peace) bleeds health passively, roughly 1/sec at the floor,
   // tapering off above peace 25 — this is the one stat with a real, constant downside.
   const peace = origin?.stats.peace ?? 55;
-  if (peace < 25) stats.hp -= (25 - peace) / 25 * dt;
+  if (peace < 25) { stats.hp -= (25 - peace) / 25 * dt; noteHpLoss('Frail health (low Peace from your birth)'); }
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
     navy?.reset();intercityRail?.reset();cityServices?.reset();
@@ -6694,6 +6699,12 @@ function updateHud(dt) {
   $('charName').style.color = isVillain ? '#ff4d4d' : heroDungeonKills>0?'#67b3ff':'#fff';
   $('hpBar').style.width = clamp(stats.hp / maxHp() * 100, 0, 100) + '%';
   $('hpText').textContent = `${Math.max(0, Math.round(stats.hp))} / ${maxHp()}`;
+  const hpReasonEl = $('hpReason');
+  if (hpReasonEl) {
+    const recent = performance.now() - hpLossAt < 5000;
+    hpReasonEl.textContent = recent ? `Losing health: ${hpLossReason}` : '';
+    hpReasonEl.style.display = recent ? '' : 'none';
+  }
   $('hungerBar').style.width = stats.hunger + '%';
   $('energyBar').style.width = stats.energy + '%';
   const hours = (dayTime * 24 + 6) % 24;
@@ -6800,10 +6811,10 @@ mobileControls = setupMobileControls({
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
-poisonLand=buildPoisonLand({scene,box,makeTex,interactables,toast,makeMonster,removeEnemy,removeGate,destinations:townPlaces.destinations,playerPosition:()=>player.position,inDungeon:()=>!!dungeon,hurt:hurtPlayer,
+poisonLand=buildPoisonLand({scene,box,makeTex,interactables,toast,makeMonster,removeEnemy,removeGate,destinations:townPlaces.destinations,playerPosition:()=>player.position,inDungeon:()=>!!dungeon,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Toxic gas and waste (Poison Land)'),
 createGate(o){const gm=makeGateMesh(0x92ed2a),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:'poison',tier:tierOf(o.level),name:o.name,persistent:o.persistent,finalBoss:o.finalBoss,poisonCity:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
 buildHighlandForest({scene,colliders,insideCollider,groundY,addBird});
-volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:hurtPlayer});regionalEnvironment.islands.push(volcanicIsland.island);
+volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Lava and volcanic heat')});regionalEnvironment.islands.push(volcanicIsland.island);
 ghostIsland=buildGhostIsland({scene,box,interactables,toast,stats,destinations:townPlaces.destinations,signboard,rand});regionalEnvironment.islands.push(ghostIsland.island);
 cityLife=buildCityLife({level:()=>prog.level,openSkills:()=>supportSkills?.show(true),scene,interactables,toast,islands:[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),killCount:()=>monsterQuestKills,reward(gold,xp){stats.gold+=gold;gainXp(xp);},removeGate,createGate(o){const gm=makeGateMesh(0xa883ff),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:o.theme,tier:tierOf(o.level),name:o.name,persistent:o.persistent,capitalGate:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
 for(let i=0;i<6;i++)addWildlife('skeleton',ghostIsland.chamberCentre.x+(rand()-0.5)*14,ghostIsland.chamberCentre.z+(rand()-0.5)*14);
