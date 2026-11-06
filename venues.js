@@ -31,7 +31,8 @@ export function buildVenues(ctx) {
   const seat = (x, z, yaw, seatY, label) => sitSpots.push({ x, z, yaw, seatY, label });
   const asphalt = mat(0x2e3135, { rough: 0.95 }), line = mat(0xf2f2f2), concrete = mat(0xb8bbb8), steel = mat(0x7d858c, { metal: 0.6, rough: 0.4 });
   const signTex = (text, bg = '#15364a', fg = '#ffffff', sub = '') => makeTex(512, 128, g => { g.fillStyle = bg; g.fillRect(0, 0, 512, 128); g.fillStyle = fg; g.font = `bold ${sub ? 46 : 56}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, sub ? 48 : 64, 490); if (sub) { g.font = '24px sans-serif'; g.fillText(sub, 256, 98, 490); } });
-  const signBoard = (text, x, y, z, w, ry = 0, bg, fg, sub) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 4), new THREE.MeshBasicMaterial({ map: signTex(text, bg, fg, sub), side: THREE.DoubleSide })); m.position.set(x, y, z); m.rotation.y = ry; scene.add(m); return m; };
+  const signBoard = (text, x, y, z, w, ry = 0, bg, fg, sub) => { w = Math.min(9, w * 0.6);   // signs were up to 16 m wide: far too big
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 4), new THREE.MeshBasicMaterial({ map: signTex(text, bg, fg, sub), side: THREE.DoubleSide })); m.position.set(x, y, z); m.rotation.y = ry; scene.add(m); return m; };
   const road = (x0, z0, x1, z1, w = 10) => { const len = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(x1 - x0, z1 - z0); const r = B(w, 0.04, len, (x0 + x1) / 2, 0.035, (z0 + z1) / 2, asphalt, false, undefined, ang); for (let t = 4; t < len - 4; t += 10) B(0.18, 0.045, 4, x0 + (x1 - x0) * t / len, 0.04, z0 + (z1 - z0) * t / len, line, false, undefined, ang); return r; };
   const enterable = (type, name, x, z, w, d) => civicBuildings.push({ type, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
   const dest = (name, x, z) => destinations?.push({ name, x, z });
@@ -226,6 +227,18 @@ export function buildVenues(ctx) {
   ];
   north.forEach((c, i) => company({ ...c, x: -20 + i * 120, z: 1068, face: 1 }));
   south.forEach((c, i) => company({ ...c, x: -20 + i * 120, z: 1132, face: -1 }));
+  // Grand Parade: a road behind the boulevard's south row, with the city's hotels along it.
+  road(-120, 1168, 1000, 1168, 12);
+  for (const lx of [160, 640]) road(lx, 1100, lx, 1168, 10);   // link roads through the gaps in the south row
+  company({ name: 'The Grand Ashford Hotel', type: 'hotel', x: 220, z: 1200, w: 30, d: 26, floors: 12, face: -1, base: '#e9e2d0', win: '#ffd9a0', sign: '#3a2a1a', fg: '#e6c27a', sub: '★★★★★ HOTEL · RESTAURANT · BAR', neon: 0xd4af37 });
+  company({ name: 'Skyline Suites', type: 'hotel', x: 520, z: 1200, w: 28, d: 24, floors: 9, face: -1, base: '#22303c', win: '#9fd3ff', sign: '#15232e', fg: '#9fd3ff', sub: 'MODERN HOTEL · ROOFTOP VIEWS', neon: 0x5fd4ff });
+  company({ name: 'The Boulevard Inn', type: 'hotel', x: 820, z: 1200, w: 26, d: 22, floors: 5, face: -1, base: '#7a4a2a', win: '#ffe6b0', sign: '#3a1f10', fg: '#ffe6b0', sub: 'HOTEL · ROOMS FROM 40 GOLD', neon: 0xffb36b });
+  dest('Grand Parade (hotels)', 520, 1168);
+  // Community halls in Ashford, Riverside and the Capital
+  company({ name: 'Ashford Community Hall', type: 'community_hall', x: -60, z: -180, w: 24, d: 18, floors: 2, face: 1, base: '#c8b89a', win: '#fff1d0', sign: '#2d5d3a', fg: '#ffffff', sub: 'BINGO · YOGA · COFFEE MORNINGS' });
+  company({ name: 'Riverside Community Centre', type: 'community_hall', x: -140, z: 820, w: 22, d: 18, floors: 2, face: -1, base: '#b8a88a', win: '#fff1d0', sign: '#2f4a6b', fg: '#ffffff', sub: 'EVENTS · FOOD BANK · CLUBS' });
+  company({ name: 'Capital Civic Hall', type: 'community_hall', x: 420, z: 740, w: 24, d: 18, floors: 2, face: -1, base: '#d9d2c0', win: '#fff1d0', sign: '#5a1f1f', fg: '#ffffff', sub: 'COMMUNITY · MEETINGS · PARTIES' });
+
   // Entertainment Quarter at the west end of the boulevard: casinos, arcades and a church.
   company({ name: 'Golden Palace Casino', type: 'casino', x: -150, z: 1068, w: 26, d: 18, floors: 4, face: 1, base: '#3a0f1f', win: '#ffd23f', sign: '#2a0814', fg: '#ffd23f', sub: 'SLOTS · ROULETTE · BLACKJACK · POKER', neon: 0xffd23f });
   company({ name: 'Lucky Seven Casino', type: 'casino', x: -150, z: 1132, w: 26, d: 18, floors: 3, face: -1, base: '#0f2a1f', win: '#22ff88', sign: '#0a1a14', fg: '#22ff88', sub: 'OPEN 24 HOURS · SLOTS · TABLES', neon: 0x22ff88 });
@@ -259,7 +272,7 @@ export function buildVenues(ctx) {
   dest('Nightlife Strip', 820, 1100);
   for (let i = 0; i < 6; i++) for (const s of [-1, 1]) {   // street trees and benches along the boulevard
     const tx = 40 + i * 120, tz = 1100 + s * 9;
-    B(0.3, 2.4, 0.3, tx, 1.2, tz, mat(0x5a3d26)); const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.8, 0), mat(0x3f7d3a)); crown.position.set(tx, 3.6, tz); scene.add(crown);
+    if (ctx.forest) ctx.forest.add(tx, 0, tz, { kind: i % 2 ? 'birch' : 'oak', scale: 0.85 }); else { B(0.3, 2.4, 0.3, tx, 1.2, tz, mat(0x5a3d26)); const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.8, 0), mat(0x3f7d3a)); crown.position.set(tx, 3.6, tz); scene.add(crown); }
   }
   signBoard('ASHFORD BUSINESS DISTRICT', 280, 6, 1020, 12, Math.PI, '#15364a', '#ffffff', 'COMPANIES · CROWN COURT · ARCADE');
   for (const sx of [-1, 1]) B(0.5, 6, 0.5, 280 + sx * 6, 3, 1020, steel);

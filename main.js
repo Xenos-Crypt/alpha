@@ -55,6 +55,9 @@ import {buildHills, buildRidge} from './hills.js';
 import {buildVehicleDealers} from './vehicle-dealers.js';
 import {createMarketPanel} from './market-panel.js';
 import {createProperty} from './property.js';
+import {buildDrivingSchool} from './driving-school.js';
+import {createForest, pickKind} from './trees.js';
+import {createGrass} from './grass.js';
 import {marketItems, applyStats, CAR_CATS, BIKE_CATS, AIR_CATS} from './vehicle-catalogue.js';
 import {styleCar, randomCarStyle} from './car-styles.js';
 import {createCarControls} from './car-controls.js';
@@ -591,19 +594,11 @@ const leafGeo = new THREE.IcosahedronGeometry(1, 2);
 const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, 2.2, 7);
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
 const leafMats = [0x4a683c, 0x537442, 0x405d36, 0x607849].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
+const forest = createForest(scene);
 function addTree(x, z, s = 1, trafficIsland=false) {
   if(!trafficIsland){const safe=roadsidePosition(x,z,13);x=safe.x;z=safe.z;}
   const y0 = groundY(x, z);
-  const trunk = mesh(trunkGeo, trunkMat);
-  trunk.scale.setScalar(s);
-  trunk.position.set(x, y0 + 1.1 * s, z);
-  const mat = leafMats[Math.floor(rand() * leafMats.length)];
-  for (let i = 0; i < 3; i++) {
-    const leaf = mesh(leafGeo, mat);
-    leaf.scale.setScalar(s * (1.0 + rand() * 0.5));
-    leaf.position.set(x + (rand() - 0.5) * 1.3 * s, y0 + (2.6 + rand() * 1.0) * s, z + (rand() - 0.5) * 1.3 * s);
-    leaf.rotation.set(rand() * 3, rand() * 3, 0);
-  }
+  forest.add(x, y0, z, { kind: pickKind(x, z), scale: s * 0.9 });   // real trees: trunk, branches, layered canopy (see trees.js)
   colliders.push({ minX: x - 0.3, maxX: x + 0.3, minZ: z - 0.3, maxZ: z + 0.3 });
 }
 
@@ -1449,11 +1444,24 @@ residentialCells.forEach(([cx, cz], i) => {
 // =====================================================================
 const $ = id => document.getElementById(id);
 let toastTimer;
+// On phones and tablets, keyboard hints in messages become the matching on-screen buttons.
+const TOUCH_HINTS = [
+  [/Press E \(or (the )?action button\)/g, 'Tap Interact'], [/press E \(or (the )?action button\)/g, 'tap Interact'], [/\bE \(or (the )?action button\)/g, 'Interact'],
+  [/\bPress E\b/g, 'Tap Interact'], [/\bpress E\b/g, 'tap Interact'], [/\bE at the rack\b/g, 'Interact at the rack'], [/\bUse E\b/g, 'Use Interact'],
+  [/Press J to take it off/g, 'Tap 🦾 to take it off'], [/\bJ to take it off\b/g, '🦾 to take it off'],
+  [/\(V to turn it off\)/g, '(tap 🔦 to turn it off)'], [/[Pp]ress Y\b/g, 'tap 🚕'],
+  [/Space climbs, Shift descends, W\/S fly forward\/back, A\/D turn/g, 'Climb goes up, Descend goes down, stick forward/back to fly, left/right to turn'],
+  [/Space to climb, Shift to descend, W\/S to fly, A\/D to turn/g, 'Climb goes up, Descend goes down, stick forward/back to fly, left/right to turn'],
+  [/Q\/R barrel roll in flight\. W\/S throttle · A\/D turn · Space climb · Shift dive\./g, 'Roll buttons barrel-roll · stick up/down is throttle · left/right turns · Climb and Descend pitch.'],
+  [/\bHold S\b/g, 'Hold ▼'], [/\bhold S\b/g, 'hold ▼'], [/\bW to go forward\b/g, '▲ to go forward'],
+];
+const touchText = text => { if (!touchDevice || typeof text !== 'string') return text; for (const [a, b] of TOUCH_HINTS) text = text.replace(a, b); return text; };
 function toast(text) {
+  text = touchText(text);
   $('toast').textContent = text;
   $('toast').style.opacity = 1;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => $('toast').style.opacity = 0, 2200);
+  toastTimer = setTimeout(() => $('toast').style.opacity = 0, Math.min(7000, 2200 + String(text).length * 30));   // long messages stay up long enough to read
 }
 
 const _proj = new THREE.Vector3();
@@ -2339,7 +2347,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, property = null;
+let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, property = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -2516,6 +2524,8 @@ let flashlightOn = false;
 function toggleFlashlight() { flashlightOn = !flashlightOn; toast(flashlightOn ? 'Flashlight on (V to turn it off).' : 'Flashlight off.'); $('torchBtn')?.classList.toggle('on', flashlightOn); }
 const _fwd = new THREE.Vector3();
 function updateFlashlight() {
+  const xo = $('exoBtn'); if (xo) { const w = !!military?.wearing; if ((xo.style.display !== 'none') !== w) xo.style.display = w ? '' : 'none'; if (!xo.onclick) xo.onclick = () => military?.takeOff(); }
+  for (const id of ['torchBtn', 'taxiBtn']) { const el = $(id); if (el && el.style.display !== 'none') el.style.visibility = inCar || !canAct() ? 'hidden' : 'visible'; }   // no torch or taxi call while you're in a vehicle
   const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } }
   flashlight.intensity = flashlightOn && !inCar ? 90 : 0;
   if (!flashlightOn) return;
@@ -6012,6 +6022,22 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
     toast: m => toast(m),
     leave: () => leaveCivicBuilding(),
     casino: game => casino.open(game, currentVenueName || 'Casino'),
+    // Hotels: book a room at reception; a night's sleep restores you and you wake at sunrise.
+    hotel(goToRoom) {
+      const name = currentVenueName || 'Hotel', booked = hotelBookings.get(name);
+      if (booked) { goToRoom(); return; }
+      snackShop.open(name + ': rooms', 'hotel', [
+        { name: 'Standard room', icon: '🛏️', price: 40, desc: 'Comfy bed, shower. Sleep until morning.', onBuy: () => { if (stats.gold < 40) return false; hotelBookings.set(name, 'Standard room'); setTimeout(() => { snackShop.close(); goToRoom(); }, 50); } },
+        { name: 'Deluxe room', icon: '🛁', price: 90, desc: 'Big bed, bath, city view. Breakfast included.', onBuy: () => { if (stats.gold < 90) return false; hotelBookings.set(name, 'Deluxe room'); stats.hunger = Math.min(100, stats.hunger + 40); setTimeout(() => { snackShop.close(); goToRoom(); }, 50); } },
+        { name: 'Penthouse suite', icon: '🌆', price: 250, desc: 'Top floor, panoramic windows, full room service.', onBuy: () => { if (stats.gold < 250) return false; hotelBookings.set(name, 'Penthouse suite'); stats.hunger = 100; stats.energy = Math.min(100, stats.energy + 30); setTimeout(() => { snackShop.close(); goToRoom(); }, 50); } },
+      ]);
+    },
+    hotelRoom(goToRoom) { if (!hotelBookings.get(currentVenueName || 'Hotel')) return undefined; goToRoom(); return true; },
+    // Community hall activities
+    bingo() { if (stats.gold < 3) { toast('Bingo costs 3 gold.'); return; } stats.gold -= 3; const r = Math.random(); if (r < 0.12) { stats.gold += 60; toast('🎱 HOUSE! You win the full house: +60 gold!'); } else if (r < 0.35) { stats.gold += 10; toast('🎱 One line! +10 gold.'); } else toast('🎱 Two numbers short. "Two fat ladies, 88!" Next game in a minute.'); },
+    yoga() { if (stats.gold < 5) { toast('The yoga class is 5 gold.'); return; } stats.gold -= 5; stats.energy = Math.min(100, stats.energy + 30); stats.hp = Math.min(maxHp(), stats.hp + 15); toast('🧘 An hour of yoga. Stretched, calm and full of energy (+30 energy, +15 health).'); },
+    volunteer() { stats.energy = Math.max(0, stats.energy - 10); prog.xp += 15; toast('🥫 You help pack food parcels for an hour. The organiser thanks you warmly (+15 XP).'); },
+    party() { if (stats.gold < 150) { toast('Hiring the hall costs 150 gold.'); return; } stats.gold -= 150; toast('🎉 You throw a party! Half the neighbourhood turns up. Music, dancing, a buffet… and a great reputation.'); },
     shop: (name, kind) => snackShop.open(['pub', 'club', 'restaurant'].includes(kind) && currentVenueName ? currentVenueName : name, kind),
     travel(pos, y, msg, then) {   // stairs, lifts and escalators between floors
       $('fade').style.opacity = 1;
@@ -6172,6 +6198,7 @@ async function enterCivicBuilding(b) {
   }, 650);
 }
 let currentVenueName = null;
+const hotelBookings = new Map();   // hotel name -> room type booked
 function leaveCivicBuilding() {
   $('fade').style.opacity = 1;
   setTimeout(() => {
@@ -7371,7 +7398,7 @@ sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpo
 });
 interactables.push({pos:new THREE.Vector3(TRAIN.x-13.6,CURB,TRAIN.z),r:3,label:'Claim special training ability',action:()=>{if(prog.level<5){toast('Reach level 5 to unlock support-skill quests.');return;}if(specialUnlocked){toast('Special training complete. Your SP ability is equipped.');return;}if(specialTrainingKills<5){toast('Special training: defeat 5 enemies. Progress '+specialTrainingKills+'/5.');return;}specialUnlocked=true;supportSkills?.grantPsychic();localStorage.setItem('specialUnlocked','true');buildHotbar();toast('Special training completed. Psychic Grip is now equipped in SP.');}});
 buildControlSettings($('controlChoices'),controlPrefs,matchMedia('(pointer: coarse)').matches&&navigator.maxTouchPoints>0,()=>{for(const key in keys)keys[key]=false;mobileControls?.reset();mobileControls?.update();applyLayout();});
-regionalEnvironment=buildRegionalEnvironment({scene,box,makeTex,addTrafficLight,addBird,insideCollider,addLampSpot});
+regionalEnvironment=buildRegionalEnvironment({forest,scene,box,makeTex,addTrafficLight,addBird,insideCollider,addLampSpot});
 metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex,toast,groundY,
  makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
  clearEntrance(rect){for(let i=0;i<lampSpots.length;i++){const p=lampSpots[i];if(p.x>rect.minX-.4&&p.x<rect.maxX+.4&&p.z>rect.minZ-.4&&p.z<rect.maxZ+.4){p.z=rect.maxZ+2;placeLampInstance(i,p);}}for(const b of buildings)if(b.alive&&b.x+b.w/2>rect.minX-.5&&b.x-b.w/2<rect.maxX+.5&&b.z+b.d/2>rect.minZ&&b.z-b.d/2<rect.maxZ){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[]){m.visible=false;const i=camBlockers.indexOf(m);if(i>=0)camBlockers.splice(i,1);}for(const c of [b.collider,...(b.extraColliders||[])]){const i=colliders.indexOf(c);if(i>=0)colliders.splice(i,1);}for(const c of b.blocks||[]){const i=planeBlocks.indexOf(c);if(i>=0)planeBlocks.splice(i,1);}}},
@@ -7454,6 +7481,8 @@ military = buildMilitary({ scene, colliders, interactables, civicBuildings, make
   makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
 buildVehicleDealers({ openVehicleShop, scene, colliders, interactables, makeTex, makePerson: o => makeHumanoid(o), makeVehicle, makeHelicopter, makeAircraft, toast, money: () => stats.gold, sign: signboard, groundY, destinations: townPlaces.destinations,
   shopPanel: (title, items) => snackShop.open(title, 'dealer', items), registerOwned: v => cityServices?.ownedCars?.push(v) });
+drivingSchool = buildDrivingSchool({ scene, colliders, interactables, makeTex, makePerson: o => makeHumanoid(o), makeVehicle, groundY, get roadLaw() { return roadLaw; }, toast, sign: signboard, destinations: townPlaces.destinations, playerPos: () => player.position,
+  money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, enterVehicle: v => { if (inCar) exitVehicle(); player.position.copy(v.group.position); enterVehicle(v); }, exitVehicle: () => exitVehicle(), isDriving: v => inCar && driving === v });
 ridge = buildRidge({ scene, makeTex, interactables, sitSpots, toast, destinations: townPlaces.destinations });
 hills = buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position });
 conditions = createConditions({ buildings, collapse: b => collapseBuilding(b, false), toast, playerPos: () => player.position,
@@ -7475,7 +7504,7 @@ townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
 const pauseForPanel=()=>{locked=false;mouseHeld=false;for(const key in keys)keys[key]=false;document.exitPointerLock();$('start').style.display='none';};
 roadLaw=createRoadLaw({roundaboutCells:ROUNDABOUT_CELLS,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},toast,raiseWanted,time:()=>performance.now()/1000,isRedLight:(cx,cz,axis)=>{const j=junctionControl.junctions.get(cx*40+','+cz*40);return !!j&&junctionControl.state(j,'car',axis)==='red';},licensedHunter:()=>!!hunterGuilds?.licensed});
-frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,civicBuildings,glowMats,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+frontier=buildFrontierWorld({forest,scene,colliders,planeBlocks,interactables,civicBuildings,glowMats,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
  destinations:townPlaces.destinations,toast,playerPosition:()=>inCar&&driving?driving.group.position:player.position,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},sleep,buyFood,
  authorised:()=>(hunterGuilds?.state.licensed&&hunterGuilds.state.rank>=3),
  makeTank(x,z,ry){const v=makeVehicle('tank',0x4f5a3a);v.group.position.set(x,.2,z);v.group.rotation.y=ry;v.ai={parked:true};v.militaryHome=new THREE.Vector3(x,.2,z);v.militaryYaw=ry;v.noSteal=true;return v;},
@@ -7483,7 +7512,7 @@ frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,civicBuil
  onIntrusion(zone){if(militaryAlert<=0)toast(`${zone.name}: INTRUDER ALERT. Armoured units deployed — leave the restricted zone now.`);militaryAlert=45;}});
 // The guarded border fence around the edge of the map, with snowy mountains outside.
 // Leisure park, business district and the other real-life places on the outer land.
-venues=buildVenues({scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle,makePerson:makeHumanoid,openShop:(name,kind)=>snackShop.open(name,kind)});
+venues=buildVenues({forest,scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle,makePerson:makeHumanoid,openShop:(name,kind)=>snackShop.open(name,kind)});
 { const money = () => stats.gold, spend = n => { stats.gold = Math.max(0, stats.gold - n); }, earn = n => { stats.gold += n; };
   const animatePerson = (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt);
   football = createFootball({ scene, venues, makePerson: o => makeHumanoid(o), animatePerson, interactables, toast, money, spend, earn, playerPos: () => player.position });
@@ -7524,6 +7553,33 @@ interactables.push({pos:frontier.desks.dvla,r:3,label:'Driver & Vehicle Licensin
 interactables.push({pos:frontier.desks.dvla.clone().add(new THREE.Vector3(3.5,0,0)),r:2.5,label:'Licensing Office (firearms, pilot, boat, motorbike, trading)',action:()=>licences.open()});
 interactables.push({pos:new THREE.Vector3(186,.15,-187),r:2.5,label:'Licensing counter (firearms licence)',action:()=>licences.open('Weapons shop licensing counter')});
 metro.cutSurfaces();
+forest.flush();
+// Grass tufts around the player, only on grassy ground.
+const roadGrid = new Map(), ROAD_CELL = 20;
+{ // find every road-like surface once (dark, flat, low strips) so grass never grows on them
+  const tmpC = new THREE.Color();
+  scene.traverse(o => {
+    if (!o.isMesh || o.isInstancedMesh) return; const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m?.color) return;
+    const g = o.geometry; if (!['BoxGeometry', 'PlaneGeometry'].includes(g.type)) return;
+    tmpC.copy(m.color); const lum = tmpC.r * 0.3 + tmpC.g * 0.59 + tmpC.b * 0.11; if (lum > 0.08 && !m.map) { if (lum > 0.2) return; }
+    if (!g.boundingBox) g.computeBoundingBox(); const bb = g.boundingBox.clone().applyMatrix4(o.matrixWorld);
+    if (bb.max.y > 0.35 || bb.min.y < -0.4 || bb.max.y - bb.min.y > 0.3) return;
+    const w = bb.max.x - bb.min.x, d = bb.max.z - bb.min.z; if (Math.max(w, d) < 6 || w * d > 200000 || (m.map && lum > 0.2)) return;
+    const rect = { minX: bb.min.x - 0.5, maxX: bb.max.x + 0.5, minZ: bb.min.z - 0.5, maxZ: bb.max.z + 0.5 };
+    for (let i = Math.floor(rect.minX / ROAD_CELL); i <= Math.floor(rect.maxX / ROAD_CELL); i++) for (let k = Math.floor(rect.minZ / ROAD_CELL); k <= Math.floor(rect.maxZ / ROAD_CELL); k++) { const key = i * 100003 + k; let l = roadGrid.get(key); if (!l) roadGrid.set(key, l = []); l.push(rect); }
+  });
+}
+function grassSpot(x, z) {
+  if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 4) return null;
+  const terrain = hills?.groundAt(x, z) ?? ridge?.groundAt(x, z);
+  const y = terrain ?? groundY(x, z, 0);
+  if (terrain == null && (y > 0.1 || y < -0.2)) return null;                       // pavements, raised floors, water
+  if (Math.abs(x) < 185 && Math.abs(z) < 185) { const mx = ((x % 40) + 40) % 40, mz = ((z % 40) + 40) % 40; if (mx < 7 || mx > 33 || mz < 7 || mz > 33) return null; }   // town street grid
+  for (const r of roadGrid.get(Math.floor(x / ROAD_CELL) * 100003 + Math.floor(z / ROAD_CELL)) || []) if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) return null;
+  for (const c of collidersNear(x, z)) { if (c.circleRadius != null ? Math.hypot(x - c.circleX, z - c.circleZ) < c.circleRadius + 0.6 : x > c.minX - 0.6 && x < c.maxX + 0.6 && z > c.minZ - 0.6 && z < c.maxZ + 0.6) return null; }
+  return y;
+}
+const grass = createGrass({ scene, count: touchDevice ? 3000 : 6000, radius: touchDevice ? 28 : 38, spot: grassSpot });
 const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
 worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosition:()=>player.position});worldAdvertising.update(0);adBalloon.visible=false;
@@ -7574,7 +7630,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); race?.update(dt); doors?.update(dt); property?.update(); hills?.update(dt, inCar && driving ? driving.group.position : null);
+    blackMarket?.update(dt); football?.update(dt); race?.update(dt); doors?.update(dt); property?.update(); forest.flush(); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }

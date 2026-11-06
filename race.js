@@ -50,6 +50,7 @@ export function createRace({ scene, venues, makeVehicle, removeVehicle, enterVeh
       #raceHud .vig{position:absolute;inset:0;box-shadow:inset 0 0 120px 30px #0009}
       #raceHud .count{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:clamp(60px,14vw,140px);font-weight:900;color:#ffd23f;text-shadow:0 6px 24px #000}
       #raceHud canvas{position:absolute;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 150px);width:clamp(110px,18vw,180px);background:#0008;border-radius:12px}
+      @media (max-height:520px){body.racing #hud{display:none!important}#raceHud .board{display:none!important}#raceHud .bar{top:calc(env(safe-area-inset-top,0px) + 74px)!important;left:0!important;right:0!important;height:auto!important;padding-top:0!important;background:none!important;font-size:14px!important;justify-content:center!important}#raceHud canvas{right:auto!important;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 100px);bottom:auto!important;width:96px!important}#raceHud .count{top:55%}}
       #raceHud .board{position:absolute;left:12px;top:calc(env(safe-area-inset-top,0px) + 54px);font-size:clamp(11px,1.6vw,14px);background:#0007;border-radius:10px;padding:6px 10px;line-height:1.45}
     </style><div class="vig"></div><div class="flag"></div><div class="bar"><span>🏁 LAP <b class="lap">1/3</b></span><span>POS <b class="pos">6/6</b></span><span>⏱ <b class="time">0:00.0</b></span></div><div class="count"></div><div class="board"></div><canvas width="180" height="110"></canvas>`;
     document.body.append(hud);
@@ -76,6 +77,7 @@ export function createRace({ scene, venues, makeVehicle, removeVehicle, enterVeh
     race = { mine, ai, t: -3.5, myS: track.progress(gp.x, gp.z), myLaps: -1, lastS: null, finished: [], over: false };
     enterVehicle(mine);
     if (hud) hud.hidden = false;
+    document.body.classList.add('racing');
     toast(`🏁 Race on! ${LAPS} laps of Ashford Raceway. Prizes: ${PRIZES.join(' / ')} gold.`);
   }
   function standings() {
@@ -130,6 +132,7 @@ export function createRace({ scene, venues, makeVehicle, removeVehicle, enterVeh
     }
   }
   function finishWith(r, dnf) {
+    document.body.classList.remove('racing');
     if (hud) hud.hidden = true;
     for (const a of r.ai) removeVehicle(a.v);
     race = null;

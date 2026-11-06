@@ -18,6 +18,7 @@ export function buildMilitary(ctx) {
   const B = (w, h, d, x, y, z, c, solid = false, parent = scene) => { const m = new THREE.Mesh(geo, c instanceof THREE.Material ? c : mat(c)); m.scale.set(w, h, d); m.position.set(x, y, z); parent.add(m); if (solid) colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 }); return m; };
   const flat = (w, d, x, z, c, y = 0.05) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat(c, { rough: 0.95 })); p.rotation.x = -Math.PI / 2; p.position.set(x, y, z); scene.add(p); return p; };
   const sign = (text, sub, x, y, z, w, ry = 0, bg = '#2b3320', fg = '#e6e2c4') => {
+    w = Math.min(8, w * 0.65);
     const map = makeTex(512, 128, g => { g.fillStyle = bg; g.fillRect(0, 0, 512, 128); g.fillStyle = fg; g.textAlign = 'center'; g.font = `bold ${sub ? 44 : 54}px sans-serif`; g.fillText(text, 256, sub ? 58 : 80, 490); if (sub) { g.font = '24px sans-serif'; g.fillText(sub, 256, 100, 490); } });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 4), new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide })); m.position.set(x, y, z); m.rotation.y = ry; scene.add(m); return m;
   };

@@ -774,6 +774,68 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.light(0, -6, 1.1, 14, 0xffe6b0); L.light(-5, 2, 0.7, 12, 0xfff1d0); L.light(5, 2, 0.7, 12, 0xfff1d0);
   }
 
+  // =========================== HOTEL LOBBY + ROOM ===========================
+  {
+    const L = makeLayout('hotel', -6500, 0, 0xe9e2d0, 0x4a3524), { F, spot, B, Cyl } = L;
+    const gold = mat(0xd4af37, { metal: 0.8, rough: 0.3 }), marble = mat(0xf2efe8, { rough: 0.25, metal: 0.1 });
+    B(23.6, 0.02, 17.6, 0, 0.11, 0, marble);                                                       // marble floor
+    // reception desk with two receptionists and a key board behind
+    F.counter(0, -6.2, 0, 7, 0x2a1a10, 0x3a2414); B(7, 0.06, 0.9, 0, 1.12, -6.2, gold);
+    for (let i = 0; i < 12; i++) Cyl(0.06, 0.06, 0.02, -2.5 + (i % 6) * 1, 1.6 + Math.floor(i / 6) * 0.4, -8.8, gold);
+    L.worker(-1.5, -7.2, 0, { sit: false, outfit: 0x1a2a3a, pants: 0x1a1a1a, task: 'type' }); L.worker(1.5, -7.2, 0, { sit: false, outfit: 0x1a2a3a, pants: 0x1a1a1a, task: 'talk' });
+    spot(0, -4.8, 2.4, 'Check in at reception (book a room)', () => hooks.hotel?.(() => go(layouts['hotel-room'], 0, 6.5, 0, 'Your room. Sleep, order room service, or take the lift back down.')));
+    // lifts and a grand staircase look
+    for (const x of [-9, -6.5]) { B(2, 2.6, 0.12, x, 1.3, -8.85, mat(0xb8c1c5, { metal: 0.8, rough: 0.25 })); B(0.6, 0.2, 0.05, x, 2.8, -8.8, mat(0xffd23f, { emissive: 0xffd23f, ei: 1 })); }
+    spot(-7.75, -7.6, 2.0, 'Call the lift to your room', () => hooks.hotelRoom?.(() => go(layouts['hotel-room'], 0, 6.5, 0, 'Your room.')) ?? hooks.toast('Book a room at reception first.'));
+    // lounge: sofas, coffee tables, plants, chandelier, piano
+    for (const [x, z, r] of [[-8, 1, Math.PI / 2], [-8, 5, Math.PI / 2], [8, 1, -Math.PI / 2]]) { F.sofa(x, z, r, 0x7a1f2a, 2.6); F.coffeeTable(x + (x < 0 ? 1.4 : -1.4), z, r); }
+    L.worker(-8, 1, Math.PI / 2, { outfit: 0x5b8a72, task: 'read', seatY: 0.58 }); L.worker(8, 1, -Math.PI / 2, { outfit: 0x8a5b72, task: 'talk', seatY: 0.58 });
+    F.plant(-11.2, -8.2); F.plant(11.2, -8.2); F.plant(-11.2, 8.2); F.plant(11.2, 8.2);
+    B(2.2, 0.5, 2.2, 0, 3.35, 0, mat(0xfff1c4, { emissive: 0xfff1c4, ei: 1.4 }));
+    B(1.8, 1.0, 0.9, 7.5, 0.6, 6, 0x111111); spot(7.5, 4.9, 1.5, 'Play the lobby piano', () => hooks.toast('🎹 You play a soft tune. A guest gives a small round of applause.'));
+    // hotel restaurant corner and bar
+    F.counter(8, -2.5, -Math.PI / 2, 4, 0x2a1414, 0x4a2a1a); spot(6.6, -2.5, 1.8, 'Eat at the hotel restaurant', () => hooks.shop('Hotel restaurant', 'restaurant'));
+    L.worker(9.3, -2.5, -Math.PI / 2, { sit: false, outfit: 0xf2f2f2, task: 'type' });
+    L.worker(4, 7.5, Math.PI, { sit: false, outfit: 0x7a1f1f, pants: 0x1a1a1a, task: 'idle' });   // the porter
+    spot(4, 6.3, 1.6, 'Talk to the porter', () => hooks.toast('"Welcome! Rooms from 40 gold a night. A good night\'s sleep restores you fully, and you wake at sunrise."'));
+    L.light(0, 0, 1.2, 16, 0xffe6b0); L.light(-8, 3, 0.8, 10, 0xffd9a0); L.light(8, -2, 0.8, 10, 0xffd9a0);
+  }
+  {
+    const L = makeLayout('hotel-room', -6600, 0, 0xdcd6c8, 0x6b5a48, { exit: false }), { F, spot, B } = L;
+    B(23.6, 3, 0.1, 0, 1.5, 3.2, 0xdcd6c8, true);   // the room is the back part of the floor: a wall with the corridor beyond
+    B(4, 0.6, 2.4, -3, 0.45, -5.5, 0x6b4a2f); B(3.9, 0.25, 2.3, -3, 0.85, -5.5, 0xf4f4f4); B(3.9, 0.12, 0.6, -3, 1.0, -6.4, 0xffffff); B(4, 1.4, 0.12, -3, 1.0, -6.75, 0x4a2c18);
+    spot(-3, -3.6, 2.2, 'Sleep until morning', () => hooks.sleep());
+    B(2.6, 1.5, 0.08, 4.5, 1.6, -8.85, mat(0x111111)); B(2.4, 1.3, 0.02, 4.5, 1.6, -8.8, mat(0x22324a, { emissive: 0x2a4a7a, ei: 0.5 }));
+    spot(4.5, -6.5, 1.8, 'Watch TV', () => hooks.rest(8, 'You flick through the channels. Nothing on, as usual.'));
+    B(1.8, 0.8, 0.6, 6.5, 0.5, -1.5, 0x6b4a2f); spot(6.5, -0.4, 1.5, 'Order room service (12 gold)', () => hooks.eat(55, 12, '🛎️ Room service! A club sandwich and a pot of tea arrive at the door.'));
+    B(3, 2.4, 0.08, -9, 1.6, -8.9, mat(0x9fd3ff, { emissive: 0x6fa8ff, ei: 0.4 }));   // big window
+    spot(-9, -7.6, 1.6, 'Look out of the window', () => hooks.toast('🌆 The city lights stretch all the way to the dome.'));
+    B(2.4, 2.6, 0.1, 9, 1.3, 2.9, mat(0xb8c1c5, { metal: 0.8, rough: 0.25 }));
+    spot(9, 1.8, 1.8, 'Take the lift down to the lobby', () => go(layouts.hotel, -7.75, -6.4, Math.PI, 'Back in the lobby.'));
+    F.plant(-10.8, 2.2); L.light(0, -3, 0.8, 12, 0xffe6b0);
+  }
+
+  // =========================== COMMUNITY HALL ===========================
+  {
+    const L = makeLayout('community', -6400, 0, 0xe8e0c8, 0x8a6a46), { F, spot, B } = L;
+    // stage at the back with curtains
+    B(14, 0.8, 4, 0, 0.5, -7, 0x6b4a2f, true); for (const s of [-1, 1]) B(3, 3.2, 0.1, s * 6, 2.5, -8.9, 0x7a1f2a);
+    B(6, 1.2, 0.05, 0, 3.2, -8.9, mat(0xffffff)); spot(0, -4.6, 2.2, 'Read the events board', () => hooks.toast(['📋 Tonight: bingo at 7. Tomorrow: yoga, coffee morning, and the youth hunters\' club.', '📋 Volunteers wanted for the food bank. Lost cat: answers to "Biscuit".', '📋 Neighbourhood watch meeting on Thursday. Bring biscuits.'][Math.floor(Math.random() * 3)]));
+    // rows of folding chairs for a meeting
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) F.chair(-5 + c * 2, -2.5 + r * 1.5, Math.PI, [0x2f6f8f, 0xd0281f][r % 2], 'Sit down');
+    L.worker(-3, -2.5, Math.PI, { outfit: 0x7a4a2a, task: 'talk', seatY: 0.58 }); L.worker(1, -1, Math.PI, { outfit: 0x4a4a8a, task: 'talk', seatY: 0.58 }); L.worker(5, 0.5, Math.PI, { outfit: 0x5b8a72, task: 'read', seatY: 0.58 });
+    L.worker(0, -7.2, 0, { sit: false, outfit: 0x2d5d3a, task: 'talk' });   // the organiser on stage
+    // tea table and bingo
+    F.table(-8, 5.5, 3, 1, 0, 0xf2f2f2); B(0.4, 0.6, 0.4, -9, 1.05, 5.5, mat(0xb8c1c5, { metal: 0.8 }));
+    spot(-8, 6.8, 1.8, 'Coffee morning: tea and cake (2 gold)', () => hooks.eat(20, 2, '☕ A cup of tea and a slice of Victoria sponge. The locals ask how you\'re getting on.'));
+    F.table(7, 5.5, 3, 1.2, 0, 0x2a3f6b);
+    spot(7, 6.9, 1.8, 'Play bingo (3 gold)', () => hooks.bingo?.());
+    spot(8.5, -5.5, 1.8, 'Join the yoga class (5 gold)', () => hooks.yoga?.());
+    spot(-8.5, -5.5, 1.8, 'Volunteer at the food bank', () => hooks.volunteer?.());
+    spot(0, 7.6, 1.6, 'Hire the hall for a party (150 gold)', () => hooks.party?.());
+    L.light(-5, 0, 0.9, 13, 0xfff1d0); L.light(5, 0, 0.9, 13, 0xfff1d0); L.light(0, -7, 0.9, 10, 0xffe6b0);
+  }
+
   let active = null, time = 0;
   const api = {
     layouts,
@@ -786,6 +848,8 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (/government|townhall|town_hall|council|job_centre|post_office/.test(t)) return layouts.gov;
       if (/arcade|amusement|games/.test(t)) return layouts.arcade;
       if (/^(casino|gambling)$/.test(t)) return layouts.casino;
+      if (/^(hotel|motel|hostel|guest_house)$/.test(t)) return layouts.hotel;
+      if (/^(community_hall|community_centre|community|village_hall)$/.test(t)) return layouts.community;
       if (/^(church|chapel|cathedral|place_of_worship)$/.test(t)) return layouts.church;
       if (/^(mansion|villa|estate)$/.test(t)) return layouts.home;
       if (/^(nightclub|night_club|club|disco)$/.test(t)) return layouts.nightclub;

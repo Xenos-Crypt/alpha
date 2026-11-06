@@ -113,7 +113,7 @@ export function buildHills({ scene, colliders, civicBuildings, interactables, ma
   }
   destinations?.push({ name: 'Highcliff Hills (mansions)', x: roadPoint(0).x + 25, z: roadPoint(0).z });
   const sign = makeTex(512, 128, g => { g.fillStyle = '#1f2a22'; g.fillRect(0, 0, 512, 128); g.fillStyle = '#e6d9a8'; g.font = 'bold 54px serif'; g.textAlign = 'center'; g.fillText('HIGHCLIFF HILLS', 256, 70); g.font = '24px serif'; g.fillText('PRIVATE ESTATES · DRIVE SLOWLY', 256, 108); });
-  const sm = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: sign, side: THREE.DoubleSide })); sm.position.set(foot.x + 14, 2.4, foot.z - ROAD_W / 2 - 2); sm.rotation.y = -Math.PI / 2; scene.add(sm);
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshBasicMaterial({ map: sign, side: THREE.DoubleSide })); sm.position.set(foot.x + 14, 2.4, foot.z - ROAD_W / 2 - 2); sm.rotation.y = -Math.PI / 2; scene.add(sm);
   B(0.3, 2.4, 0.3, foot.x + 14, 1.2, foot.z - ROAD_W / 2 - 5.5, 0x2b2f33); B(0.3, 2.4, 0.3, foot.x + 14, 1.2, foot.z - ROAD_W / 2 + 1.5, 0x2b2f33);
   interactables.push({ pos: new THREE.Vector3(HILL.x + 6.5, HILL.top, HILL.z), r: 2.5, label: 'Toss a coin in the fountain', action: () => toast('🪙 Plink. The view from up here is worth millions.') });
 
