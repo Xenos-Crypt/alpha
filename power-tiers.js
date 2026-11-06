@@ -12,6 +12,7 @@ export const POWER_TIERS = [
   { min: 250,  rank: 'A',   name: 'Calamity',         band: 'Elite',       feat: 'District-scale destruction. Duels armoured divisions.' },
   { min: 500,  rank: 'S',   name: 'Sovereign',        band: 'National',    feat: 'City-scale force. Treated like a strategic weapon.' },
   { min: 1000, rank: 'SS',  name: 'Cataclysm',        band: 'Continental', feat: 'Could crack the Aegis Shield if they tried.' },
+  { min: 2500, rank: 'SSS', name: 'Worldbreaker',     band: 'Planetary',   feat: 'A walking extinction event. Only a handful exist.' },
 ];
 
 export function powerTier(level) {
@@ -33,7 +34,7 @@ export function objectPowerScale(level) {
 }
 
 // Hunter Association rank allowed by raw power alone (contracts can lag behind it).
-export const HUNTER_RANKS = ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS'];
+export const HUNTER_RANKS = ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS'];
 export function hunterRankForLevel(level) {
   const r = powerTier(level).rank.replace('+', '');
   return Math.max(0, HUNTER_RANKS.indexOf(r));

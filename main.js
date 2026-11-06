@@ -43,6 +43,10 @@ import {buildPowerGrid} from './power-grid.js';
 import {buildHelipads} from './helipads.js';
 import {buildDrones} from './drones.js';
 import {buildHiddenPeak} from './hidden-peak.js';
+import {buildChargers} from './chargers.js';
+import {buildBlackMarket} from './black-market.js';
+import {createCarControls} from './car-controls.js';
+import {createSnackShop} from './snack-shop.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
 import { installMatrixCache } from './matrix-cache.js';
@@ -1248,6 +1252,21 @@ box(0.3, 3, 10, HOME.maxX, WALL_Y, HOME.z, wallMat);           // right
 box(5, 3, 0.3, 16.5, WALL_Y, HOME.minZ, wallMat);              // front-left
 box(5, 3, 0.3, 23.5, WALL_Y, HOME.minZ, wallMat);              // front-right
 box(2, 0.8, 0.3, HOME.x, CURB + 2.6, HOME.minZ, wallMat, false); // above door
+// A real front door in the doorway: E opens and closes it, and it's solid when shut.
+const homeDoor = new THREE.Group(); homeDoor.position.set(HOME.x - 1, CURB, HOME.minZ); scene.add(homeDoor);
+{ const panel = mesh(new THREE.BoxGeometry(1.96, 2.18, 0.08), 0x6b3f22, homeDoor); panel.position.set(0.99, 1.1, 0);
+  for (const y of [0.55, 1.55]) mesh(new THREE.BoxGeometry(1.5, 0.75, 0.1), 0x5a3320, homeDoor).position.set(0.99, y, 0);
+  const knob = mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3 }), homeDoor); knob.position.set(1.75, 1.05, -0.08);
+  box(2.3, 0.12, 0.4, HOME.x, CURB + 2.25, HOME.minZ, 0xf0ece2, false); }
+const homeDoorCollider = { minX: HOME.x - 1, maxX: HOME.x + 1, minZ: HOME.minZ - 0.12, maxZ: HOME.minZ + 0.12 };
+colliders.push(homeDoorCollider);
+let homeDoorOpen = false;
+interactables.push({ pos: new THREE.Vector3(HOME.x, CURB, HOME.minZ), r: 2.2, get label() { return homeDoorOpen ? 'Close the front door' : 'Open the front door'; }, action: () => {
+  homeDoorOpen = !homeDoorOpen;
+  const i = colliders.indexOf(homeDoorCollider);
+  if (homeDoorOpen && i >= 0) colliders.splice(i, 1); else if (!homeDoorOpen && i < 0) colliders.push(homeDoorCollider);
+} });
+function updateHomeDoor(dt) { homeDoor.rotation.y += ((homeDoorOpen ? -Math.PI / 2 : 0) - homeDoor.rotation.y) * Math.min(1, dt * 6); }
 
 const houseWindowMat = new THREE.MeshStandardMaterial({ color: 0x8fb3cc, roughness: 0.1, emissive: 0xffd58a, emissiveIntensity: 0 });
 glowMats.push(houseWindowMat);
@@ -1677,7 +1696,25 @@ function animateHumanoid(h, pose, moving, sprinting, grounded, dt) {
   h.legL.pivot.rotation.x = lerp(h.legL.pivot.rotation.x, P.lL, k);
   h.legR.pivot.rotation.x = lerp(h.legR.pivot.rotation.x, P.lR, k);
   h.rig.position.y = moving && grounded && !pose ? Math.abs(Math.sin(h.phase)) * 0.05 : 0;
+  // Phones: a call ('phone' pose) holds it to the ear; scrolling (h.usingPhone) holds it in front.
+  const call = pose === 'phone', scroll = !pose && h.usingPhone;
+  if (call || scroll) {
+    h.armR.pivot.rotation.x = lerp(h.armR.pivot.rotation.x, call ? -2.5 : -1.15, k);
+    h.armR.pivot.rotation.z = lerp(h.armR.pivot.rotation.z, call ? 0.55 : 0.32, k);
+    if (!h.phone) {
+      h.phone = new THREE.Group();
+      const body = new THREE.Mesh(PHONE_GEO, PHONE_MAT); h.phone.add(body);
+      const scr = new THREE.Mesh(PHONE_SCREEN_GEO, PHONE_SCREEN_MAT[(Math.random() * PHONE_SCREEN_MAT.length) | 0]); scr.position.z = 0.012; h.phone.add(scr);
+      h.phone.position.set(0, -0.06, 0.06); h.phone.rotation.x = -0.6;
+      h.armR.end.add(h.phone);
+    }
+    h.phone.visible = true;
+  } else if (h.phone) h.phone.visible = false;
 }
+const PHONE_GEO = new THREE.BoxGeometry(0.075, 0.15, 0.018);
+const PHONE_SCREEN_GEO = new THREE.PlaneGeometry(0.064, 0.13);
+const PHONE_MAT = new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.4, metalness: 0.4 });
+const PHONE_SCREEN_MAT = [0x7fd4ff, 0xffffff, 0xffc2e2, 0xa8ffcf].map(c => new THREE.MeshBasicMaterial({ color: c }));
 
 // =====================================================================
 // CHARACTERS
@@ -2225,16 +2262,19 @@ const xpToNext = () => 50 + prog.level * 50;
 // rough is harder than even a poor but housed start.
 const isHomeless = () => origin && (origin.wealthTier === 'destitute' || /no fixed home|homeless|sleeps rough|shelter/i.test(origin.housing || ''));
 const drainMul = () => (origin ? 1.6 - origin.roll * 0.1 : 1) * (isHomeless() ? 1.4 : 1);
-const defMul = () => 1 / (1 + prog.def * 0.06);
+const defMul = () => 1 / (1 + prog.def * 0.06) * gearMul('def');
+// Stat changes from gear and stims (black market, mech suits): each source has dmg/def/speed.
+const statSources = [];
+const gearMul = k => statSources.reduce((m, s) => m * (s?.[k] ?? 1), 1);
 const psyDmg = () => 10 + prog.men * 4;
 const psyCdMax = () => Math.max(4, 9 - prog.men * 0.3);
-const speedMul = () => (1 + prog.agi * 0.06) * CHEAT_SPEED_MULT*(supportSkills?.speedMultiplier||1);
+const speedMul = () => (1 + prog.agi * 0.06) * CHEAT_SPEED_MULT*(supportSkills?.speedMultiplier||1) * gearMul('speed');
 // A weak start (low birth-roll confidence) hits for less; a strong one hits harder.
 // confidence 0 -> 0.5x, confidence 55 (no origin yet) -> ~1x, confidence 100 -> 1.5x.
 // Fighting bare-handed (no starting weapon) hits for 35% less than fighting armed.
 const attackDmg = () => (6 + prog.str * 3) * (0.5 + (origin?.stats.confidence ?? 55) / 100) * (origin && !origin.weapon ? 0.65 : 1);
 const S = n => n * (1 + prog.str * 0.1);            // scales skill damage by Strength
-const dmgMul = () => awaken > 0 ? 1.3 : 1;
+const dmgMul = () => (awaken > 0 ? 1.3 : 1) * gearMul('dmg');
 
 function gainXp(n) {
   prog.xp += n;
@@ -2259,11 +2299,13 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
+let blackMarket = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
 const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2cc, emissiveIntensity: 0.3 });
 const tailMat = new THREE.MeshStandardMaterial({ color: 0x880000, emissive: 0xff2020, emissiveIntensity: 0.3 });
+let lastNightGlow = 0;   // 0 by day, up to 1 at night (set by the lighting update)
 const glassMat = new THREE.MeshStandardMaterial({ color: 0x1c2833, roughness: 0.1, metalness: 0.5 });
 const tyreMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
 const hubMat = new THREE.MeshStandardMaterial({ color: 0xb0b4b8, metalness: 0.5, roughness: 0.4 });
@@ -2425,6 +2467,22 @@ myCar.group.rotation.y = Math.PI;
 
 const headlight = new THREE.SpotLight(0xfff2cc, 0, 45, 0.55, 0.6, 1.5);
 scene.add(headlight, headlight.target);
+// Real car controls: gear selector / manual gears, lights, indicators, hazards, horn, dashboard.
+// Flashlight: V turns it on and off (or the torch button on touch screens).
+const flashlight = new THREE.SpotLight(0xfff4dc, 0, 38, 0.42, 0.55, 1.3);
+flashlight.userData.keepLight = true; scene.add(flashlight, flashlight.target);
+let flashlightOn = false;
+function toggleFlashlight() { flashlightOn = !flashlightOn; toast(flashlightOn ? 'Flashlight on (V to turn it off).' : 'Flashlight off.'); $('torchBtn')?.classList.toggle('on', flashlightOn); }
+const _fwd = new THREE.Vector3();
+function updateFlashlight() {
+  flashlight.intensity = flashlightOn && !inCar ? 90 : 0;
+  if (!flashlightOn) return;
+  camera.getWorldDirection(_fwd);
+  flashlight.position.set(player.position.x, player.position.y + 1.45, player.position.z);
+  flashlight.target.position.set(player.position.x + _fwd.x * 12, player.position.y + 1.2 + _fwd.y * 12, player.position.z + _fwd.z * 12);
+}
+const chargers = buildChargers({ scene, colliders, interactables, groundY, toast, makeTex });
+const carControls = createCarControls({ headlight, headMat, tailMat, toast: m => toast(m), isAuto: () => transmissionAuto, nightGlow: () => lastNightGlow });
 
 // Planes circling over the city
 const planes = [];
@@ -3516,14 +3574,55 @@ function enemyPhysics(e, dt) {
   e.vel.x *= Math.max(0, 1 - fr * dt);
   e.vel.z *= Math.max(0, 1 - fr * dt);
 }
+// Spatial grid over the colliders so "is there a wall here?" checks are cheap.
+// Rebuilt whenever colliders are added or removed.
+const COL_CELL = 20; let colGridCount = -1; const colGrid = new Map();
+function collidersNear(x, z) {
+  if (colGridCount !== colliders.length) {
+    colGrid.clear(); colGridCount = colliders.length;
+    for (const c of colliders) {
+      const x0 = Math.floor(c.minX / COL_CELL), x1 = Math.floor(c.maxX / COL_CELL), z0 = Math.floor(c.minZ / COL_CELL), z1 = Math.floor(c.maxZ / COL_CELL);
+      if ((x1 - x0 + 1) * (z1 - z0 + 1) > 900) continue;
+      for (let i = x0; i <= x1; i++) for (let k = z0; k <= z1; k++) { const key = i * 100003 + k; let l = colGrid.get(key); if (!l) colGrid.set(key, l = []); l.push(c); }
+    }
+  }
+  return colGrid.get(Math.floor(x / COL_CELL) * 100003 + Math.floor(z / COL_CELL)) || [];
+}
+function blockedAt(x, z, r) {
+  for (const c of collidersNear(x, z)) {
+    if (c.circleRadius != null) { if (Math.hypot(x - c.circleX, z - c.circleZ) < c.circleRadius + r) return true; continue; }
+    const cx = clamp(x, c.minX, c.maxX), cz = clamp(z, c.minZ, c.maxZ);
+    if ((x - cx) ** 2 + (z - cz) ** 2 < r * r) return true;
+  }
+  return false;
+}
+// People look ahead and steer round walls, cars and benches instead of walking into
+// them; if they still get stuck for a moment they pick a new way to go.
+const AVOID_ANGLES = [0, 0.45, -0.45, 0.9, -0.9, 1.4, -1.4, 2.0, -2.0];
 function walkTowards(e, target, speed, dt) {
   const p = e.root.position;
   const d = distXZ(p, target);
   if (d < 0.3) return false;
-  p.x += (target.x - p.x) / d * speed * dt;
-  p.z += (target.z - p.z) / d * speed * dt;
-  e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(target.x - p.x, target.z - p.z), 1 - Math.exp(-8 * dt));
+  const want = Math.atan2(target.x - p.x, target.z - p.z), look = Math.max(0.9, (e.radius || 0.4) * 2.4);
+  let heading = want;
+  if (blockedAt(p.x + Math.sin(want) * look, p.z + Math.cos(want) * look, e.radius || 0.4)) {
+    const side = e.avoidSide || 1;
+    heading = null;
+    for (const a of AVOID_ANGLES) { const h = want + a * side; if (!blockedAt(p.x + Math.sin(h) * look, p.z + Math.cos(h) * look, e.radius || 0.4)) { heading = h; break; } }
+    if (heading == null) { e.avoidSide = -side; heading = want + Math.PI * 0.75 * side; }
+  }
+  const step = Math.min(d, speed * dt), bx = p.x, bz = p.z;
+  p.x += Math.sin(heading) * step; p.z += Math.cos(heading) * step;
+  e.root.rotation.y = lerpAngle(e.root.rotation.y, heading, 1 - Math.exp(-8 * dt));
   collide(p, e.radius);
+  // stuck detection: barely moving for a while -> choose a new route
+  const moved = Math.hypot(p.x - bx, p.z - bz);
+  e.stuckT = moved < step * 0.3 ? (e.stuckT || 0) + dt : Math.max(0, (e.stuckT || 0) - dt);
+  if (e.stuckT > 1.2) {
+    e.stuckT = 0; e.avoidSide = -(e.avoidSide || 1);
+    const s = e.ped;
+    if (s && s.state === 'wander' && s.bounds) { s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node); }
+  }
   return true;
 }
 function faceTowards(e, target, maxTurn) {
@@ -4024,6 +4123,12 @@ function updatePed(e, dt) {
   // etc.) still updates normally regardless of distance.
   if (s.state === 'wander' && distXZ(p, player.position) > 120) return;
   let moving = false, speed = s.speed;
+  // Everyone has a phone: now and then they take it out and scroll as they walk (or stand and text).
+  s.phoneT ??= 4 + Math.random() * 30;
+  s.phoneT -= dt;
+  if (s.phoneT <= 0) { e.h.usingPhone = !e.h.usingPhone; s.phoneT = e.h.usingPhone ? 4 + Math.random() * 10 : 12 + Math.random() * 35; }
+  if (s.state !== 'wander' && s.state !== 'chat') e.h.usingPhone = false;
+  if (e.h.usingPhone) speed *= 0.7;
   if (e.stun > 0 || !e.onGround) { animateHumanoid(e.h, e.stun > 0 ? 'stunned' : null, false, false, e.onGround, dt); return; }
   switch (s.state) {
     case 'down': {
@@ -5511,8 +5616,10 @@ function enterVehicle(v) {
   (v.hoverBody || v.group).add(headlight, headlight.target);
   headlight.position.set(0, 0.8, v.length / 2 + 0.1);
   headlight.target.position.set(0, 0, 14);
+  if (isRoadVehicle(v)) carControls.attach(v);
 }
 function exitVehicle(force = false) {
+  carControls.detach();
   if(driving?.bridgeFlight&&!force){toast('Wait until the vehicle lands before getting out.');return;}
   const v = driving, h = v.group.rotation.y;
   if(v.kind==='plane'&&!force&&v.alt>groundY(v.group.position.x,v.group.position.z,v.alt)+3){const p=v.group.position.clone();p.x+=Math.cos(h)*4;p.z-=Math.sin(h)*4;player.position.copy(p);player.visible=true;driving=null;inCar=false;vy=-4;onGround=false;pvel.set(Math.sin(h)*v.speed*.3,0,Math.cos(h)*v.speed*.3);adventureServices?.giveEmergencyParachute();adventureServices?.deploy();return;}
@@ -5685,12 +5792,15 @@ let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
 })();
 // Homes, shops and offices get real multi-room interiors (see interiors.js); civic
 // buildings keep the themed hall above.
+// Snack and drink menu used by shop tills, kiosks and vending machines.
+const snackShop = createSnackShop({ stats, maxHp, toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
   tvMaterial: new THREE.MeshBasicMaterial({ map: civicTvTexture }),
   hooks: {
     toast: m => toast(m),
     leave: () => leaveCivicBuilding(),
+    shop: (name, kind) => snackShop.open(['pub', 'club', 'restaurant'].includes(kind) && currentVenueName ? currentVenueName : name, kind),
     travel(pos, y, msg, then) {   // stairs, lifts and escalators between floors
       $('fade').style.opacity = 1;
       setTimeout(() => { then?.(); player.position.copy(pos); yaw = y; vy = 0; pvel.set(0, 0, 0); $('fade').style.opacity = 0; if (msg) toast(msg); }, 450);
@@ -5838,6 +5948,7 @@ async function enterCivicBuilding(b) {
   setTimeout(() => {
     inCivicInterior = true;
     const layout = interiors.layoutFor(b.type);
+    currentVenueName = b.name;
     if (layout) { interiors.enter(layout); player.position.copy(layout.spawn); }
     else { interiors.exit(); applyCivicTheme(b.type); player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8); }
     player.rotation.y = Math.PI;
@@ -5849,6 +5960,7 @@ async function enterCivicBuilding(b) {
     toast(desc + staff + (layout ? ' Walk around and press E on things to use them. Leave through the front door behind you.' : ' There’s a chair by a TV straight ahead — walk up and press E to sit.'));
   }, 650);
 }
+let currentVenueName = null;
 function leaveCivicBuilding() {
   $('fade').style.opacity = 1;
   setTimeout(() => {
@@ -6091,6 +6203,8 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyL' && locked && !boardOpen) { setFreeMouse(!freeMouse); return; }
   if(e.code==='KeyM'&&(locked||worldMap?.open)){if(!worldMap?.open)worldMap?.show();e.preventDefault();return;}
   if (!locked) return;
+  if (inCar && isRoadVehicle(driving) && carControls.keydown(e.code)) return;   // gears, lights, indicators, horn
+  if (e.code === 'KeyV') toggleFlashlight();
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
   if (e.code === 'KeyR'&&!(inCar&&driving.kind==='plane')) psychicGrip();
@@ -6100,10 +6214,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyI' && !settingsOpen && !boardOpen) toggleInventory(!inventoryOpen);
   if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) useSkill(Number(e.code.slice(5)) - 1);
   if (e.code === 'KeyN' && inCar && isRoadVehicle(driving)) { toast('Choose transmission in Settings before entering your next vehicle.'); }
-  if (!transmissionAuto && inCar && isRoadVehicle(driving)) {
-    if (e.code === 'KeyZ') { gear = Math.min(5, gear + 1); toast('Gear ' + gear); }
-    if (e.code === 'KeyX') { gear = Math.max(1, gear - 1); toast('Gear ' + gear); }
-  }
 });
 addEventListener('keyup', e => {const code=movementKey(e.code,controlPrefs.desktopMovement);if(code)keys[code]=false;});
 // Switching windows/tabs never fires keyup for whatever was held, so a movement
@@ -6464,7 +6574,7 @@ function resolveRailCollision(v,start){
 // gear until you shift up (Z) or down (X); N toggles between the two.
 const GEAR_RATIOS = [0.22, 0.42, 0.62, 0.82, 1.0];
 let transmissionAuto = controlPrefs.drivingMode==='automatic', gear = 1;
-function shiftGear(direction){if(inCar&&!transmissionAuto&&isRoadVehicle(driving)){gear=clamp(gear+direction,1,5);toast('Gear '+gear);}}
+function shiftGear(direction){if(inCar&&isRoadVehicle(driving))carControls.shift(direction);}
 function updateBridgeFlight(v,dt){const f=v.bridgeFlight,previousY=f.y;advanceBridgeJump(f,dt);v.group.position.set(f.x,f.y,f.z);v.group.rotation.x=-Math.atan2(f.vy,Math.hypot(f.vx,f.vz))*Math.sign(v.speed||1);
  const onBridge=Math.abs(f.x-BRIDGE_X)<BRIDGE_HALF_W&&f.z>BRIDGE_Z0&&f.z<BRIDGE_Z1;
  const surface=onBridge?liftBridgeSurface(f.z,bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1):null;
@@ -6482,14 +6592,14 @@ function driveVehicle(v, dt) {
   const mine = v === driving;
   const icy = isRoadVehicle(v) && weatherState === 'snow';   // less grip: slower to slow down, looser steering — cars can slide
   if (mine) {
-    if (keys.KeyW) v.speed += (v.kind === 'bus' ? 9 : 18)*conditionFactors(v.health).power * dt;
-    if (keys.KeyS) v.speed -= 24 * dt;
+    if (isRoadVehicle(v)) v.speed += carControls.drive(v, dt, keys, (v.kind === 'bus' ? 9 : 18) * conditionFactors(v.health).power);   // gears / selector decide what W and S do
+    else { if (keys.KeyW) v.speed += 18 * conditionFactors(v.health).power * dt; if (keys.KeyS) v.speed -= 24 * dt; }
     const steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
     v.group.rotation.y += steer * (v.kind === 'bus' ? 1.1 : 1.8) * (icy ? 0.5 : 1) *conditionFactors(v.health).steering* dt * Math.min(1, Math.abs(v.speed) / 8) * Math.sign(v.speed);
   }
   v.speed *= Math.max(0, 1 - (mine && (keys.KeyW || keys.KeyS) ? 0.3 : 1.5) * (icy ? 0.3 : 1) * dt);
   const condition=conditionFactors(v.health);if(mine&&isRoadVehicle(v))v.group.rotation.y+=condition.drift*Math.sin(performance.now()*.002)*dt*Math.min(1,Math.abs(v.speed)/8);
-  const topSpeed = mine && !transmissionAuto && isRoadVehicle(v) ? v.maxSpeed * GEAR_RATIOS[gear - 1] : v.maxSpeed;
+  const topSpeed = mine && isRoadVehicle(v) ? carControls.topSpeed(v) : v.maxSpeed;
   v.speed = clamp(v.speed, -8, topSpeed*(isRoadVehicle(v)?condition.topSpeed:1));
   const h = v.group.rotation.y, p = v.group.position;
   const drifting=mine&&!transmissionAuto&&isRoadVehicle(v)&&keys.Space&&Math.abs(v.speed)>8;
@@ -6834,7 +6944,8 @@ function updateWorldLight(dt) {
   const glow = clamp(0.6 - elev * 3, 0, 1);
   for (const m of glowMats) m.emissiveIntensity = glow * 1.3;
   lanternMat.emissiveIntensity = glow * 3;
-  headlight.intensity = glow * 80;
+  lastNightGlow = glow;
+  if (!(inCar && driving && isRoadVehicle(driving))) headlight.intensity = glow * 80;
   headMat.emissiveIntensity = 0.3 + glow * 2;
   const flash = wanted > 0 ? Math.floor(performance.now() / 180) % 2 : -1;   // police sirens
   sirenRed.emissiveIntensity = flash === 0 ? 4 : 0;
@@ -6983,6 +7094,9 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
 capitalServiceBuildings=buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,civicBuildings,destinations:townPlaces.destinations});
+blackMarket = buildBlackMarket({ scene, colliders, interactables, sitSpots, makePerson: makeHumanoid, animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, groundY, toast, raiseWanted, stats, destinations: townPlaces.destinations, openMenu: (name, items) => snackShop.open(name, 'black', items) });
+statSources.push(blackMarket);
+addEventListener('aw-clear-wanted', () => { wanted = 0; pursuitBackupCooldown = 0; });
 spaceCentre=buildSpaceCentre({safeFence:fenceRect,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
@@ -7111,7 +7225,7 @@ frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,civicBuil
  onIntrusion(zone){if(militaryAlert<=0)toast(`${zone.name}: INTRUDER ALERT. Armoured units deployed — leave the restricted zone now.`);militaryAlert=45;}});
 // The guarded border fence around the edge of the map, with snowy mountains outside.
 // Leisure park, business district and the other real-life places on the outer land.
-venues=buildVenues({scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle});
+venues=buildVenues({scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle,makePerson:makeHumanoid,openShop:(name,kind)=>snackShop.open(name,kind)});
 // Fade-out, move the player, fade-in (helicopters, the mountain climb).
 function teleportPlayer(pos, msg, ms = 650) {
   $('fade').style.opacity = 1;
@@ -7132,7 +7246,11 @@ lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,
 for(const b of civicBuildings){if(b.cctv||b.minX==null||b.realWorld||Math.abs(b.x)>3000)continue;b.cctv=true;addCCTV(b.maxX-0.4,3.6,b.maxZ+0.15,1);}
 
 hunterGuilds=createHunterGuilds({level:()=>prog.level,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons,bosses:supportCounters.bosses}),money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},earn:n=>{stats.gold+=n;},gainXp,toast,
- playerPosition:()=>player.position,checkpoints:{patrol:frontier.patrolPoints,spires:frontier.spires},interactables,heal(){stats.hp=maxHp();stats.energy=Math.max(stats.energy,60);},changed(){saveSolo();},
+ playerPosition:()=>player.position,checkpoints:{patrol:frontier.patrolPoints,spires:frontier.spires,
+  leisure:[{x:170,z:-806},{x:-280,z:-790},{x:430,z:-810},{x:620,z:-885},{x:330,z:-745}],
+  business:[0,1,2,3,4,5].map(i=>({x:-20+i*120,z:1088})),
+  grid:[{x:260,z:685},{x:8,z:8},{x:310,z:14},{x:-150,z:160}],
+  border:[0,Math.PI/2,Math.PI,-Math.PI/2].map(a=>({x:DOME.x+Math.sin(a)*(DOME.r-12),z:DOME.z+Math.cos(a)*(DOME.r-12)}))},interactables,heal(){stats.hp=maxHp();stats.energy=Math.max(stats.energy,60);},changed(){saveSolo();},
  pause:pauseForPanel,resume(){if(!boardOpen&&!settingsOpen)requestGameControl();}});
 hunterGuilds.addDesk(frontier.desks.hq,'hq','Hunter Association reception (licences, ranks, contracts)');
 for(const id of ['aegis','lantern','thorn'])hunterGuilds.addDesk(frontier.desks[id],id,'Guild hall desk');
@@ -7185,6 +7303,11 @@ function frame() {
     if (riding) updateRiding(dt);
     else if (!inCar) updatePlayer(dt);
     updateHover(dt);
+    carControls.update(dt);
+    carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
+    updateHomeDoor(dt);
+    updateFlashlight();
+    blackMarket?.update(dt);
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);

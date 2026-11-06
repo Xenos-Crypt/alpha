@@ -1,5 +1,5 @@
 // Hunter Association and guilds.
-// The Association licenses hunters and rates them F→SS. A rank needs BOTH the raw
+// The Association licenses hunters and rates them F→SSS. A rank needs BOTH the raw
 // power (level tier) and a track record (completed contracts) — power alone does not
 // make you trustworthy. Guilds sit on top: they post contracts, pay bonuses in their
 // speciality and promote members by reputation.
@@ -11,7 +11,7 @@ export const GUILDS = {
   thorn:   { name: 'Thornwild Rangers',           flavour: 'Beast hunters who keep the wilds and roads clear.',          speciality: ['cull'],             colour: '#86d77a' },
 };
 export const GUILD_TITLES = [[0, 'Recruit'], [100, 'Member'], [300, 'Veteran'], [700, 'Officer'], [1500, 'Guildmaster candidate']];
-export const RECORD_FOR_RANK = [0, 2, 5, 10, 18, 30, 50, 80];
+export const RECORD_FOR_RANK = [0, 2, 5, 10, 18, 30, 50, 80, 120];
 export const LICENCE_FEE = 120, LICENCE_LEVEL = 3;
 
 export const guildTitle = rep => GUILD_TITLES.filter(([min]) => rep >= min).pop()[1];
@@ -21,14 +21,25 @@ export function earnedRank(level, completed) {
   return Math.min(hunterRankForLevel(level), record);
 }
 
+// Contracts get harder, stranger and far better paid with each rank, F to SSS.
+// PAY multiplies the base fee: an SSS contract pays 30x an F one.
+export const CONTRACT_PAY = [1, 1.6, 2.5, 4, 6, 9, 14, 20, 30];
+const PREY = ['slimes from the park', 'feral dog packs', 'goblin raiders', 'stone golems', 'wyvern broods', 'ogre warbands', 'abyssal knights', 'young dragons', 'calamity beasts'];
+const BOSSES = ['the Slime King', 'the Alpha Hound', 'the Goblin Chieftain', 'the Iron Golem', 'the Wyvern Matriarch', 'the Ogre Warlord', 'the Abyssal Duke', 'the Elder Dragon', 'the World Serpent'];
 export function makeContract(type, rank, rng = Math.random) {
-  const r = rank;
+  const r = Math.max(0, Math.min(CONTRACT_PAY.length - 1, rank)), T = HUNTER_RANKS[r], pay = n => Math.round(n * CONTRACT_PAY[r]);
+  const tag = s => `[${T}] ${s}`;
   switch (type) {
-    case 'cull':   { const n = 5 + r * 3; return { type, title: `Cull ${n} monsters`, goal: n, counter: 'kills', gold: 80 + r * 60, xp: 40 + r * 30, rep: 20 + r * 5 }; }
-    case 'gate':   { const n = r >= 3 ? 2 : 1; return { type, title: `Clear ${n} dungeon gate${n > 1 ? 's' : ''}`, goal: n, counter: 'dungeons', gold: 250 + r * 120, xp: 120 + r * 60, rep: 45 + r * 8 }; }
-    case 'boss':   return { type, title: 'Defeat a gate boss', goal: 1, counter: 'bosses', gold: 400 + r * 160, xp: 200 + r * 80, rep: 70 + r * 10 };
-    case 'patrol': return { type, title: 'Patrol the three perimeter checkpoints', goal: 3, visit: 'patrol', gold: 120 + r * 40, xp: 60 + r * 20, rep: 25 + r * 4 };
-    case 'survey': return { type, title: 'Survey two Aegis shield spires', goal: 2, visit: 'spires', gold: 150 + r * 45, xp: 70 + r * 25, rep: 30 + r * 5 };
+    case 'cull':   { const n = 5 + r * 3; return { type, tier: T, title: tag(`Cull ${n} monsters: ${PREY[r]}`), goal: n, counter: 'kills', gold: pay(80), xp: 40 + r * 30, rep: 20 + r * 5 }; }
+    case 'gate':   { const n = r >= 3 ? 2 : 1; return { type, tier: T, title: tag(`Clear ${n} dungeon gate${n > 1 ? 's' : ''} before it breaks`), goal: n, counter: 'dungeons', gold: pay(250), xp: 120 + r * 60, rep: 45 + r * 8 }; }
+    case 'boss':   return { type, tier: T, title: tag(`Hunt down ${BOSSES[r]} (any gate boss)`), goal: 1, counter: 'bosses', gold: pay(400), xp: 200 + r * 80, rep: 70 + r * 10 };
+    case 'patrol': return { type, tier: T, title: tag('Patrol the three perimeter checkpoints'), goal: 3, visit: 'patrol', gold: pay(120), xp: 60 + r * 20, rep: 25 + r * 4 };
+    case 'survey': return { type, tier: T, title: tag('Survey two Aegis shield spires'), goal: 2, visit: 'spires', gold: pay(150), xp: 70 + r * 25, rep: 30 + r * 5 };
+    case 'leisure': return { type, tier: T, title: tag('Security sweep: check four Leisure Park venues for monster signs'), goal: 4, visit: 'leisure', gold: pay(100), xp: 50 + r * 20, rep: 20 + r * 4 };
+    case 'escort': return { type, tier: T, title: tag('Escort a nervous executive past three business district HQs'), goal: 3, visit: 'business', gold: pay(110), xp: 55 + r * 20, rep: 22 + r * 4 };
+    case 'grid':   return { type, tier: T, title: tag('Inspect the Aegis power grid: the generator feed and the sewer manholes'), goal: 3, visit: 'grid', gold: pay(200), xp: 90 + r * 30, rep: 35 + r * 6 };
+    case 'border': return { type, tier: T, title: tag('Reinforce all four border checkpoints at the edge of the dome'), goal: 4, visit: 'border', gold: pay(300), xp: 140 + r * 45, rep: 50 + r * 8 };
+    case 'breach': { const n = 30 + r * 5; return { type, tier: T, title: tag(`Hold the line at a ${T}-class breach: defeat ${n} monsters`), goal: n, counter: 'kills', gold: pay(900), xp: 400 + r * 120, rep: 120 + r * 15 }; }
     default: return null;
   }
 }
@@ -46,12 +57,15 @@ export function createHunterGuilds(ctx) {
 
   const counters = () => ctx.counters();
   function refreshOffers() {
-    const types = ['cull', 'patrol', 'survey'];
-    if (state.rank >= 1) types.push('gate');
-    if (state.rank >= 2) types.push('boss');
+    // Each rank unlocks new kinds of work; offers come at your rank or one below.
+    const types = ['cull', 'patrol', 'survey', 'leisure'];
+    if (state.rank >= 1) types.push('gate', 'escort');
+    if (state.rank >= 2) types.push('boss', 'grid');
+    if (state.rank >= 4) types.push('border');
+    if (state.rank >= 6) types.push('breach');
     const picks = [];
     while (picks.length < 3) { const t = types[Math.floor(Math.random() * types.length)]; if (!picks.includes(t) || picks.length >= types.length) picks.push(t); }
-    state.offers = picks.map(t => makeContract(t, state.rank));
+    state.offers = picks.map(t => makeContract(t, Math.max(0, state.rank - (Math.random() < 0.35 ? 1 : 0))));
   }
   function progress(c = state.active) {
     if (!c) return 0;
@@ -75,7 +89,7 @@ export function createHunterGuilds(ctx) {
     if (next > state.rank) { state.rank = next; ctx.toast(`Promoted to Rank ${HUNTER_RANKS[next]} hunter.`); refreshOffers(); }
     else {
       const needRecord = RECORD_FOR_RANK[state.rank + 1], needPower = hunterRankForLevel(ctx.level()) <= state.rank;
-      ctx.toast(state.rank >= 7 ? 'You hold the highest rank.' : needPower ? `Your power tier is not yet high enough for Rank ${HUNTER_RANKS[state.rank + 1]}.` : `Complete ${needRecord - state.completed} more contracts for Rank ${HUNTER_RANKS[state.rank + 1]}.`);
+      ctx.toast(state.rank >= HUNTER_RANKS.length - 1 ? 'You hold the highest rank.' : needPower ? `Your power tier is not yet high enough for Rank ${HUNTER_RANKS[state.rank + 1]}.` : `Complete ${needRecord - state.completed} more contracts for Rank ${HUNTER_RANKS[state.rank + 1]}.`);
     }
     ctx.changed?.(); render();
   }

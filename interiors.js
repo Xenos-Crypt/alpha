@@ -166,6 +166,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       reception: (x, z) => piece(x, z, 0, 4.2, 1.0, g => { P(g, 4, 1.1, 0.8, 0, 0.55, 0, 0xf2f0ea); P(g, 4.1, 0.05, 1.0, 0, 1.12, 0.05, 0x7a5636); P(g, 4, 0.18, 0.02, 0, 0.8, 0.41, 0x2f6f8f, { emissive: 0x2f6f8f, ei: 0.5 }); P(g, 0.55, 0.35, 0.03, -1, 1.35, -0.2, 0x111111); }),
       cooler: (x, z) => piece(x, z, 0, 0.4, 0.4, g => { P(g, 0.35, 1.0, 0.35, 0, 0.5, 0, 0xeeeeee); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.4, 12), mat(0x9fd3ff, { opacity: 0.6 })); b.position.y = 1.2; g.add(b); }),
       screen: (x, z, rot) => piece(x, z, rot, 2.5, 0.1, g => { P(g, 2.5, 1.4, 0.06, 0, 1.7, 0, 0x111111); P(g, 2.35, 1.27, 0.01, 0, 1.7, 0.035, 0x1f3f5a, { emissive: 0x1d4b6e, ei: 0.7 }); }, false),
+      vending: (x, z, rot) => { piece(x, z, rot, 0.9, 0.8, g => { P(g, 0.9, 1.9, 0.8, 0, 0.95, 0, 0xc0392b); P(g, 0.6, 1.2, 0.02, -0.1, 1.15, 0.41, 0x222a33, { emissive: 0x2a4a6a, ei: 0.6 }); for (let r = 0; r < 4; r++) P(g, 0.55, 0.05, 0.02, -0.1, 0.7 + r * 0.3, 0.42, 0xffd23f, { emissive: 0xffd23f, ei: 0.4 }); P(g, 0.12, 0.3, 0.03, 0.33, 1.2, 0.41, 0x111111); }); const f = new THREE.Vector3(Math.sin(rot), 0, Math.cos(rot)); spot(x + f.x * 0.9, z + f.z * 0.9, 1.3, 'Use the vending machine', () => hooks.shop('Vending machine', 'vending')); },
       art: (x, y, z, rot, c) => { const g = new THREE.Group(); g.position.set(x0 + x, y, z0 + z); g.rotation.y = rot; scene.add(g); P(g, 1.1, 0.8, 0.04, 0, 0, 0, 0x2a2a2a); P(g, 0.98, 0.68, 0.01, 0, 0, 0.025, c); },
     };
     // ---- getting between floors ----
@@ -223,7 +224,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (sit) for (const leg of [h.legL, h.legR]) leg.pivot.rotation.x = -Math.PI / 2;
       L.workers.push({ h, sit, task, phase: Math.random() * 6 });
     };
-    L.F = F; L.spot = spot; L.seat = seat; L.B = B; L.x0 = x0; L.z0 = z0;
+    L.F = F; L.spot = spot; L.seat = seat; L.B = B; L.Cyl = Cyl; L.x0 = x0; L.z0 = z0;
     layouts[key] = L;
     return L;
   }
@@ -292,7 +293,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.plant(-11.2, 8.4);
     L.B(3.2, 0.5, 0.05, 0, 3.0, 8.82, 0xc0392b, false, { emissive: 0xc0392b, ei: 0.4 });   // shop name strip above the door
     L.B(1.6, 0.35, 0.05, -8, 2.65, -1.9, 0x333333);                                          // STAFF ONLY plate
-    spot(7.2, 7.8, 2.0, 'Buy a meal deal (5 gold)', () => hooks.eat(40, 5, 'You buy a meal deal: sandwich, crisps and a drink.'));
+    spot(7.2, 7.8, 2.0, 'Buy snacks and drinks at the till', () => hooks.shop('Corner shop'));
     for (const x of [-6.5, -2, 2.5]) spot(x + 0.9, 2.6, 1.4, 'Browse the shelves', () => hooks.toast('Bread, tins, snacks, cleaning stuff... the usual. The meal deals are at the till.'));
     spot(10.6, 2.2, 1.6, 'Look in the chiller', () => hooks.toast('Milk, juice, sandwiches and ready meals, all chilled.'));
     // Stockroom
@@ -337,6 +338,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.B(0.35, 0.4, 0.35, 9.4, 1.15, -8.55, 0x222222);   // coffee machine
     F.table(8, -5, 1.2, 0.8); F.chair(7.6, -4.3, Math.PI); F.chair(8.4, -4.3, Math.PI);
     spot(9.4, -7.6, 1.7, 'Make a coffee', () => hooks.rest(25, 'You make a coffee. That\'s better.'));
+    F.vending(11.4, -7.0, -Math.PI / 2);
     L.light(-6, 0.6, 1.1, 14, 0xf4f8ff); L.light(5.5, 0.6, 1.1, 14, 0xf4f8ff); L.light(0, 6, 0.9, 10, 0xf4f8ff);
     L.light(-7, -6, 0.9, 10, 0xf4f8ff); L.light(1.5, -6, 0.8, 9); L.light(8.5, -6, 0.8, 9);
     L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
@@ -448,6 +450,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.screen(8.5, -8.78, 0); B(0.6, 0.12, 0.35, 8.5, 0.62, -8.3, 0x111111);
     spot(8.5, -6.8, 1.8, 'Play on the console', () => hooks.rest(10, 'You play a quick match on the big screen. Victory!'));
     spot(4, -4.2, 1.4, 'Try the VR headset', () => hooks.toast('You put on the headset and you\'re standing on the moon. Then you walk into a desk.'));
+    F.vending(11.4, -3.6, -Math.PI / 2);
     L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
     L.light(-6, 0.6, 0.9, 14, 0x9fe8ff); L.light(5.5, 0.6, 0.9, 14, 0xd9a0ff); L.light(0, 6, 0.8, 10, 0x9fe8ff); L.light(-7, -6, 0.8, 10, 0x8affc8); L.light(1.5, -6, 0.8, 9, 0x9fe8ff); L.light(8.5, -6, 0.8, 9, 0xff9ae8);
     staffDesks(L, [-6.5, 5.5], [0.6], 7, 0x1a1f2a);
@@ -467,6 +470,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     B(2.5, 0.9, 0.8, -6, 0.45, 6.5, 0x8a9096, true); B(0.9, 0.7, 0.85, -6, 1.2, 6.5, 0x2b2f33);
     spot(-3, 7.5, 1.6, 'Go through security', () => hooks.toast('Beep. You empty your pockets. Just keys and a few gold coins. "Go ahead."'));
     for (const x of [5, 8.5]) { F.table(x, 7.6, 2.2, 0.5, 0, 0x5a3a22); seat(x, 7.6, Math.PI, 0.85, 'Wait on the bench'); }
+    F.vending(11.3, 4.0, -Math.PI / 2);
     spot(9.5, 5, 1.8, 'Talk to the court usher', () => hooks.toast('"Court is in session. You can watch from the public gallery - please keep quiet."'));
     // Courtroom: judge's bench raised at the back
     B(9, 0.6, 3, 0, 0.35, -7.4, dark, true);
@@ -527,6 +531,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.counter(7, 6.8, Math.PI, 4, 0xffd23f, 0x2b2b33);
     for (let k = 0; k < 8; k++) { const prize = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat(cols[k % cols.length])); prize.position.set(L.x0 + 5.4 + k * 0.45, 1.25, L.z0 + 7.2); scene.add(prize); }
     spot(7, 5.6, 1.8, 'Swap tickets for a prize', () => hooks.arcade('prize'));
+    F.vending(11.3, 8.2, Math.PI);
     L.light(-6, 3, 0.9, 14, 0xff9ae8); L.light(6, 3, 0.9, 14, 0x9fe8ff); L.light(0, -5, 0.9, 14, 0xd9a0ff); L.light(0, 6, 0.7, 10, 0xffe39a);
     L.worker(7, 7.9, Math.PI, { sit: false, outfit: 0xffd23f, pants: 0x22163a, task: 'idle' });   // prize counter
     for (const x of [-3.8, 0.6, 3.9]) L.worker(x, -0.45, Math.PI, { sit: false, outfit: [0xff2bd6, 0x00e5ff, 0x22ff88][Math.abs(Math.round(x)) % 3], task: 'type' });
@@ -554,7 +559,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.worker(-8, 5.4, 0, { seatY: 0.55, outfit: 0x7a5a3a, task: 'idle' }); L.worker(-6, 7.0, 0, { seatY: 0.55, outfit: 0x3a5a7a, task: 'idle' });
     F.reception(-1, 4.4); L.worker(-2, 3.5, 0, { outfit: 0x233e54, task: 'type' }); F.officeChair(-2, 3.5, 0);
     spot(-1, 5.4, 1.8, 'Ask at the front desk', () => hooks.toast('"Welcome to the council offices. Records library is through the left door, the mayor\'s office is on the right."'));
-    F.plant(11.3, 8.4); F.plant(-11.3, 3.2);
+    F.plant(11.3, 8.4); F.plant(-11.3, 3.2); F.vending(-11.3, 8.3, Math.PI / 2);
     L.lift(-11.75, 1.8, Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
     // Records library (back left)
     for (const z of [-3.2, -5.4, -7.6]) for (let x = -11; x <= -6; x += 1.25) F.bookshelf(x, z, 0, 1.2);
@@ -587,10 +592,109 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     for (const z of [-0.5, 1.2, 2.9]) { F.desk(11.3, z, -Math.PI / 2); F.officeChair(10.4, z, Math.PI / 2); }
     L.worker(10.4, -0.5, Math.PI / 2, { outfit: 0x2f6f8f, task: 'type' });
     spot(10, 1.2, 1.8, 'Use a library computer', () => hooks.toast('You look up "how to find the hidden mountain". The search history is full of people asking the same thing.'));
-    F.rug(5, 7.2, 4, 2.4, 0xe0a030);
+    F.rug(5, 7.2, 4, 2.4, 0xe0a030); F.vending(9.5, 8.3, Math.PI);
     for (const [x, c] of [[3.8, 0xff5a3c], [6.2, 0x3d8bd9]]) { const bag = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 8), mat(c)); bag.scale.y = 0.6; bag.position.set(L.x0 + x, 0.35, L.z0 + 7.2); scene.add(bag); seat(x, 7.2, Math.PI, 0.6, 'Sit on the bean bag'); }
     B(3.2, 0.5, 0.04, 0, 3.0, -8.78, 0x2a2516); B(1.6, 0.25, 0.01, 0, 3.0, -8.75, mat(0xf2e6c4, { emissive: 0xf2e6c4, ei: 0.3 }));   // QUIET PLEASE plate
     L.light(-7, -3, 1.0, 14, 0xffecc2); L.light(6, -3, 1.0, 14, 0xffecc2); L.light(0, 5, 0.9, 12, 0xffecc2);
+  }
+
+  // =========================== PUB ===========================
+  {
+    const L = makeLayout('pub', -5900, 0, 0x6b3f26, 0x5a3a22), { F, spot, seat, B, Cyl } = L;
+    const wood = 0x4a2c18, brass = mat(0xc9a24a, { metal: 0.8, rough: 0.3 });
+    // The bar runs along the back wall, with stools in front and bottles behind.
+    F.counter(0, -5.6, 0, 10, 0x3a2414, 0x5a3420);
+    B(10, 0.05, 0.05, 0, 0.25, -5.25, brass);   // foot rail
+    for (let i = 0; i < 5; i++) { const p = Cyl(0.035, 0.035, 0.5, -1.2 + i * 0.6, 1.2, -5.7, brass); }   // beer pumps
+    for (let r = 0; r < 3; r++) { B(9, 0.05, 0.35, 0, 1.3 + r * 0.55, -8.6, wood); for (let k = 0; k < 18; k++) Cyl(0.05, 0.05, 0.3, -4.2 + k * 0.5, 1.48 + r * 0.55, -8.6, [0x2f6b2f, 0x8a3b1f, 0xc9a24a, 0x2a3f6b][(k + r) % 4], undefined, 8, { opacity: 0.85 }); }
+    const stool = (x, z) => { Cyl(0.22, 0.22, 0.06, x, 0.83, z, 0x7a1f1f); Cyl(0.04, 0.04, 0.72, x, 0.46, z, 0x2a2a2a); Cyl(0.2, 0.22, 0.04, x, 0.12, z, 0x2a2a2a); seat(x, z, Math.PI, 1.27, 'Sit at the bar'); };
+    for (let x = -4; x <= 4; x += 1.3) stool(x, -4.6);
+    spot(0, -4.2, 2.6, 'Order at the bar', () => hooks.shop('The Rusty Anchor (pub)', 'pub'));
+    L.worker(-1.5, -6.7, 0, { sit: false, outfit: 0x1a1a1a, pants: 0x1a1a1a, task: 'talk' });
+    L.worker(1.8, -6.7, 0, { sit: false, outfit: 0xf2f2f2, pants: 0x1a1a1a, task: 'type' });
+    L.worker(-2.7, -4.6, Math.PI, { seatY: 0.9, outfit: 0x2f4f6f, task: 'talk' });
+    L.worker(2.5, -4.6, Math.PI, { seatY: 0.9, outfit: 0x7a4a2a, task: 'talk' });
+    // Booths and tables
+    for (const [x, z] of [[-8, 1], [-8, 5], [8, 1], [8, 5]]) {
+      F.table(x, z, 1.6, 0.9, 0, wood);
+      F.chair(x - 0.45, z - 0.75, 0, 0x7a1f1f, 'Sit at the table'); F.chair(x + 0.45, z - 0.75, 0, 0x7a1f1f, 'Sit at the table');
+      F.chair(x - 0.45, z + 0.75, Math.PI, 0x7a1f1f, 'Sit at the table'); F.chair(x + 0.45, z + 0.75, Math.PI, 0x7a1f1f, 'Sit at the table');
+    }
+    L.worker(-8.45, 0.25, 0, { outfit: 0x5b8a72, task: 'talk' }); L.worker(-7.55, 1.75, Math.PI, { outfit: 0x8a5b72, task: 'talk' });
+    L.worker(8.45, 5.75, Math.PI, { outfit: 0x4a4a8a, task: 'read' });
+    // Pool table, darts, jukebox, fireplace
+    F.table(0, 2.2, 2.6, 1.4, 0, 0x3b2414); B(2.4, 0.03, 1.2, 0, 0.8, 2.2, 0x1f6b3a);
+    spot(0, 3.5, 2.0, 'Play a game of pool', () => hooks.toast(['You pot three in a row, then the white. Classic.', 'Clean break! The regulars nod.', 'You win on the black. Free round? No.'][Math.floor(Math.random() * 3)]));
+    Cyl(0.45, 0.45, 0.05, 11.85, 1.75, -2, 0x2a2a2a).rotation.z = Math.PI / 2; Cyl(0.32, 0.32, 0.06, 11.84, 1.75, -2, 0xe8d9b0).rotation.z = Math.PI / 2;
+    spot(10.6, -2, 1.8, 'Throw some darts', () => { const t = 20 + Math.floor(Math.random() * 161); hooks.toast(t === 180 ? 'ONE HUNDRED AND EIGHTY!' : `You score ${t}.`); });
+    B(0.9, 1.6, 0.6, -11.4, 0.8, -2.5, mat(0x8a3b1f, { emissive: 0xff7a2a, ei: 0.35 }));
+    spot(-10.3, -2.5, 1.6, 'Put a song on the jukebox', () => hooks.toast(['🎵 An old sea shanty starts up. Everyone sings badly.', '🎵 A rock classic. The barman air-guitars.', '🎵 Something slow. Two old regulars start dancing.'][Math.floor(Math.random() * 3)]));
+    B(2.2, 1.2, 0.5, -11.6, 0.6, 5, 0x4a4a4a); B(1.4, 0.6, 0.1, -11.4, 0.5, 5, mat(0xff6a1f, { emissive: 0xff6a1f, ei: 1.6 }));   // fireplace
+    B(3.2, 0.6, 0.05, 0, 3.0, 8.82, 0x2a1810);   // name board over the door
+    L.light(-6, 2, 0.8, 12, 0xffb36b); L.light(6, 2, 0.8, 12, 0xffb36b); L.light(0, -5, 0.9, 12, 0xffc98a); L.light(-10, 5, 0.6, 7, 0xff7a2a);
+  }
+
+  // =========================== NIGHTCLUB ===========================
+  {
+    const L = makeLayout('nightclub', -6000, 0, 0x0c0a14, 0x14101e), { F, spot, B, Cyl } = L;
+    const neon = (c, ei = 2) => mat(c, { emissive: c, ei });
+    const cols = [0xff2bd6, 0x00e5ff, 0x22ff88, 0xffd23f, 0x8a5cff];
+    // Light-up dance floor in the middle: the tiles change colour to the beat.
+    L.flash = [];
+    for (let i = 0; i < 7; i++) for (let j = 0; j < 5; j++) L.flash.push(B(1.15, 0.04, 1.15, -4.2 + i * 1.2, 0.12, -2.5 + j * 1.2, mat(cols[(i + j) % 5], { emissive: cols[(i + j) % 5], ei: 1 }).clone()));
+    spot(0, 0, 3.5, 'Dance', () => hooks.dance?.() ?? hooks.toast('You throw some shapes on the dance floor. The crowd cheers.'));
+    // DJ booth on a stage at the back
+    B(8, 0.5, 2.6, 0, 0.3, -7.6, 0x1a1a24, true);
+    B(3.4, 1.1, 0.8, 0, 1.1, -7.0, 0x111111); B(3.2, 0.06, 0.6, 0, 1.68, -7.0, neon(0x00e5ff, 1));
+    for (const x of [-0.8, 0.8]) Cyl(0.25, 0.25, 0.04, x, 1.72, -7.0, 0x222222);
+    for (const x of [-3.6, 3.6]) B(1, 2.2, 0.9, x, 1.6, -8.0, 0x111111);   // speaker stacks
+    L.worker(0, -7.6, 0, { sit: false, outfit: 0x111111, pants: 0x111111, task: 'dj' });
+    spot(0, -5.4, 2.0, 'Request a song from the DJ', () => hooks.toast(['🎧 "Got you." The bass drops and the floor goes mad.', '🎧 The DJ points at you and plays it next.', '🎧 "Not tonight, mate." Fair.'][Math.floor(Math.random() * 3)]));
+    // Bar along the right wall
+    F.counter(10.6, 1, -Math.PI / 2, 8, 0x111111, 0x1a1a24); B(0.05, 0.1, 8, 10.25, 0.6, 1, neon(0xff2bd6, 2));
+    spot(9.2, 1, 2.4, 'Get a drink at the bar', () => hooks.shop('Club Neon bar', 'club'));
+    L.worker(11.4, 0, -Math.PI / 2, { sit: false, outfit: 0x2a2a2a, task: 'type' });
+    // VIP booths on the left
+    for (const z of [-4, 0, 4]) { F.sofa(-10.6, z, Math.PI / 2, 0x5a1f6b, 2.6); F.coffeeTable(-9.3, z, Math.PI / 2); }
+    B(0.05, 0.08, 14, -11.8, 2.8, 0, neon(0x8a5cff));
+    // Dancers on the floor
+    for (let k = 0; k < 9; k++) L.worker(-3.6 + (k % 3) * 3 + (k > 2 ? 0.6 : 0), -2 + Math.floor(k / 3) * 1.8, Math.random() * 6, { sit: false, outfit: cols[k % 5], task: 'dance' });
+    // Door staff by the entrance
+    L.worker(-2.4, 7.6, Math.PI, { sit: false, outfit: 0x111111, pants: 0x111111, task: 'idle' });
+    spot(-2.4, 6.6, 1.5, 'Talk to the bouncer', () => hooks.toast('"No trainers, no trouble. You\'re fine. Enjoy your night."'));
+    for (const [x, c] of [[-6, 0xff2bd6], [6, 0x00e5ff], [0, 0x22ff88]]) L.light(x, 0, 1.4, 16, c);
+    L.light(0, -7, 1.0, 10, 0x8a5cff); L.light(10, 1, 0.7, 9, 0xff2bd6);
+  }
+
+  // =========================== RESTAURANT ===========================
+  {
+    const L = makeLayout('restaurant', -6100, 0, 0xefe4d0, 0x7a5636), { F, spot, B, Cyl } = L;
+    L.partX(-3.6, -12, 12, [8]);
+    // Dining room: tables laid with white cloths, candles and plates
+    for (const [x, z] of [[-8, 4.5], [-4, 4.5], [0, 4.5], [4, 4.5], [-8, 0.3], [-4, 0.3], [0, 0.3], [4, 0.3]]) {
+      F.table(x, z, 1.4, 0.9, 0, 0x5a3a22); B(1.5, 0.02, 1.0, x, 0.79, z, 0xffffff);
+      for (const dz of [-0.25, 0.25]) Cyl(0.13, 0.13, 0.015, x, 0.81, z + dz, 0xf6f6f2);
+      Cyl(0.025, 0.025, 0.14, x, 0.88, z, mat(0xfff3d0, { emissive: 0xffc46b, ei: 1.2 }));
+      F.chair(x, z - 0.75, 0, 0x3b2b1f, 'Take a seat'); F.chair(x, z + 0.75, Math.PI, 0x3b2b1f, 'Take a seat');
+    }
+    L.worker(-8, -0.45, 0, { outfit: 0x8a5b72, task: 'talk' }); L.worker(-8, 1.05, Math.PI, { outfit: 0x2f4f6f, task: 'talk' });
+    L.worker(0, 3.75, 0, { outfit: 0x5b8a72, task: 'talk' }); L.worker(4, 5.25, Math.PI, { outfit: 0x7a4a2a, task: 'read' });
+    // Host stand and waiters
+    B(0.9, 1.1, 0.6, 9, 0.55, 7, 0x3b2b1f); L.worker(9, 6.2, 0, { sit: false, outfit: 0x1a1a1a, pants: 0x1a1a1a, task: 'idle' });
+    spot(9, 7.9, 1.8, 'Ask for a table', () => hooks.toast('"Table for one? Right this way. Any seat you like — a waiter will bring the menu."'));
+    for (const [x, z] of [[-6, 2.4], [2, 2.4]]) L.worker(x, z, Math.random() * 6, { sit: false, outfit: 0xf2f2f2, pants: 0x1a1a1a, task: 'idle' });
+    for (const [x, z] of [[-8, 1.4], [-4, 1.4], [0, 1.4], [4, 1.4], [-8, 5.6], [-4, 5.6], [0, 5.6], [4, 5.6]]) spot(x, z, 1.2, 'Order from the menu', () => hooks.shop('Bella Vista (restaurant)', 'restaurant'));
+    spot(9, 2.5, 2.4, 'Order from the menu', () => hooks.shop('Bella Vista (restaurant)', 'restaurant'));
+    // Open kitchen at the back: ranges, prep counters, chefs
+    for (let x = -10; x <= 2; x += 0.62) F.cooker(x, -8.4, 0);
+    F.counter(-4, -6, Math.PI, 8, 0xc8ccd0, 0x9aa0a6); B(8, 0.04, 0.6, -4, 1.4, -6, 0xc8ccd0);   // pass with heat lamps
+    for (let x = -7.5; x <= -0.5; x += 1.4) B(0.3, 0.08, 0.3, x, 1.9, -6, mat(0xff7a2a, { emissive: 0xff7a2a, ei: 1.5 }));
+    F.fridge(5, -8.4, 0); F.fridge(6, -8.4, 0); F.sink(8, -8.5, 0); F.counter(8, -8.5, 0, 2);
+    for (const [x, z] of [[-8, -7.6], [-4, -7.6], [0, -7.6]]) L.worker(x, z, Math.PI, { sit: false, outfit: 0xffffff, pants: 0x2a2a2a, task: 'cook' });
+    L.worker(-2, -5.2, Math.PI, { sit: false, outfit: 0xf2f2f2, pants: 0x1a1a1a, task: 'idle' });
+    spot(-4, -4.6, 1.8, 'Watch the chefs', () => hooks.toast('Flames leap from a pan. "Service! Two carbonara, one steak, table six!"'));
+    F.plant(-11.3, 8.4); F.plant(11.3, 8.4); F.art(-6, 2.0, -3.5, Math.PI, 0x8a6a4a); F.art(2, 2.0, -3.5, Math.PI, 0x5a6a8a);
+    L.light(-6, 2.5, 0.9, 13, 0xffd9a0); L.light(2, 2.5, 0.9, 13, 0xffd9a0); L.light(-4, -6.5, 1.1, 12, 0xffffff); L.light(7, -6.5, 0.8, 10, 0xffffff);
   }
 
   let active = null, time = 0;
@@ -604,6 +708,9 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (/library/.test(t)) return layouts.library;
       if (/government|townhall|town_hall|council|job_centre|post_office/.test(t)) return layouts.gov;
       if (/arcade|amusement|games/.test(t)) return layouts.arcade;
+      if (/^(nightclub|night_club|club|disco)$/.test(t)) return layouts.nightclub;
+      if (/^(pub|bar|inn|tavern|biergarten)$/.test(t)) return layouts.pub;
+      if (/^(restaurant|diner|cafe|café|bistro|fast_food|food_court|takeaway)$/.test(t)) return layouts.restaurant;
       if (/shop|retail|supermarket|market|kiosk|store|convenience|bakery|butcher|chemist|pharmacy/.test(t)) return layouts.shop;
       if (/office|commercial|government|bank|job_centre|post_office|company|industrial|warehouse|frontier-office|base/.test(t)) return layouts.office;
       if (/apartment|house|home|residential|terrace|detached|bungalow|flat|dormitory|cabin|farm|building|^yes$/.test(t)) return layouts.home;
@@ -616,10 +723,14 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (!active) return;
       if (active.spin) for (const o of active.spin) o.rotation.y += dt * 0.8;
       time += dt;
+      if (active.flash) { const beat = Math.floor(time * 2.2); active.flash.forEach((m, i) => { m.material.emissiveIntensity = ((i * 7 + beat) % 5) < 2 ? 2.2 : 0.25; }); }
       for (const w of active.workers) {   // typing, reading, chatting or just standing about
         const t = time * 1.0 + w.phase, { armL, armR } = w.h;
         if (w.task === 'type') { armL.pivot.rotation.x = -1.15 + Math.sin(t * 9) * 0.07; armR.pivot.rotation.x = -1.15 + Math.sin(t * 9 + 1.6) * 0.07; }
         else if (w.task === 'read') { armL.pivot.rotation.x = armR.pivot.rotation.x = -0.9; w.h.rig.rotation.x = 0.12 + Math.sin(t * 0.3) * 0.03; }
+        else if (w.task === 'dance') { w.h.rig.position.y = Math.abs(Math.sin(t * 4.4)) * 0.14; armL.pivot.rotation.x = -2.6 + Math.sin(t * 4.4) * 0.5; armR.pivot.rotation.x = -2.6 - Math.sin(t * 4.4) * 0.5; w.h.root.rotation.y += dt * 0.6; }
+        else if (w.task === 'dj') { armL.pivot.rotation.x = -1.0 + Math.sin(t * 4.4) * 0.15; armR.pivot.rotation.x = Math.sin(t * 2.2) > 0.6 ? -2.8 : -1.0; w.h.rig.position.y = Math.abs(Math.sin(t * 4.4)) * 0.05; }
+        else if (w.task === 'cook') { armL.pivot.rotation.x = -1.0; armR.pivot.rotation.x = -1.1 + Math.sin(t * 6) * 0.35; }
         else if (w.task === 'talk') { armR.pivot.rotation.x = -0.4 + Math.sin(t * 2.2) * 0.35; armL.pivot.rotation.x = -0.15; w.h.root.rotation.y += Math.sin(t * 0.7) * 0.002; }
         else if (!w.sit) animatePerson?.(w.h, false, dt);
       }
