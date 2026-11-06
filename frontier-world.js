@@ -133,7 +133,7 @@ export function buildFrontierWorld(ctx) {
     box(1.4, 0.06, 1.6, x, 0.03, z + face * (d / 2 + 0.8), C.concrete);               // front path
     for (const sx of [-1, 1]) box(w / 2 - 0.9, 0.6, 0.25, x + sx * (w / 4 + 0.45), 0.3, z + face * (d / 2 + 1.6), C.darkStone);   // garden wall with a gap for the path
   }
-  function tree(x, z, s = 1) { cyl(0.18 * s, 0.25 * s, 2.6 * s, x, 1.3 * s, z, C.timber, 6); sphere(1.7 * s, x, 3.4 * s, z, C.leaf, 7); }
+  function tree(x, z, s = 1) { if (ctx.forest) { ctx.forest.add(x, 0, z, { kind: 'oak', scale: s }); return; } cyl(0.18 * s, 0.25 * s, 2.6 * s, x, 1.3 * s, z, C.timber, 6); sphere(1.7 * s, x, 3.4 * s, z, C.leaf, 7); }
   function road(x0, z0, x1, z1, width = 9, markings = true) {
     const len = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(x1 - x0, z1 - z0), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     B.add(new THREE.BoxGeometry(width, 0.06, len), C.asphalt, cx, 0.03, cz, ang);
