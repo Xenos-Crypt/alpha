@@ -13,7 +13,7 @@ import * as THREE from 'three';
 const W = 24, D = 18, H = 3.6;            // shell size: x from -12 to 12, z from -9 to 9
 const DOOR_W = 1.2;
 
-export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, makeTex, tvMaterial, hooks }) {
+export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, makeTex, tvMaterial, hooks, makePerson, animatePerson }) {
   const mats = new Map();
   const mat = (c, o = {}) => {
     const k = c + '|' + JSON.stringify({ ...o, map: o.map?.uuid });
@@ -213,6 +213,16 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       const at = goingUp ? zBottom - dir * 0.9 : zBottom + dir * (len + 0.9);
       spot(x, at, 1.7, label, onUse);
     };
+    // ---- people working here ----
+    // sit: seated at a desk/chair (seatY = top of the seat); task: 'type' | 'idle' | 'talk' | 'read'
+    L.workers = [];
+    L.worker = (x, z, rot, { sit = true, seatY = 0.58, outfit = 0x3b4a5a, pants = 0x2a2f36, hair = [0x2b1d14, 0x5a3d26, 0x1a1a1a, 0xc9a24a, 0x8a3b1f][L.workers.length % 5], skin = [0xffdcc0, 0xd9a07a, 0x8d5a3b, 0xf0c8a0, 0x6b4430][(L.workers.length * 3) % 5], task = 'type' } = {}) => {
+      if (!makePerson) return;
+      const h = makePerson({ outfit, pants, hair, skin });
+      h.root.position.set(x0 + x, sit ? seatY + 0.1 - 0.88 : 0.1, z0 + z); h.root.rotation.y = rot; h.root.visible = false; scene.add(h.root);
+      if (sit) for (const leg of [h.legL, h.legR]) leg.pivot.rotation.x = -Math.PI / 2;
+      L.workers.push({ h, sit, task, phase: Math.random() * 6 });
+    };
     L.F = F; L.spot = spot; L.seat = seat; L.B = B; L.x0 = x0; L.z0 = z0;
     layouts[key] = L;
     return L;
@@ -223,6 +233,14 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
   // came from, so the flat above a shop takes you back down into the shop.
   let upFrom = null, liftFrom = null;
   const go = (to, lx, lz, yaw, msg) => hooks.travel(new THREE.Vector3(to.x0 + lx, 0, to.z0 + lz), yaw, msg, () => api.enter(to));
+  // Seat `n` workers at the desk clusters built with the 4-desk pattern used below.
+  const staffDesks = (L, xs, zs, n, outfit) => {
+    let k = 0;
+    for (const cz of zs) for (const cx of xs) for (const [dx, dz, rot] of [[-0.75, -0.42, Math.PI], [0.75, 0.42, 0], [0.75, -0.42, Math.PI], [-0.75, 0.42, 0]]) {
+      if (k++ >= n) return;
+      L.worker(cx + dx, cz + dz * 2.6, rot + Math.PI, { outfit: [outfit, 0x6a4a6a, 0x4a6a5a, 0x7a6a4a][k % 4], task: 'type' });
+    }
+  };
 
   // =========================== HOME ===========================
   {
@@ -259,6 +277,8 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.bookshelf(11.6, -3.0, -Math.PI / 2); F.plant(11.3, -1.6);
     L.light(-6.5, 4); L.light(6.5, 4); L.light(-6, -5, 0.9, 12); L.light(2.5, -5, 0.8, 9, 0xffffff); L.light(8.5, -5, 0.8, 10);
     L.stairs(-2.6, 6.3, 4.2, 1, 'Go upstairs', () => { upFrom = { L, x: -2.6, z: 3.0 }; go(layouts['home-up'], -1.2, 7.4, 0, 'Upstairs'); }, -2.6, 3.3);
+    L.worker(-6.8, 3.4, -Math.PI / 2, { seatY: 0.52, outfit: 0x8a5a4a, task: 'idle' });          // watching TV
+    L.worker(10.6, 4.15, Math.PI / 2, { sit: false, outfit: 0xd96a3d, pants: 0x3a3a3a, task: 'type' });   // cooking
   }
 
   // =========================== SHOP ===========================
@@ -282,6 +302,12 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     spot(-5.5, -5.8, 2.2, 'Check the stock', () => hooks.toast('Boxes of crisps, tins and toilet roll waiting to go out on the shelves.'));
     L.light(-6, 4, 1.2, 16, 0xffffff); L.light(6, 4, 1.2, 16, 0xffffff); L.light(-4, -5.5, 0.8, 14, 0xfff1dc); L.light(6, -5.5, 0.8, 12, 0xfff1dc);
     L.stairs(-11.2, -5.5, 4.2, -1, 'Go upstairs to the flat', () => { upFrom = { L, x: -9.8, z: -3.0 }; go(layouts['home-up'], -1.2, 7.4, 0, 'The flat above the shop'); }, -9.8, -3.0);
+    const uniform = { outfit: 0xc0392b, pants: 0x2a2f36 };
+    L.worker(7.2, 5.7, 0, { sit: false, ...uniform, task: 'type' });            // on the till
+    L.worker(-5.4, 1.4, -Math.PI / 2, { sit: false, ...uniform, task: 'type' }); // stacking shelves
+    L.worker(-4.2, -5.9, Math.PI, { sit: false, ...uniform, task: 'idle' });     // in the stockroom
+    L.worker(8.0, -3.9, Math.PI, { ...uniform, seatY: 0.55, task: 'talk' });     // on a break
+    L.worker(-1, 6.3, Math.PI, { sit: false, outfit: 0x5b8a72, task: 'idle' });  // a customer
   }
 
   // =========================== OFFICE ===========================
@@ -315,6 +341,11 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.light(-7, -6, 0.9, 10, 0xf4f8ff); L.light(1.5, -6, 0.8, 9); L.light(8.5, -6, 0.8, 9);
     L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
     L.escalator(-9.5, 7.6, 5, -1, 'Ride the escalator up', () => { liftFrom = L; go(layouts['office-up'], -9.5, 1.3, 0, 'Floor 1'); });
+    staffDesks(L, [-6.5, 5.5], [0.6], 6, 0x3b4a5a);
+    L.worker(-1, 3.7, 0, { outfit: 0x2f6f8f, task: 'type' });                                   // receptionist
+    for (const x of [-8.5, -7, -5.5]) L.worker(x, -7.15, 0, { outfit: 0x4a4a4a, seatY: 0.55, task: 'talk' });   // meeting
+    L.worker(1.5, -7.6, 0, { outfit: 0x1f2a36, task: 'type' });                                  // manager
+    L.worker(9.4, -7.7, Math.PI, { sit: false, outfit: 0x8a5a4a, task: 'idle' });                 // making a brew
   }
 
   // =========================== UPSTAIRS: HOME / FLAT ===========================
@@ -345,6 +376,8 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     // Home office (back right)
     F.desk(8, -8.3, 0); F.officeChair(8, -7.4, Math.PI); F.bookshelf(11.6, -5, -Math.PI / 2); F.plant(5, -8.3);
     L.light(0, 5, 0.8, 10); L.light(-8, 5, 0.9, 11); L.light(8, 5, 0.9, 11); L.light(-8, -4, 0.8, 10, 0xffffff); L.light(0, -4, 0.8, 10); L.light(8, -4, 0.8, 10);
+    L.worker(-6.0, 7.6, 0, { outfit: 0x3d8bd9, pants: 0x3a3a5a, task: 'read' });     // homework
+    L.worker(0, -7.6, 0, { seatY: 0.52, outfit: 0x7a5a8a, task: 'read' });            // reading
   }
 
   // =========================== UPSTAIRS: OFFICE FLOOR 1 ===========================
@@ -371,6 +404,9 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.B(1.0, 1.0, 0.7, 10.8, 0.5, -4.0, 0xd8d8d8, true);   // printer
     spot(10.8, -4.9, 1.6, 'Use the printer', () => hooks.toast('The printer jams. Of course it does.'));
     L.light(-5, 3, 1.1, 14, 0xf4f8ff); L.light(5, 3, 1.1, 14, 0xf4f8ff); L.light(-7, -6, 0.9, 10, 0xf4f8ff); L.light(1.5, -6, 0.8, 9); L.light(8.5, -6, 0.8, 9, 0xd8f0ff);
+    staffDesks(L, [-5, 5], [1.0, 5.6], 9, 0x4a5a6a);
+    for (const x of [-8.7, -5.9]) { L.worker(x, -7.3, 0, { outfit: 0x2a2a2a, task: 'talk' }); L.worker(x, -4.7, Math.PI, { outfit: 0x5a4a3a, task: 'talk' }); }
+    L.worker(7.6, -7.4, Math.PI, { sit: false, outfit: 0x2f4f6f, task: 'type' });   // IT in the server room
   }
 
 
@@ -414,6 +450,11 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     spot(4, -4.2, 1.4, 'Try the VR headset', () => hooks.toast('You put on the headset and you\'re standing on the moon. Then you walk into a desk.'));
     L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
     L.light(-6, 0.6, 0.9, 14, 0x9fe8ff); L.light(5.5, 0.6, 0.9, 14, 0xd9a0ff); L.light(0, 6, 0.8, 10, 0x9fe8ff); L.light(-7, -6, 0.8, 10, 0x8affc8); L.light(1.5, -6, 0.8, 9, 0x9fe8ff); L.light(8.5, -6, 0.8, 9, 0xff9ae8);
+    staffDesks(L, [-6.5, 5.5], [0.6], 7, 0x1a1f2a);
+    L.worker(-1, 3.7, 0, { outfit: 0x0b0f16, task: 'type' });
+    L.worker(-7.5, -6.5, Math.PI, { sit: false, outfit: 0x22262c, task: 'type' });     // checking a rack
+    L.worker(1.5, -4.4, Math.PI, { sit: false, outfit: 0xf2f2f2, pants: 0x3a3a3a, task: 'talk' });   // lab coat
+    L.worker(7, -5.5, Math.PI, { seatY: 0.42, outfit: 0x8a5cff, task: 'type' }); L.worker(10, -5.5, Math.PI, { seatY: 0.42, outfit: 0x22ff88, pants: 0x1a1a1a, task: 'type' });
   }
 
   // =========================== COURTHOUSE ===========================
@@ -445,6 +486,13 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.rug(0, -3.5, 2, 6, 0x4a1f1f);
     spot(0, -4.8, 1.8, 'Listen to the judge', () => hooks.toast('"Members of the jury, you must consider only the evidence put before you in this court..."'));
     L.light(-6, 6, 0.9, 12); L.light(6, 6, 0.9, 12); L.light(-5, -4, 1.0, 14, 0xfff1d6); L.light(5, -4, 1.0, 14, 0xfff1d6); L.light(0, -7, 0.8, 8, 0xfff1d6);
+    L.worker(0, -8.2, 0, { seatY: 1.15, outfit: 0x111111, pants: 0x111111, hair: 0xe8e8e8, task: 'read' });   // the judge
+    for (const x of [-3.7, 2.3]) L.worker(x, -2.3, Math.PI, { outfit: 0x1a1a1a, task: 'read' });               // barristers
+    L.worker(5, -5.3, -Math.PI / 2, { sit: false, outfit: 0x6a7a8a, task: 'talk' });                           // witness
+    L.worker(-9, -1, Math.PI / 2, { sit: false, outfit: 0x8a8a8a, task: 'idle' });                             // in the dock
+    for (let k = 0; k < 6; k++) L.worker(10.8 - (k % 2) * 1.1, -6.8 + Math.floor(k / 2) * 2, -Math.PI / 2, { outfit: [0x5a3a3a, 0x3a5a3a, 0x3a3a5a][k % 3], task: 'idle' });   // jurors
+    L.worker(-4.5, -0.3, Math.PI, { seatY: 0.82, outfit: 0x7a6a5a, task: 'idle' }); L.worker(4.5, 1.5, Math.PI, { seatY: 0.82, outfit: 0x4a6a7a, task: 'idle' });   // public
+    L.worker(9.5, 4.4, Math.PI, { sit: false, outfit: 0x1a1a1a, task: 'idle' }); L.worker(-3, 5.6, 0, { sit: false, outfit: 0x2a3a4a, task: 'idle' });   // usher, security
   }
 
   // =========================== ARCADE ===========================
@@ -480,9 +528,72 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     for (let k = 0; k < 8; k++) { const prize = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat(cols[k % cols.length])); prize.position.set(L.x0 + 5.4 + k * 0.45, 1.25, L.z0 + 7.2); scene.add(prize); }
     spot(7, 5.6, 1.8, 'Swap tickets for a prize', () => hooks.arcade('prize'));
     L.light(-6, 3, 0.9, 14, 0xff9ae8); L.light(6, 3, 0.9, 14, 0x9fe8ff); L.light(0, -5, 0.9, 14, 0xd9a0ff); L.light(0, 6, 0.7, 10, 0xffe39a);
+    L.worker(7, 7.9, Math.PI, { sit: false, outfit: 0xffd23f, pants: 0x22163a, task: 'idle' });   // prize counter
+    for (const x of [-3.8, 0.6, 3.9]) L.worker(x, -0.45, Math.PI, { sit: false, outfit: [0xff2bd6, 0x00e5ff, 0x22ff88][Math.abs(Math.round(x)) % 3], task: 'type' });
+    L.worker(-10.4, 2.4, -Math.PI / 2, { sit: false, outfit: 0xff5a3c, task: 'type' });
   }
 
-  let active = null;
+
+  // =========================== COUNCIL / GOVERNMENT OFFICES ===========================
+  {
+    const L = makeLayout('gov', -5700, 0, 0xe8e4d8, 0x8a7d6b), { F, spot, seat, B } = L;
+    L.partX(-1.5, -12, 12, [-7, 0.5, 8]);
+    L.partZ(-3, -9, -1.5); L.partZ(4, -9, -1.5);
+    // Front hall: service counters with glass screens, ticket machine, waiting area
+    F.counter(8.5, 1.8, 0, 6.5, 0xb8a888, 0xd8d2c4);
+    for (let i = 0; i < 3; i++) {
+      const cx = 6.3 + i * 2.2;
+      B(1.9, 0.9, 0.04, cx, 1.55, 1.8, mat(0xbfe6ff, { opacity: 0.3 }));
+      B(0.5, 0.35, 0.04, cx, 2.35, 1.8, mat(0x2f6f8f, { emissive: 0x2f6f8f, ei: 0.6 }));
+      F.officeChair(cx, 0.8, Math.PI); L.worker(cx, 0.8, Math.PI, { outfit: [0x233e54, 0x4a3a5a, 0x3a5a4a][i], task: 'type' });
+      spot(cx, 2.8, 1.1, `Speak to the clerk at window ${i + 1}`, () => hooks.toast(['"Council tax? Second floor... just kidding, it\'s me. How can I help?"', '"Parking permits are window 3. This is window 2. But fine, I\'ll do it."', '"Next please! Do you have your ticket?"'][i]));
+    }
+    B(0.6, 1.4, 0.5, 3.5, 0.7, 7.8, 0xd0281f, true); B(0.4, 0.25, 0.02, 3.5, 1.2, 7.54, mat(0xffffff, { emissive: 0xffffff, ei: 0.4 }));
+    spot(3.5, 7.0, 1.4, 'Take a queue ticket', () => hooks.toast(`Ticket number ${100 + Math.floor(Math.random() * 60)}. Now serving: ${90 + Math.floor(Math.random() * 10)}.`));
+    for (const z of [5.4, 7.0]) for (let x = -10; x <= -5; x += 1) F.chair(x, z, 0, 0x2f6f8f, 'Wait to be called');
+    L.worker(-8, 5.4, 0, { seatY: 0.55, outfit: 0x7a5a3a, task: 'idle' }); L.worker(-6, 7.0, 0, { seatY: 0.55, outfit: 0x3a5a7a, task: 'idle' });
+    F.reception(-1, 4.4); L.worker(-2, 3.5, 0, { outfit: 0x233e54, task: 'type' }); F.officeChair(-2, 3.5, 0);
+    spot(-1, 5.4, 1.8, 'Ask at the front desk', () => hooks.toast('"Welcome to the council offices. Records library is through the left door, the mayor\'s office is on the right."'));
+    F.plant(11.3, 8.4); F.plant(-11.3, 3.2);
+    L.lift(-11.75, 1.8, Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
+    // Records library (back left)
+    for (const z of [-3.2, -5.4, -7.6]) for (let x = -11; x <= -6; x += 1.25) F.bookshelf(x, z, 0, 1.2);
+    F.table(-4.4, -5.5, 1.0, 2.2); F.chair(-4.4, -4.6, Math.PI); L.worker(-4.4, -6.4, 0, { outfit: 0x5a4a3a, task: 'read' }); F.chair(-4.4, -6.4, 0);
+    spot(-6.5, -2.4, 1.8, 'Read the council records', () => hooks.toast('Planning permission for the Aegis Prime Generator, 400 pages. Minutes of the 1987 bin collection debate. A map with the hidden mountain crossed out?'));
+    // Open-plan clerks (back middle)
+    for (const [x, z] of [[-1.2, -4.2], [2, -4.2], [-1.2, -7.4], [2, -7.4]]) { F.desk(x, z, Math.PI); F.officeChair(x, z - 0.9, 0); L.worker(x, z - 0.9, 0, { outfit: 0x3b4a5a, task: 'type' }); }
+    // Mayor's office (back right)
+    F.desk(8, -7.6, Math.PI); F.officeChair(8, -8.4, 0); L.worker(8, -8.4, 0, { outfit: 0x1a1a1a, task: 'read' });
+    F.chair(7.4, -6.4, Math.PI); F.chair(8.6, -6.4, Math.PI); F.rug(8, -6, 3.5, 3, 0x7a1f1f);
+    B(0.06, 2.2, 0.06, 5.2, 1.1, -8.4, 0x8a8a8a); B(0.9, 0.6, 0.02, 5.65, 1.9, -8.4, 0x2d5d3a);
+    F.art(8, 2.0, -8.82, 0, 0x8a6a4a); F.bookshelf(11.6, -4, -Math.PI / 2);
+    spot(8, -5.4, 1.8, 'Meet the mayor', () => hooks.toast('"Ah, a citizen! The new leisure park? My idea. The business district? Also my idea. Mostly."'));
+    L.light(-6, 5, 1.0, 13); L.light(6, 4, 1.0, 13); L.light(-7.5, -5.5, 0.9, 11); L.light(0.5, -5.5, 0.9, 10, 0xf4f8ff); L.light(8, -5.5, 0.9, 10);
+  }
+
+  // =========================== PUBLIC LIBRARY ===========================
+  {
+    const L = makeLayout('library', -5800, 0, 0xe3d2b4, 0x8a6a46), { F, spot, seat, B } = L;
+    for (const z of [-7.6, -5.0, -2.4, 0.2]) for (let x = -9.8; x <= -3.5; x += 1.25) F.bookshelf(x, z, 0, 1.2);
+    for (let z = -8; z <= 4; z += 1.3) F.bookshelf(-11.6, z, Math.PI / 2, 1.2);
+    for (let x = 1; x <= 11; x += 1.25) F.bookshelf(x, -8.65, 0, 1.2);
+    F.reception(0, 5.4); F.officeChair(-1, 4.5, 0); L.worker(-1, 4.5, 0, { outfit: 0x5a3d6b, task: 'type' });
+    spot(0, 6.4, 1.8, 'Borrow a book', () => hooks.rest(5, ['You borrow "The History of the Aegis Shield". It is very long.', 'You borrow a cookbook. Hunger intensifies.', 'You borrow "Dungeons for Beginners". Chapter 1: don\'t.'][Math.floor(Math.random() * 3)]));
+    for (const [x, z] of [[4, -4], [8, -4]]) {
+      F.table(x, z, 2.2, 1.2);
+      for (const dx of [-0.6, 0.6]) { F.chair(x + dx, z - 0.85, 0, 0x6b4a30, 'Sit and read'); F.chair(x + dx, z + 0.85, Math.PI, 0x6b4a30, 'Sit and read'); }
+      L.worker(x - 0.6, z - 0.85, 0, { outfit: 0x4a6a5a, task: 'read' }); L.worker(x + 0.6, z + 0.85, Math.PI, { outfit: 0x7a4a4a, task: 'read' });
+    }
+    for (const z of [-0.5, 1.2, 2.9]) { F.desk(11.3, z, -Math.PI / 2); F.officeChair(10.4, z, Math.PI / 2); }
+    L.worker(10.4, -0.5, Math.PI / 2, { outfit: 0x2f6f8f, task: 'type' });
+    spot(10, 1.2, 1.8, 'Use a library computer', () => hooks.toast('You look up "how to find the hidden mountain". The search history is full of people asking the same thing.'));
+    F.rug(5, 7.2, 4, 2.4, 0xe0a030);
+    for (const [x, c] of [[3.8, 0xff5a3c], [6.2, 0x3d8bd9]]) { const bag = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 8), mat(c)); bag.scale.y = 0.6; bag.position.set(L.x0 + x, 0.35, L.z0 + 7.2); scene.add(bag); seat(x, 7.2, Math.PI, 0.6, 'Sit on the bean bag'); }
+    B(3.2, 0.5, 0.04, 0, 3.0, -8.78, 0x2a2516); B(1.6, 0.25, 0.01, 0, 3.0, -8.75, mat(0xf2e6c4, { emissive: 0xf2e6c4, ei: 0.3 }));   // QUIET PLEASE plate
+    L.light(-7, -3, 1.0, 14, 0xffecc2); L.light(6, -3, 1.0, 14, 0xffecc2); L.light(0, 5, 0.9, 12, 0xffecc2);
+  }
+
+  let active = null, time = 0;
   const api = {
     layouts,
     /** Which layout a building type uses. Unknown non-civic types count as homes. */
@@ -490,16 +601,29 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       const t = String(type).toLowerCase();
       if (/cyber|tech|software|data|robot|ai_lab|startup/.test(t)) return layouts.cyber;
       if (/court|law/.test(t)) return layouts.court;
+      if (/library/.test(t)) return layouts.library;
+      if (/government|townhall|town_hall|council|job_centre|post_office/.test(t)) return layouts.gov;
       if (/arcade|amusement|games/.test(t)) return layouts.arcade;
       if (/shop|retail|supermarket|market|kiosk|store|convenience|bakery|butcher|chemist|pharmacy/.test(t)) return layouts.shop;
       if (/office|commercial|government|bank|job_centre|post_office|company|industrial|warehouse|frontier-office|base/.test(t)) return layouts.office;
       if (/apartment|house|home|residential|terrace|detached|bungalow|flat|dormitory|cabin|farm|building|^yes$/.test(t)) return layouts.home;
       return null;   // civic types use the themed civic hall
     },
-    enter(L) { this.exit(); active = L; for (const l of L.lights) l.visible = true; },
-    exit() { if (active) for (const l of active.lights) l.visible = false; active = null; },
+    enter(L) { this.exit(); active = L; for (const l of L.lights) l.visible = true; for (const w of L.workers) w.h.root.visible = true; },
+    exit() { if (active) { for (const l of active.lights) l.visible = false; for (const w of active.workers) w.h.root.visible = false; } active = null; },
     get active() { return active; },
-    update(dt) { if (active?.spin) for (const o of active.spin) o.rotation.y += dt * 0.8; },
+    update(dt) {
+      if (!active) return;
+      if (active.spin) for (const o of active.spin) o.rotation.y += dt * 0.8;
+      time += dt;
+      for (const w of active.workers) {   // typing, reading, chatting or just standing about
+        const t = time * 1.0 + w.phase, { armL, armR } = w.h;
+        if (w.task === 'type') { armL.pivot.rotation.x = -1.15 + Math.sin(t * 9) * 0.07; armR.pivot.rotation.x = -1.15 + Math.sin(t * 9 + 1.6) * 0.07; }
+        else if (w.task === 'read') { armL.pivot.rotation.x = armR.pivot.rotation.x = -0.9; w.h.rig.rotation.x = 0.12 + Math.sin(t * 0.3) * 0.03; }
+        else if (w.task === 'talk') { armR.pivot.rotation.x = -0.4 + Math.sin(t * 2.2) * 0.35; armL.pivot.rotation.x = -0.15; w.h.root.rotation.y += Math.sin(t * 0.7) * 0.002; }
+        else if (!w.sit) animatePerson?.(w.h, false, dt);
+      }
+    },
     /** Nearest interaction inside the current interior (furniture, the exit). */
     nearest(p) {
       if (!active) return null;

@@ -189,6 +189,7 @@ export function buildVenues(ctx) {
 
   // ================================================================= BUILDINGS (arcades, companies)
   const facadeTex = (base, win) => makeTex(128, 256, g => { g.fillStyle = base; g.fillRect(0, 0, 128, 256); g.fillStyle = win; for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++) g.fillRect(6 + c * 31, 6 + r * 31, 26, 22); });
+  const towers = [];
   const company = ({ name, type, x, z, w = 24, d = 18, floors = 6, face = 1, base = '#3c5a73', win = '#9fd3ff', sign = '#15364a', fg = '#ffffff', sub = '', neon = 0 }) => {
     const h = floors * 3.4, tex = facadeTex(base, win); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(w / 8, floors / 2.4);
     const sideTex = tex.clone(); sideTex.needsUpdate = true; sideTex.repeat.set(d / 8, floors / 2.4);
@@ -203,6 +204,7 @@ export function buildVenues(ctx) {
     if (neon) { B(w + 0.2, 0.15, 0.15, x, 0.6, fz + face * 0.1, mat(neon, { emissive: neon, ei: 2 })); B(w + 0.2, 0.15, 0.15, x, h - 0.4, fz + face * 0.1, mat(neon, { emissive: neon, ei: 2 })); }
     enterable(type, name, x, z, w, d);
     dest(name, x, fz + face * 6);
+    towers.push({ name, x, z, w, d, h, face });
   };
   // Pixel Palace arcade in the leisure park
   company({ name: 'Pixel Palace Arcade', type: 'arcade', x: 330, z: -730, w: 26, d: 16, floors: 2, face: -1, base: '#22163a', win: '#ff2bd6', sign: '#22163a', fg: '#ffd23f', sub: 'GAMES · PRIZES · AIR HOCKEY', neon: 0xff2bd6 });
@@ -269,5 +271,5 @@ export function buildVenues(ctx) {
       if (lap.on && Math.hypot(p.x - RW.x, p.z - RW.z) > RW.straight / 2 + RW.r + 60) { lap.on = false; toast('You left the circuit - lap cancelled.'); }
     } else if (lap.on) { lap.on = false; }
   }
-  return { update, stadium: ST, raceway: RW };
+  return { update, stadium: ST, raceway: RW, towers };
 }

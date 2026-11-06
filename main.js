@@ -39,6 +39,10 @@ import {hoverRoadVehicle, makeHover, updateHover} from './hover.js';
 import {buildInteriors} from './interiors.js';
 import {buildBorder, DOME, PLAY_R} from './border.js';
 import {buildVenues} from './venues.js';
+import {buildPowerGrid} from './power-grid.js';
+import {buildHelipads} from './helipads.js';
+import {buildDrones} from './drones.js';
+import {buildHiddenPeak} from './hidden-peak.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
 import { installMatrixCache } from './matrix-cache.js';
@@ -413,7 +417,7 @@ const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford C
 let supportSkills=null,cityServices=null,supportCounters={dungeons:0,bosses:0};
 function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localStorage.setItem('support:'+alignmentUserId,JSON.stringify({skill:supportSkills.snapshot(),counters:supportCounters,kills:monsterQuestKills}));}catch{}}
 let cityLife=null,monsterQuestKills=0;
-let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null;   // law, guild system and the northern frontier (created after the base world)
+let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
@@ -473,6 +477,8 @@ const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
+  const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
+  const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
   const ghostFloor=ghostIsland?.groundAt(x,z);if(ghostFloor!=null)return ghostFloor;
@@ -649,11 +655,11 @@ function addBuilding(x, z, faceX, faceZ) {
   const doorZ = z + faceZ * (d / 2 - 0.03);
   box(1.5, 2.3, 0.1, x, CURB + 1.15, doorZ, 0x241f1a, false);
   box(1.7, 0.15, 0.2, x, CURB + 2.35, doorZ, 0x3a332b, false);   // lintel
-  if (rand() < 0.5) addCCTV(x + (w / 2 - 0.6) * (faceX || 1), CURB + 3.6, doorZ + faceZ * 0.1, faceZ);
+  addCCTV(x + (w / 2 - 0.6) * (faceX || 1), CURB + 3.6, doorZ + faceZ * 0.1, faceZ);   // every building has CCTV
   const kind = pick(['apartment', 'shop', 'office']);
   const name = (kind === 'apartment' ? buildingAddressN + ' Ashford Apartments' : kind === 'shop' ? buildingAddressN + ' High Street Shop' : buildingAddressN + ' Ashford Offices');
   buildingAddressN += rand() < 0.5 ? 2 : 4;
-  civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, cctv: true });
   // Exterior fire-escape staircase up one side, tall buildings only — a real
   // sloped ramp registered in stairRamps (see groundY) so it's actually climbable,
   // not just decoration.
@@ -5586,7 +5592,7 @@ function resolveInteractTarget() {
   if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway'))) return { label: service.label, action: service.action };
   // Inside a subway stairwell, E shouldn't open a nearby building instead.
   const inStairwell = metro?.entrances?.groundAt(player.position.x, player.position.z) != null;
-  const cb = inStairwell ? null : nearestCivicBuilding();
+  const cb = inStairwell || player.position.y > 3 ? null : nearestCivicBuilding();   // not from a rooftop or mountain
   if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
   const g = nearestGate();
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
@@ -5668,11 +5674,19 @@ let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
     sitSpots.push({ x, z, yaw: Math.PI, seatY: 0.95, label: 'Sit in the waiting area' });
   }
   box(0.6, 0.5, 0.6, C.x + 11.5, 0.25, C.z + 8.5, 0xb5683f, false);         // plant pot
+  // Staff behind the counter and people waiting to be seen.
+  for (const [x, z, rot, seatTop, outfit] of [[C.x - 7, C.z - 6.2, 0, 0.54, 0x233e54], [C.x + 7.2, C.z + 3.5, Math.PI, 0.49, 0x7a5a3a], [C.x + 8.8, C.z + 5.5, Math.PI, 0.49, 0x3a5a7a]]) {
+    const h = makeHumanoid({ outfit, hair: 0x3b2c23, pants: 0x2a2f36 });
+    h.root.position.set(x, seatTop - 0.88, z); h.root.rotation.y = rot; h.legL.pivot.rotation.x = h.legR.pivot.rotation.x = -Math.PI / 2;
+    if (rot === 0) h.armL.pivot.rotation.x = h.armR.pivot.rotation.x = -1.1;
+    scene.add(h.root);
+  }
   interactables.push({ pos: new THREE.Vector3(C.x - 7, 0, C.z - 3.9), r: 2, label: 'Speak to reception', action: () => toast('"Hello, how can I help? Take a seat and we\'ll call you."') });
 })();
 // Homes, shops and offices get real multi-room interiors (see interiors.js); civic
 // buildings keep the themed hall above.
 const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
+  makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
   tvMaterial: new THREE.MeshBasicMaterial({ map: civicTvTexture }),
   hooks: {
     toast: m => toast(m),
@@ -6968,7 +6982,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 // room() helper, so they never auto-registered on the travel map like everything else.
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
-capitalServiceBuildings=buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,destinations:townPlaces.destinations});
+capitalServiceBuildings=buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,civicBuildings,destinations:townPlaces.destinations});
 spaceCentre=buildSpaceCentre({safeFence:fenceRect,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
@@ -7098,7 +7112,25 @@ frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,civicBuil
 // The guarded border fence around the edge of the map, with snowy mountains outside.
 // Leisure park, business district and the other real-life places on the outer land.
 venues=buildVenues({scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle});
+// Fade-out, move the player, fade-in (helicopters, the mountain climb).
+function teleportPlayer(pos, msg, ms = 650) {
+  $('fade').style.opacity = 1;
+  setTimeout(() => { if (inCar) exitVehicle(); player.position.copy(pos); vy = 0; pvel.set(0, 0, 0); $('fade').style.opacity = 0; if (msg) toast(msg); }, ms);
+}
 border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),interactables,toast,makeTex});
+// The power grid: the Aegis Prime Generator feeds every dungeon gate and the dungeon
+// arena through cables in the sewers; an open manhole beside each gate shows them.
+powerGrid=buildPowerGrid({scene,gates,interactables,toast,groundY,makeTex});
+// Helicopter carry points: helipads on top of the tallest towers and pickup pads on the ground.
+helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlayer,roofs:venues.towers.filter(t=>t.h>=27),ground:[
+  {name:'Ashford Beach helipad',x:150,z:176},{name:'Capital helipad',x:190,z:705},{name:'Leisure Park helipad',x:120,z:-735},{name:'Business District helipad',x:160,z:1068}]});
+drones=buildDrones({scene,dome:DOME});
+lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,
+  announce:t=>callout(t,0xffd166,true),shake:v=>{shake=Math.max(shake,v);},reward(){stats.gold+=500;stats.hp=maxHp();stats.energy=100;stats.hunger=100;}});
+// CCTV on every building: anything enterable that doesn't have a camera yet gets one
+// on its front corner.
+for(const b of civicBuildings){if(b.cctv||b.minX==null||b.realWorld||Math.abs(b.x)>3000)continue;b.cctv=true;addCCTV(b.maxX-0.4,3.6,b.maxZ+0.15,1);}
+
 hunterGuilds=createHunterGuilds({level:()=>prog.level,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons,bosses:supportCounters.bosses}),money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},earn:n=>{stats.gold+=n;},gainXp,toast,
  playerPosition:()=>player.position,checkpoints:{patrol:frontier.patrolPoints,spires:frontier.spires},interactables,heal(){stats.hp=maxHp();stats.energy=Math.max(stats.energy,60);},changed(){saveSolo();},
  pause:pauseForPanel,resume(){if(!boardOpen&&!settingsOpen)requestGameControl();}});
@@ -7168,6 +7200,7 @@ function frame() {
     frontier.update(dt,{sky,camera,inSpace:!!spaceCentre?.inSpace,underground:!!(metro?.underground||sewers?.underground||dungeon||inCivicInterior||navy?.rider?.depth>2)});
     updateMilitary(dt);
     border?.update(dt, player.position);
+    powerGrid?.update(dt); helipads?.update(dt, player.position); drones?.update(dt); lostPeak?.update(dt);
     venues?.update(dt, { playerPos: player.position, driving: inCar && driving ? driving : null });
     interiors.update(dt);
     updateWeather(dt);
