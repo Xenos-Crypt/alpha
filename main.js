@@ -1449,11 +1449,24 @@ residentialCells.forEach(([cx, cz], i) => {
 // =====================================================================
 const $ = id => document.getElementById(id);
 let toastTimer;
+// On phones and tablets, keyboard hints in messages become the matching on-screen buttons.
+const TOUCH_HINTS = [
+  [/Press E \(or (the )?action button\)/g, 'Tap Interact'], [/press E \(or (the )?action button\)/g, 'tap Interact'], [/\bE \(or (the )?action button\)/g, 'Interact'],
+  [/\bPress E\b/g, 'Tap Interact'], [/\bpress E\b/g, 'tap Interact'], [/\bE at the rack\b/g, 'Interact at the rack'], [/\bUse E\b/g, 'Use Interact'],
+  [/Press J to take it off/g, 'Tap 🦾 to take it off'], [/\bJ to take it off\b/g, '🦾 to take it off'],
+  [/\(V to turn it off\)/g, '(tap 🔦 to turn it off)'], [/[Pp]ress Y\b/g, 'tap 🚕'],
+  [/Space climbs, Shift descends, W\/S fly forward\/back, A\/D turn/g, 'Climb goes up, Descend goes down, stick forward/back to fly, left/right to turn'],
+  [/Space to climb, Shift to descend, W\/S to fly, A\/D to turn/g, 'Climb goes up, Descend goes down, stick forward/back to fly, left/right to turn'],
+  [/Q\/R barrel roll in flight\. W\/S throttle · A\/D turn · Space climb · Shift dive\./g, 'Roll buttons barrel-roll · stick up/down is throttle · left/right turns · Climb and Descend pitch.'],
+  [/\bHold S\b/g, 'Hold ▼'], [/\bhold S\b/g, 'hold ▼'], [/\bW to go forward\b/g, '▲ to go forward'],
+];
+const touchText = text => { if (!touchDevice || typeof text !== 'string') return text; for (const [a, b] of TOUCH_HINTS) text = text.replace(a, b); return text; };
 function toast(text) {
+  text = touchText(text);
   $('toast').textContent = text;
   $('toast').style.opacity = 1;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => $('toast').style.opacity = 0, 2200);
+  toastTimer = setTimeout(() => $('toast').style.opacity = 0, Math.min(7000, 2200 + String(text).length * 30));   // long messages stay up long enough to read
 }
 
 const _proj = new THREE.Vector3();
@@ -2516,6 +2529,8 @@ let flashlightOn = false;
 function toggleFlashlight() { flashlightOn = !flashlightOn; toast(flashlightOn ? 'Flashlight on (V to turn it off).' : 'Flashlight off.'); $('torchBtn')?.classList.toggle('on', flashlightOn); }
 const _fwd = new THREE.Vector3();
 function updateFlashlight() {
+  const xo = $('exoBtn'); if (xo) { const w = !!military?.wearing; if ((xo.style.display !== 'none') !== w) xo.style.display = w ? '' : 'none'; if (!xo.onclick) xo.onclick = () => military?.takeOff(); }
+  for (const id of ['torchBtn', 'taxiBtn']) { const el = $(id); if (el && el.style.display !== 'none') el.style.visibility = inCar || !canAct() ? 'hidden' : 'visible'; }   // no torch or taxi call while you're in a vehicle
   const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } }
   flashlight.intensity = flashlightOn && !inCar ? 90 : 0;
   if (!flashlightOn) return;

@@ -35,6 +35,7 @@ export function createCarControls({ headlight, headMat, tailMat, toast, isAuto, 
     #carDash button{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:9px;font-size:14px;padding:6px 9px;min-width:36px;cursor:pointer}
     #carDash .btns{display:flex;gap:5px}#carDash .bat{font-size:14px;font-variant-numeric:tabular-nums}#carDash .bat.low{color:#ff5a4a}#carDash .bat.chg{color:#2dff8a}
     @media (max-width:700px){#carDash{bottom:150px;gap:8px;padding:6px 9px}#carDash .spd{font-size:22px;min-width:44px}#carDash .revs{width:50px}}
+    @media (pointer:coarse) and (max-height:520px){#carDash{top:calc(env(safe-area-inset-top,0px) + 4px);bottom:auto;flex-wrap:wrap;justify-content:center;max-width:min(430px,52vw);gap:6px;padding:5px 8px;row-gap:3px}#carDash .spd{font-size:20px;min-width:40px}#carDash .revs{width:44px}#carDash .btns button{min-width:30px;min-height:30px;padding:2px 6px}}
   </style>
   <div><span class="spd">0</span><span class="unit">mph</span></div>
   <div class="gear">D</div><div class="revs"><div></div></div>

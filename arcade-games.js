@@ -18,6 +18,12 @@ export function createArcade({ toast, pause, resume, onFinish }) {
     #arcadeGame .pad button,#arcadeGame .quit{background:#22163a;border:2px solid #8a5cff;color:#fff;border-radius:10px;font-size:22px}
     #arcadeGame .pad button:active{background:#8a5cff}
     #arcadeGame .quit{font-size:14px;padding:6px 14px;margin-left:12px}
+    @media (max-height:520px) and (orientation:landscape){
+      #arcadeGame{display:grid;grid-template-columns:auto auto;grid-template-rows:auto 1fr;column-gap:18px;align-content:center;justify-content:center}
+      #arcadeGame .top{grid-column:1/3;margin-bottom:4px;font-size:13px}
+      #arcadeGame canvas{max-height:calc(100vh - 56px);max-width:62vw}
+      #arcadeGame .pad{grid-template-columns:repeat(3,56px);grid-template-rows:repeat(2,56px);align-self:center}
+    }
   </style>
   <div class="top"><span class="title"></span><span>Score <b class="score">0</b></span><span class="info"></span><button class="quit" type="button">Quit (Esc)</button></div>
   <canvas width="480" height="540"></canvas>
@@ -57,7 +63,8 @@ export function createArcade({ toast, pause, resume, onFinish }) {
   cv.addEventListener('pointerup', () => { if (game?.kind !== 'hockey') pointer = null; });
   $('.quit').onclick = () => end(true);
 
-  const text = (s, x, y, size = 20, c = '#fff', align = 'center') => { g.fillStyle = c; g.font = `bold ${size}px system-ui,sans-serif`; g.textAlign = align; g.fillText(s, x, y); };
+  const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+  const text = (s, x, y, size = 20, c = '#fff', align = 'center') => { if (touch) s = s.replace(/SPACE/g, '●').replace(/ \(or drag\)/g, ''); g.fillStyle = c; g.font = `bold ${size}px system-ui,sans-serif`; g.textAlign = align; g.fillText(s, x, y); };
   const setScore = n => { game.score = Math.max(0, Math.round(n)); $('.score').textContent = game.score; };
 
   // ============================================================ DANCE

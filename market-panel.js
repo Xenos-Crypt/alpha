@@ -19,11 +19,11 @@ export function createMarketPanel({ money, toast, pause, resume }) {
     #marketPanel .filters label{display:flex;align-items:center;gap:6px}
     #marketPanel select,#marketPanel input[type=range]{accent-color:#ffd23f}
     #marketPanel select{background:#1f2a36;color:#fff;border:1px solid #33475a;border-radius:8px;padding:5px;min-height:32px}
-    #marketPanel .grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;align-content:start;padding-bottom:8px}
+    #marketPanel .grid{flex:1;min-height:0;overflow:auto;grid-auto-rows:max-content;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;align-content:start;padding-bottom:8px}
     #marketPanel .card{background:#16212c;border:1px solid #2a3a4a;border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px}
     #marketPanel .card h3{margin:0;font-size:15px}#marketPanel .card .cat{font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.06em}
     #marketPanel .card .desc{font-size:12px;opacity:.8}
-    #marketPanel .bar{display:grid;grid-template-columns:86px 1fr 28px;align-items:center;gap:6px;font-size:11px}
+    #marketPanel .bar{display:grid;grid-template-columns:86px 1fr 28px;align-items:center;gap:6px;font-size:11px;min-height:16px;line-height:16px}
     #marketPanel .bar i{display:block;height:7px;border-radius:4px;background:#2a3a4a;overflow:hidden}#marketPanel .bar i b{display:block;height:100%;background:linear-gradient(90deg,#22ff88,#ffd23f)}
     #marketPanel .sw{display:flex;gap:5px}#marketPanel .sw span{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer}#marketPanel .sw span.on{border-color:#fff}
     #marketPanel .buy{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
@@ -32,6 +32,13 @@ export function createMarketPanel({ money, toast, pause, resume }) {
     #marketPanel button.go:disabled{background:#444}
     #marketPanel button.close{background:#444;border:0;color:#fff;border-radius:10px;padding:9px 14px;min-height:40px}
     #marketPanel .empty{opacity:.7;padding:20px;text-align:center;grid-column:1/-1}
+    @media (max-height:520px){
+      #marketPanel .wrap{padding:6px 10px;gap:5px}#marketPanel h2{font-size:16px}
+      #marketPanel .filters{padding:4px 8px;gap:8px;font-size:12px}#marketPanel .chip{padding:5px 10px;min-height:30px}
+      #marketPanel .grid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:7px}
+      #marketPanel .card{padding:7px;gap:4px}#marketPanel .card .desc{display:none}
+      #marketPanel .filters input[type=range]{width:90px}#marketPanel .grid{grid-auto-rows:max-content}#marketPanel .bar{min-height:15px;line-height:15px}#marketPanel .sw span{width:18px;height:18px}
+    }
   </style><div class="wrap"><header><h2></h2><span class="tag" hidden></span><span class="gold"></span><button class="close" type="button">Close</button></header>
   <div class="chips"></div>
   <div class="filters"><label>Sort by <select class="sort"></select></label><label>Max price <input class="max" type="range"><span class="maxv"></span></label><label>At least <select class="minStat"></select><input class="min" type="range" min="0" max="100" step="5" value="0"><span class="minv">0</span></label></div>
