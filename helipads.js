@@ -4,7 +4,7 @@
 // On a rooftop you can also take the lift down to the street.
 import * as THREE from 'three';
 
-export function buildHelipads({ scene, interactables, toast, makeTex, teleport, roofs, ground }) {
+export function buildHelipads({ scene, interactables, toast, makeTex, teleport, roofs, ground, carry, canBoard, prepare, land }) {
   const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.6, metalness: o.metal ?? 0.2, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1, transparent: o.opacity != null, opacity: o.opacity ?? 1 });
   const hTex = makeTex(256, 256, g => {
     g.fillStyle = '#2b2f33'; g.fillRect(0, 0, 256, 256);
@@ -28,6 +28,7 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
     const rotor = new THREE.Group(); rotor.position.y = 3.0; g.add(rotor);
     for (let i = 0; i < 4; i++) { const blade = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 5.2), dark); blade.position.z = 2.6; const arm = new THREE.Group(); arm.rotation.y = i * Math.PI / 2; arm.add(blade); rotor.add(arm); }
     rotors.push(rotor, tail);
+    g.userData.rotor = rotor; g.userData.tail = tail;
     return g;
   }
 
@@ -39,10 +40,11 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2, l = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.2), lightMat); l.position.set(Math.cos(a) * (r + 0.2), 0.12, Math.sin(a) * (r + 0.2)); g.add(l); }
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), mat(0xcccccc)); pole.position.set(r + 1.4, 1.3, 0); g.add(pole);
     const sock = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.1, 10, 1, true), mat(0xff6a00)); sock.rotation.z = Math.PI / 2; sock.position.set(r + 1.95, 2.45, 0); g.add(sock);
-    if (heli) { const h = helicopter(colors[pads.length % colors.length]); h.position.set(0, 0.16, 0); h.rotation.y = (pads.length * 1.3) % (Math.PI * 2); g.add(h); }
-    const p = { name, x, z, y, r, roof, choice: 0, sock };
+    let h = null;
+    if (heli) { h = helicopter(colors[pads.length % colors.length]); h.position.set(0, 0.16, 0); h.rotation.y = (pads.length * 1.3) % (Math.PI * 2); g.add(h); }
+    const p = { name, x, z, y, r, roof, choice: 0, sock, heli: h, group: g };
     p.fly = { pos: new THREE.Vector3(x, y + 0.2, z), r: r + 1, label: '', action: () => flyFrom(p) };
-    Object.defineProperty(p.fly, 'label', { get: () => `Fly by helicopter to ${dest(p).name}` });
+    Object.defineProperty(p.fly, 'label', { get: () => flight ? 'The helicopter is out on a flight' : `Fly by helicopter to ${dest(p).name}` });
     p.pick = { pos: new THREE.Vector3(x + r + 1.2, y + 0.2, z + 1.5), r: 1.4, label: 'Pick another destination', action: () => { p.choice++; toast(`Destination: ${dest(p).name}`); } };
     interactables.push(p.fly, p.pick);
     if (roof) {
@@ -54,11 +56,49 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
     return p;
   }
   const dest = p => { const others = pads.filter(q => q !== p); return others[p.choice % others.length]; };
+  // A real flight: you climb in, the helicopter lifts off, flies over the city to the other pad,
+  // lands, lets you out, then flies back home empty.
+  let flight = null;
+  const seat = new THREE.Vector3(0.45, 1.2, 0.6);
   function flyFrom(p) {
+    if (flight) { toast('The helicopter is already flying.'); return; }
+    if (canBoard && !canBoard()) return;
     const d = dest(p);
-    teleport(new THREE.Vector3(d.x + d.r * 0.4, d.y + 0.3, d.z + d.r + 1.5), `The helicopter lifts off, banks over the city and sets you down at ${d.name}.`, 1400);
+    if (!p.heli || !carry) { teleport(new THREE.Vector3(d.x + d.r * 0.4, d.y + 0.3, d.z + d.r + 1.5), `The helicopter sets you down at ${d.name}.`, 1400); return; }
+    const h = p.heli, start = new THREE.Vector3(); h.getWorldPosition(start);
+    scene.attach(h);
+    const cruise = Math.max(p.y, d.y) + 45, end = new THREE.Vector3(d.x - d.r * 0.35, d.y + 0.16, d.z);
+    flight = { h, home: p, to: d, phase: 'spinup', t: 0, start, end, cruise, passenger: true };
+    prepare?.();
+    toast(`You climb into the helicopter. Next stop: ${d.name}.`);
   }
-
+  const _v = new THREE.Vector3(), _q = new THREE.Vector3();
+  function stepFlight(dt) {
+    const f = flight, h = f.h; f.t += dt;
+    const spin = f.phase === 'parked' ? 0 : 1;
+    h.userData.rotor.rotation.y += dt * (f.phase === 'spinup' ? 6 + f.t * 12 : 30) * spin; h.userData.tail.rotation.x += dt * 40 * spin;
+    const goal = f.phase === 'return' ? f.start : f.end;
+    if (f.phase === 'spinup') { if (f.t > 1.6) { f.phase = 'climb'; f.t = 0; } }
+    else if (f.phase === 'climb') { h.position.y += Math.min(9 * dt, f.cruise - h.position.y); if (h.position.y >= f.cruise - 0.1) { f.phase = 'cruise'; f.t = 0; } }
+    else if (f.phase === 'cruise' || f.phase === 'return') {
+      _v.set(goal.x - h.position.x, 0, goal.z - h.position.z); const dist = _v.length();
+      const want = Math.atan2(_v.x, _v.z); h.rotation.y += Math.atan2(Math.sin(want - h.rotation.y), Math.cos(want - h.rotation.y)) * Math.min(1, dt * 2);
+      if (h.position.y < f.cruise) h.position.y = Math.min(f.cruise, h.position.y + 9 * dt);
+      if (dist < 0.5) { f.phase = f.phase === 'cruise' ? 'descend' : 'descendHome'; f.t = 0; h.rotation.z = h.rotation.x = 0; }
+      else { const sp = Math.min(38, 4 + dist * 0.6); h.position.addScaledVector(_v.normalize(), Math.min(dist, sp * dt)); h.rotation.x = 0.15 * Math.min(1, sp / 30); }
+    }
+    else if (f.phase === 'descend' || f.phase === 'descendHome') {
+      const g = f.phase === 'descend' ? f.end : f.start;
+      h.position.y = Math.max(g.y, h.position.y - Math.max(1.5, (h.position.y - g.y) * 0.9) * dt);
+      if (h.position.y <= g.y + 0.01) {
+        if (f.phase === 'descend') { f.phase = 'unload'; f.t = 0; f.passenger = false; land?.(new THREE.Vector3(f.to.x + f.to.r * 0.4, f.to.y + 0.3, f.to.z + f.to.r + 1.5)); toast(`Touchdown at ${f.to.name}. The helicopter heads back to ${f.home.name}.`); }
+        else { f.home.group.attach(h); h.position.set(0, 0.16, 0); flight = null; return; }
+      }
+    }
+    else if (f.phase === 'unload') { if (f.t > 2.5) { f.phase = 'climbBack'; f.t = 0; } }
+    else if (f.phase === 'climbBack') { h.position.y += 9 * dt; if (h.position.y >= f.cruise) f.phase = 'return'; }
+    if (f.passenger) carry(_q.copy(seat).applyEuler(h.rotation).add(h.position));
+  }
   for (const t of roofs) {
     const fz = t.z + t.face * (t.d / 2);
     addPad({ name: `${t.name} roof`, x: t.x, z: t.z - t.face * 1.5, y: t.h, r: Math.min(5.5, t.d / 2 - 2.5),
@@ -72,15 +112,17 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
     return null;
   }
   function update(dt, playerPos) {
-    for (const r of rotors) r.rotation.y += dt * 1.2;
+    if (flight) stepFlight(dt);
+    for (const p of pads) if (p.heli && p.heli !== flight?.h) { p.heli.userData.rotor.rotation.y += dt * 0.4; }   // idle: blades turn slowly in the wind
     for (const p of pads) p.sock.rotation.x = Math.sin(performance.now() / 700 + p.x) * 0.2;
-    for (const r of roofRects) {
-      if (playerPos.y < r.top - 2.5 || playerPos.y > r.top + 6) continue;
+    // Keep you from walking off a roof edge, but only while you're standing on that roof.
+    if (!flight?.passenger) for (const r of roofRects) {
+      if (playerPos.y < r.top - 0.5 || playerPos.y > r.top + 1.2) continue;
       if (playerPos.x > r.minX - 1.5 && playerPos.x < r.maxX + 1.5 && playerPos.z > r.minZ - 1.5 && playerPos.z < r.maxZ + 1.5) {
         playerPos.x = THREE.MathUtils.clamp(playerPos.x, r.minX + 0.6, r.maxX - 0.6);
         playerPos.z = THREE.MathUtils.clamp(playerPos.z, r.minZ + 0.6, r.maxZ - 0.6);
       }
     }
   }
-  return { pads, groundAt, update };
+  return { pads, groundAt, update, get flying() { return !!flight?.passenger; } };
 }

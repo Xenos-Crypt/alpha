@@ -46,6 +46,8 @@ import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
 import {buildBlackMarket} from './black-market.js';
 import {buildMilitary, addNavyCrew} from './military.js';
+import {createConditions} from './condition.js';
+import {createLicences} from './licences.js';
 import {createCarControls} from './car-controls.js';
 import {createSnackShop} from './snack-shop.js';
 import {createArcade} from './arcade-games.js';
@@ -483,6 +485,7 @@ const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
+  const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
@@ -493,7 +496,6 @@ function groundY(x, z, bodyY = null) {
   const metroFloor=metro?.groundAt(x,z);if(metroFloor!=null)return metroFloor;
   const navyFloor=navy?.groundAt(x,z);if(navyFloor!=null)return navyFloor;
   const residenceFloor=regionalFacilities?.groundAt(x,z);if(residenceFloor!=null)return residenceFloor;
-  const railwayFloor=intercityRail?.groundAt(x,z);if(railwayFloor!=null)return railwayFloor;
   const expandedFloor=worldExpansion?.groundAt(x,z);if(expandedFloor!=null)return expandedFloor;
   const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
@@ -2137,7 +2139,7 @@ function saveSolo() {
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
-      adventure:adventureServices?.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
+      adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
       metro:metro?.snapshot(),sewer:sewers?.snapshot(),law:roadLaw?.snapshot(),hunter:hunterGuilds?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
       navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
       driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
@@ -2168,7 +2170,7 @@ function applySoloSave(save) {
   supportSkills?.restore(save.support);if(save.supportCounters)supportCounters=save.supportCounters;specialUnlocked=!!supportSkills?.equipped;buildHotbar();
   heroDungeonKills=save.heroDungeonKills||0;
   monsterQuestKills=save.monsterQuestKills||0;for(const q of cityLife?.quests||[]){const saved=save.questState?.find(s=>s.name===q.name);if(saved)Object.assign(q,saved);}
-  navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
+  conditions?.restore(save.buildingCondition);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
   if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
   adventureServices?.restore(save.adventure);
   roadLaw?.restore(save.law);hunterGuilds?.restore(save.hunter);
@@ -2301,7 +2303,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let blackMarket = null, military = null, navyCrew = null;
+let blackMarket = null, military = null, navyCrew = null, conditions = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -4497,7 +4499,7 @@ function aimMelee() {
   return fwdOf(player);
 }
 
-function canAct() { return !navy?.rider && !intercityRail?.rider && !cityServices?.rider && !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
+function canAct() { return !busRide && !helipads?.flying && !navy?.rider && !intercityRail?.rider && !cityServices?.rider && !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
 
 // ---- M1: 4-hit combo, the last hit is a heavy knockback with an impact frame ----
 function m1() {
@@ -5576,11 +5578,44 @@ const nearestInteractable = () => interactables.find(it => distXZ(player.positio
 function nearestVehicle() {
   let best = null, bd = 3.6;
   for (const v of vehicles) {
-    if (v.crashed || v.disabled || v.noSteal) continue;
+    if (v.crashed || v.disabled || (v.noSteal && !v.stealable) || v.stolenBy === 'gone') continue;
     const d = distXZ(player.position, v.group.position) - (v.kind === 'bus' ? 2.5 : v.kind === 'boat' ? 1.5 : v.kind === 'plane' ? 3 : 0);
     if (d < bd) { bd = d; best = v; }
   }
   return best;
+}
+// Riding the town buses as a passenger: board at a stop, pay the fare, get off at any later stop.
+let busRide = null;
+function boardBus(v) {
+  if (!canAct()) return;
+  if (stats.gold < 2) { toast('The bus fare is 2 gold.'); return; }
+  stats.gold -= 2; busRide = { v, t: 0 }; action = null; vy = 0; pvel.set(0, 0, 0);
+  toast('You pay 2 gold and take a seat on the bus. Press E (or the action button) at a stop to get off.');
+}
+function leaveBus() {
+  if (!busRide) return;
+  const door = busDoor(busRide.v); busRide = null;
+  player.position.copy(door); player.position.y = groundY(door.x, door.z); vy = 0;
+  toast('You step off the bus.');
+}
+function updateBusRide(dt) {
+  if (!busRide) return;
+  const v = busRide.v; busRide.t += dt;
+  if (v.disabled || !v.ai || driving === v) { leaveBus(); return; }
+  if (v.ai.stopped && busRide.t > 6) v.ai.stopTimer = Math.max(v.ai.stopTimer, 0.5);   // the driver waits a moment for you at stops
+  player.position.copy(v.group.position); player.position.y += 1.0;
+  player.rotation.y = v.group.rotation.y;
+}
+// Using a vehicle that needs a licence you don't hold gets you reported (once per trip).
+function checkVehicleLicences() {
+  if (!inCar || !driving) return;
+  const v = driving, need = v.kind === 'plane' ? 'pilot' : v.kind === 'boat' || v.kind === 'submarine' ? 'boat' : v.kind === 'motorcycle' ? 'motorbike' : null;
+  if (!need || v.licenceReported || licences.has(need)) return;
+  const moving = v.kind === 'plane' ? v.group.position.y > 8 : Math.abs(v.speed) > 6;
+  if (!moving) return;
+  v.licenceReported = true;
+  raiseWanted(need === 'motorbike' ? 20 : 40);
+  toast(need === 'pilot' ? '📡 Air traffic control: unlicensed flight reported to the police. (Get a pilot licence at the Licensing Office.)' : need === 'boat' ? '⚓ Harbour master: unlicensed skipper reported. (Get a boat licence at the Licensing Office.)' : '🏍️ Riding without a motorbike licence: police alerted.');
 }
 function raiseWanted(t = 45) {
   if (wanted <= 0) toast('Police alert: stop and surrender to avoid a pursuit.');
@@ -5589,7 +5624,8 @@ function raiseWanted(t = 45) {
 }
 function enterVehicle(v) {
   if(adventureServices?.parachuting){toast('Land before entering a vehicle.');return;}
-  if(v.noSteal){toast('This is a passenger taxi or a display car. Board at its service point.');return;}
+  if(v.noSteal&&!v.stealable){toast('This is a display car. Buy it at the dealership instead.');return;}
+  if(v.stealable&&!v.stolen){v.stolen=true;if(v.bikeRider)v.bikeRider.root.visible=false;if(v.driver)v.driver.root.visible=false;v.ai??={cruise:0,stopTimer:0};toast(v.kind==='bicycle'||v.kind==='motorcycle'?'You shove the rider off and take the '+(v.kind==='bicycle'?'bike':'motorbike')+'!':'You drag the taxi driver out and take the cab!');}
   v.routeTraffic=false;
   if(v.kind==='plane')adventureServices?.giveEmergencyParachute();
   if (v.disabled) { toast('This vehicle is wrecked. Choose another car.'); return; }
@@ -5678,6 +5714,8 @@ function resolveInteractTarget() {
   if(intercityRail?.rider)return {label:'Leave intercity train at station',action:()=>intercityRail.leave()};
   if(wanted>0&&!transitArrestTarget(transport)&&vehicles.some(v=>v.kind==='police'&&distXZ(v.group.position,player.position)<25))return {label:'Surrender to police',action:()=>{if(inCar&&Math.abs(driving.speed)>1){toast('Stop the car before surrendering.');return;}if(inCar)exitVehicle(true);arrestPlayer();}};
   if(cityServices?.rider)return {label:cityServices.rider.bus?'Leave city bus':'Leave taxi',action:()=>cityServices.leave()};
+  if(busRide)return busRide.v.ai?.stopped?{label:'Get off the bus',action:leaveBus}:{label:'Riding the bus (gets off at the next stop)',action:()=>toast('The doors only open at bus stops.')};
+  if(helipads?.flying)return {label:'Flying by helicopter',action:()=>toast('Sit tight, the pilot will land soon.')};
   if(spaceCentre?.rider)return {label:spaceCentre.state==='landed'?'Leave rocket':spaceCentre.state==='boarding'?'Leave rocket cabin':spaceCentre.state==='countdown'?'Abort launch':'Rocket flight in progress',action:()=>spaceCentre.interact()};
   if (metro?.rider) return { label: 'Leave the subway', action: () => metro.leave() };
   if (riding) return { label: 'Dismount', action: dismountHorse };
@@ -5698,17 +5736,19 @@ function resolveInteractTarget() {
   if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
   const service = nearestInteractable();
   if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return {label:service.label,action:service.action};
-  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway'))) return { label: service.label, action: service.action };
+  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway') || /^(Take the lift|Board the intercity|Next intercity|Board the bus|Licensing|Talk to|Buy |Play |Use the vending)/.test(service.label))) return { label: service.label, action: service.action };
   // Inside a subway stairwell, E shouldn't open a nearby building instead.
   const inStairwell = metro?.entrances?.groundAt(player.position.x, player.position.z) != null;
   const cb = inStairwell || player.position.y > 3 ? null : nearestCivicBuilding();   // not from a rooftop or mountain
   if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
   const g = nearestGate();
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
+  const stoppedBus = !inCar && vehicles.find(b => b.kind === 'bus' && b.ai && b.ai.stopped && !b.disabled && distXZ(b.group.position, player.position) < 6.5);
+  if (stoppedBus) return { label: 'Board the bus (2 gold)', action: () => boardBus(stoppedBus) };
   const v = nearestVehicle();
   if (v) {
-    const names = { car: 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank' };
-    const label = v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' ? 'Steal the ' : 'Drive the ') + names[v.kind];
+    const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', bicycle: 'bicycle', motorcycle: 'motorbike' };
+    const label = v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' && !v.stolen ? 'Steal the ' : ['bicycle','motorcycle'].includes(v.kind) ? 'Ride the ' : 'Drive the ') + (names[v.kind] || v.kind);
     return { label, action: () => enterVehicle(v) };
   }
   const it = nearestInteractable();
@@ -5801,6 +5841,7 @@ const arcade = createArcade({ toast, pause: () => pauseForPanel(), resume: () =>
     tickets += won; try { localStorage.setItem('anotherworld-arcade-tickets', String(tickets)); } catch {}
     toast(`${msg} Score ${score}: +${won} tickets (${tickets} total). Swap 50 at the prize counter.`);
   } });
+const licences = createLicences({ money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, toast, day: () => reconstructionDays, wanted: () => wanted, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const snackShop = createSnackShop({ stats, maxHp, toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
@@ -6371,7 +6412,7 @@ function updateSwimming(dt) {
 function updatePlayer(dt) {
  if(adventureServices?.parachuting){const p=player.position;const input=locked?inputDir():new THREE.Vector3();p.addScaledVector(input,5*dt);p.addScaledVector(pvel,dt);pvel.multiplyScalar(Math.max(0,1-dt*2));p.y-=3.8*dt;const floor=groundY(p.x,p.z,p.y);if(p.y-floor<3)collide(p,.4);if(p.y<=floor+.2){p.y=floor;vy=0;onGround=true;adventureServices.land();}animateHumanoid(P,'fall',false,false,false,dt);return;}
 
-  if(navy?.rider||intercityRail?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
+  if(navy?.rider||intercityRail?.rider||helipads?.flying||busRide){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(cityServices?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(spaceCentre?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(metro?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
@@ -6448,7 +6489,7 @@ function damageVehicle(v, deltaSpeed, point) {
   const damage = impactDamage(deltaSpeed);
   if (damage <= 0) return;
   v.health = Math.max(0, (v.health ?? 100) - damage);
-  v.crashCooldown = 0.3;applyVehicleCondition(v);
+  v.crashCooldown = 0.3;applyVehicleCondition(v);conditions?.crash(point, deltaSpeed, v === driving);
   if (deltaSpeed > 5) burst(at(point, 0.7), Math.min(25, Math.ceil(deltaSpeed)), [0xffc266, 0x777777], 5, 0.08, 0.3, 8, 1);
   if (deltaSpeed > 8) breakLampsNear(point, 1.5);   // ram a lamp post hard enough and it goes down
   if (v === driving) {
@@ -6598,6 +6639,7 @@ function driveVehicle(v, dt) {
   const mine = v === driving;
   const icy = isRoadVehicle(v) && weatherState === 'snow';   // less grip: slower to slow down, looser steering — cars can slide
   if (mine) {
+    if (isRoadVehicle(v)) conditions?.wear(v, Math.abs(v.speed) * dt);
     if (isRoadVehicle(v)) v.speed += carControls.drive(v, dt, keys, (v.kind === 'bus' ? 9 : 18) * conditionFactors(v.health).power);   // gears / selector decide what W and S do
     else { if (keys.KeyW) v.speed += 18 * conditionFactors(v.health).power * dt; if (keys.KeyS) v.speed -= 24 * dt; }
     const steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
@@ -6606,7 +6648,10 @@ function driveVehicle(v, dt) {
   v.speed *= Math.max(0, 1 - (mine && (keys.KeyW || keys.KeyS) ? 0.3 : 1.5) * (icy ? 0.3 : 1) * dt);
   const condition=conditionFactors(v.health);if(mine&&isRoadVehicle(v))v.group.rotation.y+=condition.drift*Math.sin(performance.now()*.002)*dt*Math.min(1,Math.abs(v.speed)/8);
   const topSpeed = mine && isRoadVehicle(v) ? carControls.topSpeed(v) : v.maxSpeed;
-  v.speed = clamp(v.speed, -8, topSpeed*(isRoadVehicle(v)?condition.topSpeed:1));
+  { const lim = topSpeed*(isRoadVehicle(v)?condition.topSpeed:1);
+    // Over the limit for this gear (a lower gear, or N/P/R): slow down smoothly instead of snapping.
+    if (mine && isRoadVehicle(v)) { if (v.speed > lim) v.speed = Math.max(lim, v.speed - 22 * dt); v.speed = Math.max(v.speed, -8); }
+    else v.speed = clamp(v.speed, -8, lim); }
   const h = v.group.rotation.y, p = v.group.position;
   const drifting=mine&&!transmissionAuto&&isRoadVehicle(v)&&keys.Space&&Math.abs(v.speed)>8;
   v.slideVelocity=driftVelocity(v.slideVelocity,h,v.speed,drifting,dt);
@@ -6768,6 +6813,7 @@ function policeChase(v, dt) {
   const captureSpeed=transitTarget?Math.min(22,Math.sqrt(4*Math.max(0,d-3))):inCar?Math.min(24,Math.max(0,Math.abs(driving.speed)+2)):Math.min(16,Math.sqrt(4*Math.max(0,d-3)));
   v.speed=lerp(v.speed,captureSpeed,1-Math.exp(-3*dt));
   ai.warningTimer=(ai.warningTimer||0)-dt;if(ai.warningTimer<=0&&d<35){toast('Police: stop and surrender. Use Interact near an officer.');ai.warningTimer=10;}
+  policeShoot(v, ai, d, actualTarget, dt);
   if(inCar&&d<6&&Math.abs(driving.speed)<1){exitVehicle(true);arrestPlayer();return;}
   const h = v.group.rotation.y;
   p.x += Math.sin(h) * v.speed * dt;
@@ -6783,8 +6829,30 @@ function policeChase(v, dt) {
   }
 }
 
+// Police carry pistols. They only open fire when you're armed (a gun out) or very wanted
+// (stolen police car, shooting at people); otherwise they just chase and arrest.
+function policeShoot(v, ai, d, target, dt) {
+  ai.shootCd = (ai.shootCd ?? 1.5) - dt;
+  const armed = adventureServices?.equipped && adventureServices.equipped !== 'sword';
+  if (ai.shootCd > 0 || d > 32 || inCivicInterior || !(armed || wanted >= 100) || !policeCanSee(v, target)) return;
+  ai.shootCd = 1.1 + Math.random() * 0.6;
+  if (!ai.shotWarned) { ai.shotWarned = true; toast(armed ? '🚔 Police: "Armed suspect! Drop the weapon!" They draw their pistols.' : '🚔 Police open fire!'); }
+  const from = v.group.localToWorld(new THREE.Vector3(0.9, 1.3, 0.6)), to = target.clone(); to.y += inCar ? 0.8 : 1.2;
+  const miss = Math.min(0.75, 0.25 + d / 60);
+  to.x += (Math.random() - 0.5) * miss * 4; to.z += (Math.random() - 0.5) * miss * 4;
+  const len = from.distanceTo(to), tracer = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, len), new THREE.MeshBasicMaterial({ color: 0xffe08a }));
+  tracer.position.copy(from).lerp(to, 0.5); tracer.lookAt(to); scene.add(tracer);
+  setTimeout(() => { tracer.removeFromParent(); tracer.geometry.dispose(); tracer.material.dispose(); }, 70);
+  burst(from, 4, [0xfff1a0, 0xffa53a], 3, 0.06, 0.12);
+  worldAudio?.impact?.(6);
+  if (Math.random() > miss) {
+    if (inCar && driving) damageVehicle(driving, 5, to);
+    else hurtPlayer(8, from, 2, 'Shot by the police');
+  }
+}
 function busArrive(v, stop) {
   if (!stop) return;
+  if (busRide?.v === v) toast('Bus stop. Press E (or the action button) to get off.');
   const door = busDoor(v);
   const off = Math.min(v.passengers.length, 1 + Math.floor(Math.random() * 2));
   for (let i = 0; i < off; i++) {   // people get off
@@ -7153,7 +7221,7 @@ mobileControls = setupMobileControls({
   attack: down => { mouseHeld = down; if (down) m1(); },
   board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame,
   preferences:()=>controlPrefs,
-  state:()=>({driving:inCar||!!navy?.rider||!!intercityRail?.rider||!!cityServices?.rider||!!metro?.rider||!!transport?.rider,passenger:!!intercityRail?.rider||!!cityServices?.rider||!!spaceCentre?.rider||!!metro?.rider||!!transport?.rider,vehicleKind:driving?.kind||(navy?.rider?(navy.rider.sub?'submarine':'boat'):metro?.rider?'subway':transport?.rider?'transit':undefined),carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
+  state:()=>({driving:inCar||!!busRide||!!helipads?.flying||!!navy?.rider||!!intercityRail?.rider||!!cityServices?.rider||!!metro?.rider||!!transport?.rider,passenger:!!busRide||!!helipads?.flying||!!intercityRail?.rider||!!cityServices?.rider||!!spaceCentre?.rider||!!metro?.rider||!!transport?.rider,vehicleKind:driving?.kind||(navy?.rider?(navy.rider.sub?'submarine':'boat'):metro?.rider?'subway':transport?.rider?'transit':undefined),carMovement:activeDrivingControls.carMovement,manual:!transmissionAuto,gear,specialUnlocked,ultimate:stats.ult,ultimateUnlocked:prog.level>=ULT_UNLOCK_LEVEL,color:hex(characters[charIdx].fx),gateAvailable:!!(inspectedGate||nearestGate())}),
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
@@ -7196,7 +7264,7 @@ for(let z=BRIDGE_Z0;z<BRIDGE_Z1;z+=8)if(z<GAP0||z>=GAP1)planeBlocks.push({minX:B
 for(const side of [1,-1]){const b={minX:BRIDGE_X-BRIDGE_HALF_W,maxX:BRIDGE_X+BRIDGE_HALF_W,minZ:side===1?GAP0:(GAP0+GAP1)/2,maxZ:side===1?(GAP0+GAP1)/2:GAP1,bottom:BRIDGE_Y-.5,top:BRIDGE_Y+.4,side};liftPlaneBlocks.push(b);planeBlocks.push(b);}
 bridgeTraffic=buildBridgeTraffic({makeVehicle,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),groundY,harbourHeight:harbourBridge.heightAt,vehicles,resolve:resolveRoadMovement,liftWarning:()=>bridgeLiftState!=='down'});
 const equippedGun=new THREE.Group();P.armR.pivot.add(equippedGun);equippedGun.position.copy(P.armR.end.position);equippedGun.rotation.x=1;mesh(new THREE.BoxGeometry(.12,.12,.65),0x293541,equippedGun).position.z=.25;mesh(new THREE.BoxGeometry(.1,.22,.14),0x394853,equippedGun).position.y=-.08;equippedGun.visible=false;
-adventureServices=buildAdventureServices({illegalPurchase:()=>raiseWanted(60),showEquipment(id){swordGrip.visible=id==='sword'||!id&&!!origin?.weapon;equippedGun.visible=id==='pistol'||id==='rifle';equippedGun.scale.setScalar(id==='rifle'?1.5:1);},scene,box,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),sign:signboard,destinations:townPlaces.destinations,interactables,playerPosition:()=>player.position,toast,
+adventureServices=buildAdventureServices({licensed:id=>licences.has(id),openLicences:name=>licences.open(name),illegalPurchase:()=>raiseWanted(60),showEquipment(id){swordGrip.visible=id==='sword'||!id&&!!origin?.weapon;equippedGun.visible=id==='pistol'||id==='rifle';equippedGun.scale.setScalar(id==='rifle'?1.5:1);},scene,box,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),sign:signboard,destinations:townPlaces.destinations,interactables,playerPosition:()=>player.position,toast,
 pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons}),pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},reward(gold,xp){stats.gold+=gold;gainXp(xp);},changed(){saveSolo();},
 repair(price){const car=vehicles.find(v=>isRoadVehicle(v)&&!v.disabled&&!v.noSteal&&distXZ(v.group.position,player.position)<12);if(!car){toast('Bring an operational car within 12 metres of the shop.');return;}if(stats.gold<price){toast('Not enough gold.');return;}stats.gold-=price;car.health=100;applyVehicleCondition(car);toast('Vehicle repaired. Full power and steering restored.');},
 swordAttack(){callout('SWORD STRIKE',0xe5f2ff);hitCone(player.position,aimForward(),5,.1,new Set(),{dmg:35,kb:5,stun:.5,from:player.position.clone()},3);},
@@ -7217,8 +7285,11 @@ military = buildMilitary({ scene, colliders, interactables, civicBuildings, make
   playerPos: () => player.position, playerRig: () => P,
   addAircraft: a => makeAircraft(a),
   makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
+conditions = createConditions({ buildings, collapse: b => collapseBuilding(b, false), toast, playerPos: () => player.position,
+  nearVehicle: () => { let best = null, bd = 3.2; for (const v of vehicles) { if (v.disabled || !isRoadVehicle(v)) continue; const d = distXZ(v.group.position, player.position); if (d < bd) { bd = d; best = v; } } return best; } });
+for (const b of buildings) if (b.x > HOME.minX - 2 && b.x < HOME.maxX + 2 && b.z > HOME.minZ - 2 && b.z < HOME.maxZ + 2) { b.quality = 'solid'; b.ageYears = 0; }   // your own house is new and well built
 navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast });
-intercityRail=buildIntercityRail(regionalTransportContext);
+intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex});
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
 for(const v of cityServices.traffic)if(v.kind==='car'&&(v.group.position.z>640&&v.group.position.x<500))detailVehicle(v,'luxury');
 regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareSite(x,z,w,d){for(const b of buildings)if(b.alive&&Math.abs(b.x-x)<(b.w+w)/2&&Math.abs(b.z-z)<(b.d+d)/2){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[])m.visible=false;for(const [list,item]of [[colliders,b.collider],[planeBlocks,b.planeBlock]]){const i=list.indexOf(item);if(i>=0)list.splice(i,1);}for(const block of b.blocks||[]){const i=planeBlocks.indexOf(block);if(i>=0)planeBlocks.splice(i,1);}}},civicBuildings,fence:fenceRect,reception:()=>{if(wanted>0)arrestPlayer();else toast('Police reception: reporting desk, patrol office and custody suite.');},addPolice(x,z){const v=makeVehicle('police',0xf5f6fa);v.group.position.set(x,groundY(x,z),z);v.stationHome=v.group.position.clone();v.ai={parked:true,cruise:12,ramCd:0,stopTimer:0};}});
@@ -7247,7 +7318,7 @@ border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,movin
 // arena through cables in the sewers; an open manhole beside each gate shows them.
 powerGrid=buildPowerGrid({scene,gates,interactables,toast,groundY,makeTex});
 // Helicopter carry points: helipads on top of the tallest towers and pickup pads on the ground.
-helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlayer,roofs:venues.towers.filter(t=>t.h>=27),ground:[
+helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlayer,carry:p=>{player.position.copy(p);vy=0;pvel.set(0,0,0);},canBoard:()=>!inCar&&!sitting&&!action&&!navy?.rider&&!intercityRail?.rider&&!transport?.rider&&!metro?.rider,prepare(){action=null;vy=0;pvel.set(0,0,0);},land:p=>{player.position.copy(p);vy=0;pvel.set(0,0,0);},roofs:venues.towers.filter(t=>t.h>=27),ground:[
   {name:'Ashford Beach helipad',x:150,z:176},{name:'Capital helipad',x:190,z:705},{name:'Leisure Park helipad',x:120,z:-735},{name:'Business District helipad',x:160,z:1068}]});
 drones=buildDrones({scene,dome:DOME});
 lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,
@@ -7267,6 +7338,8 @@ hunterGuilds.addDesk(frontier.desks.hq,'hq','Hunter Association reception (licen
 for(const id of ['aegis','lantern','thorn'])hunterGuilds.addDesk(frontier.desks[id],id,'Guild hall desk');
 hunterGuilds.addDesk(new THREE.Vector3(-200,.2,-474),'board','Read the hunter contract board');
 interactables.push({pos:frontier.desks.dvla,r:3,label:'Driver & Vehicle Licensing counter',action:()=>openLawPanel()});
+interactables.push({pos:frontier.desks.dvla.clone().add(new THREE.Vector3(3.5,0,0)),r:2.5,label:'Licensing Office (firearms, pilot, boat, motorbike, trading)',action:()=>licences.open()});
+interactables.push({pos:new THREE.Vector3(186,.15,-187),r:2.5,label:'Licensing counter (firearms licence)',action:()=>licences.open('Weapons shop licensing counter')});
 metro.cutSurfaces();
 const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
 worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
@@ -7317,7 +7390,7 @@ function frame() {
     carControls.update(dt);
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
-    updateFlashlight();
+    updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
     blackMarket?.update(dt);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;

@@ -26,14 +26,17 @@ export function createJunctionControl({vehicles=()=>[],pedestrians=()=>[],cycles
    j.age+=dt;
    const ped=walkers.some(a=>wantsCross(a,j)),bike=bikes.some(a=>wantsCross(a,j)),tram=tramRequest(j);
    j.pedestrianDemand=ped;j.bicycleDemand=bike;j.tramDemand=tram;
-   const priority=j.zebra&&ped?'pedestrians':j.zebra&&bike?'bicycles':tram?'tram':null;
+   // A waiting tram gets its turn even when people keep arriving at the crossing.
+   j.tramWait=tram&&j.mode!=='tram'?(j.tramWait||0)+dt:0;
+   const priority=tram&&j.tramWait>8?'tram':j.zebra&&ped?'pedestrians':j.zebra&&bike?'bicycles':tram?'tram':null;
    if(j.mode==='clear'){
     if(priority)j.next=priority;
     if(j.age>=1.5&&!occupied(j)){j.mode=j.next;j.age=0;}
    }else if(priority&&priority!==j.mode){j.next=priority;j.mode='clear';j.age=0;}
    else{
     const duration=j.mode==='pedestrians'?9:j.mode==='bicycles'?5:j.mode==='tram'?6:10;
-    if(j.age>=duration&&!((j.mode==='pedestrians'&&ped)||(j.mode==='bicycles'&&bike)||(j.mode==='tram'&&tram))){
+    // A phase can't be held forever by a steady stream of demand: everyone else gets a turn too.
+    if(j.age>=duration&&(j.age>=duration*2.5||!((j.mode==='pedestrians'&&ped)||(j.mode==='bicycles'&&bike)||(j.mode==='tram'&&tram)))){
      j.next=j.mode==='cars-x'?'cars-z':j.mode==='cars-z'?'pedestrians':j.mode==='pedestrians'?'bicycles':'cars-x';j.mode='clear';j.age=0;
     }
    }
