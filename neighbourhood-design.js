@@ -90,7 +90,7 @@ export function detailHome({scene,box,makeTex,home,curb,wallMat,roof,glowMats}){
   for(let px=a;px<=b+.01;px+=.42)piece(.045,.82,.045,px,curb+.43,pz,metal);
   for(const px of [a,b])piece(.15,1,.15,px,curb+.5,pz,stone);
  };
- fence(11,18.7,11);fence(21.3,29,11);
+ fence(14.6,18.7,11);fence(21.3,29,11);   // gaps for the driveway gate (x 10.6-14.6) and the path gate; gates are in main.js
  const turf=makeTex(256,256,g=>{
   g.fillStyle='#647644';g.fillRect(0,0,256,256);
   for(let i=0;i<4200;i++){const px=(i*73)%256,py=(i*97+Math.floor(i/256)*19)%256;g.fillStyle=['#6e8050','#5b6f3e','#738354'][i%3];g.fillRect(px,py,1,3);}

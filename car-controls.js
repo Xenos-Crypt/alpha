@@ -41,6 +41,7 @@ export function createCarControls({ headlight, headMat, tailMat, toast, isAuto, 
   <span class="ic green" data-i="left">⬅</span><span class="ic amber" data-i="haz">⚠</span><span class="ic green" data-i="right">➡</span>
   <span class="ic blue" data-i="lights">◉</span>
   <span class="bat" title="Battery">🔋<b>100</b>%</span>
+  <span class="cond bat" title="Condition">🔧<b>100</b>%</span>
   <div class="btns"><button data-b="down" title="Gear down (X)">−</button><button data-b="up" title="Gear up (Z)">+</button><button data-b="lights" title="Lights (H)">💡</button><button data-b="left" title="Left indicator (,)">◀</button><button data-b="haz" title="Hazards (/)">⚠</button><button data-b="right" title="Right indicator (.)">▶</button><button data-b="horn" title="Horn (B)">📯</button></div>`;
   document.body.append(dash);
   const $ = s => dash.querySelector(s);
@@ -81,8 +82,9 @@ export function createCarControls({ headlight, headMat, tailMat, toast, isAuto, 
   // ---------- controls ----------
   function shift(dir) {
     if (!car) return;
-    if (isAuto()) { const i = Math.max(0, Math.min(3, AUTO_SEL.indexOf(st.sel) + dir)); st.sel = AUTO_SEL[i]; }
-    else { const i = Math.max(0, Math.min(MANUAL.length - 1, MANUAL.indexOf(st.gear) + dir)); st.gear = MANUAL[i]; if (st.stalled && (st.gear === 1 || st.gear === 'N')) st.stalled = false; }
+    const moving = Math.abs(car.speed) > 2;
+    if (isAuto()) { const i = Math.max(0, Math.min(3, AUTO_SEL.indexOf(st.sel) + dir)); if (moving && (AUTO_SEL[i] === 'R' || AUTO_SEL[i] === 'P')) { toast('Stop the car before selecting ' + AUTO_SEL[i] + '.'); return; } st.sel = AUTO_SEL[i]; }
+    else { const i = Math.max(0, Math.min(MANUAL.length - 1, MANUAL.indexOf(st.gear) + dir)); if (moving && MANUAL[i] === 'R') { toast('Stop the car before going into reverse.'); return; } st.gear = MANUAL[i]; if (st.stalled && (st.gear === 1 || st.gear === 'N')) st.stalled = false; }
     beep(900, 30, 'sine', 0.03);
   }
   function press(b) {
@@ -107,16 +109,26 @@ export function createCarControls({ headlight, headMat, tailMat, toast, isAuto, 
     if (v.battery <= 0 && keys.KeyW && !st.flatWarned) { st.flatWarned = true; toast('🔋 Battery flat! Coast to a charging point, or walk.'); }
     const W = !!keys.KeyW && v.battery > 0;
     let dv = 0;
-    const brake = () => { dv += -Math.sign(sp) * Math.min(Math.abs(sp), 30 * dt); };
+    const brakeK = v.stats?.brake || 1;   // better brakes stop you sooner
+    const brake = () => { dv += -Math.sign(sp) * Math.min(Math.abs(sp), 30 * brakeK * dt); };
     st.braking = S; st.reversing = false;
+    // Like most games (and how drivers expect it): hold S at a standstill to back up, W at a standstill to go forward again.
+    const stopped = Math.abs(sp) < 0.6;
+    if (isAuto()) {
+      if (S && stopped && st.sel !== 'R') { st.sel = 'R'; beep(900, 30, 'sine', 0.03); }
+      else if (W && stopped && (st.sel === 'R' || st.sel === 'P' || st.sel === 'N')) { st.sel = 'D'; beep(900, 30, 'sine', 0.03); }
+    } else if (!st.stalled) {
+      if (S && stopped && st.gear !== 'R') { st.gear = 'R'; beep(900, 30, 'sine', 0.03); }
+      else if (W && stopped && (st.gear === 'R' || st.gear === 'N')) { st.gear = 1; beep(900, 30, 'sine', 0.03); }
+    }
     if (isAuto()) {
       if (st.sel === 'P') { dv = -sp * Math.min(1, dt * 5); st.braking = true; }
-      else if (st.sel === 'R') { if (W) dv -= accel * 0.6 * dt; if (S) brake(); st.reversing = true; }
+      else if (st.sel === 'R') { if (S) dv -= accel * 0.6 * dt; if (W) brake(); st.reversing = true; st.braking = W; }
       else if (st.sel === 'N') { if (S) brake(); }
       else { if (W) dv += accel * dt; if (S) brake(); }
     } else {
       const g = st.gear;
-      if (g === 'R') { if (W) dv -= accel * 0.6 * dt; if (S) brake(); st.reversing = true; }
+      if (g === 'R') { if (S) dv -= accel * 0.6 * dt; if (W) brake(); st.reversing = true; st.braking = W; }
       else if (g === 'N') { if (S) brake(); }
       else {
         if (W && !st.stalled && g >= 3 && Math.abs(sp) < 1.5) { st.stalled = true; toast('Stalled! Drop down to 1st gear to pull away.'); beep(90, 300, 'square', 0.05); }
@@ -126,15 +138,15 @@ export function createCarControls({ headlight, headMat, tailMat, toast, isAuto, 
     }
     const top = topSpeed(v);
     // Driving uses charge: more when you accelerate hard, a little just from moving.
-    v.battery = Math.max(0, v.battery - dt * (Math.abs(sp) * 0.004 + (W ? 0.06 : 0)));
+    v.battery = Math.max(0, v.battery - dt * (Math.abs(sp) * 0.004 + (W ? 0.06 : 0)) / (v.batteryCapacity || 1));   // long-range cars drain slower
     if (v.battery > 0) st.flatWarned = false;
     st.rev = Math.min(1, Math.abs(sp + dv) / Math.max(1, top) * (isAuto() ? 0.75 : 1) + (W ? 0.08 : 0));
     return dv;
   }
   function topSpeed(v) {
     // (reverse speed itself is capped separately; this is the forward limit)
-    if (isAuto()) return st.sel === 'P' ? 0 : st.sel === 'R' ? 2 : v.maxSpeed;
-    return typeof st.gear === 'number' ? v.maxSpeed * RATIO[st.gear] : st.gear === 'R' ? 2 : v.maxSpeed;
+    if (isAuto()) return st.sel === 'P' ? 0 : st.sel === 'R' ? 0 : v.maxSpeed;
+    return typeof st.gear === 'number' ? v.maxSpeed * RATIO[st.gear] : st.gear === 'R' ? 0 : v.maxSpeed;
   }
 
   // ---------- per-frame: lamps and dashboard ----------
@@ -156,7 +168,8 @@ export function createCarControls({ headlight, headMat, tailMat, toast, isAuto, 
     // dashboard
     $('.spd').textContent = Math.round(Math.abs(car.speed) * 2.237);
     $('.gear').textContent = st.stalled ? '!' : gearLabel();
-    const bat = $('.bat'); bat.querySelector('b').textContent = Math.floor(car.battery ?? 100); bat.classList.toggle('low', (car.battery ?? 100) < 15); bat.classList.toggle('chg', !!st.charging);
+    const cond = $('.cond'); cond.querySelector('b').textContent = Math.ceil(car.health ?? 100); cond.classList.toggle('low', (car.health ?? 100) < 35);
+    const bat = $('.bat:not(.cond)'); bat.querySelector('b').textContent = Math.floor(car.battery ?? 100); bat.classList.toggle('low', (car.battery ?? 100) < 15); bat.classList.toggle('chg', !!st.charging);
     $('.revs div').style.width = `${Math.round(st.rev * 100)}%`;
     dash.querySelector('[data-i="left"]').classList.toggle('on', L && blink && st.ind !== 'haz');
     dash.querySelector('[data-i="right"]').classList.toggle('on', R && blink && st.ind !== 'haz');

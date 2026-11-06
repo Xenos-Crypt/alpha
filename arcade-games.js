@@ -249,8 +249,117 @@ export function createArcade({ toast, pause, resume, onFinish }) {
     };
   }
 
+  // ============================================================ BRICK BREAKER
+  function bricks() {
+    const pw = 80, pad = { x: W / 2 }, ball = { x: W / 2, y: H - 70, vx: 160, vy: -260, stuck: true };
+    const rows = 6, cols = 8, bw = (W - 20) / cols, bh = 20, C = ['#ff2bd6', '#ff5a3c', '#ffd23f', '#22ff88', '#00e5ff', '#8a5cff'];
+    const wall = []; for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) wall.push({ x: 10 + c * bw, y: 50 + r * (bh + 4), alive: true, c: C[r] });
+    let lives = 3;
+    return {
+      kind: 'bricks', title: '🧱 BRICK BREAKER', score: 0, info: () => `Lives ${'♥'.repeat(lives)}`,
+      press(k) { if (k === 'Space' || k === 'ArrowUp') ball.stuck = false; },
+      step(dt) {
+        const dir = (heldKey('ArrowRight') ? 1 : 0) - (heldKey('ArrowLeft') ? 1 : 0);
+        if (pointer) pad.x += (pointer.x - pad.x) * Math.min(1, dt * 20); else pad.x += dir * 380 * dt;
+        pad.x = Math.max(pw / 2, Math.min(W - pw / 2, pad.x));
+        if (ball.stuck) { ball.x = pad.x; ball.y = H - 52; }
+        else {
+          ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+          if (ball.x < 8 || ball.x > W - 8) { ball.vx *= -1; ball.x = Math.max(8, Math.min(W - 8, ball.x)); }
+          if (ball.y < 8) { ball.vy = Math.abs(ball.vy); }
+          if (ball.y > H - 46 && ball.y < H - 34 && Math.abs(ball.x - pad.x) < pw / 2 + 6 && ball.vy > 0) { ball.vy = -Math.abs(ball.vy) * 1.02; ball.vx = (ball.x - pad.x) / (pw / 2) * 280; }   // where it hits the paddle steers it
+          for (const b of wall) if (b.alive && ball.x > b.x && ball.x < b.x + bw - 4 && ball.y > b.y && ball.y < b.y + bh) { b.alive = false; ball.vy *= -1; setScore(this.score + 10); break; }
+          if (ball.y > H + 10) { lives--; ball.stuck = true; ball.vx = 160; ball.vy = -260; }
+        }
+        g.clearRect(0, 0, W, H);
+        for (const b of wall) if (b.alive) { g.fillStyle = b.c; g.fillRect(b.x, b.y, bw - 4, bh); }
+        g.fillStyle = '#fff'; g.fillRect(pad.x - pw / 2, H - 40, pw, 10);
+        g.beginPath(); g.arc(ball.x, ball.y, 7, 0, 7); g.fill();
+        if (ball.stuck) text('◀ ▶ (or drag) to move · SPACE to launch', W / 2, H / 2, 16, '#bbb');
+        if (wall.every(b => !b.alive)) return 'You cleared the wall!';
+        if (lives <= 0) return 'Out of balls!';
+      },
+    };
+  }
+  // ============================================================ HOOP SHOT
+  function hoops() {
+    let t = 0, time = 40, power = 0, rising = true, shot = null, hoopX = W / 2, made = 0, msg = '', msgT = 0;
+    return {
+      kind: 'hoops', title: '🏀 HOOP SHOT', score: 0, info: () => `Baskets ${made} · ${Math.ceil(time)}s`,
+      press(k) { if ((k === 'Space' || k === 'ArrowUp') && !shot) shot = { p: power, t: 0, x: W / 2 }; },
+      step(dt) {
+        t += dt; time -= dt;
+        hoopX = W / 2 + Math.sin(t * (0.6 + made * 0.05)) * 150;   // the hoop slides: time your shot
+        if (!shot) { power += (rising ? 1 : -1) * dt * 1.3; if (power > 1) { power = 1; rising = false; } if (power < 0) { power = 0; rising = true; } }
+        else {
+          shot.t += dt;
+          const f = Math.min(1, shot.t / 0.9), peak = 120 + shot.p * 360;
+          shot.y = H - 60 - Math.sin(f * Math.PI) * peak * 0.9 - f * (shot.p * 300);
+          if (f >= 1) {
+            const hit = Math.abs(shot.p - 0.72) < 0.09 && Math.abs(hoopX - W / 2) < 34;
+            if (hit) { made++; setScore(this.score + 100 + made * 10); msg = 'SWISH!'; } else msg = Math.abs(hoopX - W / 2) >= 34 ? 'Missed: time it with the hoop!' : shot.p > 0.72 ? 'Too hard!' : 'Too soft!';
+            msgT = 1; shot = null; power = 0; rising = true;
+          }
+        }
+        g.clearRect(0, 0, W, H);
+        g.fillStyle = '#ffffff22'; g.fillRect(hoopX - 60, 90, 120, 80); g.strokeStyle = '#ff5a3c'; g.lineWidth = 5; g.beginPath(); g.moveTo(hoopX - 30, 170); g.lineTo(hoopX + 30, 170); g.stroke();
+        g.fillStyle = '#ff8a2a'; g.beginPath(); g.arc(shot ? shot.x : W / 2, shot ? shot.y : H - 60, 16, 0, 7); g.fill();
+        g.fillStyle = '#333'; g.fillRect(30, H - 200, 22, 160); g.fillStyle = Math.abs(power - 0.72) < 0.09 ? '#22ff88' : '#ffd23f'; g.fillRect(30, H - 40 - power * 160, 22, power * 160);
+        g.strokeStyle = '#22ff88'; g.lineWidth = 2; g.strokeRect(28, H - 40 - 0.81 * 160, 26, 0.18 * 160);
+        text('SPACE when the bar is in the green and the hoop is centred', W / 2, H - 14, 13, '#bbb');
+        if (msgT > 0) { msgT -= dt; text(msg, W / 2, H / 2, 30, '#ffd23f'); }
+        if (time <= 0) return `${made} baskets!`;
+      },
+    };
+  }
+  // ============================================================ TURBO LANES
+  function lanes() {
+    let lane = 1, t = 0, dist = 0, speed = 220, crashed = 0; const cars = []; let spawn = 0;
+    return {
+      kind: 'lanes', title: '🏎️ TURBO LANES', score: 0, info: () => `${Math.floor(dist / 10)} m · crashes ${crashed}/3`,
+      press(k) { if (k === 'ArrowLeft') lane = Math.max(0, lane - 1); if (k === 'ArrowRight') lane = Math.min(2, lane + 1); },
+      step(dt) {
+        t += dt; speed += dt * 6; dist += speed * dt; spawn -= dt;
+        if (spawn <= 0) { spawn = Math.max(0.35, 1.1 - t * 0.012); cars.push({ lane: Math.floor(Math.random() * 3), y: -60, c: ['#ff2bd6', '#00e5ff', '#ffd23f'][Math.floor(Math.random() * 3)] }); }
+        for (const c of cars) c.y += speed * dt;
+        const lx = l => W / 2 + (l - 1) * 130;
+        for (const c of cars) if (!c.hit && c.lane === lane && c.y > H - 150 && c.y < H - 50) { c.hit = true; crashed++; }
+        for (let i = cars.length - 1; i >= 0; i--) if (cars[i].y > H + 80) { if (!cars[i].hit) setScore(this.score + 15); cars.splice(i, 1); }
+        g.clearRect(0, 0, W, H);
+        g.fillStyle = '#1a1a24'; g.fillRect(W / 2 - 200, 0, 400, H);
+        g.fillStyle = '#fff6'; for (let y = (dist % 60) - 60; y < H; y += 60) for (const l of [0.5, 1.5]) g.fillRect(W / 2 + (l - 1) * 130 - 3, y, 6, 30);
+        for (const c of cars) { g.fillStyle = c.hit ? '#555' : c.c; g.fillRect(lx(c.lane) - 26, c.y - 45, 52, 90); }
+        g.fillStyle = '#22ff88'; g.fillRect(lx(lane) - 26, H - 145, 52, 90);
+        if (t < 3) text('◀ ▶ to change lanes', W / 2, H / 2, 18, '#bbb');
+        if (crashed >= 3) return `Wrecked after ${Math.floor(dist / 10)} m!`;
+      },
+    };
+  }
+  // ============================================================ WHACK-A-MOLE
+  function moles() {
+    const holes = [0, 1, 2, 3].map(i => ({ up: 0, hit: false })); let time = 35, spawn = 0;
+    const KEYS = ['ArrowLeft', 'ArrowUp', 'ArrowDown', 'ArrowRight'], ICON = ['◀', '▲', '▼', '▶'];
+    return {
+      kind: 'moles', title: '🔨 WHACK-A-MOLE', score: 0, info: () => `${Math.ceil(time)}s`,
+      press(k) { const i = KEYS.indexOf(k); if (i < 0) return; const h = holes[i]; if (h.up > 0 && !h.hit) { h.hit = true; h.up = Math.min(h.up, 0.2); setScore(this.score + 20); } else setScore(this.score - 5); },
+      step(dt) {
+        time -= dt; spawn -= dt;
+        if (spawn <= 0) { spawn = Math.max(0.3, 0.9 - (35 - time) * 0.015); const h = holes[Math.floor(Math.random() * 4)]; if (h.up <= 0) { h.up = Math.max(0.55, 1.1 - (35 - time) * 0.015); h.hit = false; } }
+        for (const h of holes) h.up -= dt;
+        g.clearRect(0, 0, W, H);
+        holes.forEach((h, i) => {
+          const x = 70 + i * 113, y = H / 2 + 40;
+          g.fillStyle = '#2a1a10'; g.beginPath(); g.ellipse(x, y + 30, 46, 16, 0, 0, 7); g.fill();
+          if (h.up > 0) { g.fillStyle = h.hit ? '#ff5a4a' : '#8a5a2a'; g.beginPath(); g.arc(x, y, 34, Math.PI, 0); g.fillRect(x - 34, y, 68, 26); g.fill(); g.fillStyle = '#000'; g.fillRect(x - 12, y - 14, 6, 6); g.fillRect(x + 6, y - 14, 6, 6); }
+          text(ICON[i], x, y + 80, 26, '#bbb');
+        });
+        if (time <= 0) return 'Time up!';
+      },
+    };
+  }
+
   const heldKey = k => !!held[k];
-  const MAKERS = { dance, claw, hockey, game: shooter };
+  const MAKERS = { dance, claw, hockey, game: shooter, bricks, hoops, lanes, moles };
   function frame(now) {
     if (!game) return;
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -265,6 +374,7 @@ export function createArcade({ toast, pause, resume, onFinish }) {
     pointer = null;
     game = make(); $('.title').textContent = game.title; $('.score').textContent = 0;
     root.querySelector('.pad').style.display = kind === 'hockey' ? 'none' : '';
+    cv.style.touchAction = 'none';
     root.hidden = false; pause?.();
     last = performance.now(); raf = requestAnimationFrame(frame);
     return true;
@@ -274,7 +384,7 @@ export function createArcade({ toast, pause, resume, onFinish }) {
     cancelAnimationFrame(raf);
     const g0 = game; game = null; root.hidden = true;
     // tickets: by score, so playing well pays
-    const tickets = quit ? 0 : { dance: Math.floor(g0.score / 400), claw: g0.score, hockey: Math.floor(g0.score / 100) * 6 + (g0.over.startsWith('You beat') ? 20 : 0), game: Math.floor(g0.score / 50) }[g0.kind] || 0;
+    const tickets = quit ? 0 : { dance: Math.floor(g0.score / 400), claw: g0.score, hockey: Math.floor(g0.score / 100) * 6 + (g0.over.startsWith('You beat') ? 20 : 0), game: Math.floor(g0.score / 50), bricks: Math.floor(g0.score / 40), hoops: Math.floor(g0.score / 40), lanes: Math.floor(g0.score / 30), moles: Math.floor(g0.score / 25) }[g0.kind] || 0;
     onFinish?.(g0.kind, g0.score, tickets, quit ? 'You walk away from the machine.' : g0.over);
     resume?.();
   }
