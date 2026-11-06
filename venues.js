@@ -40,7 +40,7 @@ export function buildVenues(ctx) {
   road(170, -640, 170, -770, 12);                 // north from the frontier edge of town
   road(-470, -770, 700, -770, 12);                // leisure park boulevard
   road(280, 925, 280, 1100, 12);                  // south from the Capital
-  road(-90, 1100, 690, 1100, 14);                 // business district boulevard
+  road(-90, 1100, 1010, 1100, 14);                // business district boulevard, then the nightlife strip
 
   // ================================================================= RACEWAY
   const RW = { x: -280, z: -880, straight: 190, r: 72, w: 14 };
@@ -228,6 +228,20 @@ export function buildVenues(ctx) {
   ];
   north.forEach((c, i) => company({ ...c, x: -20 + i * 120, z: 1068, face: 1 }));
   south.forEach((c, i) => company({ ...c, x: -20 + i * 120, z: 1132, face: -1 }));
+  // Nightlife strip at the east end of the boulevard: pubs, bars, a nightclub and restaurants.
+  const night = [
+    [{ name: 'The Rusty Anchor', type: 'pub', floors: 2, base: '#3a2414', win: '#ffb36b', sign: '#1a0f08', fg: '#e6c27a', sub: 'PUB · REAL ALE · FOOD', neon: 0xffb36b },
+     { name: 'Club Neon', type: 'nightclub', floors: 3, base: '#0c0a14', win: '#8a5cff', sign: '#0c0a14', fg: '#ff2bd6', sub: 'NIGHTCLUB · DJ · LATE', neon: 0xff2bd6 },
+     { name: 'Bella Vista', type: 'restaurant', floors: 2, base: '#efe4d0', win: '#ffd9a0', sign: '#5a1f1f', fg: '#ffffff', sub: 'ITALIAN RESTAURANT', neon: 0xffd9a0 }],
+    [{ name: 'The Crown & Lantern', type: 'pub', floors: 2, base: '#2a3a2a', win: '#ffd28a', sign: '#14201a', fg: '#f2e6c4', sub: 'PUB · SPORTS ON TV', neon: 0xffd28a },
+     { name: 'Velvet Lounge', type: 'bar', floors: 2, base: '#2a0f1f', win: '#ff6ab0', sign: '#1a0814', fg: '#ff9ad2', sub: 'COCKTAIL BAR · NIGHT BAR', neon: 0xff6ab0 },
+     { name: 'Golden Dragon', type: 'restaurant', floors: 2, base: '#5a1010', win: '#ffd23f', sign: '#3a0808', fg: '#ffd23f', sub: 'CHINESE RESTAURANT', neon: 0xffd23f }],
+  ];
+  night[0].forEach((c, i) => company({ ...c, x: 700 + i * 120, z: 1068, w: 20, d: 16, face: 1 }));
+  night[1].forEach((c, i) => company({ ...c, x: 700 + i * 120, z: 1132, w: 20, d: 16, face: -1 }));
+  signBoard('NIGHTLIFE STRIP', 640, 6, 1100, 12, Math.PI / 2, '#1a0814', '#ff2bd6', 'PUBS · BARS · CLUB · RESTAURANTS');
+  for (const sz of [-1, 1]) B(0.5, 6, 0.5, 640, 3, 1100 + sz * 6, steel);
+  dest('Nightlife Strip', 820, 1100);
   for (let i = 0; i < 6; i++) for (const s of [-1, 1]) {   // street trees and benches along the boulevard
     const tx = 40 + i * 120, tz = 1100 + s * 9;
     B(0.3, 2.4, 0.3, tx, 1.2, tz, mat(0x5a3d26)); const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.8, 0), mat(0x3f7d3a)); crown.position.set(tx, 3.6, tz); scene.add(crown);
@@ -237,6 +251,25 @@ export function buildVenues(ctx) {
   signBoard('ASHFORD LEISURE PARK', 170, 6, -700, 12, 0, '#2f5d8f', '#ffffff', 'STADIUM · RACEWAY · COURTS · POOLS · ARCADE');
   for (const sx of [-1, 1]) B(0.5, 6, 0.5, 170 + sx * 6, 3, -700, steel);
   dest('Ashford Business District', 280, 1100); dest('Ashford Leisure Park', 170, -720);
+
+  // ================================================================= snack kiosks
+  const kiosk = (x, z, name, ry = 0, colour = 0xd0281f) => {
+    const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
+    const P = (w, h, d, px, py, pz, c, o) => { const m = new THREE.Mesh(boxGeo, c instanceof THREE.Material ? c : mat(c, o)); m.scale.set(w, h, d); m.position.set(px, py, pz); g.add(m); };
+    P(3.2, 2.6, 2.2, 0, 1.3, -0.4, 0xf2efe6); P(3.4, 0.12, 0.9, 0, 1.05, 0.95, 0x7a5636); P(3.6, 0.1, 1.6, 0, 2.75, 0.6, colour);
+    for (let i = 0; i < 6; i++) P(0.55, 0.06, 1.62, -1.4 + i * 0.56, 2.68, 0.6, i % 2 ? 0xffffff : colour);
+    for (let i = 0; i < 5; i++) P(0.18, 0.25, 0.12, -1.2 + i * 0.6, 1.23, 0.95, [0xd94f3d, 0x3d8bd9, 0xf2c14e, 0x5bb36a, 0x8e5bd9][i]);
+    if (ctx.makePerson) { const h = ctx.makePerson({ outfit: colour, hair: 0x3b2c23, pants: 0x2a2f36 }); h.root.position.set(0, 0, 0.1); g.add(h.root); }
+    const front = new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
+    colliders.push({ minX: x - 1.8, maxX: x + 1.8, minZ: z - 1.8, maxZ: z + 1.8 });
+    spot(x + front.x * 2.6, z + front.z * 2.6, 2.2, `Buy snacks at ${name}`, () => ctx.openShop?.(name));
+  };
+  kiosk(196, -799, 'the Stadium kiosk', 0);
+  kiosk(-200, -782, 'the Raceway snack bar', 0, 0x111111);
+  kiosk(578, -832, 'the Poolside kiosk', Math.PI, 0x1f8fd1);
+  kiosk(150, -718, 'the Leisure Park cart', 0, 0x2f5d8f);
+  kiosk(40, 1091, 'the Boulevard coffee cart', Math.PI, 0x5a3a22);
+  kiosk(400, 1109, 'the Boulevard snack stand', 0, 0x2d5d3a);
 
   // ================================================================= update
   function update(dt, { playerPos, driving }) {

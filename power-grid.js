@@ -15,6 +15,10 @@ export function buildPowerGrid({ scene, gates, interactables, toast, groundY, ma
   const sheathMat = new THREE.MeshStandardMaterial({ color: 0x1b1d20, roughness: 0.7 });
   const ironMat = new THREE.MeshStandardMaterial({ color: 0x3a3c3f, roughness: 0.6, metalness: 0.6 });
   const holeMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+  const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfff1c4 });
+  const cageMat = new THREE.MeshBasicMaterial({ color: 0x2b2b2b, wireframe: true });
+  const shaftMat = new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.35 });
+  const haloMat = new THREE.SpriteMaterial({ map: makeTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 2, 32, 32, 32); gr.addColorStop(0, 'rgba(255,236,180,0.9)'); gr.addColorStop(1, 'rgba(255,236,180,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const coverTex = makeTex(128, 128, g => { g.fillStyle = '#4a4c4f'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#2f3134'; g.lineWidth = 6; for (let i = 10; i < 128; i += 18) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 128); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(128, i); g.stroke(); } });
   const coverMat = new THREE.MeshStandardMaterial({ map: coverTex, roughness: 0.6, metalness: 0.5 });
   const gy = (x, z) => { const y = groundY(x, z); return Number.isFinite(y) ? y : 0; };
@@ -37,6 +41,12 @@ export function buildPowerGrid({ scene, gates, interactables, toast, groundY, ma
         tube(pts, r, g);
       }
     }
+    // Work lights that are always on: a caged bulb on a post and a lamp glowing down the shaft.
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.3, 6), ironMat); post.position.set(-0.85, 0.65, 0.45); g.add(post);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), bulbMat); bulb.position.set(-0.85, 1.36, 0.45); g.add(bulb);
+    const cage = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), cageMat); cage.position.copy(bulb.position); g.add(cage);
+    const halo = new THREE.Sprite(haloMat); halo.scale.setScalar(1.6); halo.position.copy(bulb.position); g.add(halo);
+    const shaftGlow = new THREE.Mesh(new THREE.CircleGeometry(0.62, 20), shaftMat); shaftGlow.rotation.x = -Math.PI / 2; shaftGlow.position.y = 0.035; g.add(shaftGlow);
     for (const [cx, cz] of [[-0.9, -0.6], [0.2, -1.0]]) { const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 10), new THREE.MeshStandardMaterial({ color: 0xff6a00 })); cone.position.set(cx, 0.25, cz); g.add(cone); }
     const it = { pos: new THREE.Vector3(x, y + 0.2, z), r: 2.2, label: label || 'Look into the manhole', action: () => toast(text || 'Thick power cables run down into the sewers. Stencilled on them: AEGIS PRIME GRID.') };
     interactables.push(it);
