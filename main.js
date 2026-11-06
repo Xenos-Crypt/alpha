@@ -37,6 +37,8 @@ import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
 import {hoverRoadVehicle, makeHover, updateHover} from './hover.js';
 import {buildInteriors} from './interiors.js';
+import {buildBorder, DOME, PLAY_R} from './border.js';
+import {buildVenues} from './venues.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
 import { installMatrixCache } from './matrix-cache.js';
@@ -411,7 +413,7 @@ const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford C
 let supportSkills=null,cityServices=null,supportCounters={dungeons:0,bosses:0};
 function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localStorage.setItem('support:'+alignmentUserId,JSON.stringify({skill:supportSkills.snapshot(),counters:supportCounters,kills:monsterQuestKills}));}catch{}}
 let cityLife=null,monsterQuestKills=0;
-let roadLaw=null,hunterGuilds=null,frontier=null;   // law, guild system and the northern frontier (created after the base world)
+let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
@@ -450,7 +452,10 @@ function collide(p, r) {
       p.x += opts[0][0]; p.z += opts[0][1];
     }
   }
-  if (p.x > -1000 && p.x < 1500) { p.x = clamp(p.x, -900, 1240); p.z = clamp(p.z, -650, 950); }   // dungeons live far away at x = 2000; south bound extended for Riverside/Capital
+  // The world ends at the rim of the Aegis Shield dome, where the border fence is.
+  // (Dungeons, interiors, the subway and sewers live far outside it and aren't affected.)
+  { const dx = p.x - DOME.x, dz = p.z - DOME.z, d = Math.hypot(dx, dz);
+    if (d > PLAY_R && d < PLAY_R + 60) { p.x = DOME.x + dx / d * PLAY_R; p.z = DOME.z + dz / d * PLAY_R; } }
   return hit;
 }
 const insideCollider = p => colliders.some(c => c.circleRadius!=null ? Math.hypot(p.x-c.circleX,p.z-c.circleZ)<c.circleRadius : p.x>c.minX&&p.x<c.maxX&&p.z>c.minZ&&p.z<c.maxZ);
@@ -522,6 +527,11 @@ const groundTex = grassTex.clone(); groundTex.repeat.set(150, 215); groundTex.ne
 const ground = mesh(new THREE.PlaneGeometry(1800, 2100), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
 ground.rotation.x = -Math.PI / 2;
 ground.castShadow = false;
+// Grass for the rest of the land inside the shield dome (the original ground only
+// covered x -900..900, z -1050..1050). It sits just below the main ground.
+{ const tex = grassTex.clone(); tex.repeat.set(230, 230); tex.needsUpdate = true;
+  const outer = mesh(new THREE.CircleGeometry(DOME.r + 2, 160), new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }));
+  outer.rotation.x = -Math.PI / 2; outer.position.set(DOME.x, -0.03, DOME.z); outer.castShadow = false; outer.userData.noCull = true; }
 
 roadTex.repeat.set(330 / 40, 330 / 40);
 roadTex.offset.set(0.375, 0.375);   // puts an intersection exactly at the origin
@@ -919,6 +929,7 @@ addBench(PARK.x - 2.5, PARK.z + 4, Math.PI / 2);
 // PARK LIFE: flower beds, a duck pond, wandering pets and butterflies, and
 // real drowning if you wade into deep water without the Water class.
 // =====================================================================
+const poolZones = [];   // rectangular swimming pools (see venues.js)
 const waterZones = [{ x: PARK.x + 6.5, z: PARK.z + 6.5, r: 4 }]; // ponds — walking in without Water risks drowning
 const flowerColors = [0xff6b81, 0xffd166, 0xff9f43, 0xeaff8f, 0xa29bfe];
 function addFlowerPatch(x, z, n = 6) {
@@ -5565,6 +5576,8 @@ function resolveInteractTarget() {
     // Inside a home, shop or office you leave through the front door; elsewhere in the
     // building E uses whatever you're standing next to (bed, fridge, till...).
     if (interiors.active) { const s = interiors.nearest(player.position); return s ? { label: s.label, action: s.action } : null; }
+    const desk = nearestInteractable();   // e.g. the civic hall's reception counter
+    if (desk) return { label: desk.label, action: desk.action };
     return { label: 'Leave', action: leaveCivicBuilding };
   }
   if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
@@ -5641,6 +5654,21 @@ let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
   tvScreen.position.set(CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.55);
   box(2.7, 1.8, 0.15, CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.6, 0x1a1a1a, false);
   sitSpots.push({ x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, yaw: Math.PI, seatY: 0.9, label: 'Sit and watch TV' }); // face -Z, toward the TV
+  // Reception: a front counter with a staff chair and a monitor, and rows of waiting
+  // chairs, so police stations, hospitals, schools and the rest have a proper reception.
+  const C = CIVIC_OFFSET;
+  box(6, 1.1, 0.9, C.x - 7, 0.55, C.z - 5, 0xf2f0ea);                       // counter
+  box(6.2, 0.06, 1.1, C.x - 7, 1.13, C.z - 4.9, 0x7a5636, false);           // counter top
+  box(0.6, 0.38, 0.04, C.x - 7, 1.42, C.z - 5.2, 0x111111, false);           // monitor
+  box(0.55, 0.32, 0.01, C.x - 7, 1.42, C.z - 5.17, 0x2b4a63, false);
+  box(0.5, 0.08, 0.5, C.x - 7, 0.5, C.z - 6.2, 0x26292e, false); box(0.48, 0.6, 0.07, C.x - 7, 0.85, C.z - 6.45, 0x26292e, false);   // staff chair
+  for (const row of [3.5, 5.5]) for (const dx of [-1.2, -0.4, 0.4, 1.2]) {
+    const x = C.x + 8 + dx, z = C.z + row;
+    box(0.5, 0.06, 0.5, x, 0.46, z, 0x2f6f8f, false); box(0.5, 0.5, 0.06, x, 0.72, z + 0.22, 0x2f6f8f, false);
+    sitSpots.push({ x, z, yaw: Math.PI, seatY: 0.95, label: 'Sit in the waiting area' });
+  }
+  box(0.6, 0.5, 0.6, C.x + 11.5, 0.25, C.z + 8.5, 0xb5683f, false);         // plant pot
+  interactables.push({ pos: new THREE.Vector3(C.x - 7, 0, C.z - 3.9), r: 2, label: 'Speak to reception', action: () => toast('"Hello, how can I help? Take a seat and we\'ll call you."') });
 })();
 // Homes, shops and offices get real multi-room interiors (see interiors.js); civic
 // buildings keep the themed hall above.
@@ -5649,11 +5677,30 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
   hooks: {
     toast: m => toast(m),
     leave: () => leaveCivicBuilding(),
+    travel(pos, y, msg, then) {   // stairs, lifts and escalators between floors
+      $('fade').style.opacity = 1;
+      setTimeout(() => { then?.(); player.position.copy(pos); yaw = y; vy = 0; pvel.set(0, 0, 0); $('fade').style.opacity = 0; if (msg) toast(msg); }, 450);
+    },
     eat(amount, cost, msg) {
       if (cost && stats.gold < cost) { toast(`You need ${cost} gold for that.`); return; }
       stats.gold -= cost; stats.hunger = Math.min(100, stats.hunger + amount); toast(msg);
     },
     drink() { stats.energy = Math.min(100, stats.energy + 5); toast('You drink a glass of water.'); },
+    arcade(kind) {   // Pixel Palace: games cost 2 gold and win tickets; swap 50 tickets for a prize
+      let tickets = 0; try { tickets = +localStorage.getItem('anotherworld-arcade-tickets') || 0; } catch {}
+      const save = () => { try { localStorage.setItem('anotherworld-arcade-tickets', String(tickets)); } catch {} };
+      if (kind === 'prize') {
+        if (tickets < 50) { toast(`You have ${tickets} tickets. Prizes start at 50.`); return; }
+        tickets -= 50; save(); toast(`You swap 50 tickets for a ${['giant plush dragon', 'glow-in-the-dark yo-yo', 'Pixel Palace cap', 'tiny robot keyring'][Math.floor(Math.random() * 4)]}! (${tickets} tickets left)`); return;
+      }
+      const cost = kind === 'dance' ? 0 : 2;
+      if (stats.gold < cost) { toast(`You need ${cost} gold to play.`); return; }
+      stats.gold -= cost;
+      const won = kind === 'claw' ? (Math.random() < 0.2 ? 30 : 0) : 5 + Math.floor(Math.random() * 20);
+      tickets += won; save();
+      const msg = { game: 'You play a round of Neon Racer.', claw: won ? 'The claw grabs a plush toy and actually holds on!' : 'The claw grabs a toy... and drops it. Classic.', hockey: 'A fierce game of air hockey. 7-5 to you.', dance: 'You hit almost every arrow on the dance machine.' }[kind];
+      toast(`${msg} +${won} tickets (${tickets} total).`);
+    },
     rest(amount, msg) { stats.energy = Math.min(100, stats.energy + amount); toast(msg); },
     sleep() {
       $('fade').style.opacity = 1;
@@ -6165,6 +6212,7 @@ function updateFirefighters(dt) {
 }
 let swimming = false, waterExhausted = false;
 function isSeaWater(x,z,bodyY = null) {
+  if (poolZones.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)) return true;   // swimming pools
   if(navy?.groundAt(x,z)!=null)return false;
   if(regionalEnvironment?.groundAt(x,z)!=null)return false;
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
@@ -7047,6 +7095,10 @@ frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,civicBuil
  makeTank(x,z,ry){const v=makeVehicle('tank',0x4f5a3a);v.group.position.set(x,.2,z);v.group.rotation.y=ry;v.ai={parked:true};v.militaryHome=new THREE.Vector3(x,.2,z);v.militaryYaw=ry;v.noSteal=true;return v;},
  makeMilitaryTruck(x,z,ry){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(x,.2,z);v.group.rotation.y=ry;v.ai={parked:true};return v;},
  onIntrusion(zone){if(militaryAlert<=0)toast(`${zone.name}: INTRUDER ALERT. Armoured units deployed — leave the restricted zone now.`);militaryAlert=45;}});
+// The guarded border fence around the edge of the map, with snowy mountains outside.
+// Leisure park, business district and the other real-life places on the outer land.
+venues=buildVenues({scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle});
+border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),interactables,toast,makeTex});
 hunterGuilds=createHunterGuilds({level:()=>prog.level,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons,bosses:supportCounters.bosses}),money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},earn:n=>{stats.gold+=n;},gainXp,toast,
  playerPosition:()=>player.position,checkpoints:{patrol:frontier.patrolPoints,spires:frontier.spires},interactables,heal(){stats.hp=maxHp();stats.energy=Math.max(stats.energy,60);},changed(){saveSolo();},
  pause:pauseForPanel,resume(){if(!boardOpen&&!settingsOpen)requestGameControl();}});
@@ -7113,8 +7165,11 @@ function frame() {
     updateBridgeLift(dt);
     if(inCar&&driving&&isRoadVehicle(driving))roadLaw.monitorDriving(driving,dt);
     hunterGuilds.update(dt);
-    frontier.update(dt,{sky,inSpace:!!spaceCentre?.inSpace,underground:!!(metro?.underground||sewers?.underground||dungeon||navy?.rider?.depth>2)});
+    frontier.update(dt,{sky,camera,inSpace:!!spaceCentre?.inSpace,underground:!!(metro?.underground||sewers?.underground||dungeon||inCivicInterior||navy?.rider?.depth>2)});
     updateMilitary(dt);
+    border?.update(dt, player.position);
+    venues?.update(dt, { playerPos: player.position, driving: inCar && driving ? driving : null });
+    interiors.update(dt);
     updateWeather(dt);
     updateFirefighters(dt);
     updateFireDamage(dt);

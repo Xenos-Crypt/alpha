@@ -11,6 +11,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const FORT = { name: 'Fort Halberd', x0: 470, x1: 790, z0: -640, z1: -460, gate: [600, 616] };
 export const WESTWATCH = { name: 'Westwatch Aegis Relay', x0: -880, x1: -740, z0: -640, z1: -500, gate: [-816, -804] };
+import { DOME } from './border.js';
 export const SPIRES = [
   { name: 'Westwatch Spire', x: -810, z: -575 },
   { name: 'Fort Halberd Spire', x: 740, z: -505 },
@@ -322,22 +323,33 @@ export function buildFrontierWorld(ctx) {
   // =================================================================================
   // 6. The Aegis planetary shield — a hex lattice across the whole sky
   // =================================================================================
-  const shieldUniforms = { time: { value: 0 }, strength: { value: 1 }, pulse: { value: 0 } };
+  // The shield is a fixed dome centred on the map (DOME in border.js). It's drawn on the
+  // sky sphere round the camera, but each pixel works out where its view ray meets the
+  // real dome, so the hex cells stay put in the world and the dome visibly comes down
+  // to the ground at the rim, where the border fence is.
+  const shieldUniforms = { time: { value: 0 }, strength: { value: 1 }, pulse: { value: 0 }, camPos: { value: new THREE.Vector3() }, domeC: { value: new THREE.Vector3(DOME.x, 0, DOME.z) }, domeR: { value: DOME.r } };
   const shield = new THREE.Mesh(new THREE.SphereGeometry(440, 48, 24), new THREE.ShaderMaterial({
     uniforms: shieldUniforms, side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, fog: false, blending: THREE.AdditiveBlending,
-    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform float time; uniform float strength; uniform float pulse; varying vec3 vDir;
+    vertexShader: 'varying vec3 vWorld; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform float time; uniform float strength; uniform float pulse; uniform vec3 camPos; uniform vec3 domeC; uniform float domeR; varying vec3 vWorld;
       float hexDist(vec2 p){ p = abs(p); return max(dot(p, normalize(vec2(1.0,1.732))), p.x); }
       vec4 hexCoords(vec2 uv){ vec2 r = vec2(1.0,1.732), h = r*0.5; vec2 a = mod(uv,r)-h, b = mod(uv-h,r)-h; vec2 gv = dot(a,a)<dot(b,b)?a:b; return vec4(gv, uv-gv); }
       void main(){
-        float up = vDir.y; if (up < -0.02) discard;
-        vec2 uv = vDir.xz / (up + 0.35) * 5.0;            // flatter cells overhead, compressed towards the horizon
+        vec3 dir = normalize(vWorld - camPos);
+        vec3 oc = camPos - domeC; float b = dot(oc, dir), c = dot(oc, oc) - domeR * domeR, disc = b * b - c;
+        if (disc < 0.0) discard;
+        float sq = sqrt(disc), t = c < 0.0 ? -b + sq : -b - sq;   // inside: where the ray leaves the dome; outside: where it hits it
+        if (t < 0.0) discard;
+        vec3 P = camPos + dir * t; if (P.y < -0.5) discard;          // that part of the dome is below ground
+        vec3 n = (P - domeC) / domeR; float up = n.y;
+        vec2 uv = n.xz / (up + 0.35) * 9.0;              // cells fixed to the dome itself
         vec4 hc = hexCoords(uv);
         float edge = smoothstep(0.465, 0.5, hexDist(hc.xy));
         float shimmer = 0.5 + 0.5 * sin(time * 0.6 + hc.z * 0.9 + hc.w * 1.3);
         float wave = smoothstep(0.0, 0.15, 0.15 - abs(fract(length(hc.zw) * 0.025 - time * 0.05) - 0.5));
         float horizon = smoothstep(0.35, 0.0, up);
-        float a = edge * (0.025 + 0.05 * shimmer) + wave * edge * 0.18 + horizon * 0.07 + pulse * edge * 0.6;
+        float rim = smoothstep(0.03, 0.0, up) * (0.6 + 0.4 * sin(time * 1.5 + atan(n.x, n.z) * 40.0));   // glowing band where the dome meets the ground
+        float a = edge * (0.025 + 0.05 * shimmer) + wave * edge * 0.18 + horizon * 0.07 + rim * 0.45 + pulse * edge * 0.6;
         gl_FragColor = vec4(vec3(0.35, 0.78, 1.0) * a * strength, 1.0);
       }`,
   }));
@@ -378,13 +390,14 @@ export function buildFrontierWorld(ctx) {
   // 9. Update: patrols, restricted-zone enforcement, shield shimmer
   // =================================================================================
   let warnCd = 0, alertCd = 0, time = 0;
-  function update(dt, { sky, inSpace, underground }) {
+  function update(dt, { sky, inSpace, underground, camera }) {
     time += dt;
     shieldUniforms.time.value = time;
     shieldUniforms.pulse.value = Math.max(0, shieldUniforms.pulse.value - dt * 0.6);
     shield.visible = !inSpace && !underground;
     for (const b of beams) b.visible = shield.visible;
     if (sky) { shield.position.copy(sky.position); shield.scale.copy(sky.scale); }
+    if (camera) shieldUniforms.camPos.value.copy(camera.position);
     for (const p of people) {
       let moving = false;
       if (p.route) {

@@ -41,7 +41,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
 
   const layouts = {};
 
-  function makeLayout(key, x0, z0, wallColor, floorColor) {
+  function makeLayout(key, x0, z0, wallColor, floorColor, { exit = true } = {}) {
     const L = { key, origin: new THREE.Vector3(x0, 0, z0), spawn: new THREE.Vector3(x0, 0, z0 + 5.6), spots: [], lights: [] };   // a few steps inside, so the camera stays in the room
     // ---- primitives (local coords) ----
     const B = (w, h, d, x, y, z, c, collide = false, o, parent) => {
@@ -81,15 +81,18 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     const wall = (w, d, x, z) => { const m = B(w, H, d, x, H / 2, z, wallMat, true); camBlockers.push(m); return m; };
     wall(W, 0.3, 0, -D / 2);                                                   // back
     wall(0.3, D, -W / 2, 0); wall(0.3, D, W / 2, 0);                           // sides
-    const half = (W - 1.6) / 2;
-    wall(half, 0.3, -(1.6 / 2 + half / 2), D / 2); wall(half, 0.3, 1.6 / 2 + half / 2, D / 2);   // front, gap for the door
-    B(1.6, H - 2.5, 0.3, 0, 2.5 + (H - 2.5) / 2, D / 2, wallMat);             // above the front door
-    B(1.5, 2.4, 0.08, 0, 1.25, D / 2 + 0.12, 0x3a2a1e, true);                   // front door (closed, you leave through it)
-    B(0.06, 0.06, 0.2, 0.55, 1.2, D / 2 - 0.02, 0xc9b26b, false, { metal: 0.8, rough: 0.3 });   // handle
-    B(0.9, 0.28, 0.06, 0, 2.75, D / 2 - 0.2, 0x0d6b2f, false, { emissive: 0x19c25a, ei: 1.4 });   // EXIT sign
-    B(0.22, 0.12, 0.02, 0, 2.75, D / 2 - 0.24, 0xffffff, false, { emissive: 0xffffff, ei: 1 });
-    B(2.4, 0.02, 1.4, 0, 0.11, D / 2 - 1, 0x5b4a3a);                           // doormat
-    spot(0, D / 2 - 1, 2.2, 'Leave the building', () => hooks.leave());
+    if (!exit) wall(W, 0.3, 0, D / 2);                                         // upper floors: no street door
+    else {
+      const half = (W - 1.6) / 2;
+      wall(half, 0.3, -(1.6 / 2 + half / 2), D / 2); wall(half, 0.3, 1.6 / 2 + half / 2, D / 2);   // front, gap for the door
+      B(1.6, H - 2.5, 0.3, 0, 2.5 + (H - 2.5) / 2, D / 2, wallMat);             // above the front door
+      B(1.5, 2.4, 0.08, 0, 1.25, D / 2 + 0.12, 0x3a2a1e, true);                   // front door (closed, you leave through it)
+      B(0.06, 0.06, 0.2, 0.55, 1.2, D / 2 - 0.02, 0xc9b26b, false, { metal: 0.8, rough: 0.3 });   // handle
+      B(0.9, 0.28, 0.06, 0, 2.75, D / 2 - 0.2, 0x0d6b2f, false, { emissive: 0x19c25a, ei: 1.4 });   // EXIT sign
+      B(0.22, 0.12, 0.02, 0, 2.75, D / 2 - 0.24, 0xffffff, false, { emissive: 0xffffff, ei: 1 });
+      B(2.4, 0.02, 1.4, 0, 0.11, D / 2 - 1, 0x5b4a3a);                           // doormat
+      spot(0, D / 2 - 1, 2.2, 'Leave the building', () => hooks.leave());
+    }
 
     // ---- interior walls with doorways (door frame + an open door) ----
     const doorway = (gx, gz, alongX) => {
@@ -165,10 +168,61 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       screen: (x, z, rot) => piece(x, z, rot, 2.5, 0.1, g => { P(g, 2.5, 1.4, 0.06, 0, 1.7, 0, 0x111111); P(g, 2.35, 1.27, 0.01, 0, 1.7, 0.035, 0x1f3f5a, { emissive: 0x1d4b6e, ei: 0.7 }); }, false),
       art: (x, y, z, rot, c) => { const g = new THREE.Group(); g.position.set(x0 + x, y, z0 + z); g.rotation.y = rot; scene.add(g); P(g, 1.1, 0.8, 0.04, 0, 0, 0, 0x2a2a2a); P(g, 0.98, 0.68, 0.01, 0, 0, 0.025, c); },
     };
-    L.F = F; L.spot = spot; L.seat = seat; L.B = B;
+    // ---- getting between floors ----
+    // A straight staircase, `len` long, rising toward dir (+1 = +z, -1 = -z). (sx, sz) is
+    // where you stand to use it.
+    L.stairs = (x, z, len, dir, label, onUse, sx, sz) => {
+      const n = 14, rise = H / n, run = len / n, stepMat = mat(0xb08a63), side = mat(0xe6e0d4);
+      for (let i = 0; i < n; i++) {
+        const top = (i + 1) * rise;
+        B(1.2, top, run, x, top / 2, z + dir * (-len / 2 + (i + 0.5) * run), stepMat);
+      }
+      for (const s of [-1, 1]) { const r = B(0.06, 0.06, Math.hypot(len, H), x + s * 0.63, H / 2 + 0.95, z, side); r.rotation.x = -dir * Math.atan2(H, len); }
+      colliders.push({ minX: x0 + x - 0.65, maxX: x0 + x + 0.65, minZ: z0 + z - len / 2, maxZ: z0 + z + len / 2 });
+      spot(sx, sz, 1.8, label, onUse);
+    };
+    // Upstairs, the stairs show as an opening in the floor with railings round it.
+    L.stairwell = (x, z, len, label, onUse, sx, sz) => {
+      B(1.3, 0.02, len, x, 0.11, z, 0x1c1814);
+      const rail = mat(0xe6e0d4);
+      for (const s of [-1, 1]) { B(0.06, 1.0, len, x + s * 0.68, 0.6, z, rail); B(0.06, 0.06, len, x + s * 0.68, 1.1, z, rail); }
+      B(1.4, 1.0, 0.06, x, 0.6, z - len / 2, rail);
+      colliders.push({ minX: x0 + x - 0.7, maxX: x0 + x + 0.7, minZ: z0 + z - len / 2, maxZ: z0 + z + len / 2 });
+      spot(sx, sz, 1.8, label, onUse);
+    };
+    // Lift doors set into a wall facing `rot` (front faces +z at rot 0), with a call button.
+    L.lift = (x, z, rot, label, onUse) => {
+      const g = new THREE.Group(); g.position.set(x0 + x, 0, z0 + z); g.rotation.y = rot; scene.add(g);
+      P(g, 2.2, 2.8, 0.2, 0, 1.4, 0, 0xc9ced4, { metal: 0.6, rough: 0.35 });
+      for (const s of [-1, 1]) P(g, 0.78, 2.3, 0.05, s * 0.4, 1.2, 0.12, 0xaab2bb, { metal: 0.85, rough: 0.2 });
+      P(g, 0.12, 0.2, 0.04, 1.0, 1.25, 0.13, 0x333333); P(g, 0.06, 0.06, 0.02, 1.0, 1.25, 0.16, 0x7ad8ff, { emissive: 0x7ad8ff, ei: 2 });
+      P(g, 0.6, 0.18, 0.03, 0, 2.65, 0.13, 0x111111); P(g, 0.3, 0.1, 0.01, 0, 2.65, 0.15, 0xff9a3c, { emissive: 0xff7a1c, ei: 1.5 });
+      const f = new THREE.Vector3(Math.sin(rot), 0, Math.cos(rot));
+      spot(x + f.x * 1.1, z + f.z * 1.1, 1.7, label, onUse);
+    };
+    // An escalator: a sloped moving stairway with glass sides, bottom end at (x, zBottom).
+    L.escalator = (x, zBottom, len, dir, label, onUse, goingUp = true) => {
+      const g = new THREE.Group(); g.position.set(x0 + x, 0, z0 + zBottom + dir * len / 2); scene.add(g);
+      const ang = Math.atan2(H, len), slope = Math.hypot(H, len);
+      const belt = new THREE.Mesh(boxGeo, mat(0x3a3f45, { metal: 0.5, rough: 0.4 })); belt.scale.set(1.1, 0.25, slope); belt.position.y = H / 2; belt.rotation.x = -dir * ang; g.add(belt);
+      for (const s of [-1, 1]) {
+        const glass = new THREE.Mesh(boxGeo, mat(0xbfe6ff, { opacity: 0.3, rough: 0.05 })); glass.scale.set(0.04, 0.9, slope); glass.position.set(s * 0.6, H / 2 + 0.55, 0); glass.rotation.x = -dir * ang; g.add(glass);
+        const rail = new THREE.Mesh(boxGeo, mat(0x1a1a1a)); rail.scale.set(0.08, 0.06, slope); rail.position.set(s * 0.6, H / 2 + 1.0, 0); rail.rotation.x = -dir * ang; g.add(rail);
+      }
+      colliders.push({ minX: x0 + x - 0.7, maxX: x0 + x + 0.7, minZ: z0 + Math.min(zBottom, zBottom + dir * len), maxZ: z0 + Math.max(zBottom, zBottom + dir * len) });
+      const at = goingUp ? zBottom - dir * 0.9 : zBottom + dir * (len + 0.9);
+      spot(x, at, 1.7, label, onUse);
+    };
+    L.F = F; L.spot = spot; L.seat = seat; L.B = B; L.x0 = x0; L.z0 = z0;
     layouts[key] = L;
     return L;
   }
+
+  // Moving between floors: fade, put the player at (lx, lz) in layout `to`, facing `yaw`
+  // (0 = facing away from the front door). `upFrom` remembers which downstairs you
+  // came from, so the flat above a shop takes you back down into the shop.
+  let upFrom = null, liftFrom = null;
+  const go = (to, lx, lz, yaw, msg) => hooks.travel(new THREE.Vector3(to.x0 + lx, 0, to.z0 + lz), yaw, msg, () => api.enter(to));
 
   // =========================== HOME ===========================
   {
@@ -204,6 +258,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.bed(10.8, -7.8, 0, false, 0x8f5b3e); F.desk(5.9, -5.2, Math.PI / 2); F.officeChair(6.8, -5.2, -Math.PI / 2);
     F.bookshelf(11.6, -3.0, -Math.PI / 2); F.plant(11.3, -1.6);
     L.light(-6.5, 4); L.light(6.5, 4); L.light(-6, -5, 0.9, 12); L.light(2.5, -5, 0.8, 9, 0xffffff); L.light(8.5, -5, 0.8, 10);
+    L.stairs(-2.6, 6.3, 4.2, 1, 'Go upstairs', () => { upFrom = { L, x: -2.6, z: 3.0 }; go(layouts['home-up'], -1.2, 7.4, 0, 'Upstairs'); }, -2.6, 3.3);
   }
 
   // =========================== SHOP ===========================
@@ -226,6 +281,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.table(8.5, -4.6, 1.4, 0.9); F.chair(8.0, -3.9, Math.PI); F.chair(9.0, -3.9, Math.PI);
     spot(-5.5, -5.8, 2.2, 'Check the stock', () => hooks.toast('Boxes of crisps, tins and toilet roll waiting to go out on the shelves.'));
     L.light(-6, 4, 1.2, 16, 0xffffff); L.light(6, 4, 1.2, 16, 0xffffff); L.light(-4, -5.5, 0.8, 14, 0xfff1dc); L.light(6, -5.5, 0.8, 12, 0xfff1dc);
+    L.stairs(-11.2, -5.5, 4.2, -1, 'Go upstairs to the flat', () => { upFrom = { L, x: -9.8, z: -3.0 }; go(layouts['home-up'], -1.2, 7.4, 0, 'The flat above the shop'); }, -9.8, -3.0);
   }
 
   // =========================== OFFICE ===========================
@@ -237,7 +293,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.reception(0, 4.6); F.officeChair(-1, 3.7, 0);
     for (const z of [5.4, 6.4, 7.4]) F.chair(-11.4, z, Math.PI / 2, 0x2f6f8f, 'Sit in the waiting area');
     F.cooler(-11.3, 3.8); F.plant(11.2, 8.3); F.plant(-11.2, 8.4);
-    L.B(0.04, 0.9, 3.6, 11.83, 2.4, 5.6, 0x2f6f8f, false, { emissive: 0x2f6f8f, ei: 0.35 });   // company logo panel on the wall
+    L.B(0.04, 0.9, 2.8, 11.83, 2.4, 6.6, 0x2f6f8f, false, { emissive: 0x2f6f8f, ei: 0.35 });   // company logo panel on the wall
     spot(0, 5.6, 1.8, 'Talk to the receptionist', () => hooks.toast('"Morning! Have a seat, someone will be right with you."'));
     // Open-plan desks
     for (const cx of [-6.5, 5.5]) for (const [dx, dz, rot] of [[-0.75, -0.42, Math.PI], [0.75, -0.42, Math.PI], [-0.75, 0.42, 0], [0.75, 0.42, 0]]) {
@@ -257,14 +313,184 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     spot(9.4, -7.6, 1.7, 'Make a coffee', () => hooks.rest(25, 'You make a coffee. That\'s better.'));
     L.light(-6, 0.6, 1.1, 14, 0xf4f8ff); L.light(5.5, 0.6, 1.1, 14, 0xf4f8ff); L.light(0, 6, 0.9, 10, 0xf4f8ff);
     L.light(-7, -6, 0.9, 10, 0xf4f8ff); L.light(1.5, -6, 0.8, 9); L.light(8.5, -6, 0.8, 9);
+    L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
+    L.escalator(-9.5, 7.6, 5, -1, 'Ride the escalator up', () => { liftFrom = L; go(layouts['office-up'], -9.5, 1.3, 0, 'Floor 1'); });
+  }
+
+  // =========================== UPSTAIRS: HOME / FLAT ===========================
+  {
+    const L = makeLayout('home-up', -5100, 60, 0xe9e2d6, 0x9c7a55, { exit: false }), { F, spot, seat } = L;
+    L.partZ(-4, 1, 9, [5]); L.partZ(4, 1, 9, [5]);
+    L.partX(1, -12, 12, [-8, 0, 8]);
+    L.partZ(-4, -9, 1); L.partZ(4, -9, 1);
+    // Landing
+    L.stairwell(-2.6, 6.3, 4.2, 'Go downstairs', () => { const b = upFrom || { L: layouts.home, x: -2.6, z: 3.0 }; go(b.L, b.x, b.z, 0, 'Downstairs'); }, -1.2, 5.6);
+    F.plant(3.2, 8.4); F.art(0, 1.8, 8.82, Math.PI, 0xb57a5a); F.rug(1.2, 4.5, 1.6, 4.2, 0x7a5a8a);
+    // Kids' bedroom (front left)
+    F.bed(-10.7, 3.2, Math.PI / 2, false, 0xd96a8a); F.bedside(-11.5, 4.7, Math.PI / 2);
+    F.desk(-6.0, 8.4, Math.PI, false); F.chair(-6.0, 7.6, 0, 0xe0a030, 'Sit at the desk');
+    L.B(0.9, 0.5, 0.5, -10.6, 0.35, 8.3, 0x3d8bd9, true);   // toy box
+    F.rug(-8, 4.5, 2.6, 2.2, 0x6fc2a8);
+    spot(-10.2, 3.2, 1.8, 'Have a nap', () => hooks.sleep());
+    // Guest bedroom (front right)
+    F.bed(10.7, 5.0, -Math.PI / 2, true, 0x5a7a4a); F.bedside(11.5, 3.6, -Math.PI / 2); F.bedside(11.5, 6.4, -Math.PI / 2);
+    F.wardrobe(6.6, 8.5, Math.PI); F.rug(8.5, 5, 2.6, 3, 0xb8a888);
+    spot(9.6, 5.0, 2.0, 'Sleep in the bed', () => hooks.sleep());
+    // Family bathroom (back left)
+    F.bath(-8, -8.4, 0); F.toilet(-11.5, -4.5, Math.PI / 2); F.basin(-4.5, -5.0, -Math.PI / 2);
+    spot(-8, -7.4, 1.6, 'Take a bath', () => hooks.rest(15, 'A warm bath. You feel refreshed.'));
+    // Reading room (back middle)
+    F.sofa(0, -7.9, 0, 0x8a5a4a); seat(0, -7.9, 0, 0.9, 'Sit on the sofa');
+    F.coffeeTable(0, -5.8, 0); F.bookshelf(-3.6, -3.5, Math.PI / 2); F.bookshelf(3.6, -3.5, -Math.PI / 2); F.plant(2.8, -8.3);
+    // Home office (back right)
+    F.desk(8, -8.3, 0); F.officeChair(8, -7.4, Math.PI); F.bookshelf(11.6, -5, -Math.PI / 2); F.plant(5, -8.3);
+    L.light(0, 5, 0.8, 10); L.light(-8, 5, 0.9, 11); L.light(8, 5, 0.9, 11); L.light(-8, -4, 0.8, 10, 0xffffff); L.light(0, -4, 0.8, 10); L.light(8, -4, 0.8, 10);
+  }
+
+  // =========================== UPSTAIRS: OFFICE FLOOR 1 ===========================
+  {
+    const L = makeLayout('office-up', -5300, 60, 0xe9edf1, 0x6f7a86, { exit: false }), { F, spot, seat } = L;
+    L.partX(-2.5, -12, 12, [-7, 1.5, 8.5]);
+    L.partZ(-2, -9, -2.5); L.partZ(5, -9, -2.5);
+    L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift down to reception', () => { const b = liftFrom || layouts.office; go(b, 10.0, 3.0, Math.PI / 2, 'Ground floor'); });
+    L.stairwell(-9.5, 5.1, 5, 'Ride the escalator down', () => { const b = liftFrom || layouts.office; go(b, -8.2, 8.3, 0, 'Ground floor'); }, -9.5, 1.6);
+    L.B(1.6, 0.4, 0.04, -9.5, 2.6, 8.82, 0x2f6f8f, false, { emissive: 0x2f6f8f, ei: 0.4 });   // "FLOOR 1" plate
+    for (const cx of [-5, 5]) for (const [dx, dz, rot] of [[-0.75, -0.42, Math.PI], [0.75, -0.42, Math.PI], [-0.75, 0.42, 0], [0.75, 0.42, 0]]) {
+      for (const cz of [1.0, 5.6]) { F.desk(cx + dx, cz + dz, rot); F.officeChair(cx + dx, cz + dz * 2.6, rot + Math.PI); }
+    }
+    // Boardroom (back left)
+    F.table(-7, -6, 4.6, 1.6, 0, 0x3b2b1f);
+    for (const x of [-8.7, -7.3, -5.9]) { F.officeChair(x, -7.3, 0); F.officeChair(x, -4.7, Math.PI); }
+    F.screen(-7, -8.78, 0);
+    // Break-out area (back middle)
+    F.sofa(1.5, -8.0, 0, 0x2f6f8f); seat(1.5, -8.0, 0, 0.9, 'Sit on the sofa'); F.coffeeTable(1.5, -6.0, 0);
+    F.sofa(-0.9, -5.6, Math.PI / 2, 0xd98a3d, 1.2); seat(-0.9, -5.6, Math.PI / 2, 0.9, 'Sit in the armchair'); F.plant(4.2, -8.3);
+    // Print and server room (back right)
+    for (const x of [6.4, 7.6, 8.8]) L.B(0.8, 2.0, 0.9, x, 1.0, -8.4, 0x22262b, true);
+    for (const x of [6.4, 7.6, 8.8]) for (let y = 0.4; y < 1.9; y += 0.3) L.B(0.7, 0.03, 0.01, x, y, -7.94, 0x56c8ff, false, { emissive: 0x56c8ff, ei: 1.2 });
+    L.B(1.0, 1.0, 0.7, 10.8, 0.5, -4.0, 0xd8d8d8, true);   // printer
+    spot(10.8, -4.9, 1.6, 'Use the printer', () => hooks.toast('The printer jams. Of course it does.'));
+    L.light(-5, 3, 1.1, 14, 0xf4f8ff); L.light(5, 3, 1.1, 14, 0xf4f8ff); L.light(-7, -6, 0.9, 10, 0xf4f8ff); L.light(1.5, -6, 0.8, 9); L.light(8.5, -6, 0.8, 9, 0xd8f0ff);
+  }
+
+
+  // =========================== CYBER OFFICE (tech company) ===========================
+  {
+    const L = makeLayout('cyber', -5400, 0, 0x1c2230, 0x12161d), { F, spot, seat, B } = L;
+    const neon = (c, ei = 2) => mat(c, { emissive: c, ei });
+    L.partX(-2.5, -12, 12, [-7, 1.5, 8.5], 0x1c2230);
+    L.partZ(-2, -9, -2.5, [], 0x1c2230); L.partZ(5, -9, -2.5, [], 0x1c2230);
+    for (const [x, z, w, d, c] of [[0, -8.82, 23.5, 0.05, 0x00e5ff], [-11.82, 0, 0.05, 17.5, 0xff2bd6], [11.82, 0, 0.05, 17.5, 0x00e5ff]]) B(w, 0.06, d, x, 3.2, z, neon(c));   // neon strips
+    // Reception with a holographic logo
+    F.reception(0, 4.6); F.officeChair(-1, 3.7, 0);
+    B(4, 0.05, 0.05, 0, 0.82, 5.12, neon(0x00e5ff, 3));
+    const holo = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.05, 8, 40), neon(0x00e5ff, 3)); holo.position.set(L.x0, 2.3, L.z0 + 4.5); scene.add(holo); L.spin = [holo];
+    B(1.2, 0.05, 1.2, 0, 1.18, 4.5, neon(0x00e5ff, 1.2), false, { opacity: 0.4 });
+    spot(0, 5.6, 1.8, 'Talk to the receptionist', () => hooks.toast('"Welcome to Nexus Cyber Systems. Visitors need a badge - the dev floor is through there."'));
+    // Dev pods: desks with three screens each
+    const devDesk = (x, z, rot) => {
+      F.desk(x, z, rot, false);
+      const g = new THREE.Group(); g.position.set(L.x0 + x, 0.1, L.z0 + z); g.rotation.y = rot; scene.add(g);
+      for (const [mx, ry] of [[-0.48, 0.35], [0, 0], [0.48, -0.35]]) { const m = new THREE.Mesh(boxGeo, mat(0x0a0a0a)); m.scale.set(0.46, 0.3, 0.03); m.position.set(mx, 1.08, -0.2); m.rotation.y = ry; g.add(m); const sc = new THREE.Mesh(boxGeo, neon([0x22ff88, 0x00e5ff, 0xff2bd6][Math.abs(Math.round(mx * 2)) % 3], 0.9)); sc.scale.set(0.42, 0.26, 0.005); sc.position.set(mx, 1.08, -0.183); sc.rotation.y = ry; g.add(sc); }
+    };
+    for (const cx of [-6.5, 5.5]) for (const [dx, dz, rot] of [[-0.75, -0.42, Math.PI], [0.75, -0.42, Math.PI], [-0.75, 0.42, 0], [0.75, 0.42, 0]]) { devDesk(cx + dx, 0.6 + dz, rot); F.officeChair(cx + dx, 0.6 + dz * 2.6, rot + Math.PI); }
+    spot(-6.5, 2.4, 1.6, 'Watch the developers code', () => hooks.toast('Green text scrolls past on three screens at once. Someone mutters about a merge conflict.'));
+    // Server hall (back left, behind glass)
+    for (const x of [-11, -9.6, -8.2, -6.8, -5.4, -4]) { B(0.9, 2.3, 1.0, x, 1.15, -8.2, 0x0d1117, true); for (let y = 0.35; y < 2.2; y += 0.22) B(0.75, 0.025, 0.01, x, y, -7.69, neon(y * 10 % 2 > 1 ? 0x22ff88 : 0x00e5ff, 1.6)); }
+    for (const x of [-11, -9.6, -8.2, -6.8, -5.4, -4]) { B(0.9, 2.3, 1.0, x, 1.15, -5.0, 0x0d1117, true); for (let y = 0.35; y < 2.2; y += 0.22) B(0.75, 0.025, 0.01, x, y, -4.49, neon(0x00e5ff, 1.4)); }
+    spot(-7.5, -6.6, 2.2, 'Check the servers', () => hooks.toast('Rows of servers hum away. A sign says: DO NOT UNPLUG ANYTHING. EVER.'));
+    // AI and robotics lab (back middle): holo table and a robot arm
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, 0.9, 24), mat(0x2a3140)); table.position.set(L.x0 + 1.5, 0.55, L.z0 - 6); scene.add(table);
+    const globe = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), mat(0x00e5ff, { emissive: 0x00e5ff, ei: 2, opacity: 0.5 })); globe.position.set(L.x0 + 1.5, 1.7, L.z0 - 6); scene.add(globe); L.spin.push(globe);
+    colliders.push({ minX: L.x0 + 0.3, maxX: L.x0 + 2.7, minZ: L.z0 - 7.2, maxZ: L.z0 - 4.8 });
+    const arm = new THREE.Group(); arm.position.set(L.x0 - 0.8, 0.1, L.z0 - 8.2); scene.add(arm);
+    for (const [w, h, y, rx] of [[0.5, 0.4, 0.2, 0], [0.18, 1.0, 0.85, 0.4], [0.14, 0.8, 1.55, -0.9]]) { const p = new THREE.Mesh(boxGeo, mat(0xe8a33d, { metal: 0.4 })); p.scale.set(w, h, w); p.position.y = y; p.rotation.x = rx; arm.add(p); }
+    L.spin.push(arm);
+    spot(1.5, -4.5, 2.0, 'Talk to the lab AI', () => hooks.toast('"Hello. I am ORACLE. I have analysed the city. The traffic lights are 4% too slow."'));
+    // Gaming lounge (back right)
+    for (const [x, z, c] of [[7, -5.5, 0xff2bd6], [8.5, -5.2, 0x00e5ff], [10, -5.5, 0x22ff88]]) { const bag = new THREE.Mesh(new THREE.SphereGeometry(0.55, 14, 10), mat(c)); bag.scale.y = 0.6; bag.position.set(L.x0 + x, 0.4, L.z0 + z); scene.add(bag); seat(x, z, Math.PI, 0.65, 'Sit on the bean bag'); }
+    F.screen(8.5, -8.78, 0); B(0.6, 0.12, 0.35, 8.5, 0.62, -8.3, 0x111111);
+    spot(8.5, -6.8, 1.8, 'Play on the console', () => hooks.rest(10, 'You play a quick match on the big screen. Victory!'));
+    spot(4, -4.2, 1.4, 'Try the VR headset', () => hooks.toast('You put on the headset and you\'re standing on the moon. Then you walk into a desk.'));
+    L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
+    L.light(-6, 0.6, 0.9, 14, 0x9fe8ff); L.light(5.5, 0.6, 0.9, 14, 0xd9a0ff); L.light(0, 6, 0.8, 10, 0x9fe8ff); L.light(-7, -6, 0.8, 10, 0x8affc8); L.light(1.5, -6, 0.8, 9, 0x9fe8ff); L.light(8.5, -6, 0.8, 9, 0xff9ae8);
+  }
+
+  // =========================== COURTHOUSE ===========================
+  {
+    const L = makeLayout('court', -5500, 0, 0xd9cbb0, 0x6b4a30), { F, spot, seat, B } = L;
+    const wood = mat(0x5a3a22), dark = mat(0x3b2616), green = mat(0x2f5a3a);
+    L.partX(3, -12, 12, [0]);
+    // Lobby: security arch, x-ray belt, benches
+    B(0.15, 2.4, 0.5, -3.6, 1.2, 6.5, 0xbfc5cb); B(0.15, 2.4, 0.5, -2.4, 1.2, 6.5, 0xbfc5cb); B(1.35, 0.2, 0.5, -3.0, 2.4, 6.5, 0xbfc5cb);
+    B(2.5, 0.9, 0.8, -6, 0.45, 6.5, 0x8a9096, true); B(0.9, 0.7, 0.85, -6, 1.2, 6.5, 0x2b2f33);
+    spot(-3, 7.5, 1.6, 'Go through security', () => hooks.toast('Beep. You empty your pockets. Just keys and a few gold coins. "Go ahead."'));
+    for (const x of [5, 8.5]) { F.table(x, 7.6, 2.2, 0.5, 0, 0x5a3a22); seat(x, 7.6, Math.PI, 0.85, 'Wait on the bench'); }
+    spot(9.5, 5, 1.8, 'Talk to the court usher', () => hooks.toast('"Court is in session. You can watch from the public gallery - please keep quiet."'));
+    // Courtroom: judge's bench raised at the back
+    B(9, 0.6, 3, 0, 0.35, -7.4, dark, true);
+    B(6, 1.3, 0.8, 0, 1.3, -6.3, wood, true);
+    B(1.0, 1.8, 0.2, 0, 1.6, -8.5, mat(0x7a1f1f));                                   // judge's high-backed chair
+    const crest = new THREE.Mesh(new THREE.CircleGeometry(0.9, 32), mat(0xd4af37, { metal: 0.8, rough: 0.3 })); crest.position.set(L.x0, 2.9, L.z0 - 8.8); scene.add(crest);
+    B(4.5, 0.08, 0.05, 0, 3.4, -8.8, mat(0xd4af37, { metal: 0.8 }));
+    // Witness box, dock, jury box, counsel tables
+    B(1.6, 1.1, 0.08, 5, 0.65, -4.5, wood); B(0.08, 1.1, 1.6, 4.2, 0.65, -5.3, wood); B(0.08, 1.1, 1.6, 5.8, 0.65, -5.3, wood);
+    B(0.08, 1.1, 2.4, -8.0, 0.65, -1.0, wood); B(2.0, 1.1, 0.08, -9.0, 0.65, 0.2, wood); B(2.0, 1.1, 0.08, -9.0, 0.65, -2.2, wood);
+    B(0.06, 1.2, 2.4, -8.0, 1.75, -1.0, mat(0xbfe6ff, { opacity: 0.3 })); B(2.0, 1.2, 0.06, -9.0, 1.75, 0.2, mat(0xbfe6ff, { opacity: 0.3 }));   // glass dock
+    for (let r = 0; r < 2; r++) for (let k = 0; k < 6; k++) F.chair(10.8 - r * 1.1, -6.8 + k * 1.0, -Math.PI / 2, 0x7a1f1f, 'Sit in the jury box');
+    B(0.08, 0.9, 6.4, 9.0, 0.55, -4.3, wood);
+    for (const x of [-3, 3]) { F.table(x, -3.2, 3, 1.0, 0, 0x5a3a22); F.chair(x - 0.7, -2.3, Math.PI, 0x2f2f2f, 'Sit at counsel\'s table'); F.chair(x + 0.7, -2.3, Math.PI, 0x2f2f2f, 'Sit at counsel\'s table'); }
+    // Public gallery
+    for (const z of [-0.3, 1.5]) for (const x of [-4.5, 4.5]) { F.table(x, z, 5, 0.5, 0, 0x5a3a22); for (const dx of [-1.6, 0, 1.6]) seat(x + dx, z, Math.PI, 0.85, 'Watch the trial'); }
+    F.rug(0, -3.5, 2, 6, 0x4a1f1f);
+    spot(0, -4.8, 1.8, 'Listen to the judge', () => hooks.toast('"Members of the jury, you must consider only the evidence put before you in this court..."'));
+    L.light(-6, 6, 0.9, 12); L.light(6, 6, 0.9, 12); L.light(-5, -4, 1.0, 14, 0xfff1d6); L.light(5, -4, 1.0, 14, 0xfff1d6); L.light(0, -7, 0.8, 8, 0xfff1d6);
+  }
+
+  // =========================== ARCADE ===========================
+  {
+    const L = makeLayout('arcade', -5600, 0, 0x22163a, 0x2a1f4f), { F, spot, B } = L;
+    const neon = (c, ei = 2) => mat(c, { emissive: c, ei });
+    const cols = [0xff2bd6, 0x00e5ff, 0x22ff88, 0xffd23f, 0xff5a3c, 0x8a5cff];
+    for (const [x, z, w, d, c] of [[0, -8.82, 23.5, 0.05, 0xff2bd6], [-11.82, 0, 0.05, 17.5, 0x00e5ff], [11.82, 0, 0.05, 17.5, 0xffd23f]]) B(w, 0.08, d, x, 3.1, z, neon(c));
+    let ci = 0;
+    const cabinet = (x, z, rot) => {
+      const g = new THREE.Group(); g.position.set(L.x0 + x, 0.1, L.z0 + z); g.rotation.y = rot; scene.add(g);
+      const c = cols[ci++ % cols.length];
+      for (const [w, h, d, px, py, pz, m] of [[0.8, 1.9, 0.75, 0, 0.95, 0, mat(0x15151c)], [0.66, 0.5, 0.02, 0, 1.45, 0.38, neon(c, 1.4)], [0.8, 0.22, 0.2, 0, 1.95, 0.3, neon(c, 2.5)], [0.75, 0.08, 0.35, 0, 1.0, 0.45, mat(0x2b2b33)]]) { const p = new THREE.Mesh(boxGeo, m); p.scale.set(w, h, d); p.position.set(px, py, pz); g.add(p); }
+      colliders.push({ minX: L.x0 + x - 0.45, maxX: L.x0 + x + 0.45, minZ: L.z0 + z - 0.45, maxZ: L.z0 + z + 0.45 });
+    };
+    for (let z = -7.5; z <= 6.5; z += 1.1) { cabinet(-11.3, z, Math.PI / 2); cabinet(11.3, z, -Math.PI / 2); }
+    for (let x = -6; x <= 6; x += 1.1) { cabinet(x, -1.2, 0); cabinet(x, -2.4, Math.PI); }
+    spot(-10.2, 0, 2.2, 'Play an arcade game (2 gold)', () => hooks.arcade('game'));
+    spot(10.2, 0, 2.2, 'Play an arcade game (2 gold)', () => hooks.arcade('game'));
+    spot(0, 0, 2.0, 'Play an arcade game (2 gold)', () => hooks.arcade('game'));
+    // Claw machines, air hockey, dance machine, prize counter
+    for (const x of [-7, -5]) {
+      B(1.1, 0.9, 1.1, x, 0.45, -7.6, 0xff2bd6, true); B(1.1, 1.3, 1.1, x, 1.55, -7.6, mat(0xbfe6ff, { opacity: 0.25 }));
+      for (let k = 0; k < 6; k++) { const ball = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), mat(cols[k])); ball.position.set(L.x0 + x - 0.3 + (k % 3) * 0.3, 1.05, L.z0 - 7.8 + Math.floor(k / 3) * 0.35); scene.add(ball); }
+    }
+    spot(-6, -6.4, 1.8, 'Try the claw machine (2 gold)', () => hooks.arcade('claw'));
+    for (const x of [3.5, 7]) { F.table(x, -6.5, 2.2, 1.2, 0, 0x1f6f8f); B(2.0, 0.02, 1.0, x, 0.88, -6.5, neon(0x00e5ff, 0.6)); }
+    spot(5.2, -5.2, 2.0, 'Play air hockey', () => hooks.arcade('hockey'));
+    for (let i = 0; i < 9; i++) B(0.6, 0.12, 0.6, -2.7 + (i % 3) * 0.65, 0.16, 4.5 + Math.floor(i / 3) * 0.65, neon(cols[i % cols.length], 1.2));
+    B(2.2, 2.2, 0.3, -2.05, 1.2, 3.4, mat(0x15151c)); B(1.6, 1.0, 0.02, -2.05, 1.6, 3.56, neon(0xff2bd6, 1.2));
+    spot(-2.05, 5.2, 1.6, 'Dance on the dance machine', () => hooks.arcade('dance'));
+    F.counter(7, 6.8, Math.PI, 4, 0xffd23f, 0x2b2b33);
+    for (let k = 0; k < 8; k++) { const prize = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat(cols[k % cols.length])); prize.position.set(L.x0 + 5.4 + k * 0.45, 1.25, L.z0 + 7.2); scene.add(prize); }
+    spot(7, 5.6, 1.8, 'Swap tickets for a prize', () => hooks.arcade('prize'));
+    L.light(-6, 3, 0.9, 14, 0xff9ae8); L.light(6, 3, 0.9, 14, 0x9fe8ff); L.light(0, -5, 0.9, 14, 0xd9a0ff); L.light(0, 6, 0.7, 10, 0xffe39a);
   }
 
   let active = null;
-  return {
+  const api = {
     layouts,
     /** Which layout a building type uses. Unknown non-civic types count as homes. */
     layoutFor(type = '') {
       const t = String(type).toLowerCase();
+      if (/cyber|tech|software|data|robot|ai_lab|startup/.test(t)) return layouts.cyber;
+      if (/court|law/.test(t)) return layouts.court;
+      if (/arcade|amusement|games/.test(t)) return layouts.arcade;
       if (/shop|retail|supermarket|market|kiosk|store|convenience|bakery|butcher|chemist|pharmacy/.test(t)) return layouts.shop;
       if (/office|commercial|government|bank|job_centre|post_office|company|industrial|warehouse|frontier-office|base/.test(t)) return layouts.office;
       if (/apartment|house|home|residential|terrace|detached|bungalow|flat|dormitory|cabin|farm|building|^yes$/.test(t)) return layouts.home;
@@ -273,6 +499,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     enter(L) { this.exit(); active = L; for (const l of L.lights) l.visible = true; },
     exit() { if (active) for (const l of active.lights) l.visible = false; active = null; },
     get active() { return active; },
+    update(dt) { if (active?.spin) for (const o of active.spin) o.rotation.y += dt * 0.8; },
     /** Nearest interaction inside the current interior (furniture, the exit). */
     nearest(p) {
       if (!active) return null;
@@ -281,4 +508,5 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       return best;
     },
   };
+  return api;
 }
