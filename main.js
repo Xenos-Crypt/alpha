@@ -3387,7 +3387,9 @@ function applyHit(e, h) {
     reactBystanders(p, byPlayer);
   }
 
-  popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '');
+  // Damage numbers only appear for hits the player made; other people's fights and
+  // traffic accidents don't pop numbers on the player's screen.
+  if (byPlayer) popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '');
   burst(at(p, e.height * 0.6), h.heavy ? 18 : 8, [0xffffff, 0xffe08a, characters[charIdx].fx], h.heavy ? 12 : 7, 0.12, 0.3, 8);
   // Only count toward the player's own combo/ultimate-charge when the player
   // actually caused the hit — AI traffic running someone over was bumping the
@@ -3608,6 +3610,7 @@ function updateWildlife(e, dt) {
   e.touchCd -= dt;
   if (!inCar && e.stun <= 0 && dist < (e.animal === 'snake' ? 1.1 : 1.6) && Math.abs(p.y - player.position.y) < 1.5 && e.touchCd <= 0) {
     hurtPlayer(def.dmg, p, def.kb, 'Attacked by a wild ' + (e.animal || 'animal'));
+    dispatchAnimalControl(e);   // the animal is animal control's job, not the player's
     e.touchCd = e.animal === 'snake' ? 1.6 : 1.2;
   }
 }
@@ -3786,6 +3789,133 @@ addPedPopulation(34, MAIN_BOUNDS);
 addPedPopulation(10, RIVERSIDE_BOUNDS);
 addPedPopulation(18, CAPITAL_BOUNDS);
 addPedPopulation(12, { bx0: -2, bx1: -2, bz0: 1, bz1: 1 });   // students attending Ashford School
+
+// Crimes the player didn't commit are handled by the city's own services instead of
+// being pinned on the player: the police come and arrest an AI driver who hits a
+// resident, and animal control comes to take away a wild animal that attacks.
+const responseUnits = { police: 0, animal: 0 };
+function serviceDepot(pos) {
+  // Units set off from a road junction a couple of blocks from the scene (towards
+  // the nearest police station), so they're on the road network and arrive quickly.
+  const station = civicBuildings.filter(b => b.type === 'police').sort((a, b) => distXZ(a, pos) - distXZ(b, pos))[0];
+  const toward = station ? new THREE.Vector3(station.x - pos.x, 0, station.z - pos.z) : new THREE.Vector3(1, 0, 1);
+  if (toward.lengthSq() < 1) toward.set(1, 0, 1);
+  toward.normalize().multiplyScalar(Math.min(80, toward.length() || 80));
+  const depot = new THREE.Vector3(Math.round((pos.x + toward.x) / 40) * 40, 0, Math.round((pos.z + toward.z) / 40) * 40);
+  depot.y = groundY(depot.x, depot.z);
+  return depot;
+}
+function playerNear(pos, range = 120) { return distXZ(player.position, pos) < range; }
+// Shared "drive out, deal with it on the spot, drive back" behaviour for service units.
+function dispatchServiceUnit({ kind, color, getTarget, arriveRange = 7, onArrive, onSceneDone, onCancel, sceneTime = 4, label }) {
+  const start = getTarget();
+  if (!start) return false;
+  const depot = serviceDepot(start);
+  const unit = makeVehicle(kind, color);
+  unit.ai = null; unit.taskDriven = true; unit.serviceUnit = label;
+  unit.group.position.copy(depot);
+  const st = { phase: 1, sceneT: 0, actors: [], stuckT: 0, bypassT: 0, last: depot.clone() };
+  // Follow the roads; if traffic or a signal holds the unit up for a few seconds,
+  // it squeezes through like an emergency vehicle on a blue-light run.
+  const driveUnit = (target) => {
+    const p = unit.group.position;
+    if (st.bypassT > 0) {
+      // Blue-light run: follow the planned road waypoints, ignoring traffic and signals.
+      st.bypassT -= lastDt;
+      const n = unit.navigation, way = n?.points?.[n.index] || target;
+      const dir = new THREE.Vector3(way.x - p.x, 0, way.z - p.z), d = dir.length();
+      if (d < 1 && n && n.index < n.points.length - 1) n.index++;
+      else if (d > 0.01) {
+        p.addScaledVector(dir.normalize(), Math.min(d, 11 * lastDt)); p.y = groundY(p.x, p.z, p.y);
+        unit.group.rotation.y = lerpAngle(unit.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * lastDt));
+      }
+      return;
+    }
+    moveAmbulance(unit, target, lastDt);
+    st.stuckT = distXZ(p, st.last) < 0.05 ? st.stuckT + lastDt : 0;
+    st.last.copy(p);
+    if (st.stuckT > 2.5) { st.stuckT = 0; st.bypassT = 3; }
+  };
+  let lastDt = 0;
+  addTask({ dur: 180, update(dt, t, task) {
+    lastDt = dt;
+    const p = unit.group.position;
+    if (st.phase === 1) {
+      const target = getTarget();
+      if (!target) { st.phase = 3; onCancel?.(); return; }
+      if (distXZ(p, target) > arriveRange) { driveUnit(target); return; }
+      unit.speed = 0; st.phase = 2; st.actors = onArrive(unit) || [];
+    } else if (st.phase === 2) {
+      st.sceneT += dt;
+      for (const a of st.actors) animateHumanoid(a, null, false, false, true, dt);
+      if (st.sceneT >= sceneTime) {
+        for (const a of st.actors) disposeObj(a.root);
+        st.actors = []; onSceneDone?.(); st.phase = 3;
+      }
+    } else if (distXZ(p, depot) > 3) driveUnit(depot);
+    else task.t = task.dur;
+  }, end() {
+    for (const a of st.actors) disposeObj(a.root);
+    if (st.phase === 1) onCancel?.(); else if (st.phase === 2) onSceneDone?.();
+    const i = vehicles.indexOf(unit); if (i >= 0) vehicles.splice(i, 1); disposeObj(unit.group);
+  } });
+  return true;
+}
+function dispatchPoliceArrest(offender, reason) {
+  if (offender.arrestPending || offender.serviceUnit || offender === driving || responseUnits.police >= 2) return;
+  if (['police', 'ambulance', 'tank', 'bus'].includes(offender.kind)) return;
+  offender.arrestPending = true; responseUnits.police++;
+  // The driver pulls over and waits for the police.
+  offender.speed = 0; if (offender.ai) offender.ai.parked = true;
+  if (playerNear(offender.group.position)) toast(`Police are on the way to arrest a driver (${reason}).`);
+  const ok = dispatchServiceUnit({
+    kind: 'police', color: 0xf5f6fa, label: 'police', getTarget: () => offender.group.position,
+    onArrive(unit) {
+      const side = new THREE.Vector3(Math.cos(offender.group.rotation.y), 0, -Math.sin(offender.group.rotation.y)).multiplyScalar(2);
+      const officer = makeHumanoid({ outfit: 0x243c58, hair: 0x382d24, pants: 0x1c2f43 });
+      const suspect = makeHumanoid({ outfit: 0x8e8e8e, hair: 0x2b1d14, pants: 0x3a3a3a });
+      for (const [h, off] of [[suspect, side], [officer, side.clone().multiplyScalar(1.7)]]) {
+        h.root.position.copy(offender.group.position).add(off); h.root.position.y = groundY(h.root.position.x, h.root.position.z);
+        h.root.lookAt(offender.group.position.x, h.root.position.y, offender.group.position.z);
+      }
+      if (playerNear(offender.group.position)) callout('DRIVER ARRESTED', 0x74b9ff);
+      return [officer, suspect];
+    },
+    onSceneDone() {
+      offender.arrestPending = false; responseUnits.police = Math.max(0, responseUnits.police - 1);
+      if (playerNear(offender.group.position)) toast('The police have arrested the driver. Their car has been impounded.');
+    },
+    onCancel() { offender.arrestPending = false; responseUnits.police = Math.max(0, responseUnits.police - 1); },
+  });
+  if (!ok) { offender.arrestPending = false; responseUnits.police = Math.max(0, responseUnits.police - 1); }
+}
+function dispatchAnimalControl(animal) {
+  if (animal.controlPending || !animal.alive || responseUnits.animal >= 2) return;
+  animal.controlPending = true; responseUnits.animal++;
+  const name = animal.animal || 'animal';
+  toast(`Animal control has been called for the ${name}.`);
+  const ok = dispatchServiceUnit({
+    kind: 'car', color: 0xf2a900, label: 'animal-control',
+    getTarget: () => animal.alive ? animal.root.position : null,
+    arriveRange: 8,
+    onArrive() {
+      const warden = makeHumanoid({ outfit: 0xf2a900, hair: 0x4a3426, pants: 0x2f3b2f });
+      warden.root.position.copy(animal.root.position).add(new THREE.Vector3(1.6, 0, 0));
+      warden.root.position.y = groundY(warden.root.position.x, warden.root.position.z);
+      warden.root.lookAt(animal.root.position.x, warden.root.position.y, animal.root.position.z);
+      // Captured: the animal is taken away safely (no reward or penalty for the player).
+      animal.alive = false; animal.root.visible = false; animal.respawn = 120;
+      if (animal.label) animal.label.el.style.display = 'none';
+      return [warden];
+    },
+    onSceneDone() {
+      animal.controlPending = false; responseUnits.animal = Math.max(0, responseUnits.animal - 1);
+      toast(`Animal control has safely taken the ${name} away.`);
+    },
+    onCancel() { animal.controlPending = false; responseUnits.animal = Math.max(0, responseUnits.animal - 1); },
+  });
+  if (!ok) { animal.controlPending = false; responseUnits.animal = Math.max(0, responseUnits.animal - 1); }
+}
 
 // Bystanders react to nearby violence/explosions like real people would instead
 // of only the directly-hit ped panicking: close by, people flee; a bit further
@@ -6196,6 +6326,7 @@ function resolveRoadMovement(v, start, dt) {
     const relativeSpeed = Math.hypot(velocity.x - e.vel.x, velocity.z - e.vel.z);
     e.carCd = 1.2;
     applyHit(e, { dmg: impactDamage(relativeSpeed, 0.65), from: e.root.position.clone().sub(new THREE.Vector3(velocity.x, 0, velocity.z)), kb: Math.min(22, relativeSpeed * 0.8), up: Math.min(6, relativeSpeed * 0.2), stun: Math.min(3, relativeSpeed * 0.12), heavy: true, impact: 0.4, police: v !== driving, fromPlayer: v === driving });
+    if (v !== driving && e.kind === 'npc') dispatchPoliceArrest(v, 'hit a pedestrian');
     v.speed *= 0.92;
     if (v === driving && e.kind === 'npc') raiseWanted(60);
   }
