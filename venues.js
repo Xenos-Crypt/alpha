@@ -40,7 +40,7 @@ export function buildVenues(ctx) {
   road(170, -640, 170, -770, 12);                 // north from the frontier edge of town
   road(-470, -770, 700, -770, 12);                // leisure park boulevard
   road(280, 925, 280, 1100, 12);                  // south from the Capital
-  road(-90, 1100, 1010, 1100, 14);                // business district boulevard, then the nightlife strip
+  road(-360, 1100, 1010, 1100, 14);               // entertainment quarter, business district boulevard, then the nightlife strip
 
   // ================================================================= RACEWAY
   const RW = { x: -280, z: -880, straight: 190, r: 72, w: 14 };
@@ -228,6 +228,23 @@ export function buildVenues(ctx) {
   ];
   north.forEach((c, i) => company({ ...c, x: -20 + i * 120, z: 1068, face: 1 }));
   south.forEach((c, i) => company({ ...c, x: -20 + i * 120, z: 1132, face: -1 }));
+  // Entertainment Quarter at the west end of the boulevard: casinos, arcades and a church.
+  company({ name: 'Golden Palace Casino', type: 'casino', x: -150, z: 1068, w: 26, d: 18, floors: 4, face: 1, base: '#3a0f1f', win: '#ffd23f', sign: '#2a0814', fg: '#ffd23f', sub: 'SLOTS · ROULETTE · BLACKJACK · POKER', neon: 0xffd23f });
+  company({ name: 'Lucky Seven Casino', type: 'casino', x: -150, z: 1132, w: 26, d: 18, floors: 3, face: -1, base: '#0f2a1f', win: '#22ff88', sign: '#0a1a14', fg: '#22ff88', sub: 'OPEN 24 HOURS · SLOTS · TABLES', neon: 0x22ff88 });
+  company({ name: 'Neon Nights Arcade', type: 'arcade', x: -270, z: 1132, w: 24, d: 16, floors: 2, face: -1, base: '#14102a', win: '#00e5ff', sign: '#14102a', fg: '#00e5ff', sub: '8 GAMES · PRIZES · NO TOKENS NEEDED', neon: 0x00e5ff });
+  company({ name: 'Retro Rumble Arcade', type: 'arcade', x: -270, z: 1068, w: 24, d: 16, floors: 2, face: 1, base: '#2a1022', win: '#ff5a3c', sign: '#2a1022', fg: '#ffd23f', sub: 'CLASSIC CABINETS · DANCE · CLAW', neon: 0xff5a3c });
+  {   // St Mary's Church: stone nave, bell tower and spire
+    const cx = -335, cz = 1062, stone = mat(0xbfb6a0, { rough: 0.9 });
+    company({ name: "St Mary's Church", type: 'church', x: cx, z: cz, w: 18, d: 28, floors: 3, face: 1, base: '#bfb6a0', win: '#7a5cff', sign: '#3a2f22', fg: '#f2e6c4', sub: 'ALL WELCOME · SUNDAY SERVICE' });
+    B(7, 22, 7, cx, 11, cz - 8, stone, true);
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(4.6, 14, 4), mat(0x4a5560)); spire.position.set(cx, 29, cz - 8); spire.rotation.y = Math.PI / 4; scene.add(spire);
+    B(0.3, 2.4, 0.3, cx, 37, cz - 8, mat(0xd4af37, { metal: 0.8 })); B(1.4, 0.3, 0.3, cx, 37.4, cz - 8, mat(0xd4af37, { metal: 0.8 }));
+    const roofN = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 9.6, 5, 4, 1), mat(0x4a5560)); roofN.rotation.y = Math.PI / 4; roofN.scale.set(1, 1, 1.55); roofN.position.set(cx, 10.2 + 2.5, cz + 2); scene.add(roofN);
+  }
+  signBoard('ENTERTAINMENT QUARTER', -95, 6, 1100, 12, Math.PI / 2, '#2a0814', '#ffd23f', 'CASINOS · ARCADES · CHURCH');
+  for (const sz of [-1, 1]) B(0.5, 6, 0.5, -95, 3, 1100 + sz * 6, steel);
+  dest('Entertainment Quarter', -210, 1100);
+
   // Nightlife strip at the east end of the boulevard: pubs, bars, a nightclub and restaurants.
   const night = [
     [{ name: 'The Rusty Anchor', type: 'pub', floors: 2, base: '#3a2414', win: '#ffb36b', sign: '#1a0f08', fg: '#e6c27a', sub: 'PUB · REAL ALE · FOOD', neon: 0xffb36b },
@@ -282,7 +299,7 @@ export function buildVenues(ctx) {
       const sp = Math.hypot(ballV.x, ballV.z); if (sp > 0.01) { ball.rotation.z -= ballV.x * dt / 0.34; ball.rotation.x += ballV.z * dt / 0.34; }
       const hx = ST.L / 2 + 2.7, hz = ST.W / 2 + 2.7;
       for (const s of [-1, 1]) if ((ball.position.x - ST.x) * s > ST.L / 2 && Math.abs(ball.position.z - ST.z) < 3.66) {
-        score[s > 0 ? 0 : 1]++; toast(`GOAL! Ashford ${score[0]} - ${score[1]} Riverside`);
+        score[s > 0 ? 0 : 1]++; if (ctx.onGoal) ctx.onGoal(s > 0 ? 0 : 1, score); else toast(`GOAL! Ashford ${score[0]} - ${score[1]} Riverside`);
         ball.position.set(ST.x, 0.4, ST.z); ballV.set(0, 0, 0);
       }
       if (Math.abs(ball.position.x - ST.x) > hx) { ball.position.x = ST.x + Math.sign(ball.position.x - ST.x) * hx; ballV.x *= -0.6; }
@@ -304,5 +321,5 @@ export function buildVenues(ctx) {
       if (lap.on && Math.hypot(p.x - RW.x, p.z - RW.z) > RW.straight / 2 + RW.r + 60) { lap.on = false; toast('You left the circuit - lap cancelled.'); }
     } else if (lap.on) { lap.on = false; }
   }
-  return { update, stadium: ST, raceway: RW, towers };
+  return { update, stadium: ST, raceway: RW, towers, ball, ballV, score, set onGoal(fn) { ctx.onGoal = fn; } };
 }

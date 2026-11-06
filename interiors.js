@@ -517,6 +517,10 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     spot(-10.2, 0, 2.2, 'Play Neon Defender (2 gold)', () => hooks.arcade('game'));
     spot(10.2, 0, 2.2, 'Play Neon Defender (2 gold)', () => hooks.arcade('game'));
     spot(0, 0, 2.0, 'Play Neon Defender (2 gold)', () => hooks.arcade('game'));
+    spot(-10.2, -5, 2.0, 'Play Brick Breaker (2 gold)', () => hooks.arcade('bricks'));
+    spot(-10.2, 5, 2.0, 'Play Turbo Lanes (2 gold)', () => hooks.arcade('lanes'));
+    spot(10.2, -5, 2.0, 'Play Whack-a-Mole (2 gold)', () => hooks.arcade('moles'));
+    spot(10.2, 4.5, 2.0, 'Play Hoop Shot (2 gold)', () => hooks.arcade('hoops'));
     // Claw machines, air hockey, dance machine, prize counter
     for (const x of [-7, -5]) {
       B(1.1, 0.9, 1.1, x, 0.45, -7.6, 0xff2bd6, true); B(1.1, 1.3, 1.1, x, 1.55, -7.6, mat(0xbfe6ff, { opacity: 0.25 }));
@@ -697,6 +701,79 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.light(-6, 2.5, 0.9, 13, 0xffd9a0); L.light(2, 2.5, 0.9, 13, 0xffd9a0); L.light(-4, -6.5, 1.1, 12, 0xffffff); L.light(7, -6.5, 0.8, 10, 0xffffff);
   }
 
+  // =========================== CASINO ===========================
+  {
+    const L = makeLayout('casino', -6200, 0, 0x5a0f1f, 0x7a1f2a), { F, spot, B, Cyl } = L;
+    const gold = mat(0xd4af37, { metal: 0.8, rough: 0.3 }), felt = mat(0x0e5a34), wood = 0x4a2c18;
+    const neon = (c, ei = 2) => mat(c, { emissive: c, ei });
+    B(23.6, 0.08, 0.05, 0, 3.1, -8.82, neon(0xffd23f)); B(0.05, 0.08, 17.6, -11.82, 3.1, 0, neon(0xff2b4a)); B(0.05, 0.08, 17.6, 11.82, 3.1, 0, neon(0xff2b4a));
+    // rows of slot machines along both walls
+    const slot = (x, z, rot, c) => {
+      const g = new THREE.Group(); g.position.set(L.x0 + x, 0.1, L.z0 + z); g.rotation.y = rot; scene.add(g);
+      for (const [w, h, d, px, py, pz, m] of [[0.75, 1.7, 0.7, 0, 0.85, 0, mat(0x1a1a22)], [0.6, 0.45, 0.02, 0, 1.3, 0.36, neon(c, 1.3)], [0.7, 0.25, 0.25, 0, 1.85, 0.2, neon(0xffd23f, 2)], [0.65, 0.1, 0.3, 0, 0.95, 0.42, gold]]) { const p = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); p.position.set(px, py, pz); g.add(p); }
+      colliders.push({ minX: L.x0 + x - 0.42, maxX: L.x0 + x + 0.42, minZ: L.z0 + z - 0.42, maxZ: L.z0 + z + 0.42 });
+    };
+    const cols = [0xff2bd6, 0x00e5ff, 0x22ff88, 0xffd23f, 0xff5a3c];
+    for (let z = -7.6, k = 0; z <= 5.6; z += 1.0, k++) { slot(-11.3, z, Math.PI / 2, cols[k % 5]); slot(11.3, z, -Math.PI / 2, cols[(k + 2) % 5]); }
+    for (const sx of [-1, 1]) spot(sx * 10.1, -3, 3.2, 'Play the slot machines', () => hooks.casino?.('slots')), spot(sx * 10.1, 3, 3.2, 'Play the slot machines', () => hooks.casino?.('slots'));
+    // roulette tables
+    for (const x of [-5.5, 5.5]) {
+      F.table(x, -4.5, 3.4, 1.6, 0, wood); B(3.2, 0.03, 1.4, x, 0.81, -4.5, felt);
+      const wheel = Cyl(0.55, 0.55, 0.12, x - 1.1, 0.88, -4.5, mat(0x3a1a0a)); L.spin = L.spin || []; const top = Cyl(0.42, 0.42, 0.04, x - 1.1, 0.95, -4.5, gold); L.spin.push(top);
+      L.worker(x, -5.6, 0, { sit: false, outfit: 0x111111, pants: 0x111111, task: 'type' });
+      spot(x, -3.2, 2.2, 'Play roulette', () => hooks.casino?.('roulette'));
+    }
+    // blackjack tables (half-moon) with dealers
+    for (const x of [-5.5, 0, 5.5]) {
+      Cyl(1.4, 1.4, 0.08, x, 0.8, 1.6, wood); Cyl(1.3, 1.3, 0.09, x, 0.81, 1.6, felt);
+      L.worker(x, 0.4, 0, { sit: false, outfit: 0xf2f2f2, pants: 0x111111, task: 'type' });
+      F.chair(x - 0.9, 2.7, Math.PI, 0x7a1f2a, 'Sit at the blackjack table'); F.chair(x + 0.9, 2.7, Math.PI, 0x7a1f2a, 'Sit at the blackjack table');
+      spot(x, 2.9, 1.6, 'Play blackjack', () => hooks.casino?.('blackjack'));
+    }
+    L.worker(-6.4, 2.7, Math.PI, { outfit: 0x2f4f6f, task: 'talk', seatY: 0.58 }); L.worker(0.9, 2.7, Math.PI, { outfit: 0x7a4a2a, task: 'talk', seatY: 0.58 });
+    // poker table, cashier cage, bar
+    F.table(0, -7.2, 3, 1.6, 0, wood); B(2.8, 0.03, 1.4, 0, 0.81, -7.2, felt);
+    for (const [dx, dz, r] of [[-1.2, -0.9, 0], [1.2, -0.9, 0], [-1.2, 0.9, Math.PI], [1.2, 0.9, Math.PI]]) L.worker(dx, -7.2 + dz, r, { outfit: cols[Math.abs(dx * 3 + dz) | 0 % 5], task: 'talk', seatY: 0.58 });
+    spot(0, -5.6, 1.8, 'Watch the high-stakes poker', () => hooks.toast(['"All in." The table goes quiet.', 'A player shows a royal flush. Gasps all round.', '"Fold." Someone loses a fortune with a straight face.'][Math.floor(Math.random() * 3)]));
+    B(4, 2.4, 0.15, 8, 1.2, 7.4, mat(0x2a2a2a, { metal: 0.6 })); B(4, 0.1, 0.6, 8, 1.1, 7.1, gold);
+    L.worker(8, 8.2, Math.PI, { sit: false, outfit: 0x1a2a3a, task: 'type' });
+    spot(8, 6.2, 1.8, 'Talk to the cashier', () => hooks.toast('"Chips are gold here, sir or madam. Play responsibly. The house always wins in the end."'));
+    F.counter(-8, 7.2, Math.PI, 5, 0x2a1414, 0x4a2a1a);
+    spot(-8, 6, 2.2, 'Get a drink at the casino bar', () => hooks.shop('Casino bar', 'club'));
+    L.worker(-8, 8.1, Math.PI, { sit: false, outfit: 0x111111, task: 'type' });
+    L.worker(-2.4, 7.6, Math.PI, { sit: false, outfit: 0x111111, pants: 0x111111, task: 'idle' });   // security
+    for (const [x, z] of [[-5, 0], [5, 0], [0, -4]]) B(1.6, 0.6, 0.6, x, 3.2, z, neon(0xfff1c4, 1.5));   // chandeliers
+    L.light(-5, 0, 1.0, 14, 0xffd9a0); L.light(5, 0, 1.0, 14, 0xffd9a0); L.light(0, -6, 0.9, 12, 0xffe6b0); L.light(0, 6, 0.8, 10, 0xff9a9a);
+  }
+
+  // =========================== CHURCH ===========================
+  {
+    const L = makeLayout('church', -6300, 0, 0xd9d2c0, 0x6b5a48), { F, spot, B, Cyl } = L;
+    const wood = 0x5a3a22, gold = mat(0xd4af37, { metal: 0.8, rough: 0.3 });
+    // pews either side of the aisle, facing the altar at the back
+    for (let z = -3; z <= 6; z += 1.6) for (const sx of [-1, 1]) {
+      B(7, 0.12, 0.55, sx * 5, 0.5, z, wood); B(7, 0.6, 0.1, sx * 5, 0.85, z + 0.28, wood);
+      for (let k = 0; k < 4; k++) L.seatOnly?.(sx * 5 - 2.6 + k * 1.75, z, Math.PI);
+    }
+    for (let z = -3; z <= 6; z += 1.6) for (const sx of [-1, 1]) spot(sx * 5, z - 0.6, 1.0, 'Sit and pray', () => hooks.toast(['A quiet moment. You feel calmer.', 'Candlelight flickers. The organ hums softly.', 'You sit in silence for a while.'][Math.floor(Math.random() * 3)]));
+    L.worker(-6, 1.8, Math.PI, { outfit: 0x4a4a6a, task: 'read', seatY: 0.58 }); L.worker(4, 4.9, Math.PI, { outfit: 0x6a4a3a, task: 'read', seatY: 0.58 }); L.worker(5.5, -1.4, Math.PI, { outfit: 0x2f4f6f, task: 'read', seatY: 0.58 });
+    // altar, steps, cross, candles, lectern, organ
+    B(10, 0.3, 4, 0, 0.25, -7, 0x8a7d6b); B(3.2, 1.1, 1.2, 0, 0.95, -7.2, mat(0xf2ede0));
+    B(0.25, 3.2, 0.25, 0, 3.0, -8.6, gold); B(1.6, 0.25, 0.25, 0, 3.7, -8.6, gold);
+    for (const x of [-1.2, 1.2]) { Cyl(0.05, 0.05, 0.5, x, 1.75, -7.2, mat(0xfff6e0)); Cyl(0.04, 0.02, 0.1, x, 2.05, -7.2, mat(0xffc46b, { emissive: 0xffa21f, ei: 2 })); }
+    B(0.7, 1.2, 0.5, 3.5, 1.0, -6, wood);
+    L.worker(0, -8.1, 0, { sit: false, outfit: 0x111111, pants: 0x111111, task: 'read' });   // the priest
+    spot(0, -5.2, 2.2, 'Talk to the priest', () => hooks.toast(['"Welcome, child. All are welcome here, whoever you are."', '"Sunday service is at ten. The choir could use another voice."', '"Even hunters need somewhere quiet. Rest a while."'][Math.floor(Math.random() * 3)]));
+    B(4, 2.6, 1, -8.5, 1.3, -7.6, wood); for (let k = 0; k < 9; k++) Cyl(0.08, 0.08, 1.6 + (k % 3) * 0.4, -10 + k * 0.38, 3.2, -7.9, gold);
+    spot(-8.5, -6.4, 1.6, 'Play the organ', () => hooks.toast('🎶 Deep chords fill the church. Someone in the pews starts to hum along.'));
+    // stained glass windows along the walls
+    const glassCols = [0x7a5cff, 0xff2b4a, 0x22aaff, 0xffd23f, 0x22cc66];
+    for (let i = 0; i < 4; i++) for (const sx of [-1, 1]) B(0.05, 2.2, 1.2, sx * 11.85, 2.0, -5 + i * 3.4, mat(glassCols[(i + (sx > 0 ? 2 : 0)) % 5], { emissive: glassCols[(i + (sx > 0 ? 2 : 0)) % 5], ei: 0.9 }));
+    B(2.4, 2.4, 0.05, 0, 2.6, -8.85, mat(0x7a5cff, { emissive: 0x7a5cff, ei: 1.1 }));
+    spot(9.5, 7.6, 1.6, 'Light a candle (1 gold)', () => hooks.toast('🕯️ You light a candle and make a wish.'));
+    L.light(0, -6, 1.1, 14, 0xffe6b0); L.light(-5, 2, 0.7, 12, 0xfff1d0); L.light(5, 2, 0.7, 12, 0xfff1d0);
+  }
+
   let active = null, time = 0;
   const api = {
     layouts,
@@ -708,6 +785,8 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (/library/.test(t)) return layouts.library;
       if (/government|townhall|town_hall|council|job_centre|post_office/.test(t)) return layouts.gov;
       if (/arcade|amusement|games/.test(t)) return layouts.arcade;
+      if (/^(casino|gambling)$/.test(t)) return layouts.casino;
+      if (/^(church|chapel|cathedral|place_of_worship)$/.test(t)) return layouts.church;
       if (/^(nightclub|night_club|club|disco)$/.test(t)) return layouts.nightclub;
       if (/^(pub|bar|inn|tavern|biergarten)$/.test(t)) return layouts.pub;
       if (/^(restaurant|diner|cafe|café|bistro|fast_food|food_court|takeaway)$/.test(t)) return layouts.restaurant;

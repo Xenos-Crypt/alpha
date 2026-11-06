@@ -137,7 +137,7 @@ export function createCarControls({ headlight, headMat, tailMat, toast, isAuto, 
     }
     const top = topSpeed(v);
     // Driving uses charge: more when you accelerate hard, a little just from moving.
-    v.battery = Math.max(0, v.battery - dt * (Math.abs(sp) * 0.004 + (W ? 0.06 : 0)));
+    v.battery = Math.max(0, v.battery - dt * (Math.abs(sp) * 0.004 + (W ? 0.06 : 0)) / (v.batteryCapacity || 1));   // long-range cars drain slower
     if (v.battery > 0) st.flatWarned = false;
     st.rev = Math.min(1, Math.abs(sp + dv) / Math.max(1, top) * (isAuto() ? 0.75 : 1) + (W ? 0.08 : 0));
     return dv;

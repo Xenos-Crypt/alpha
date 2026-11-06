@@ -48,9 +48,12 @@ import {buildBlackMarket} from './black-market.js';
 import {buildMilitary, addNavyCrew} from './military.js';
 import {createConditions} from './condition.js';
 import {createLicences} from './licences.js';
+import {createFootball} from './football.js';
+import {createRace} from './race.js';
 import {createCarControls} from './car-controls.js';
 import {createSnackShop} from './snack-shop.js';
 import {createArcade} from './arcade-games.js';
+import {createCasino} from './casino-games.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
 import { installMatrixCache } from './matrix-cache.js';
@@ -2303,7 +2306,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let blackMarket = null, military = null, navyCrew = null, conditions = null;
+let blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -2479,6 +2482,7 @@ let flashlightOn = false;
 function toggleFlashlight() { flashlightOn = !flashlightOn; toast(flashlightOn ? 'Flashlight on (V to turn it off).' : 'Flashlight off.'); $('torchBtn')?.classList.toggle('on', flashlightOn); }
 const _fwd = new THREE.Vector3();
 function updateFlashlight() {
+  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; }
   flashlight.intensity = flashlightOn && !inCar ? 90 : 0;
   if (!flashlightOn) return;
   camera.getWorldDirection(_fwd);
@@ -3712,10 +3716,49 @@ function addWildlife(kind, x, z) {
   makeEnemy({ kind: 'wildlife', animal: kind, labelName: def.label, root, body: body || root, radius: def.radius,
     height: def.height, maxHp: def.maxHp, home, touchCd: 0, phase: rand() * 10, flashMats });
 }
+// Pets aren't safe either: monsters and wild animals go for any pet that's closer than you
+// (dogs on a lead, park pets, your own companion). Returns true if it handled the attacker this frame.
+function nearestPetPrey(p, playerDist, range = 14) {
+  let best = null, bd = Math.min(range, playerDist);
+  for (const a of parkPets) {
+    if (!a.alive || a.ridden || a.kind === 'horse') continue;
+    const d = distXZ(a.g.position, p);
+    if (d < bd) { bd = d; best = a; }
+  }
+  return best;
+}
+function attackPet(e, pet, dmg, speed, dt, move) {
+  const p = e.root.position, d = distXZ(p, pet.g.position);
+  if (d > 1.4) move(pet.g.position, speed);
+  e.petBiteCd = (e.petBiteCd ?? 0) - dt;
+  if (d <= 1.6 && e.petBiteCd <= 0) {
+    e.petBiteCd = 1.1;
+    pet.hp -= dmg;
+    burst(at(pet.g.position, 0.4), 8, [0xffffff, 0xb03030], 5, 0.08, 0.25, 6);
+    pet.fleeT = 2;
+    if (!pet.attackedWarned && distXZ(pet.g.position, player.position) < 70) {
+      pet.attackedWarned = true;
+      toast(pet.owner === player ? '🐕 Your dog is being attacked! Help it!' : pet.owner ? '🐕 Someone\'s dog is being attacked! The owner is screaming for help.' : `🐾 A ${pet.kind} is being attacked!`);
+    }
+    if (pet.hp <= 0 && pet.alive) {
+      pet.alive = false; pet.g.visible = false;
+      if (pet.leash) pet.leash.visible = false;
+      if (distXZ(pet.g.position, player.position) < 70) toast(pet.owner === player ? '💔 Your companion dog was killed.' : pet.owner ? '💔 The dog didn\'t make it. Its owner kneels beside it.' : `💔 The ${pet.kind} was killed.`);
+      if (e.animal) dispatchAnimalControl(e);
+    }
+  }
+}
 function updateWildlife(e, dt) {
   const def = WILDLIFE_DEFS[e.animal], p = e.root.position;
   const dist = distXZ(p, player.position);
   let mx = 0, mz = 0;
+  const prey = e.stun <= 0 && e.onGround ? nearestPetPrey(p, inCar ? Infinity : dist, def.chase) : null;
+  if (prey) {
+    attackPet(e, prey, def.dmg, def.speed, dt, (target, sp) => { const d = distXZ(p, target) || 1; mx = (target.x - p.x) / d * sp; mz = (target.z - p.z) / d * sp; });
+    if (mx || mz) { p.x += mx * dt; p.z += mz * dt; collide(p, e.radius); e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(mx, mz), 1 - Math.exp(-8 * dt)); }
+    p.y = groundY(p.x, p.z);
+    return;
+  }
   e.phase += dt * (e.animal === 'lion' ? 4 : 3);
   if (e.stun <= 0 && e.onGround) {
     if (!inCar && dist < def.chase && dist > 0.9) { mx = (player.position.x - p.x) / dist * def.speed; mz = (player.position.z - p.z) / dist * def.speed; }
@@ -5364,6 +5407,16 @@ function updateMonster(e, dt) {
   if (e.stun > 0 && !e.superArmor) { ai.state = 'idle'; e.glow = 0; animateHumanoid(e.h, 'stunned', false, false, e.onGround, dt); return; }
   const dist = distXZ(p, player.position), reach = 1.5 + 0.6 * m.scale;
   let pose = null, moving = false;
+  if (m.ai !== 'boss' && ai.state === 'idle') {
+    const prey = nearestPetPrey(p, dist, 16);
+    if (prey) {
+      let mv = false;
+      attackPet(e, prey, e.dmg, m.speed, dt, (target, sp) => { mv = walkTowards(e, target, sp, dt); });
+      if (!mv) faceTowards(e, prey.g.position, 8 * dt);
+      animateHumanoid(e.h, e.petBiteCd > 0.8 ? 'punchR' : null, mv, false, e.onGround, dt);
+      return;
+    }
+  }
   ai.t += dt;
 
   if (m.ai === 'ranged') {   // angels keep their distance and throw light
@@ -5835,6 +5888,7 @@ let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
 // Homes, shops and offices get real multi-room interiors (see interiors.js); civic
 // buildings keep the themed hall above.
 // Snack and drink menu used by shop tills, kiosks and vending machines.
+const casino = createCasino({ money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, earn: n => { stats.gold += n; }, toast, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const arcade = createArcade({ toast, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
   onFinish(kind, score, won, msg) {
     let tickets = 0; try { tickets = +localStorage.getItem('anotherworld-arcade-tickets') || 0; } catch {}
@@ -5849,6 +5903,7 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
   hooks: {
     toast: m => toast(m),
     leave: () => leaveCivicBuilding(),
+    casino: game => casino.open(game, currentVenueName || 'Casino'),
     shop: (name, kind) => snackShop.open(['pub', 'club', 'restaurant'].includes(kind) && currentVenueName ? currentVenueName : name, kind),
     travel(pos, y, msg, then) {   // stairs, lifts and escalators between floors
       $('fade').style.opacity = 1;
@@ -7246,7 +7301,7 @@ controlTarget:()=>enemies.find(e=>e.alive&&e.kind==='monster'&&!e.superArmor&&di
 controlUpdate(e,dt){const target=enemies.filter(t=>t!==e&&t.alive&&t.kind==='monster').sort((a,b)=>distXZ(a.root.position,e.root.position)-distXZ(b.root.position,e.root.position))[0];if(!target)return;walkTowards(e,target.root.position,3,dt);animateHumanoid(e.h,null,true,false,true,dt);e.controlAttackCd=Math.max(0,(e.controlAttackCd||0)-dt);if(distXZ(e.root.position,target.root.position)<3&&!e.controlAttackCd){applyHit(target,{dmg:25,from:e.root.position.clone(),kb:2,up:0,stun:.3});e.controlAttackCd=1;}}
 });
 specialUnlocked=false;buildHotbar();
-cityServices=buildCityServices({upgradeCar:v=>detailVehicle(v,'luxury'),firstPerson:()=>cameraView==='first',scene,box,makeTex,makePerson:makeHumanoid,makeVehicle,groundY,interactables,toast,
+cityServices=buildCityServices({colliders,upgradeCar:v=>detailVehicle(v,'luxury'),firstPerson:()=>cameraView==='first',scene,box,makeTex,makePerson:makeHumanoid,makeVehicle,groundY,interactables,toast,
 canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!cityServices?.rider&&!inCar&&!sitting&&!riding&&!dungeon&&!action&&!transport?.rider&&!metro?.rider&&!spaceCentre?.rider,
 pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},
 board(){action=null;vy=0;pvel.set(0,0,0);},carry:p=>player.position.copy(p),leave(p){player.position.copy(p);player.position.y=groundY(p.x,p.z,p.y);collide(player.position,.4);vy=0;},
@@ -7308,6 +7363,13 @@ frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,civicBuil
 // The guarded border fence around the edge of the map, with snowy mountains outside.
 // Leisure park, business district and the other real-life places on the outer land.
 venues=buildVenues({scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle,makePerson:makeHumanoid,openShop:(name,kind)=>snackShop.open(name,kind)});
+{ const money = () => stats.gold, spend = n => { stats.gold = Math.max(0, stats.gold - n); }, earn = n => { stats.gold += n; };
+  const animatePerson = (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt);
+  football = createFootball({ scene, venues, makePerson: o => makeHumanoid(o), animatePerson, interactables, toast, money, spend, earn, playerPos: () => player.position });
+  race = createRace({ scene, venues, makeVehicle, interactables, toast, money, spend, earn, playerPos: () => player.position,
+    removeVehicle: v => { const i = vehicles.indexOf(v); if (i >= 0) vehicles.splice(i, 1); v.group.removeFromParent(); },
+    enterVehicle: v => { if (inCar) exitVehicle(); player.position.copy(v.group.position); enterVehicle(v); },
+    isDriving: v => inCar && driving === v }); }
 // Fade-out, move the player, fade-in (helicopters, the mountain climb).
 function teleportPlayer(pos, msg, ms = 650) {
   $('fade').style.opacity = 1;
@@ -7391,7 +7453,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt);
+    blackMarket?.update(dt); football?.update(dt); race?.update(dt);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
