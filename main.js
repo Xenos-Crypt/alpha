@@ -35,6 +35,8 @@ import {buildGhostIsland} from './ghost-island.js';
 import {createWorldAudio} from './world-audio.js';
 import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
+import {hoverRoadVehicle, makeHover, updateHover} from './hover.js';
+import {buildInteriors} from './interiors.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
 import { installMatrixCache } from './matrix-cache.js';
@@ -234,7 +236,10 @@ starGeometry.setAttribute('position',new THREE.BufferAttribute(starPositions,3))
 const clouds = [];
 const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, fog: false, flatShading: true });
 const cloudGeo = new THREE.IcosahedronGeometry(1, 1);
-for (let i = 0; i < 22; i++) {
+// Clouds used to sit only over the starting town (22 within 250 m). Now there's a
+// bigger field that wraps around the camera, so the sky is cloudy everywhere.
+const CLOUD_SPAN = 1400;   // stays inside the 1000 m draw distance
+for (let i = 0; i < 60; i++) {
   const c = new THREE.Group();
   const n = 4 + Math.floor(rand() * 4);
   for (let j = 0; j < n; j++) {
@@ -244,7 +249,8 @@ for (let i = 0; i < 22; i++) {
     puff.position.set((j - n / 2) * 6 + rand() * 3, rand() * 3, rand() * 6);
     c.add(puff);
   }
-  c.position.set((rand() - 0.5) * 500, 90 + rand() * 30, (rand() - 0.5) * 500);
+  c.position.set((rand() - 0.5) * CLOUD_SPAN, 85 + rand() * 45, (rand() - 0.5) * CLOUD_SPAN);
+  c.rotation.y = rand() * Math.PI * 2;
   scene.add(c);
   clouds.push(c);
 }
@@ -979,33 +985,9 @@ addPet('dog', 25, -26);
 addPet('dog', -28, -26);
 addPet('dog', 28, 14);
 addPet('cat', PARK.x - 8, PARK.z + 3);
-addPet('horse', PARK.x + 16, PARK.z - 14);
-addPet('horse', PARK.x - 14, PARK.z - 10);
 
-// =====================================================================
-// HORSE RIDING ARENA: a fenced oval competition ground next to the park, with
-// jump obstacles and its own horses. Riding controls (mounting a horse and
-// actually steering it) aren't built yet — this is the real, enterable venue,
-// not the mount mechanic itself.
-// =====================================================================
-const ARENA = new THREE.Vector3(PARK.x - 60, CURB, PARK.z + 10);
-{
-  const rx = 26, rz = 16;
-  for (let i = 0; i < 28; i++) {
-    const a = (i / 28) * Math.PI * 2;
-    box(0.12, 1.1, 0.12, ARENA.x + Math.cos(a) * rx, 0.55, ARENA.z + Math.sin(a) * rz, 0x6b4a2f, false);
-  }
-  box(rx * 2 + 1, 0.06, rz * 2 + 1, ARENA.x, 0.03, ARENA.z, sandMat, false);
-  for (const [ox, oz] of [[-10, 0], [10, 0], [0, -6], [0, 6]]) {
-    box(2.6, 0.9, 0.18, ARENA.x + ox, 0.75, ARENA.z + oz, 0xc0392b, false);
-    for (const s of [-1, 1]) box(0.14, 1.1, 0.14, ARENA.x + ox + s * 1.3, 0.55, ARENA.z + oz, 0x6b4a2f, false);
-  }
-  signboard('HORSE RIDING ARENA', ARENA.x, 3, ARENA.z - rz - 1.5, 12, '#4a3b1d');
-  addBench(ARENA.x - 5, ARENA.z - rz - 3, 0);
-  addBench(ARENA.x + 5, ARENA.z - rz - 3, 0);
-  addPet('horse', ARENA.x - 8, ARENA.z + 2);
-  addPet('horse', ARENA.x + 6, ARENA.z - 3);
-}
+// Horses (and the horse riding arena) have been removed from the game. The riding
+// code is left in place but nothing can be mounted any more.
 function updatePets(dt) {
   for (const a of parkPets) {
     if (!a.alive) continue;
@@ -2278,7 +2260,9 @@ const ambCrossMat = new THREE.MeshStandardMaterial({ color: 0xe84118, roughness:
 
 function makeVehicle(kind, color) {
   if(['car','police','ambulance','motorcycle','bicycle'].includes(kind)){
-   const v=buildRoadVehicle({scene,makeTex,kind,color,headMat,tailMat,sirenRed,sirenBlue,ambRed,ambWhite});vehicles.push(v);return v;
+   const v=buildRoadVehicle({scene,makeTex,kind,color,headMat,tailMat,sirenRed,sirenBlue,ambRed,ambWhite});
+   hoverRoadVehicle(v, kind==='bicycle'||kind==='motorcycle' ? 0.35 : 0.45);   // cars and bikes hover
+   vehicles.push(v);return v;
   }
   const g = new THREE.Group();
   scene.add(g);
@@ -2348,6 +2332,7 @@ function makeVehicle(kind, color) {
   const v = { kind, group: g, wheels, speed: 0, radius: isBus ? 2.6 : 1.8, length: L,
               maxSpeed: isBus ? 24 : kind === 'police' || kind === 'ambulance' ? 85 : 75, ai: null, passengers: isBus ? [] : null };
   if(kind==='car'||kind==='police')detailVehicle(v,kind==='police'?'police':'standard');
+  if (kind !== 'tank') hoverRoadVehicle(v, isBus ? 0.4 : 0.45);   // buses and cars hover
   vehicles.push(v);
   return v;
 }
@@ -2470,6 +2455,8 @@ function signboard(text, x, y, z, width = 10, colour = '#15364a') {
     g.fillStyle = '#ffffff'; g.font = 'bold 54px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 512, 64, 970);
   });
   const mat = new THREE.MeshBasicMaterial({ map: texture });
+  // Signs used to be 10-16 m wide; they're now a sensible size (about half, max 7 m).
+  width = Math.min(7, width * 0.5);
   const geo = new THREE.PlaneGeometry(width, width / 8);
   const front = new THREE.Mesh(geo, mat); front.position.set(x, y, z); scene.add(front);
   const back = new THREE.Mesh(geo, mat); back.position.set(x, y, z); back.rotation.y = Math.PI; scene.add(back);
@@ -2961,6 +2948,8 @@ const SCHOOL = new THREE.Vector3(-60, 0, 60);
   addBench(x + 7, z + d / 2 + 2, Math.PI);
 })();
 
+const OSM_DOOR_GEO = new THREE.BoxGeometry(1.4, 2.3, 0.1), OSM_DOOR_MAT = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.7 });
+const OSM_FRAME_GEO = new THREE.BoxGeometry(1.7, 0.16, 0.18), OSM_FRAME_MAT = new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.8 });
 function loadCityTile(tx, tz) {
   const key = `${tx}_${tz}`;
   if (cityTiles.has(key)) return;
@@ -2979,6 +2968,19 @@ function loadCityTile(tx, tz) {
       minX: c.minX + CITY_OFFSET.x, maxX: c.maxX + CITY_OFFSET.x, minZ: c.minZ + CITY_OFFSET.z, maxZ: c.maxZ + CITY_OFFSET.z,
     }));
     for (const c of civicEntries) applyBuildingExterior(c, buildingAppearances[c.id]);
+    // Every map building gets a visible front door (one instanced mesh per tile, so
+    // thousands of doors cost two draw calls).
+    const doorable = tileCivic.filter(c => c.maxX - c.minX > 3 && c.maxZ - c.minZ > 3);
+    if (doorable.length) {
+      const doors = new THREE.InstancedMesh(OSM_DOOR_GEO, OSM_DOOR_MAT, doorable.length);
+      const frames = new THREE.InstancedMesh(OSM_FRAME_GEO, OSM_FRAME_MAT, doorable.length);
+      const m4 = new THREE.Matrix4();
+      doorable.forEach((c, i) => {
+        m4.makeTranslation(c.x, 1.15, c.maxZ + 0.07); doors.setMatrixAt(i, m4);
+        m4.makeTranslation(c.x, 2.38, c.maxZ + 0.1); frames.setMatrixAt(i, m4);
+      });
+      group.add(doors, frames);
+    }
     civicBuildings.push(...civicEntries);
     cityTiles.set(key, { group, colliders: tileColliders, buildingMesh, civicEntries });
   }).catch(() => cityTiles.delete(key));
@@ -5489,7 +5491,7 @@ function enterVehicle(v) {
   if(cameraView==='first'){yaw=v.group.rotation.y+Math.PI;pitch=0;}
   player.visible = false;
   if (v.kind === 'plane') toast('Q/R barrel roll in flight. W/S throttle · A/D turn · Space climb · Shift dive. Take off down the runway!');
-  v.group.add(headlight, headlight.target);
+  (v.hoverBody || v.group).add(headlight, headlight.target);
   headlight.position.set(0, 0.8, v.length / 2 + 0.1);
   headlight.target.position.set(0, 0, 14);
 }
@@ -5559,7 +5561,12 @@ function resolveInteractTarget() {
   if (action) return null;
   const seat = nearestSitSpot();
   if (seat) return { label: seat.label || 'Sit', action: () => toggleSit(seat) };
-  if (inCivicInterior) return { label: 'Leave', action: leaveCivicBuilding };
+  if (inCivicInterior) {
+    // Inside a home, shop or office you leave through the front door; elsewhere in the
+    // building E uses whatever you're standing next to (bed, fridge, till...).
+    if (interiors.active) { const s = interiors.nearest(player.position); return s ? { label: s.label, action: s.action } : null; }
+    return { label: 'Leave', action: leaveCivicBuilding };
+  }
   if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
   const service = nearestInteractable();
   if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return {label:service.label,action:service.action};
@@ -5635,6 +5642,24 @@ let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
   box(2.7, 1.8, 0.15, CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.6, 0x1a1a1a, false);
   sitSpots.push({ x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, yaw: Math.PI, seatY: 0.9, label: 'Sit and watch TV' }); // face -Z, toward the TV
 })();
+// Homes, shops and offices get real multi-room interiors (see interiors.js); civic
+// buildings keep the themed hall above.
+const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
+  tvMaterial: new THREE.MeshBasicMaterial({ map: civicTvTexture }),
+  hooks: {
+    toast: m => toast(m),
+    leave: () => leaveCivicBuilding(),
+    eat(amount, cost, msg) {
+      if (cost && stats.gold < cost) { toast(`You need ${cost} gold for that.`); return; }
+      stats.gold -= cost; stats.hunger = Math.min(100, stats.hunger + amount); toast(msg);
+    },
+    drink() { stats.energy = Math.min(100, stats.energy + 5); toast('You drink a glass of water.'); },
+    rest(amount, msg) { stats.energy = Math.min(100, stats.energy + amount); toast(msg); },
+    sleep() {
+      $('fade').style.opacity = 1;
+      setTimeout(() => { stats.energy = 100; stats.hp = Math.max(stats.hp, maxHp()); $('fade').style.opacity = 0; toast('You sleep for a while and wake up fully rested.'); }, 900);
+    },
+  } });
 let sitting = false, sitReturnPosition = null, activeSitSpot = null;
 function updateCivicTv(dt) {
   if(movieTv?.playing)return;
@@ -5751,21 +5776,23 @@ async function enterCivicBuilding(b) {
   } catch {}
   setTimeout(() => {
     inCivicInterior = true;
-    applyCivicTheme(b.type);
-    player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8);
+    const layout = interiors.layoutFor(b.type);
+    if (layout) { interiors.enter(layout); player.position.copy(layout.spawn); }
+    else { interiors.exit(); applyCivicTheme(b.type); player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8); }
     player.rotation.y = Math.PI;
     yaw = 0; vy = 0; pvel.set(0, 0, 0);
     $('fade').style.opacity = 0;
     callout(b.name.toUpperCase(), 0xffd166, true);
     const desc = data?.description || `You step into ${b.name}, but it's hard to make out much more right now.`;
     const staff = data?.staff?.length ? ' Staff here: ' + data.staff.map(s => `${s.name} (${s.role})`).join(', ') + '.' : '';
-    toast(desc + staff + ' There’s a chair by a TV straight ahead — walk up and press E to sit.');
+    toast(desc + staff + (layout ? ' Walk around and press E on things to use them. Leave through the front door behind you.' : ' There’s a chair by a TV straight ahead — walk up and press E to sit.'));
   }, 650);
 }
 function leaveCivicBuilding() {
   $('fade').style.opacity = 1;
   setTimeout(() => {
     inCivicInterior = false;
+    interiors.exit();
     sitting = false;
     player.position.copy(civicReturnPos);
     player.position.y = groundY(player.position.x, player.position.z);
@@ -6732,9 +6759,13 @@ function updateWorldLight(dt) {
   sunDisc.visible = elev > -0.1 && weatherState !== 'rain';
   moonDisc.visible = elev < 0.1 && weatherState !== 'rain';
 
+  // Drift with the wind and wrap around the camera so clouds cover the whole world.
+  const half = CLOUD_SPAN / 2;
   for (const c of clouds) {
     c.position.x += dt * 2;
-    if (c.position.x > 260) c.position.x = -260;
+    const dx = c.position.x - camera.position.x, dz = c.position.z - camera.position.z;
+    if (dx > half) c.position.x -= CLOUD_SPAN; else if (dx < -half) c.position.x += CLOUD_SPAN;
+    if (dz > half) c.position.z -= CLOUD_SPAN; else if (dz < -half) c.position.z += CLOUD_SPAN;
   }
 
   // Night lighting: windows, street lamps, headlights
@@ -7010,7 +7041,7 @@ townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
 const pauseForPanel=()=>{locked=false;mouseHeld=false;for(const key in keys)keys[key]=false;document.exitPointerLock();$('start').style.display='none';};
 roadLaw=createRoadLaw({roundaboutCells:ROUNDABOUT_CELLS,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},toast,raiseWanted,time:()=>performance.now()/1000,isRedLight:(cx,cz,axis)=>{const j=junctionControl.junctions.get(cx*40+','+cz*40);return !!j&&junctionControl.state(j,'car',axis)==='red';},licensedHunter:()=>!!hunterGuilds?.licensed});
-frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,glowMats,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,civicBuildings,glowMats,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
  destinations:townPlaces.destinations,toast,playerPosition:()=>inCar&&driving?driving.group.position:player.position,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},sleep,buyFood,
  authorised:()=>(hunterGuilds?.state.licensed&&hunterGuilds.state.rank>=3),
  makeTank(x,z,ry){const v=makeVehicle('tank',0x4f5a3a);v.group.position.set(x,.2,z);v.group.rotation.y=ry;v.ai={parked:true};v.militaryHome=new THREE.Vector3(x,.2,z);v.militaryYaw=ry;v.noSteal=true;return v;},
@@ -7069,6 +7100,7 @@ function frame() {
     updateNeeds(dt);
     if (riding) updateRiding(dt);
     else if (!inCar) updatePlayer(dt);
+    updateHover(dt);
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);

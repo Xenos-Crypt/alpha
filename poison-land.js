@@ -6,7 +6,7 @@ export function buildPoisonLand(ctx){
  for(let x=600;x<=840;x+=40)ctx.box(14,.04,240,x,.02,320,0x333b3a,false);
  for(let z=200;z<=440;z+=40){ctx.box(240,.04,14,720,.025,z,0x333b3a,false);for(let x=605;x<840;x+=12)ctx.box(5,.02,.16,x,.05,z,0xcaca8d,false);}
  ctx.box(180,.08,14,510,0,240,0x333b3a,false);
- function sign(text,x,z){const texture=ctx.makeTex(768,96,g=>{g.fillStyle='#223c2a';g.fillRect(0,0,768,96);g.fillStyle='#c7f884';g.font='bold 32px sans-serif';g.textAlign='center';g.fillText(text,384,60);});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(24,3),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));mesh.position.set(x,5,z);ctx.scene.add(mesh);}
+ function sign(text,x,z){const texture=ctx.makeTex(768,96,g=>{g.fillStyle='#223c2a';g.fillRect(0,0,768,96);g.fillStyle='#c7f884';g.font='bold 32px sans-serif';g.textAlign='center';g.fillText(text,384,60);});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(7,.9),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));mesh.position.set(x,5,z);ctx.scene.add(mesh);}
  sign('POISON LAND / INDUSTRIAL EXCLUSION ZONE',600,232);
  for(const [x,z]of [[620,220],[660,220],[740,220],[820,220],[620,300],[700,300],[780,300],[820,380],[620,420],[700,420]]){
  ctx.box(24,10,24,x,5,z,0x626959,true);ctx.box(25,.4,25,x,10.2,z,0x40483e,false);ctx.box(4,20,4,x+7,10,z+7,0x4b5148,true);

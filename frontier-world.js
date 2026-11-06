@@ -101,7 +101,10 @@ export function buildFrontierWorld(ctx) {
 
   // ---- generic building pieces ---------------------------------------------------
   // A rectangular building with windows on all sides and a door on the side facing `face` (+z by default).
-  function building(x, z, w, d, h, wall, { roof = C.slate, floors = Math.max(1, Math.round(h / 3.4)), door = true, flatRoof = true, face = 1 } = {}) {
+  // Every frontier building with a door can be entered (E near it), like the town's.
+  let frontierN = 1;
+  const enterable = (type, name, x, z, w, d) => ctx.civicBuildings?.push({ type, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  function building(x, z, w, d, h, wall, { roof = C.slate, floors = Math.max(1, Math.round(h / 3.4)), door = true, flatRoof = true, face = 1, kind = 'frontier-office', name } = {}) {
     box(w, h, d, x, h / 2, z, wall, true);
     if (flatRoof) box(w + 0.4, 0.4, d + 0.4, x, h + 0.2, z, roof);
     const fh = h / floors;
@@ -114,6 +117,7 @@ export function buildFrontierWorld(ctx) {
       }
     }
     if (door) { box(2.4, 2.8, 0.15, x, 1.4, z + face * (d / 2 + 0.08), C.door); box(4, 0.25, 1.6, x, 3.1, z + face * (d / 2 + 0.8), C.darkConcrete); }
+    if (door) enterable(kind, name || `Frontier Building ${frontierN++}`, x, z, w, d);
     return { doorPos: new THREE.Vector3(x, 0.2, z + face * (d / 2 + 2.2)) };
   }
   function house(x, z, face, wall, roofMat) {
@@ -124,6 +128,7 @@ export function buildFrontierWorld(ctx) {
     box(1.1, 2.4, 1.1, x + w * 0.25, h + 2.2, z - d * 0.2, C.brick);                  // chimney
     for (const sx of [-2.2, 2.2]) for (const y of [1.6, 4]) box(1.4, 1.1, 0.08, x + sx, y, z + face * (d / 2 + 0.04), C.window);
     box(1.2, 2.2, 0.12, x, 1.1, z + face * (d / 2 + 0.06), C.door);
+    enterable('house', `${frontierN++} Frontier Lane`, x, z, w, d);
     box(1.4, 0.06, 1.6, x, 0.03, z + face * (d / 2 + 0.8), C.concrete);               // front path
     for (const sx of [-1, 1]) box(w / 2 - 0.9, 0.6, 0.25, x + sx * (w / 4 + 0.45), 0.3, z + face * (d / 2 + 1.6), C.darkStone);   // garden wall with a gap for the path
   }
@@ -285,7 +290,33 @@ export function buildFrontierWorld(ctx) {
   // light beams from each spire to the shield (unlit, additive)
   const beamMat = new THREE.MeshBasicMaterial({ color: 0x7ad8ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
   const beams = SPIRES.map(sp => { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 2.2, 420, 10, 1, true), beamMat); b.position.set(sp.x, 262, sp.z); b.userData.noCull = true; ctx.scene.add(b); return b; });
-  for (const sp of SPIRES) ctx.sign?.(sp.name.toUpperCase() + ' · AEGIS SHIELD NODE', sp.x, 6.5, sp.z + 9.4, 12, '#0e3550');
+  for (const sp of SPIRES) ctx.sign?.(sp.name.toUpperCase() + ' · SHIELD SUB-GENERATOR', sp.x, 6.5, sp.z + 9.4, 12, '#0e3550');
+
+  // The main Aegis generator stands in the Capital's bridge plaza. It powers the whole
+  // shield; the four spires at the edges of the map are smaller sub-generators that
+  // spread its power out to the lattice. A thick beam rises from it to the shield.
+  const PRIME = { x: 260, z: 702 };
+  {
+    const { x, z } = PRIME;
+    cyl(11, 13, 2, x, 1, z, C.darkConcrete, 24);                         // plinth
+    cyl(9, 10, 6, x, 5, z, C.steel, 24);                                  // generator hall
+    for (let i = 0; i < 6; i++) {                                         // six coil towers
+      const a = i * Math.PI / 3, cx = x + Math.cos(a) * 8, cz = z + Math.sin(a) * 8;
+      cyl(1.1, 1.4, 22, cx, 13, cz, C.hull, 10);
+      for (let y = 6; y <= 22; y += 4) cyl(1.7, 1.7, 0.4, cx, y, cz, C.glow, 12);
+      sphere(1.4, cx, 25, cz, C.shieldCore, 10);
+    }
+    cyl(2.6, 3.4, 70, x, 41, z, C.shieldCore, 16);                        // central core
+    for (let y = 14; y <= 70; y += 7) cyl(5.2, 5.2, 0.7, x, y, z, C.glow, 24);
+    sphere(6, x, 78, z, C.shieldCore, 20);                                // crown
+    ctx.colliders.push({ minX: x - 13, maxX: x + 13, minZ: z - 13, maxZ: z + 13, circleX: x, circleZ: z, circleRadius: 13 });
+    ctx.planeBlocks?.push({ minX: x - 13, maxX: x + 13, minZ: z - 13, maxZ: z + 13, top: 86 });
+  }
+  B.flush('aegis-prime');
+  const primeBeam = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 6, 380, 14, 1, true), beamMat);
+  primeBeam.position.set(PRIME.x, 270, PRIME.z); primeBeam.userData.noCull = true; ctx.scene.add(primeBeam); beams.push(primeBeam);
+  ctx.sign?.('AEGIS PRIME GENERATOR · CAPITAL', PRIME.x, 4.5, PRIME.z - 13.4, 12, '#0e3550');
+  ctx.destinations?.push({ name: 'Aegis Prime Generator', x: PRIME.x, z: PRIME.z - 18 });
   ctx.destinations?.push(...SPIRES.map(s => ({ name: s.name, x: s.x, z: s.z + 14 })));
 
   // =================================================================================
@@ -340,7 +371,8 @@ export function buildFrontierWorld(ctx) {
     ? 'Sentry: Joint Task Force pass verified. Stay on the marked roads and keep powers holstered.'
     : 'Sentry: Fort Halberd is a restricted Defence Force site. Entry without authorisation is an offence under the Official Secrets and Defence Sites Act; intruders will be stopped by force. Rank C hunters on joint task force duty may enter.'));
   I(fortRadio, 'Fort Halberd operations desk', () => ctx.toast('Operations: the railgun battery covers the northern gate-breach corridor. The Aegis Spire beside you keeps the planetary shield powered. Do not fly over the base.'));
-  for (const sp of SPIRES) I(new THREE.Vector3(sp.x, 0.2, sp.z + 11), `Read the ${sp.name} status panel`, () => ctx.toast(`${sp.name}: output nominal. The Aegis Shield is a planet-wide hex lattice fed by spire nodes. It stops meteors, orbital debris and high-tier monsters from outside — not the gates that open inside it.`));
+  I(new THREE.Vector3(260, 0.2, 702 - 15), 'Read the Aegis Prime Generator status panel', () => ctx.toast('Aegis Prime Generator: output nominal. This is the main power source for the Aegis Shield. It feeds the four sub-generator spires at the edges of the map (Westwatch, Fort Halberd, Saltmarsh and Eastreach), which spread the power across the hex lattice in the sky.'), 4);
+  for (const sp of SPIRES) I(new THREE.Vector3(sp.x, 0.2, sp.z + 11), `Read the ${sp.name} status panel`, () => ctx.toast(`${sp.name}: output nominal. Main power comes from the Aegis Prime Generator in the Capital; this spire is a sub-generator. The Aegis Shield is a planet-wide hex lattice fed by spire nodes. It stops meteors, orbital debris and high-tier monsters from outside — not the gates that open inside it.`));
 
   // =================================================================================
   // 9. Update: patrols, restricted-zone enforcement, shield shimmer

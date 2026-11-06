@@ -6,7 +6,7 @@ export function buildCapitalServices(ctx){
  // An open entrance and interior, rather than an unenterable solid box.
  ctx.box(22,6,.4,x,3.4,z+9,color,true);for(const side of [-1,1]){ctx.box(.4,6,18,x+side*11,3.4,z,color,true);ctx.box(8,6,.4,x+side*7,3.4,z-9,color,true);}ctx.box(22,.4,18,x,6.6,z,color,false);
  ctx.box(10,1,2,x,.9,z+5,0x52606a,true);
- const map=ctx.makeTex(512,96,g=>{g.fillStyle='#172c3b';g.fillRect(0,0,512,96);g.fillStyle='white';g.textAlign='center';g.font='bold 27px sans-serif';g.fillText(name,256,60);});const sign=new THREE.Mesh(new THREE.PlaneGeometry(16,2),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));sign.position.set(x,4.7,z-9.25);ctx.scene.add(sign);
+ const map=ctx.makeTex(512,96,g=>{g.fillStyle='#172c3b';g.fillRect(0,0,512,96);g.fillStyle='white';g.textAlign='center';g.font='bold 27px sans-serif';g.fillText(name,256,60);});const sign=new THREE.Mesh(new THREE.PlaneGeometry(6.5,.8),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));sign.position.set(x,4.7,z-9.25);ctx.scene.add(sign);
  ctx.interactables.push({pos:new THREE.Vector3(x,.4,z+3),r:3,label:name+' service',action});ctx.destinations.push({name,x,z:z-12});
  if(name==='GOVERNMENT OFFICES')for(let i=0;i<4;i++){const official=ctx.makePerson({outfit:i===0?0x233e54:0x313748,hair:0x443328,pants:0x252e3c});official.root.position.set(x-7+i*4,.4,z+3);}
  const h=ctx.makePerson({outfit:color,hair:0x403127,pants:0x293947});h.root.position.set(x,.4,z+6);

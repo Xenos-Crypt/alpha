@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {arrivalBoard,formatWait,railArrival} from './arrival-boards.js';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {ROAD_LAYOUT} from './junction-control.js';
+import {makeHover} from './hover.js';
 export function buildTransport(ctx){
  const {scene,box,interactables,makePerson,animatePerson,toast}=ctx;const services=[],stopBoards=[];let boardTimer=0;
  function vehicle(name,x,z,length,color){const g=new THREE.Group();scene.add(g);const add=(w,h,d,px,py,pz,c)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:c}));m.position.set(px,py,pz);g.add(m);return m;};add(length,2.2,2.7,0,1.5,0,color);for(let px=-length/2+1;px<length/2;px+=2)for(const side of [-1,1])add(1.3,1,.05,px,2,side*1.37,0x698c9f);for(const px of [-length/2+2,length/2-2])for(const side of [-1,1])add(.7,.7,.25,px,.5,side*1.45,0x232b31);g.position.set(x,0,z);return {name,g,add};}
@@ -19,6 +20,9 @@ export function buildTransport(ctx){
  }
  for(const end of [-1,1]){tram.add(.04,1.25,2.15,end*9.01,2,0,0x29434e);for(const side of [-1,1])tram.add(.05,.18,.3,end*9.04,.91,side*.86,end>0?0xffedc3:0xdb4d44);}
  tram.add(.15,2,.15,0,3.4,0,0x434b52);tram.add(6,.1,.1,0,4.4,0,0x434b52);
+ // Trams and trains hover on maglev pads instead of rolling on wheels.
+ const isWheel=m=>m.isMesh&&(m.geometry.type==='BoxGeometry'&&m.geometry.parameters.width===.7&&m.geometry.parameters.height===.7&&m.geometry.parameters.depth===.25||m.geometry.type==='CylinderGeometry'&&m.geometry.parameters.radiusTop===.38);
+ for(const [v,len] of [[tram,18],[train,32]])makeHover(v.g,{lift:.3,bob:.015,width:len,length:2.7,hide:v.g.children.filter(isWheel),strips:[-1,1].map(z=>({z:z*1.05,w:len-2,d:.22}))});
  for(const [min,max,z]of [[20,590,ROAD_LAYOUT.tramZ],[-220,100,155]]){box(max-min,.04,3.1,(min+max)/2,.075,z,0x667371,false);for(const offset of [-.8,.8])box(max-min,.045,.09,(min+max)/2,.12,z+offset,new THREE.MeshStandardMaterial({color:0xc1ced7,metalness:.8,roughness:.25}),false);for(let x=min;x<=max;x+=2)box(.18,.035,2.1,x,.105,z,0x4e5755,false);}
  services.push({...tram,length:18,stops:[20,300,420,580],z:ROAD_LAYOUT.tramZ,index:0,direction:1,speed:0,wait:10,doors:true});services.push({...train,length:32,stops:[-220,-100,100],z:155,index:0,direction:1,speed:0,wait:12,doors:true});
  for(const s of services)for(const x of s.stops){

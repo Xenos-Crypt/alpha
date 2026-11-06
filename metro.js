@@ -1,4 +1,5 @@
 import {buildSubwayEntrances} from './subway-entrances.js';
+import {makeHover} from './hover.js';
 import {buildSubwayPassengers} from './subway-passengers.js';
 import * as THREE from 'three';
 import {arrivalBoard,railArrival,formatWait} from './arrival-boards.js';
@@ -26,6 +27,8 @@ export function buildMetro(ctx){
  trainPart(12,.2,2.7,0,.3,0,0x477997);trainPart(12,.18,2.7,0,3.15,0,0x547989);
  for(const side of [-1,1]){trainPart(12,.65,.12,0,.75,side*1.38,0x477997);trainPart(12,.45,.12,0,2.85,side*1.38,0x477997);for(let x=-5.8;x<=5.8;x+=1.95)trainPart(.15,1.6,.12,x,1.9,side*1.38,0x526c7a);const window=new THREE.Mesh(new THREE.PlaneGeometry(11.6,1.65),new THREE.MeshStandardMaterial({color:0xa9d4e5,transparent:true,opacity:.12,depthWrite:false,side:THREE.DoubleSide}));window.position.set(0,1.95,side*1.4);group.add(window);trainPart(.2,2.8,2.7,side*6,1.7,0,0x477997);}
 
+ // The subway train hovers on glowing maglev strips.
+ makeHover(group,{lift:.25,bob:.012,width:12,length:2.7,strips:[-1,1].map(z=>({z:z*1.05,w:11,d:.22}))});
  const train={name:'Train',g:group,stops:stations.map(s=>s.tx),index:0,direction:1,doors:true,wait:10,speed:0};
  for(const s of stations){
   interactables.push({pos:new THREE.Vector3(s.x,s.y,s.z-6),r:2.5,label:'Enter subway - '+s.name,action:()=>{if(!ctx.canEnter())return;ctx.move(s.x,s.y,s.z-5);toast('Walk down the staircase to the platform.');}});
