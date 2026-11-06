@@ -45,8 +45,10 @@ import {buildDrones} from './drones.js';
 import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
 import {buildBlackMarket} from './black-market.js';
+import {buildMilitary, addNavyCrew} from './military.js';
 import {createCarControls} from './car-controls.js';
 import {createSnackShop} from './snack-shop.js';
+import {createArcade} from './arcade-games.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
 import { installMatrixCache } from './matrix-cache.js';
@@ -2299,7 +2301,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let blackMarket = null;
+let blackMarket = null, military = null, navyCrew = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -5793,6 +5795,12 @@ let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
 // Homes, shops and offices get real multi-room interiors (see interiors.js); civic
 // buildings keep the themed hall above.
 // Snack and drink menu used by shop tills, kiosks and vending machines.
+const arcade = createArcade({ toast, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
+  onFinish(kind, score, won, msg) {
+    let tickets = 0; try { tickets = +localStorage.getItem('anotherworld-arcade-tickets') || 0; } catch {}
+    tickets += won; try { localStorage.setItem('anotherworld-arcade-tickets', String(tickets)); } catch {}
+    toast(`${msg} Score ${score}: +${won} tickets (${tickets} total). Swap 50 at the prize counter.`);
+  } });
 const snackShop = createSnackShop({ stats, maxHp, toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
@@ -5817,13 +5825,10 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
         if (tickets < 50) { toast(`You have ${tickets} tickets. Prizes start at 50.`); return; }
         tickets -= 50; save(); toast(`You swap 50 tickets for a ${['giant plush dragon', 'glow-in-the-dark yo-yo', 'Pixel Palace cap', 'tiny robot keyring'][Math.floor(Math.random() * 4)]}! (${tickets} tickets left)`); return;
       }
-      const cost = kind === 'dance' ? 0 : 2;
+      const cost = 2;
       if (stats.gold < cost) { toast(`You need ${cost} gold to play.`); return; }
       stats.gold -= cost;
-      const won = kind === 'claw' ? (Math.random() < 0.2 ? 30 : 0) : 5 + Math.floor(Math.random() * 20);
-      tickets += won; save();
-      const msg = { game: 'You play a round of Neon Racer.', claw: won ? 'The claw grabs a plush toy and actually holds on!' : 'The claw grabs a toy... and drops it. Classic.', hockey: 'A fierce game of air hockey. 7-5 to you.', dance: 'You hit almost every arrow on the dance machine.' }[kind];
-      toast(`${msg} +${won} tickets (${tickets} total).`);
+      arcade.start(kind);   // a real game you play yourself; tickets depend on your score
     },
     rest(amount, msg) { stats.energy = Math.min(100, stats.energy + amount); toast(msg); },
     sleep() {
@@ -6205,6 +6210,7 @@ addEventListener('keydown', e => {
   if (!locked) return;
   if (inCar && isRoadVehicle(driving) && carControls.keydown(e.code)) return;   // gears, lights, indicators, horn
   if (e.code === 'KeyV') toggleFlashlight();
+  if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
   if (e.code === 'KeyR'&&!(inCar&&driving.kind==='plane')) psychicGrip();
@@ -7207,6 +7213,11 @@ const regionalTransportContext={scene,box,sign:signboard,makePerson:makeHumanoid
  prepare(){action=null;swimming=false;vy=0;pvel.set(0,0,0);},move(p){player.position.copy(p);vy=0;pvel.set(0,0,0);swimming=false;},carry:p=>player.position.copy(p),toast,
  addSeat(x,z,y){box(3,.15,.7,x,y+.65,z,0x69727c,false);box(3,.6,.1,x,y+1,z+.3,0x69727c,false);sitSpots.push({x,z,seatY:y+.75,yaw:Math.PI,label:'Sit at railway station'});}};
 navy=buildNavy({...regionalTransportContext,input:()=>locked?{forward:keys.KeyW?1:0,back:keys.KeyS?1:0,left:keys.KeyA?1:0,right:keys.KeyD?1:0,dive:keys.ShiftLeft||keys.ShiftRight?1:0,surface:keys.Space?1:0}:{forward:0,back:0,left:0,right:0,dive:0,surface:0},water:(x,z,h,l,w)=>waterFootprint(x,z,h,l,w,navigableSea),clearPassage:(v,next)=>shipCanAdvance({x:v.g.position.x,z:v.g.position.z,length:v.length},next.x,BRIDGE_X,GAP0,GAP1,bridgeLiftAngle)});
+military = buildMilitary({ scene, colliders, interactables, civicBuildings, makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, toast, burst, fxSphere, statSources, destinations: townPlaces.destinations,
+  playerPos: () => player.position, playerRig: () => P,
+  addAircraft: a => makeAircraft(a),
+  makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
+navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast });
 intercityRail=buildIntercityRail(regionalTransportContext);
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
 for(const v of cityServices.traffic)if(v.kind==='car'&&(v.group.position.z>640&&v.group.position.x<500))detailVehicle(v,'luxury');
@@ -7308,6 +7319,7 @@ function frame() {
     updateHomeDoor(dt);
     updateFlashlight();
     blackMarket?.update(dt);
+    military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);

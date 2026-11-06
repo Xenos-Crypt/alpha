@@ -514,20 +514,20 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     };
     for (let z = -7.5; z <= 6.5; z += 1.1) { cabinet(-11.3, z, Math.PI / 2); cabinet(11.3, z, -Math.PI / 2); }
     for (let x = -6; x <= 6; x += 1.1) { cabinet(x, -1.2, 0); cabinet(x, -2.4, Math.PI); }
-    spot(-10.2, 0, 2.2, 'Play an arcade game (2 gold)', () => hooks.arcade('game'));
-    spot(10.2, 0, 2.2, 'Play an arcade game (2 gold)', () => hooks.arcade('game'));
-    spot(0, 0, 2.0, 'Play an arcade game (2 gold)', () => hooks.arcade('game'));
+    spot(-10.2, 0, 2.2, 'Play Neon Defender (2 gold)', () => hooks.arcade('game'));
+    spot(10.2, 0, 2.2, 'Play Neon Defender (2 gold)', () => hooks.arcade('game'));
+    spot(0, 0, 2.0, 'Play Neon Defender (2 gold)', () => hooks.arcade('game'));
     // Claw machines, air hockey, dance machine, prize counter
     for (const x of [-7, -5]) {
       B(1.1, 0.9, 1.1, x, 0.45, -7.6, 0xff2bd6, true); B(1.1, 1.3, 1.1, x, 1.55, -7.6, mat(0xbfe6ff, { opacity: 0.25 }));
       for (let k = 0; k < 6; k++) { const ball = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), mat(cols[k])); ball.position.set(L.x0 + x - 0.3 + (k % 3) * 0.3, 1.05, L.z0 - 7.8 + Math.floor(k / 3) * 0.35); scene.add(ball); }
     }
-    spot(-6, -6.4, 1.8, 'Try the claw machine (2 gold)', () => hooks.arcade('claw'));
+    spot(-6, -6.4, 1.8, 'Play the claw machine (2 gold)', () => hooks.arcade('claw'));
     for (const x of [3.5, 7]) { F.table(x, -6.5, 2.2, 1.2, 0, 0x1f6f8f); B(2.0, 0.02, 1.0, x, 0.88, -6.5, neon(0x00e5ff, 0.6)); }
-    spot(5.2, -5.2, 2.0, 'Play air hockey', () => hooks.arcade('hockey'));
+    spot(5.2, -5.2, 2.0, 'Play air hockey (2 gold)', () => hooks.arcade('hockey'));
     for (let i = 0; i < 9; i++) B(0.6, 0.12, 0.6, -2.7 + (i % 3) * 0.65, 0.16, 4.5 + Math.floor(i / 3) * 0.65, neon(cols[i % cols.length], 1.2));
     B(2.2, 2.2, 0.3, -2.05, 1.2, 3.4, mat(0x15151c)); B(1.6, 1.0, 0.02, -2.05, 1.6, 3.56, neon(0xff2bd6, 1.2));
-    spot(-2.05, 5.2, 1.6, 'Dance on the dance machine', () => hooks.arcade('dance'));
+    spot(-2.05, 5.2, 1.6, 'Dance on the dance machine (2 gold)', () => hooks.arcade('dance'));
     F.counter(7, 6.8, Math.PI, 4, 0xffd23f, 0x2b2b33);
     for (let k = 0; k < 8; k++) { const prize = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat(cols[k % cols.length])); prize.position.set(L.x0 + 5.4 + k * 0.45, 1.25, L.z0 + 7.2); scene.add(prize); }
     spot(7, 5.6, 1.8, 'Swap tickets for a prize', () => hooks.arcade('prize'));
