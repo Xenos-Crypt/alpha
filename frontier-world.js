@@ -11,6 +11,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const FORT = { name: 'Fort Halberd', x0: 470, x1: 790, z0: -640, z1: -460, gate: [600, 616] };
 export const WESTWATCH = { name: 'Westwatch Aegis Relay', x0: -880, x1: -740, z0: -640, z1: -500, gate: [-816, -804] };
+import { DOME } from './border.js';
 export const SPIRES = [
   { name: 'Westwatch Spire', x: -810, z: -575 },
   { name: 'Fort Halberd Spire', x: 740, z: -505 },
@@ -101,7 +102,10 @@ export function buildFrontierWorld(ctx) {
 
   // ---- generic building pieces ---------------------------------------------------
   // A rectangular building with windows on all sides and a door on the side facing `face` (+z by default).
-  function building(x, z, w, d, h, wall, { roof = C.slate, floors = Math.max(1, Math.round(h / 3.4)), door = true, flatRoof = true, face = 1 } = {}) {
+  // Every frontier building with a door can be entered (E near it), like the town's.
+  let frontierN = 1;
+  const enterable = (type, name, x, z, w, d) => ctx.civicBuildings?.push({ type, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  function building(x, z, w, d, h, wall, { roof = C.slate, floors = Math.max(1, Math.round(h / 3.4)), door = true, flatRoof = true, face = 1, kind = 'frontier-office', name } = {}) {
     box(w, h, d, x, h / 2, z, wall, true);
     if (flatRoof) box(w + 0.4, 0.4, d + 0.4, x, h + 0.2, z, roof);
     const fh = h / floors;
@@ -114,6 +118,7 @@ export function buildFrontierWorld(ctx) {
       }
     }
     if (door) { box(2.4, 2.8, 0.15, x, 1.4, z + face * (d / 2 + 0.08), C.door); box(4, 0.25, 1.6, x, 3.1, z + face * (d / 2 + 0.8), C.darkConcrete); }
+    if (door) enterable(kind, name || `Frontier Building ${frontierN++}`, x, z, w, d);
     return { doorPos: new THREE.Vector3(x, 0.2, z + face * (d / 2 + 2.2)) };
   }
   function house(x, z, face, wall, roofMat) {
@@ -124,6 +129,7 @@ export function buildFrontierWorld(ctx) {
     box(1.1, 2.4, 1.1, x + w * 0.25, h + 2.2, z - d * 0.2, C.brick);                  // chimney
     for (const sx of [-2.2, 2.2]) for (const y of [1.6, 4]) box(1.4, 1.1, 0.08, x + sx, y, z + face * (d / 2 + 0.04), C.window);
     box(1.2, 2.2, 0.12, x, 1.1, z + face * (d / 2 + 0.06), C.door);
+    enterable('house', `${frontierN++} Frontier Lane`, x, z, w, d);
     box(1.4, 0.06, 1.6, x, 0.03, z + face * (d / 2 + 0.8), C.concrete);               // front path
     for (const sx of [-1, 1]) box(w / 2 - 0.9, 0.6, 0.25, x + sx * (w / 4 + 0.45), 0.3, z + face * (d / 2 + 1.6), C.darkStone);   // garden wall with a gap for the path
   }
@@ -285,28 +291,65 @@ export function buildFrontierWorld(ctx) {
   // light beams from each spire to the shield (unlit, additive)
   const beamMat = new THREE.MeshBasicMaterial({ color: 0x7ad8ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
   const beams = SPIRES.map(sp => { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 2.2, 420, 10, 1, true), beamMat); b.position.set(sp.x, 262, sp.z); b.userData.noCull = true; ctx.scene.add(b); return b; });
-  for (const sp of SPIRES) ctx.sign?.(sp.name.toUpperCase() + ' · AEGIS SHIELD NODE', sp.x, 6.5, sp.z + 9.4, 12, '#0e3550');
+  for (const sp of SPIRES) ctx.sign?.(sp.name.toUpperCase() + ' · SHIELD SUB-GENERATOR', sp.x, 6.5, sp.z + 9.4, 12, '#0e3550');
+
+  // The main Aegis generator stands in the Capital's bridge plaza. It powers the whole
+  // shield; the four spires at the edges of the map are smaller sub-generators that
+  // spread its power out to the lattice. A thick beam rises from it to the shield.
+  const PRIME = { x: 260, z: 702 };
+  {
+    const { x, z } = PRIME;
+    cyl(11, 13, 2, x, 1, z, C.darkConcrete, 24);                         // plinth
+    cyl(9, 10, 6, x, 5, z, C.steel, 24);                                  // generator hall
+    for (let i = 0; i < 6; i++) {                                         // six coil towers
+      const a = i * Math.PI / 3, cx = x + Math.cos(a) * 8, cz = z + Math.sin(a) * 8;
+      cyl(1.1, 1.4, 22, cx, 13, cz, C.hull, 10);
+      for (let y = 6; y <= 22; y += 4) cyl(1.7, 1.7, 0.4, cx, y, cz, C.glow, 12);
+      sphere(1.4, cx, 25, cz, C.shieldCore, 10);
+    }
+    cyl(2.6, 3.4, 70, x, 41, z, C.shieldCore, 16);                        // central core
+    for (let y = 14; y <= 70; y += 7) cyl(5.2, 5.2, 0.7, x, y, z, C.glow, 24);
+    sphere(6, x, 78, z, C.shieldCore, 20);                                // crown
+    ctx.colliders.push({ minX: x - 13, maxX: x + 13, minZ: z - 13, maxZ: z + 13, circleX: x, circleZ: z, circleRadius: 13 });
+    ctx.planeBlocks?.push({ minX: x - 13, maxX: x + 13, minZ: z - 13, maxZ: z + 13, top: 86 });
+  }
+  B.flush('aegis-prime');
+  const primeBeam = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 6, 380, 14, 1, true), beamMat);
+  primeBeam.position.set(PRIME.x, 270, PRIME.z); primeBeam.userData.noCull = true; ctx.scene.add(primeBeam); beams.push(primeBeam);
+  ctx.sign?.('AEGIS PRIME GENERATOR · CAPITAL', PRIME.x, 4.5, PRIME.z - 13.4, 12, '#0e3550');
+  ctx.destinations?.push({ name: 'Aegis Prime Generator', x: PRIME.x, z: PRIME.z - 18 });
   ctx.destinations?.push(...SPIRES.map(s => ({ name: s.name, x: s.x, z: s.z + 14 })));
 
   // =================================================================================
   // 6. The Aegis planetary shield — a hex lattice across the whole sky
   // =================================================================================
-  const shieldUniforms = { time: { value: 0 }, strength: { value: 1 }, pulse: { value: 0 } };
+  // The shield is a fixed dome centred on the map (DOME in border.js). It's drawn on the
+  // sky sphere round the camera, but each pixel works out where its view ray meets the
+  // real dome, so the hex cells stay put in the world and the dome visibly comes down
+  // to the ground at the rim, where the border fence is.
+  const shieldUniforms = { time: { value: 0 }, strength: { value: 1 }, pulse: { value: 0 }, camPos: { value: new THREE.Vector3() }, domeC: { value: new THREE.Vector3(DOME.x, 0, DOME.z) }, domeR: { value: DOME.r } };
   const shield = new THREE.Mesh(new THREE.SphereGeometry(440, 48, 24), new THREE.ShaderMaterial({
     uniforms: shieldUniforms, side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, fog: false, blending: THREE.AdditiveBlending,
-    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform float time; uniform float strength; uniform float pulse; varying vec3 vDir;
+    vertexShader: 'varying vec3 vWorld; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform float time; uniform float strength; uniform float pulse; uniform vec3 camPos; uniform vec3 domeC; uniform float domeR; varying vec3 vWorld;
       float hexDist(vec2 p){ p = abs(p); return max(dot(p, normalize(vec2(1.0,1.732))), p.x); }
       vec4 hexCoords(vec2 uv){ vec2 r = vec2(1.0,1.732), h = r*0.5; vec2 a = mod(uv,r)-h, b = mod(uv-h,r)-h; vec2 gv = dot(a,a)<dot(b,b)?a:b; return vec4(gv, uv-gv); }
       void main(){
-        float up = vDir.y; if (up < -0.02) discard;
-        vec2 uv = vDir.xz / (up + 0.35) * 5.0;            // flatter cells overhead, compressed towards the horizon
+        vec3 dir = normalize(vWorld - camPos);
+        vec3 oc = camPos - domeC; float b = dot(oc, dir), c = dot(oc, oc) - domeR * domeR, disc = b * b - c;
+        if (disc < 0.0) discard;
+        float sq = sqrt(disc), t = c < 0.0 ? -b + sq : -b - sq;   // inside: where the ray leaves the dome; outside: where it hits it
+        if (t < 0.0) discard;
+        vec3 P = camPos + dir * t; if (P.y < -0.5) discard;          // that part of the dome is below ground
+        vec3 n = (P - domeC) / domeR; float up = n.y;
+        vec2 uv = n.xz / (up + 0.35) * 9.0;              // cells fixed to the dome itself
         vec4 hc = hexCoords(uv);
         float edge = smoothstep(0.465, 0.5, hexDist(hc.xy));
         float shimmer = 0.5 + 0.5 * sin(time * 0.6 + hc.z * 0.9 + hc.w * 1.3);
         float wave = smoothstep(0.0, 0.15, 0.15 - abs(fract(length(hc.zw) * 0.025 - time * 0.05) - 0.5));
         float horizon = smoothstep(0.35, 0.0, up);
-        float a = edge * (0.025 + 0.05 * shimmer) + wave * edge * 0.18 + horizon * 0.07 + pulse * edge * 0.6;
+        float rim = smoothstep(0.03, 0.0, up) * (0.6 + 0.4 * sin(time * 1.5 + atan(n.x, n.z) * 40.0));   // glowing band where the dome meets the ground
+        float a = edge * (0.025 + 0.05 * shimmer) + wave * edge * 0.18 + horizon * 0.07 + rim * 0.45 + pulse * edge * 0.6;
         gl_FragColor = vec4(vec3(0.35, 0.78, 1.0) * a * strength, 1.0);
       }`,
   }));
@@ -340,19 +383,21 @@ export function buildFrontierWorld(ctx) {
     ? 'Sentry: Joint Task Force pass verified. Stay on the marked roads and keep powers holstered.'
     : 'Sentry: Fort Halberd is a restricted Defence Force site. Entry without authorisation is an offence under the Official Secrets and Defence Sites Act; intruders will be stopped by force. Rank C hunters on joint task force duty may enter.'));
   I(fortRadio, 'Fort Halberd operations desk', () => ctx.toast('Operations: the railgun battery covers the northern gate-breach corridor. The Aegis Spire beside you keeps the planetary shield powered. Do not fly over the base.'));
-  for (const sp of SPIRES) I(new THREE.Vector3(sp.x, 0.2, sp.z + 11), `Read the ${sp.name} status panel`, () => ctx.toast(`${sp.name}: output nominal. The Aegis Shield is a planet-wide hex lattice fed by spire nodes. It stops meteors, orbital debris and high-tier monsters from outside — not the gates that open inside it.`));
+  I(new THREE.Vector3(260, 0.2, 702 - 15), 'Read the Aegis Prime Generator status panel', () => ctx.toast('Aegis Prime Generator: output nominal. This is the main power source for the Aegis Shield. It feeds the four sub-generator spires at the edges of the map (Westwatch, Fort Halberd, Saltmarsh and Eastreach), which spread the power across the hex lattice in the sky.'), 4);
+  for (const sp of SPIRES) I(new THREE.Vector3(sp.x, 0.2, sp.z + 11), `Read the ${sp.name} status panel`, () => ctx.toast(`${sp.name}: output nominal. Main power comes from the Aegis Prime Generator in the Capital; this spire is a sub-generator. The Aegis Shield is a planet-wide hex lattice fed by spire nodes. It stops meteors, orbital debris and high-tier monsters from outside — not the gates that open inside it.`));
 
   // =================================================================================
   // 9. Update: patrols, restricted-zone enforcement, shield shimmer
   // =================================================================================
   let warnCd = 0, alertCd = 0, time = 0;
-  function update(dt, { sky, inSpace, underground }) {
+  function update(dt, { sky, inSpace, underground, camera }) {
     time += dt;
     shieldUniforms.time.value = time;
     shieldUniforms.pulse.value = Math.max(0, shieldUniforms.pulse.value - dt * 0.6);
     shield.visible = !inSpace && !underground;
     for (const b of beams) b.visible = shield.visible;
     if (sky) { shield.position.copy(sky.position); shield.scale.copy(sky.scale); }
+    if (camera) shieldUniforms.camPos.value.copy(camera.position);
     for (const p of people) {
       let moving = false;
       if (p.route) {

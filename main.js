@@ -35,6 +35,14 @@ import {buildGhostIsland} from './ghost-island.js';
 import {createWorldAudio} from './world-audio.js';
 import {createHosting,ROOM_CITIES} from './hosting.js';
 import {buildCapitalServices} from './capital-services.js';
+import {hoverRoadVehicle, makeHover, updateHover} from './hover.js';
+import {buildInteriors} from './interiors.js';
+import {buildBorder, DOME, PLAY_R} from './border.js';
+import {buildVenues} from './venues.js';
+import {buildPowerGrid} from './power-grid.js';
+import {buildHelipads} from './helipads.js';
+import {buildDrones} from './drones.js';
+import {buildHiddenPeak} from './hidden-peak.js';
 import {buildSpaceCentre} from './space-centre.js';
 import * as THREE from 'three';
 import { installMatrixCache } from './matrix-cache.js';
@@ -234,7 +242,10 @@ starGeometry.setAttribute('position',new THREE.BufferAttribute(starPositions,3))
 const clouds = [];
 const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, fog: false, flatShading: true });
 const cloudGeo = new THREE.IcosahedronGeometry(1, 1);
-for (let i = 0; i < 22; i++) {
+// Clouds used to sit only over the starting town (22 within 250 m). Now there's a
+// bigger field that wraps around the camera, so the sky is cloudy everywhere.
+const CLOUD_SPAN = 1400;   // stays inside the 1000 m draw distance
+for (let i = 0; i < 60; i++) {
   const c = new THREE.Group();
   const n = 4 + Math.floor(rand() * 4);
   for (let j = 0; j < n; j++) {
@@ -244,7 +255,8 @@ for (let i = 0; i < 22; i++) {
     puff.position.set((j - n / 2) * 6 + rand() * 3, rand() * 3, rand() * 6);
     c.add(puff);
   }
-  c.position.set((rand() - 0.5) * 500, 90 + rand() * 30, (rand() - 0.5) * 500);
+  c.position.set((rand() - 0.5) * CLOUD_SPAN, 85 + rand() * 45, (rand() - 0.5) * CLOUD_SPAN);
+  c.rotation.y = rand() * Math.PI * 2;
   scene.add(c);
   clouds.push(c);
 }
@@ -405,7 +417,7 @@ const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford C
 let supportSkills=null,cityServices=null,supportCounters={dungeons:0,bosses:0};
 function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localStorage.setItem('support:'+alignmentUserId,JSON.stringify({skill:supportSkills.snapshot(),counters:supportCounters,kills:monsterQuestKills}));}catch{}}
 let cityLife=null,monsterQuestKills=0;
-let roadLaw=null,hunterGuilds=null,frontier=null;   // law, guild system and the northern frontier (created after the base world)
+let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
@@ -444,7 +456,10 @@ function collide(p, r) {
       p.x += opts[0][0]; p.z += opts[0][1];
     }
   }
-  if (p.x > -1000 && p.x < 1500) { p.x = clamp(p.x, -900, 1240); p.z = clamp(p.z, -650, 950); }   // dungeons live far away at x = 2000; south bound extended for Riverside/Capital
+  // The world ends at the rim of the Aegis Shield dome, where the border fence is.
+  // (Dungeons, interiors, the subway and sewers live far outside it and aren't affected.)
+  { const dx = p.x - DOME.x, dz = p.z - DOME.z, d = Math.hypot(dx, dz);
+    if (d > PLAY_R && d < PLAY_R + 60) { p.x = DOME.x + dx / d * PLAY_R; p.z = DOME.z + dz / d * PLAY_R; } }
   return hit;
 }
 const insideCollider = p => colliders.some(c => c.circleRadius!=null ? Math.hypot(p.x-c.circleX,p.z-c.circleZ)<c.circleRadius : p.x>c.minX&&p.x<c.maxX&&p.z>c.minZ&&p.z<c.maxZ);
@@ -462,6 +477,8 @@ const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
+  const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
+  const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
   const ghostFloor=ghostIsland?.groundAt(x,z);if(ghostFloor!=null)return ghostFloor;
@@ -516,6 +533,11 @@ const groundTex = grassTex.clone(); groundTex.repeat.set(150, 215); groundTex.ne
 const ground = mesh(new THREE.PlaneGeometry(1800, 2100), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
 ground.rotation.x = -Math.PI / 2;
 ground.castShadow = false;
+// Grass for the rest of the land inside the shield dome (the original ground only
+// covered x -900..900, z -1050..1050). It sits just below the main ground.
+{ const tex = grassTex.clone(); tex.repeat.set(230, 230); tex.needsUpdate = true;
+  const outer = mesh(new THREE.CircleGeometry(DOME.r + 2, 160), new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }));
+  outer.rotation.x = -Math.PI / 2; outer.position.set(DOME.x, -0.03, DOME.z); outer.castShadow = false; outer.userData.noCull = true; }
 
 roadTex.repeat.set(330 / 40, 330 / 40);
 roadTex.offset.set(0.375, 0.375);   // puts an intersection exactly at the origin
@@ -633,11 +655,11 @@ function addBuilding(x, z, faceX, faceZ) {
   const doorZ = z + faceZ * (d / 2 - 0.03);
   box(1.5, 2.3, 0.1, x, CURB + 1.15, doorZ, 0x241f1a, false);
   box(1.7, 0.15, 0.2, x, CURB + 2.35, doorZ, 0x3a332b, false);   // lintel
-  if (rand() < 0.5) addCCTV(x + (w / 2 - 0.6) * (faceX || 1), CURB + 3.6, doorZ + faceZ * 0.1, faceZ);
+  addCCTV(x + (w / 2 - 0.6) * (faceX || 1), CURB + 3.6, doorZ + faceZ * 0.1, faceZ);   // every building has CCTV
   const kind = pick(['apartment', 'shop', 'office']);
   const name = (kind === 'apartment' ? buildingAddressN + ' Ashford Apartments' : kind === 'shop' ? buildingAddressN + ' High Street Shop' : buildingAddressN + ' Ashford Offices');
   buildingAddressN += rand() < 0.5 ? 2 : 4;
-  civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, cctv: true });
   // Exterior fire-escape staircase up one side, tall buildings only — a real
   // sloped ramp registered in stairRamps (see groundY) so it's actually climbable,
   // not just decoration.
@@ -687,7 +709,7 @@ function collapseBuilding(b,criminal=true) {
   callout('BUILDING DESTROYED', 0xff7a2f, true);
   if(criminal)raiseWanted(90);
   hitAround(base, size * 0.9, null, { dmg: 80, kb: 14, up: 8, stun: 2, heavy: true, impact: 1, guardBreak: true,police:!criminal,fromPlayer:criminal }, 60);
-  if (!inCar && distXZ(player.position, base) < size) hurtPlayer(30, base, 15);
+  if (!inCar && distXZ(player.position, base) < size) hurtPlayer(30, base, 15, 'Hit by a collapsing building');
   reactBystanders(base, false); // raiseWanted(90) above already covers the crime
   const start = b.meshes.map(m => m.position.clone());
   const fallAccel = 2 * (H + 3) / 16;   // reaches the ground in about 4 seconds
@@ -913,6 +935,7 @@ addBench(PARK.x - 2.5, PARK.z + 4, Math.PI / 2);
 // PARK LIFE: flower beds, a duck pond, wandering pets and butterflies, and
 // real drowning if you wade into deep water without the Water class.
 // =====================================================================
+const poolZones = [];   // rectangular swimming pools (see venues.js)
 const waterZones = [{ x: PARK.x + 6.5, z: PARK.z + 6.5, r: 4 }]; // ponds — walking in without Water risks drowning
 const flowerColors = [0xff6b81, 0xffd166, 0xff9f43, 0xeaff8f, 0xa29bfe];
 function addFlowerPatch(x, z, n = 6) {
@@ -979,33 +1002,9 @@ addPet('dog', 25, -26);
 addPet('dog', -28, -26);
 addPet('dog', 28, 14);
 addPet('cat', PARK.x - 8, PARK.z + 3);
-addPet('horse', PARK.x + 16, PARK.z - 14);
-addPet('horse', PARK.x - 14, PARK.z - 10);
 
-// =====================================================================
-// HORSE RIDING ARENA: a fenced oval competition ground next to the park, with
-// jump obstacles and its own horses. Riding controls (mounting a horse and
-// actually steering it) aren't built yet — this is the real, enterable venue,
-// not the mount mechanic itself.
-// =====================================================================
-const ARENA = new THREE.Vector3(PARK.x - 60, CURB, PARK.z + 10);
-{
-  const rx = 26, rz = 16;
-  for (let i = 0; i < 28; i++) {
-    const a = (i / 28) * Math.PI * 2;
-    box(0.12, 1.1, 0.12, ARENA.x + Math.cos(a) * rx, 0.55, ARENA.z + Math.sin(a) * rz, 0x6b4a2f, false);
-  }
-  box(rx * 2 + 1, 0.06, rz * 2 + 1, ARENA.x, 0.03, ARENA.z, sandMat, false);
-  for (const [ox, oz] of [[-10, 0], [10, 0], [0, -6], [0, 6]]) {
-    box(2.6, 0.9, 0.18, ARENA.x + ox, 0.75, ARENA.z + oz, 0xc0392b, false);
-    for (const s of [-1, 1]) box(0.14, 1.1, 0.14, ARENA.x + ox + s * 1.3, 0.55, ARENA.z + oz, 0x6b4a2f, false);
-  }
-  signboard('HORSE RIDING ARENA', ARENA.x, 3, ARENA.z - rz - 1.5, 12, '#4a3b1d');
-  addBench(ARENA.x - 5, ARENA.z - rz - 3, 0);
-  addBench(ARENA.x + 5, ARENA.z - rz - 3, 0);
-  addPet('horse', ARENA.x - 8, ARENA.z + 2);
-  addPet('horse', ARENA.x + 6, ARENA.z - 3);
-}
+// Horses (and the horse riding arena) have been removed from the game. The riding
+// code is left in place but nothing can be mounted any more.
 function updatePets(dt) {
   for (const a of parkPets) {
     if (!a.alive) continue;
@@ -1582,20 +1581,10 @@ function fxSwoosh(pos, dir, color, flip) {
 // Impact frames: hit-stop + black/white inverted flash + speed lines + screen shake
 let hitStop = 0, shake = 0, linesT = 0, linesDark = false;
 let impactTimers = [];
-function impactFrame(power = 1) {
-  hitStop = Math.max(hitStop, 0.05 + 0.07 * power);
-  shake = Math.max(shake, 0.25 + 0.3 * power);
-  linesT = Math.max(linesT, 0.12 + 0.15 * power);
-  impactTimers.forEach(clearTimeout);
-  const c = renderer.domElement;
-  c.style.filter = 'grayscale(1) contrast(8) invert(1)';
-  linesDark = true;
-  impactTimers = [
-    setTimeout(() => { c.style.filter = 'grayscale(1) contrast(8)'; linesDark = false; }, 55),
-    setTimeout(() => { c.style.filter = 'saturate(1.7) contrast(1.25)'; }, 110),
-    setTimeout(() => { c.style.filter = ''; }, 200),
-  ];
-}
+// Impact frames (inverted black/white flash, freeze, speed lines, big shake) are
+// removed from the game entirely. Callers are kept so gameplay is unchanged; this
+// deliberately does nothing.
+function impactFrame(power = 1) {}
 let linesFrame = 0;
 function drawSpeedLines(dt) {
   linesT -= dt;
@@ -2288,7 +2277,9 @@ const ambCrossMat = new THREE.MeshStandardMaterial({ color: 0xe84118, roughness:
 
 function makeVehicle(kind, color) {
   if(['car','police','ambulance','motorcycle','bicycle'].includes(kind)){
-   const v=buildRoadVehicle({scene,makeTex,kind,color,headMat,tailMat,sirenRed,sirenBlue,ambRed,ambWhite});vehicles.push(v);return v;
+   const v=buildRoadVehicle({scene,makeTex,kind,color,headMat,tailMat,sirenRed,sirenBlue,ambRed,ambWhite});
+   hoverRoadVehicle(v, kind==='bicycle'||kind==='motorcycle' ? 0.35 : 0.45);   // cars and bikes hover
+   vehicles.push(v);return v;
   }
   const g = new THREE.Group();
   scene.add(g);
@@ -2358,6 +2349,7 @@ function makeVehicle(kind, color) {
   const v = { kind, group: g, wheels, speed: 0, radius: isBus ? 2.6 : 1.8, length: L,
               maxSpeed: isBus ? 24 : kind === 'police' || kind === 'ambulance' ? 85 : 75, ai: null, passengers: isBus ? [] : null };
   if(kind==='car'||kind==='police')detailVehicle(v,kind==='police'?'police':'standard');
+  if (kind !== 'tank') hoverRoadVehicle(v, isBus ? 0.4 : 0.45);   // buses and cars hover
   vehicles.push(v);
   return v;
 }
@@ -2480,6 +2472,8 @@ function signboard(text, x, y, z, width = 10, colour = '#15364a') {
     g.fillStyle = '#ffffff'; g.font = 'bold 54px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 512, 64, 970);
   });
   const mat = new THREE.MeshBasicMaterial({ map: texture });
+  // Signs used to be 10-16 m wide; they're now a sensible size (about half, max 7 m).
+  width = Math.min(7, width * 0.5);
   const geo = new THREE.PlaneGeometry(width, width / 8);
   const front = new THREE.Mesh(geo, mat); front.position.set(x, y, z); scene.add(front);
   const back = new THREE.Mesh(geo, mat); back.position.set(x, y, z); back.rotation.y = Math.PI; scene.add(back);
@@ -2971,6 +2965,8 @@ const SCHOOL = new THREE.Vector3(-60, 0, 60);
   addBench(x + 7, z + d / 2 + 2, Math.PI);
 })();
 
+const OSM_DOOR_GEO = new THREE.BoxGeometry(1.4, 2.3, 0.1), OSM_DOOR_MAT = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.7 });
+const OSM_FRAME_GEO = new THREE.BoxGeometry(1.7, 0.16, 0.18), OSM_FRAME_MAT = new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.8 });
 function loadCityTile(tx, tz) {
   const key = `${tx}_${tz}`;
   if (cityTiles.has(key)) return;
@@ -2989,6 +2985,19 @@ function loadCityTile(tx, tz) {
       minX: c.minX + CITY_OFFSET.x, maxX: c.maxX + CITY_OFFSET.x, minZ: c.minZ + CITY_OFFSET.z, maxZ: c.maxZ + CITY_OFFSET.z,
     }));
     for (const c of civicEntries) applyBuildingExterior(c, buildingAppearances[c.id]);
+    // Every map building gets a visible front door (one instanced mesh per tile, so
+    // thousands of doors cost two draw calls).
+    const doorable = tileCivic.filter(c => c.maxX - c.minX > 3 && c.maxZ - c.minZ > 3);
+    if (doorable.length) {
+      const doors = new THREE.InstancedMesh(OSM_DOOR_GEO, OSM_DOOR_MAT, doorable.length);
+      const frames = new THREE.InstancedMesh(OSM_FRAME_GEO, OSM_FRAME_MAT, doorable.length);
+      const m4 = new THREE.Matrix4();
+      doorable.forEach((c, i) => {
+        m4.makeTranslation(c.x, 1.15, c.maxZ + 0.07); doors.setMatrixAt(i, m4);
+        m4.makeTranslation(c.x, 2.38, c.maxZ + 0.1); frames.setMatrixAt(i, m4);
+      });
+      group.add(doors, frames);
+    }
     civicBuildings.push(...civicEntries);
     cityTiles.set(key, { group, colliders: tileColliders, buildingMesh, civicEntries });
   }).catch(() => cityTiles.delete(key));
@@ -3226,7 +3235,7 @@ function crashPlane(v) {
     player.position.set(p.x + 3, 0, p.z);
     collide(player.position, 0.4);
     player.position.y = groundY(player.position.x, player.position.z);
-    stats.hp -= 40 * defMul();
+    stats.hp -= 40 * defMul(); noteHpLoss('Plane crash');
     toast('You crashed!');
   }
   v.group.visible = false;
@@ -3348,7 +3357,10 @@ function applyHit(e, h) {
   const dir = new THREE.Vector3(p.x - h.from.x, 0, p.z - h.from.z);
   if (dir.lengthSq() < 1e-4) dir.copy(fwdOf(player));
   dir.normalize();
-  let dmg = h.dmg * dmgMul()*(h.fromPlayer!==false&&!h.police?(supportSkills?.damageMultiplier||1):1);
+  // Did the player actually cause this hit? AI traffic, police, raids and other
+  // people's explosions must never count against (or for) the player.
+  const byPlayer = h.fromPlayer !== false && !h.police;
+  let dmg = h.dmg * dmgMul()*(byPlayer?(supportSkills?.damageMultiplier||1):1);
   e.lastHit = 0;
 
   // Blocking: only works against hits from the front
@@ -3363,14 +3375,13 @@ function applyHit(e, h) {
       e.vel.addScaledVector(dir, (h.kb || 0) * 0.2);
       popText(at(p, 2.2), 'BLOCK', 'block');
       burst(at(p, 1.3).addScaledVector(dir, -0.4), 6, [0x74b9ff, 0xffffff], 6, 0.1, 0.25, 0);
-      hitStop = Math.max(hitStop, 0.03);
+      if (byPlayer) hitStop = Math.max(hitStop, 0.03);
       e.hp -= dmg;
       if (e.guard >= 100) {
         e.guard = 0; e.stun = 2; e.blocking = false;
         popText(at(p, 2.6), 'GUARD BREAK', 'break');
-        impactFrame(0.7);
       }
-      if (e.hp <= 0) killEnemy(e);
+      if (e.hp <= 0) killEnemy(e, byPlayer);
       return true;
     }
   }
@@ -3392,10 +3403,12 @@ function applyHit(e, h) {
   if (e.kind === 'npc') {   // people run away, everyone nearby reacts, and the police get called
     if (e.hp > 0 && e.hp <= 15) { e.ped.state = 'down'; e.ped.downT = 0; }
     else { e.ped.state = 'panic'; e.ped.panicT = 6; }
-    reactBystanders(p, !h.police);
+    reactBystanders(p, byPlayer);
   }
 
-  popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '');
+  // Damage numbers only appear for hits the player made; other people's fights and
+  // traffic accidents don't pop numbers on the player's screen.
+  if (byPlayer) popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '');
   burst(at(p, e.height * 0.6), h.heavy ? 18 : 8, [0xffffff, 0xffe08a, characters[charIdx].fx], h.heavy ? 12 : 7, 0.12, 0.3, 8);
   // Only count toward the player's own combo/ultimate-charge when the player
   // actually caused the hit — AI traffic running someone over was bumping the
@@ -3408,14 +3421,16 @@ function applyHit(e, h) {
   // which made routine kills feel as disruptive as a boss fight. Kills (any kind)
   // never get the full flash now, even though the kill counter/combo still count.
   const killingBlow = e.hp <= 0;
-  if (h.heavy && e.kind !== 'slime' && !killingBlow) impactFrame(h.impact ?? 1);
-  else { hitStop = Math.max(hitStop, 0.035); shake = Math.max(shake, 0.08); }
+  // Impact frames are removed from the game entirely. Only the player's own hits
+  // get a tiny hit-stop/shake; AI traffic or other people's fights never freeze
+  // or shake the player's screen.
+  if (byPlayer) { hitStop = Math.max(hitStop, 0.035); shake = Math.max(shake, 0.08); }
 
-  if (killingBlow) killEnemy(e);
+  if (killingBlow) killEnemy(e, byPlayer);
   return true;
 }
 
-function killEnemy(e) {
+function killEnemy(e, byPlayer = true) {
   if(e.npcRaid){e.alive=false;e.hp=0;e.root.visible=false;e.respawn=Infinity;return;}
   if (e.kind === 'standing') {           // the standing dummy never dies
     e.hp = e.maxHp;
@@ -3461,10 +3476,14 @@ function killEnemy(e) {
     e.respawn = 20;
     popText(at(e.root.position, 2.2), 'K.O.', 'break');
     dispatchDeathAmbulance(e);
-    gainXp(10);
-    villainKills++; localStorage.setItem('villainKills', String(villainKills));
-    saveAlignment();
-    if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); }
+    // Only the player's own attacks make them a villain. A resident knocked out by
+    // AI traffic, police or someone else's explosion is not the player's crime.
+    if (byPlayer) {
+      gainXp(10);
+      villainKills++; localStorage.setItem('villainKills', String(villainKills));
+      saveAlignment();
+      if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); }
+    }
     const n = randomCorner();   // comes back later somewhere else in town
     e.spot = cornerPos(n);
     Object.assign(e.ped, { state: 'wander', node: n, prev: null, target: cornerPos(n), stop: null, bus: null });
@@ -3609,7 +3628,8 @@ function updateWildlife(e, dt) {
   p.y = groundY(p.x, p.z);
   e.touchCd -= dt;
   if (!inCar && e.stun <= 0 && dist < (e.animal === 'snake' ? 1.1 : 1.6) && Math.abs(p.y - player.position.y) < 1.5 && e.touchCd <= 0) {
-    hurtPlayer(def.dmg, p, def.kb);
+    hurtPlayer(def.dmg, p, def.kb, 'Attacked by a wild ' + (e.animal || 'animal'));
+    dispatchAnimalControl(e);   // the animal is animal control's job, not the player's
     e.touchCd = e.animal === 'snake' ? 1.6 : 1.2;
   }
 }
@@ -3652,7 +3672,7 @@ function updateSlime(e, dt) {
   e.body.scale.set(1 + 0.15 * (1 - h), 0.75 + 0.25 * h, 1 + 0.15 * (1 - h));
   e.touchCd -= dt;
   if (!inCar && e.stun <= 0 && dist < 1.3 && Math.abs(p.y - player.position.y) < 1.5 && e.touchCd <= 0) {
-    hurtPlayer(6, p, 6);
+    hurtPlayer(6, p, 6, 'Attacked by a slime');
     e.touchCd = 1;
   }
 }
@@ -3723,7 +3743,7 @@ function updateFighter(e, dt) {
           const to = new THREE.Vector3(player.position.x - p.x, 0, player.position.z - p.z);
           const last = ai.combo === 2;
           if (to.length() < 2.5 && to.normalize().dot(f) > 0.3 && Math.abs(player.position.y - p.y) < 1.5) {
-            hurtPlayer(last ? 12 : 6, p, last ? 16 : 4);
+            hurtPlayer(last ? 12 : 6, p, last ? 16 : 4, 'Attacked by ' + (e.labelName || 'a fighter'));
           }
           fxSwoosh(at(p, 1.3).addScaledVector(f, 0.8), f, 0xff7675, ai.combo % 2);
         }
@@ -3789,6 +3809,133 @@ addPedPopulation(10, RIVERSIDE_BOUNDS);
 addPedPopulation(18, CAPITAL_BOUNDS);
 addPedPopulation(12, { bx0: -2, bx1: -2, bz0: 1, bz1: 1 });   // students attending Ashford School
 
+// Crimes the player didn't commit are handled by the city's own services instead of
+// being pinned on the player: the police come and arrest an AI driver who hits a
+// resident, and animal control comes to take away a wild animal that attacks.
+const responseUnits = { police: 0, animal: 0 };
+function serviceDepot(pos) {
+  // Units set off from a road junction a couple of blocks from the scene (towards
+  // the nearest police station), so they're on the road network and arrive quickly.
+  const station = civicBuildings.filter(b => b.type === 'police').sort((a, b) => distXZ(a, pos) - distXZ(b, pos))[0];
+  const toward = station ? new THREE.Vector3(station.x - pos.x, 0, station.z - pos.z) : new THREE.Vector3(1, 0, 1);
+  if (toward.lengthSq() < 1) toward.set(1, 0, 1);
+  toward.normalize().multiplyScalar(Math.min(80, toward.length() || 80));
+  const depot = new THREE.Vector3(Math.round((pos.x + toward.x) / 40) * 40, 0, Math.round((pos.z + toward.z) / 40) * 40);
+  depot.y = groundY(depot.x, depot.z);
+  return depot;
+}
+function playerNear(pos, range = 120) { return distXZ(player.position, pos) < range; }
+// Shared "drive out, deal with it on the spot, drive back" behaviour for service units.
+function dispatchServiceUnit({ kind, color, getTarget, arriveRange = 7, onArrive, onSceneDone, onCancel, sceneTime = 4, label }) {
+  const start = getTarget();
+  if (!start) return false;
+  const depot = serviceDepot(start);
+  const unit = makeVehicle(kind, color);
+  unit.ai = null; unit.taskDriven = true; unit.serviceUnit = label;
+  unit.group.position.copy(depot);
+  const st = { phase: 1, sceneT: 0, actors: [], stuckT: 0, bypassT: 0, last: depot.clone() };
+  // Follow the roads; if traffic or a signal holds the unit up for a few seconds,
+  // it squeezes through like an emergency vehicle on a blue-light run.
+  const driveUnit = (target) => {
+    const p = unit.group.position;
+    if (st.bypassT > 0) {
+      // Blue-light run: follow the planned road waypoints, ignoring traffic and signals.
+      st.bypassT -= lastDt;
+      const n = unit.navigation, way = n?.points?.[n.index] || target;
+      const dir = new THREE.Vector3(way.x - p.x, 0, way.z - p.z), d = dir.length();
+      if (d < 1 && n && n.index < n.points.length - 1) n.index++;
+      else if (d > 0.01) {
+        p.addScaledVector(dir.normalize(), Math.min(d, 11 * lastDt)); p.y = groundY(p.x, p.z, p.y);
+        unit.group.rotation.y = lerpAngle(unit.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * lastDt));
+      }
+      return;
+    }
+    moveAmbulance(unit, target, lastDt);
+    st.stuckT = distXZ(p, st.last) < 0.05 ? st.stuckT + lastDt : 0;
+    st.last.copy(p);
+    if (st.stuckT > 2.5) { st.stuckT = 0; st.bypassT = 3; }
+  };
+  let lastDt = 0;
+  addTask({ dur: 180, update(dt, t, task) {
+    lastDt = dt;
+    const p = unit.group.position;
+    if (st.phase === 1) {
+      const target = getTarget();
+      if (!target) { st.phase = 3; onCancel?.(); return; }
+      if (distXZ(p, target) > arriveRange) { driveUnit(target); return; }
+      unit.speed = 0; st.phase = 2; st.actors = onArrive(unit) || [];
+    } else if (st.phase === 2) {
+      st.sceneT += dt;
+      for (const a of st.actors) animateHumanoid(a, null, false, false, true, dt);
+      if (st.sceneT >= sceneTime) {
+        for (const a of st.actors) disposeObj(a.root);
+        st.actors = []; onSceneDone?.(); st.phase = 3;
+      }
+    } else if (distXZ(p, depot) > 3) driveUnit(depot);
+    else task.t = task.dur;
+  }, end() {
+    for (const a of st.actors) disposeObj(a.root);
+    if (st.phase === 1) onCancel?.(); else if (st.phase === 2) onSceneDone?.();
+    const i = vehicles.indexOf(unit); if (i >= 0) vehicles.splice(i, 1); disposeObj(unit.group);
+  } });
+  return true;
+}
+function dispatchPoliceArrest(offender, reason) {
+  if (offender.arrestPending || offender.serviceUnit || offender === driving || responseUnits.police >= 2) return;
+  if (['police', 'ambulance', 'tank', 'bus'].includes(offender.kind)) return;
+  offender.arrestPending = true; responseUnits.police++;
+  // The driver pulls over and waits for the police.
+  offender.speed = 0; if (offender.ai) offender.ai.parked = true;
+  if (playerNear(offender.group.position)) toast(`Police are on the way to arrest a driver (${reason}).`);
+  const ok = dispatchServiceUnit({
+    kind: 'police', color: 0xf5f6fa, label: 'police', getTarget: () => offender.group.position,
+    onArrive(unit) {
+      const side = new THREE.Vector3(Math.cos(offender.group.rotation.y), 0, -Math.sin(offender.group.rotation.y)).multiplyScalar(2);
+      const officer = makeHumanoid({ outfit: 0x243c58, hair: 0x382d24, pants: 0x1c2f43 });
+      const suspect = makeHumanoid({ outfit: 0x8e8e8e, hair: 0x2b1d14, pants: 0x3a3a3a });
+      for (const [h, off] of [[suspect, side], [officer, side.clone().multiplyScalar(1.7)]]) {
+        h.root.position.copy(offender.group.position).add(off); h.root.position.y = groundY(h.root.position.x, h.root.position.z);
+        h.root.lookAt(offender.group.position.x, h.root.position.y, offender.group.position.z);
+      }
+      if (playerNear(offender.group.position)) callout('DRIVER ARRESTED', 0x74b9ff);
+      return [officer, suspect];
+    },
+    onSceneDone() {
+      offender.arrestPending = false; responseUnits.police = Math.max(0, responseUnits.police - 1);
+      if (playerNear(offender.group.position)) toast('The police have arrested the driver. Their car has been impounded.');
+    },
+    onCancel() { offender.arrestPending = false; responseUnits.police = Math.max(0, responseUnits.police - 1); },
+  });
+  if (!ok) { offender.arrestPending = false; responseUnits.police = Math.max(0, responseUnits.police - 1); }
+}
+function dispatchAnimalControl(animal) {
+  if (animal.controlPending || !animal.alive || responseUnits.animal >= 2) return;
+  animal.controlPending = true; responseUnits.animal++;
+  const name = animal.animal || 'animal';
+  toast(`Animal control has been called for the ${name}.`);
+  const ok = dispatchServiceUnit({
+    kind: 'car', color: 0xf2a900, label: 'animal-control',
+    getTarget: () => animal.alive ? animal.root.position : null,
+    arriveRange: 8,
+    onArrive() {
+      const warden = makeHumanoid({ outfit: 0xf2a900, hair: 0x4a3426, pants: 0x2f3b2f });
+      warden.root.position.copy(animal.root.position).add(new THREE.Vector3(1.6, 0, 0));
+      warden.root.position.y = groundY(warden.root.position.x, warden.root.position.z);
+      warden.root.lookAt(animal.root.position.x, warden.root.position.y, animal.root.position.z);
+      // Captured: the animal is taken away safely (no reward or penalty for the player).
+      animal.alive = false; animal.root.visible = false; animal.respawn = 120;
+      if (animal.label) animal.label.el.style.display = 'none';
+      return [warden];
+    },
+    onSceneDone() {
+      animal.controlPending = false; responseUnits.animal = Math.max(0, responseUnits.animal - 1);
+      toast(`Animal control has safely taken the ${name} away.`);
+    },
+    onCancel() { animal.controlPending = false; responseUnits.animal = Math.max(0, responseUnits.animal - 1); },
+  });
+  if (!ok) { animal.controlPending = false; responseUnits.animal = Math.max(0, responseUnits.animal - 1); }
+}
+
 // Bystanders react to nearby violence/explosions like real people would instead
 // of only the directly-hit ped panicking: close by, people flee; a bit further
 // out, some pull out a phone to film it and some call it in to the police.
@@ -3800,7 +3947,9 @@ function reactBystanders(center, criminal) {
     if (d < 15) { o.ped.state = 'panic'; o.ped.panicT = 5 + Math.random() * 2; }
     else if (d < 45 && o.ped.state !== 'panic') {
       const r = Math.random();
-      if (r < 0.3) { o.ped.state = 'call'; o.ped.reactT = 4 + Math.random() * 3; o.ped.lookAt = center.clone(); }
+      // Remember whether this was the player's crime: a witness phoning in a car
+      // crash or someone else's fight must not put the player on the wanted list.
+      if (r < 0.3) { o.ped.state = 'call'; o.ped.reportsPlayer = !!criminal; o.ped.reactT = 4 + Math.random() * 3; o.ped.lookAt = center.clone(); }
       else if (r < 0.6) { o.ped.state = 'record'; o.ped.reactT = 5 + Math.random() * 4; o.ped.lookAt = center.clone(); }
     }
   }
@@ -3895,7 +4044,8 @@ function updatePed(e, dt) {
       if (s.lookAt) e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(s.lookAt.x - p.x, s.lookAt.z - p.z), 1 - Math.exp(-4 * dt));
       animateHumanoid(e.h, 'phone', false, false, e.onGround, dt);
       if (s.reactT <= 0) {
-        if (s.state === 'call') raiseWanted(30);
+        if (s.state === 'call' && s.reportsPlayer) raiseWanted(30);
+        s.reportsPlayer = false;
         s.state = 'wander'; s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node);
       }
       break;
@@ -4044,7 +4194,11 @@ function updateLabels() {
 // =====================================================================
 // PLAYER COMBAT
 // =====================================================================
-function hurtPlayer(dmg, from, kb) {
+// Every health loss records why, so the stats panel can tell the player what is
+// hurting them instead of HP silently going down.
+let hpLossReason = '', hpLossAt = -Infinity;
+function noteHpLoss(reason) { hpLossReason = reason; hpLossAt = performance.now(); }
+function hurtPlayer(dmg, from, kb, reason = 'Attacked') {
   if(inCar&&driving){monsterEnvironmentDamage(driving.group.position,dmg,2);return;}
   if (iFrames > 0) return;
   dmg *= defMul()*(supportSkills?.defenseMultiplier||1)*(adventureServices?.armour||1);
@@ -4063,7 +4217,7 @@ function hurtPlayer(dmg, from, kb) {
     setTimeout(() => $('hurt').style.opacity = 0, 150);
     popText(at(player.position, 2.2), Math.round(dmg), 'taken');
   }
-  stats.hp -= dmg;
+  stats.hp -= dmg; noteHpLoss(reason);
   pvel.addScaledVector(dir, kb);
   shake = Math.max(shake, 0.2);
 }
@@ -4093,7 +4247,7 @@ function explodeVehicle(v, criminal = true) {
   if (v.exploded) return;
   v.exploded = true; v.disabled = true; v.health = 0; v.speed = 0;
   const center = at(v.group.position, 0.8), radius = v.kind === 'bus' ? 8 : 6;
-  if (v === driving) { stats.hp = Math.max(0, stats.hp - 35); exitVehicle(true); }
+  if (v === driving) { stats.hp = Math.max(0, stats.hp - 35); noteHpLoss('Your vehicle exploded'); exitVehicle(true); }
   // Mark the wreck before applying blast damage so chain reactions run once.
   v.group.traverse(obj => {
     if (!obj.isMesh) return;
@@ -4115,7 +4269,7 @@ function explodeVehicle(v, criminal = true) {
     for (const e of v.passengers) { e.hidden = false; e.root.visible = true; e.root.position.copy(v.group.position).add(new THREE.Vector3(v.radius + 1, 0, 0)); collide(e.root.position, e.radius); e.ped.state = 'panic'; e.ped.panicT = 10; applyHit(e, { dmg: 45, from: center, kb: 6, up: 2, stun: 2, police: !criminal }); }
     v.passengers = [];
   }
-  if (!inCar && player.position.distanceTo(center) < radius) hurtPlayer(50 * (1 - player.position.distanceTo(center) / radius), center, 10);
+  if (!inCar && player.position.distanceTo(center) < radius) hurtPlayer(50 * (1 - player.position.distanceTo(center) / radius), center, 10, 'Caught in a vehicle explosion');
   for (const other of vehicles) {
     if (other === v || other.exploded || !isRoadVehicle(other)) continue;
     const distance = other.group.position.distanceTo(center);
@@ -5046,7 +5200,7 @@ function updateEnemyShots(dt) {
     if (Math.random() < 0.5) spawnParticle(s.m.position, randUnit(), s.color, 0.1, 0.3);
     const environmentHit=vehicles.some(v=>!v.disabled&&Math.abs(v.group.position.y-s.m.position.y)<3&&distXZ(v.group.position,s.m.position)<(v.radius||2)+.5)||insideCollider(s.m.position);if(environmentHit)monsterEnvironmentDamage(s.m.position,s.dmg,2);
     const hitPlayer = !inCar && s.m.position.distanceTo(at(player.position, 1.1)) < 0.9;
-    if (hitPlayer) hurtPlayer(s.dmg, s.m.position, 5);
+    if (hitPlayer) hurtPlayer(s.dmg, s.m.position, 5, 'Hit by a monster attack');
     if (environmentHit || hitPlayer || s.life <= 0 || insideCollider(s.m.position) || s.m.position.y < 0) { disposeObj(s.m); enemyShots.splice(i, 1); }
   }
 }
@@ -5064,7 +5218,7 @@ function bossSpecial(e) {
   ai.state = Math.random() < 0.5 ? 'aoe' : 'volley';
   ai.t = 0; ai.fired = false;
   if (ai.state !== 'aoe') return;
-  if(e.mdef.poison){const c=player.position.clone();telegraph(c,6,1.2,0x92ed2a,()=>{if(!e.alive||!dungeon)return;fxRing(c,0x92ed2a,6,.8);monsterEnvironmentDamage(c,e.dmg*1.5,6);if(distXZ(player.position,c)<6)hurtPlayer(e.dmg*1.5,c,5);});return;}
+  if(e.mdef.poison){const c=player.position.clone();telegraph(c,6,1.2,0x92ed2a,()=>{if(!e.alive||!dungeon)return;fxRing(c,0x92ed2a,6,.8);monsterEnvironmentDamage(c,e.dmg*1.5,6);if(distXZ(player.position,c)<6)hurtPlayer(e.dmg*1.5,c,5,'Monster poison');});return;}
   if (e.type === 'archangel') {   // pillars of light around you
     for (let i = 0; i < 4; i++) {
       const c = player.position.clone().add(i ? new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8) : new THREE.Vector3());
@@ -5073,7 +5227,7 @@ function bossSpecial(e) {
         if (!dungeon || !e.alive) return;
         fxPillar(c, 0xfff2c0, 2.2, 20, 0.5);
         burst(at(c, 0.5), 15, [0xffe08a, 0xffffff], 8, 0.15, 0.5, 2);
-        if (distXZ(player.position, c) < 2.4) hurtPlayer(e.dmg * 1.6, c, 8);
+        if (distXZ(player.position, c) < 2.4) hurtPlayer(e.dmg * 1.6, c, 8, 'Hit by a monster attack');
       });
     }
   } else {                        // demon lord ground slam
@@ -5086,7 +5240,7 @@ function bossSpecial(e) {
       fxCrater(c, 4);
       burst(at(c, 0.3), 40, [0xff4020, 0x8a7d66, 0xffb02e], 14, 0.25, 0.8, 20, 6);
       shake = Math.max(shake, 0.6);
-      if (distXZ(player.position, c) < 7 && player.position.y - c.y < 2.5) hurtPlayer(e.dmg * 2, c, 20);
+      if (distXZ(player.position, c) < 7 && player.position.y - c.y < 2.5) hurtPlayer(e.dmg * 2, c, 20, 'Hit by a monster attack');
     });
   }
 }
@@ -5144,7 +5298,7 @@ function updateMonster(e, dt) {
         if (!ai.hitDone && ai.t >= 0.07) {
           ai.hitDone = true;
           const to = new THREE.Vector3(player.position.x - p.x, 0, player.position.z - p.z);
-          if (to.length() < reach + 0.8 && to.normalize().dot(f) > 0.2 && Math.abs(player.position.y - p.y) < 2) hurtPlayer(e.dmg, p, m.ai === 'boss' ? 12 : 5);
+          if (to.length() < reach + 0.8 && to.normalize().dot(f) > 0.2 && Math.abs(player.position.y - p.y) < 2) hurtPlayer(e.dmg, p, m.ai === 'boss' ? 12 : 5, 'Attacked by a monster');
           fxSwoosh(at(p, 1.3 * m.scale).addScaledVector(f, 0.8 * m.scale), f, m.horns ? 0xff4020 : 0xffe08a, ai.combo % 2);
         }
         if (ai.t >= 0.3) {
@@ -5354,7 +5508,7 @@ function enterVehicle(v) {
   if(cameraView==='first'){yaw=v.group.rotation.y+Math.PI;pitch=0;}
   player.visible = false;
   if (v.kind === 'plane') toast('Q/R barrel roll in flight. W/S throttle · A/D turn · Space climb · Shift dive. Take off down the runway!');
-  v.group.add(headlight, headlight.target);
+  (v.hoverBody || v.group).add(headlight, headlight.target);
   headlight.position.set(0, 0.8, v.length / 2 + 0.1);
   headlight.target.position.set(0, 0, 14);
 }
@@ -5424,12 +5578,21 @@ function resolveInteractTarget() {
   if (action) return null;
   const seat = nearestSitSpot();
   if (seat) return { label: seat.label || 'Sit', action: () => toggleSit(seat) };
-  if (inCivicInterior) return { label: 'Leave', action: leaveCivicBuilding };
+  if (inCivicInterior) {
+    // Inside a home, shop or office you leave through the front door; elsewhere in the
+    // building E uses whatever you're standing next to (bed, fridge, till...).
+    if (interiors.active) { const s = interiors.nearest(player.position); return s ? { label: s.label, action: s.action } : null; }
+    const desk = nearestInteractable();   // e.g. the civic hall's reception counter
+    if (desk) return { label: desk.label, action: desk.action };
+    return { label: 'Leave', action: leaveCivicBuilding };
+  }
   if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
   const service = nearestInteractable();
   if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return {label:service.label,action:service.action};
   if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway'))) return { label: service.label, action: service.action };
-  const cb = nearestCivicBuilding();
+  // Inside a subway stairwell, E shouldn't open a nearby building instead.
+  const inStairwell = metro?.entrances?.groundAt(player.position.x, player.position.z) != null;
+  const cb = inStairwell || player.position.y > 3 ? null : nearestCivicBuilding();   // not from a rooftop or mountain
   if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
   const g = nearestGate();
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
@@ -5497,7 +5660,67 @@ let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
   tvScreen.position.set(CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.55);
   box(2.7, 1.8, 0.15, CIVIC_OFFSET.x, 1.9, CIVIC_OFFSET.z - 9.6, 0x1a1a1a, false);
   sitSpots.push({ x: CIVIC_OFFSET.x, z: CIVIC_OFFSET.z + 2, yaw: Math.PI, seatY: 0.9, label: 'Sit and watch TV' }); // face -Z, toward the TV
+  // Reception: a front counter with a staff chair and a monitor, and rows of waiting
+  // chairs, so police stations, hospitals, schools and the rest have a proper reception.
+  const C = CIVIC_OFFSET;
+  box(6, 1.1, 0.9, C.x - 7, 0.55, C.z - 5, 0xf2f0ea);                       // counter
+  box(6.2, 0.06, 1.1, C.x - 7, 1.13, C.z - 4.9, 0x7a5636, false);           // counter top
+  box(0.6, 0.38, 0.04, C.x - 7, 1.42, C.z - 5.2, 0x111111, false);           // monitor
+  box(0.55, 0.32, 0.01, C.x - 7, 1.42, C.z - 5.17, 0x2b4a63, false);
+  box(0.5, 0.08, 0.5, C.x - 7, 0.5, C.z - 6.2, 0x26292e, false); box(0.48, 0.6, 0.07, C.x - 7, 0.85, C.z - 6.45, 0x26292e, false);   // staff chair
+  for (const row of [3.5, 5.5]) for (const dx of [-1.2, -0.4, 0.4, 1.2]) {
+    const x = C.x + 8 + dx, z = C.z + row;
+    box(0.5, 0.06, 0.5, x, 0.46, z, 0x2f6f8f, false); box(0.5, 0.5, 0.06, x, 0.72, z + 0.22, 0x2f6f8f, false);
+    sitSpots.push({ x, z, yaw: Math.PI, seatY: 0.95, label: 'Sit in the waiting area' });
+  }
+  box(0.6, 0.5, 0.6, C.x + 11.5, 0.25, C.z + 8.5, 0xb5683f, false);         // plant pot
+  // Staff behind the counter and people waiting to be seen.
+  for (const [x, z, rot, seatTop, outfit] of [[C.x - 7, C.z - 6.2, 0, 0.54, 0x233e54], [C.x + 7.2, C.z + 3.5, Math.PI, 0.49, 0x7a5a3a], [C.x + 8.8, C.z + 5.5, Math.PI, 0.49, 0x3a5a7a]]) {
+    const h = makeHumanoid({ outfit, hair: 0x3b2c23, pants: 0x2a2f36 });
+    h.root.position.set(x, seatTop - 0.88, z); h.root.rotation.y = rot; h.legL.pivot.rotation.x = h.legR.pivot.rotation.x = -Math.PI / 2;
+    if (rot === 0) h.armL.pivot.rotation.x = h.armR.pivot.rotation.x = -1.1;
+    scene.add(h.root);
+  }
+  interactables.push({ pos: new THREE.Vector3(C.x - 7, 0, C.z - 3.9), r: 2, label: 'Speak to reception', action: () => toast('"Hello, how can I help? Take a seat and we\'ll call you."') });
 })();
+// Homes, shops and offices get real multi-room interiors (see interiors.js); civic
+// buildings keep the themed hall above.
+const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
+  makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
+  tvMaterial: new THREE.MeshBasicMaterial({ map: civicTvTexture }),
+  hooks: {
+    toast: m => toast(m),
+    leave: () => leaveCivicBuilding(),
+    travel(pos, y, msg, then) {   // stairs, lifts and escalators between floors
+      $('fade').style.opacity = 1;
+      setTimeout(() => { then?.(); player.position.copy(pos); yaw = y; vy = 0; pvel.set(0, 0, 0); $('fade').style.opacity = 0; if (msg) toast(msg); }, 450);
+    },
+    eat(amount, cost, msg) {
+      if (cost && stats.gold < cost) { toast(`You need ${cost} gold for that.`); return; }
+      stats.gold -= cost; stats.hunger = Math.min(100, stats.hunger + amount); toast(msg);
+    },
+    drink() { stats.energy = Math.min(100, stats.energy + 5); toast('You drink a glass of water.'); },
+    arcade(kind) {   // Pixel Palace: games cost 2 gold and win tickets; swap 50 tickets for a prize
+      let tickets = 0; try { tickets = +localStorage.getItem('anotherworld-arcade-tickets') || 0; } catch {}
+      const save = () => { try { localStorage.setItem('anotherworld-arcade-tickets', String(tickets)); } catch {} };
+      if (kind === 'prize') {
+        if (tickets < 50) { toast(`You have ${tickets} tickets. Prizes start at 50.`); return; }
+        tickets -= 50; save(); toast(`You swap 50 tickets for a ${['giant plush dragon', 'glow-in-the-dark yo-yo', 'Pixel Palace cap', 'tiny robot keyring'][Math.floor(Math.random() * 4)]}! (${tickets} tickets left)`); return;
+      }
+      const cost = kind === 'dance' ? 0 : 2;
+      if (stats.gold < cost) { toast(`You need ${cost} gold to play.`); return; }
+      stats.gold -= cost;
+      const won = kind === 'claw' ? (Math.random() < 0.2 ? 30 : 0) : 5 + Math.floor(Math.random() * 20);
+      tickets += won; save();
+      const msg = { game: 'You play a round of Neon Racer.', claw: won ? 'The claw grabs a plush toy and actually holds on!' : 'The claw grabs a toy... and drops it. Classic.', hockey: 'A fierce game of air hockey. 7-5 to you.', dance: 'You hit almost every arrow on the dance machine.' }[kind];
+      toast(`${msg} +${won} tickets (${tickets} total).`);
+    },
+    rest(amount, msg) { stats.energy = Math.min(100, stats.energy + amount); toast(msg); },
+    sleep() {
+      $('fade').style.opacity = 1;
+      setTimeout(() => { stats.energy = 100; stats.hp = Math.max(stats.hp, maxHp()); $('fade').style.opacity = 0; toast('You sleep for a while and wake up fully rested.'); }, 900);
+    },
+  } });
 let sitting = false, sitReturnPosition = null, activeSitSpot = null;
 function updateCivicTv(dt) {
   if(movieTv?.playing)return;
@@ -5614,21 +5837,23 @@ async function enterCivicBuilding(b) {
   } catch {}
   setTimeout(() => {
     inCivicInterior = true;
-    applyCivicTheme(b.type);
-    player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8);
+    const layout = interiors.layoutFor(b.type);
+    if (layout) { interiors.enter(layout); player.position.copy(layout.spawn); }
+    else { interiors.exit(); applyCivicTheme(b.type); player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8); }
     player.rotation.y = Math.PI;
     yaw = 0; vy = 0; pvel.set(0, 0, 0);
     $('fade').style.opacity = 0;
     callout(b.name.toUpperCase(), 0xffd166, true);
     const desc = data?.description || `You step into ${b.name}, but it's hard to make out much more right now.`;
     const staff = data?.staff?.length ? ' Staff here: ' + data.staff.map(s => `${s.name} (${s.role})`).join(', ') + '.' : '';
-    toast(desc + staff + ' There’s a chair by a TV straight ahead — walk up and press E to sit.');
+    toast(desc + staff + (layout ? ' Walk around and press E on things to use them. Leave through the front door behind you.' : ' There’s a chair by a TV straight ahead — walk up and press E to sit.'));
   }, 650);
 }
 function leaveCivicBuilding() {
   $('fade').style.opacity = 1;
   setTimeout(() => {
     inCivicInterior = false;
+    interiors.exit();
     sitting = false;
     player.position.copy(civicReturnPos);
     player.position.y = groundY(player.position.x, player.position.z);
@@ -5970,7 +6195,7 @@ function updateFireDamage(dt) {
   if (charIdx === 0 || inCar) { fireBurnWarned = false; return; }
   const nearFire = activeFires.some(f => distXZ(f.pos, player.position) < 2.2);
   if (nearFire) {
-    stats.hp -= 12 * dt * defMul();
+    stats.hp -= 12 * dt * defMul(); noteHpLoss('Burning: move away from the fire');
     if (!fireBurnWarned) { fireBurnWarned = true; toast("You're burning! Get away from the fire."); }
   } else fireBurnWarned = false;
 }
@@ -6001,6 +6226,7 @@ function updateFirefighters(dt) {
 }
 let swimming = false, waterExhausted = false;
 function isSeaWater(x,z,bodyY = null) {
+  if (poolZones.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)) return true;   // swimming pools
   if(navy?.groundAt(x,z)!=null)return false;
   if(regionalEnvironment?.groundAt(x,z)!=null)return false;
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
@@ -6019,7 +6245,7 @@ function updateSwimming(dt) {
   player.position.addScaledVector(dir,(stats.energy<=0?1: sprint?4:2.3)*(waterPower?1.3:1)*dt);
   player.position.addScaledVector(pvel,dt);pvel.multiplyScalar(Math.max(0,1-4*dt));collide(player.position,.4);
   stats.energy=Math.max(0,stats.energy-dt*(waterPower ? .12 : sprint ? 1.8 : moving ? .65 : .2));
-  if(stats.energy===0){stats.hp=Math.max(0,stats.hp-12*dt);if(!waterExhausted){waterExhausted=true;toast('Exhausted in the water! Get to shore or a dock ladder.');}}
+  if(stats.energy===0){stats.hp=Math.max(0,stats.hp-12*dt);noteHpLoss('Exhausted while swimming: get to shore');if(!waterExhausted){waterExhausted=true;toast('Exhausted in the water! Get to shore or a dock ladder.');}}
   else waterExhausted=false;
   const targetY=stats.energy>0?-1.05:-1.35;player.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
   if(moving)player.rotation.y=lerpAngle(player.rotation.y,Math.atan2(dir.x,dir.z),1-Math.exp(-5*dt));
@@ -6073,7 +6299,7 @@ function updatePlayer(dt) {
     if (!onGround && vy < -14 && iFrames <= 0 && !isSeaWater(player.position.x, player.position.z)) {
       const fallDmg = Math.round((-vy - 14) * 2.2) * defMul();
       if (fallDmg > 0) {
-        stats.hp -= fallDmg;
+        stats.hp -= fallDmg; noteHpLoss('Fall damage');
         popText(at(player.position, 2.2), Math.round(fallDmg), 'taken');
         $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 150);
         shake = Math.max(shake, Math.min(0.5, fallDmg / 60));
@@ -6110,7 +6336,7 @@ function damageVehicle(v, deltaSpeed, point) {
   if (deltaSpeed > 5) burst(at(point, 0.7), Math.min(25, Math.ceil(deltaSpeed)), [0xffc266, 0x777777], 5, 0.08, 0.3, 8, 1);
   if (deltaSpeed > 8) breakLampsNear(point, 1.5);   // ram a lamp post hard enough and it goes down
   if (v === driving) {
-    stats.hp = Math.max(0, stats.hp - impactDamage(deltaSpeed, 0.12));
+    stats.hp = Math.max(0, stats.hp - impactDamage(deltaSpeed, 0.12)); noteHpLoss('Car crash');
     shake = Math.max(shake, Math.min(0.8, deltaSpeed / 35));
     toast('Crash! Vehicle condition: ' + Math.ceil(v.health) + '%');
   }
@@ -6150,7 +6376,7 @@ function hitStreetSeats(v, from, to) {
     if (seat.health > 0) continue;
     seat.broken = true;
     const i = colliders.indexOf(seat.collider); if (i >= 0) colliders.splice(i, 1);
-    if (sitting && activeSitSpot === seat) { toggleSit(null); hurtPlayer(Math.min(80, impactDamage(speed, .4)), v.group.position, Math.min(15, speed)); }
+    if (sitting && activeSitSpot === seat) { toggleSit(null); hurtPlayer(Math.min(80, impactDamage(speed, .4)), v.group.position, Math.min(15, speed), 'Hit by a car while sitting'); }
     const parts = [...seat.model.children];
     parts.forEach((part, i) => { part.position.y = .08 + i * .015; part.position.x += (i % 2 ? 1 : -1) * .25; part.position.z += (i - 1.5) * .22; part.rotation.set(i % 2 ? Math.PI / 2 : .12, i * .35, .1); });
     v.speed *= .85;
@@ -6191,6 +6417,7 @@ function resolveRoadMovement(v, start, dt) {
     const relativeSpeed = Math.hypot(velocity.x - e.vel.x, velocity.z - e.vel.z);
     e.carCd = 1.2;
     applyHit(e, { dmg: impactDamage(relativeSpeed, 0.65), from: e.root.position.clone().sub(new THREE.Vector3(velocity.x, 0, velocity.z)), kb: Math.min(22, relativeSpeed * 0.8), up: Math.min(6, relativeSpeed * 0.2), stun: Math.min(3, relativeSpeed * 0.12), heavy: true, impact: 0.4, police: v !== driving, fromPlayer: v === driving });
+    if (v !== driving && e.kind === 'npc') dispatchPoliceArrest(v, 'hit a pedestrian');
     v.speed *= 0.92;
     if (v === driving && e.kind === 'npc') raiseWanted(60);
   }
@@ -6500,7 +6727,7 @@ function tankChase(v,dt){
   for(const w of v.wheels||[])w.rotation.x+=v.speed*dt/0.4;
   if(d<90){v.fireT=(v.fireT??2)-dt;if(v.fireT<=0){v.fireT=4;const miss=new THREE.Vector3((Math.random()-.5)*6,0,(Math.random()-.5)*6),impact=target.clone().add(d>40?miss:new THREE.Vector3());
     fxSphere(at(impact,.5),0xffa040,4,.4);burst(at(impact,.5),30,[0xff8022,0x666666],10,.2,.6,9,2);shake=Math.max(shake,.45);worldAudio?.impact?.(10);
-    const hitD=distXZ(impact,target);if(hitD<4){if(inCar&&driving)damageVehiclePower(driving,45,impact,false);else hurtPlayer(26*(1-hitD/4),impact,8);}}}
+    const hitD=distXZ(impact,target);if(hitD<4){if(inCar&&driving)damageVehiclePower(driving,45,impact,false);else hurtPlayer(26*(1-hitD/4),impact,8,'Defence Force tank fire (restricted area)');}}}
 }
 function updateMilitary(dt){
   if(militaryAlert>0){militaryAlert-=dt;if(militaryAlert<=0)toast('Defence Force alert stood down.');}
@@ -6531,12 +6758,12 @@ function updateNeeds(dt) {
     stats.hunger = clamp(stats.hunger - 100 / (DAY_LEN * 1.2) * drainMul() * dt, 0, 100);
     stats.energy = clamp(stats.energy - 100 / (DAY_LEN * 1.6) * drainMul() * dt, 0, 100);
   }
-  if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) stats.hp -= 0.5 * dt;   // starvation/exhaustion is slow, not instant
+  if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) { stats.hp -= 0.5 * dt; noteHpLoss(stats.hunger === 0 ? 'Starving: eat something' : 'Exhausted: get some sleep'); }   // starvation/exhaustion is slow, not instant
   else if (stats.hunger > 30) stats.hp += 1 * dt;
   // A frail birth (very low peace) bleeds health passively, roughly 1/sec at the floor,
   // tapering off above peace 25 — this is the one stat with a real, constant downside.
   const peace = origin?.stats.peace ?? 55;
-  if (peace < 25) stats.hp -= (25 - peace) / 25 * dt;
+  if (peace < 25) { stats.hp -= (25 - peace) / 25 * dt; noteHpLoss('Frail health (low Peace from your birth)'); }
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
     navy?.reset();intercityRail?.reset();cityServices?.reset();
@@ -6594,9 +6821,13 @@ function updateWorldLight(dt) {
   sunDisc.visible = elev > -0.1 && weatherState !== 'rain';
   moonDisc.visible = elev < 0.1 && weatherState !== 'rain';
 
+  // Drift with the wind and wrap around the camera so clouds cover the whole world.
+  const half = CLOUD_SPAN / 2;
   for (const c of clouds) {
     c.position.x += dt * 2;
-    if (c.position.x > 260) c.position.x = -260;
+    const dx = c.position.x - camera.position.x, dz = c.position.z - camera.position.z;
+    if (dx > half) c.position.x -= CLOUD_SPAN; else if (dx < -half) c.position.x += CLOUD_SPAN;
+    if (dz > half) c.position.z -= CLOUD_SPAN; else if (dz < -half) c.position.z += CLOUD_SPAN;
   }
 
   // Night lighting: windows, street lamps, headlights
@@ -6694,6 +6925,12 @@ function updateHud(dt) {
   $('charName').style.color = isVillain ? '#ff4d4d' : heroDungeonKills>0?'#67b3ff':'#fff';
   $('hpBar').style.width = clamp(stats.hp / maxHp() * 100, 0, 100) + '%';
   $('hpText').textContent = `${Math.max(0, Math.round(stats.hp))} / ${maxHp()}`;
+  const hpReasonEl = $('hpReason');
+  if (hpReasonEl) {
+    const recent = performance.now() - hpLossAt < 5000;
+    hpReasonEl.textContent = recent ? `Losing health: ${hpLossReason}` : '';
+    hpReasonEl.style.display = recent ? '' : 'none';
+  }
   $('hungerBar').style.width = stats.hunger + '%';
   $('energyBar').style.width = stats.energy + '%';
   const hours = (dayTime * 24 + 6) % 24;
@@ -6745,7 +6982,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 // room() helper, so they never auto-registered on the travel map like everything else.
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
-capitalServiceBuildings=buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,destinations:townPlaces.destinations});
+capitalServiceBuildings=buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,makePerson:makeHumanoid,civicBuildings,destinations:townPlaces.destinations});
 spaceCentre=buildSpaceCentre({safeFence:fenceRect,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
@@ -6785,7 +7022,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  clearEntrance(rect){for(let i=0;i<lampSpots.length;i++){const p=lampSpots[i];if(p.x>rect.minX-.4&&p.x<rect.maxX+.4&&p.z>rect.minZ-.4&&p.z<rect.maxZ+.4){p.z=rect.maxZ+2;placeLampInstance(i,p);}}for(const b of buildings)if(b.alive&&b.x+b.w/2>rect.minX-.5&&b.x-b.w/2<rect.maxX+.5&&b.z+b.d/2>rect.minZ&&b.z-b.d/2<rect.maxZ){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[]){m.visible=false;const i=camBlockers.indexOf(m);if(i>=0)camBlockers.splice(i,1);}for(const c of [b.collider,...(b.extraColliders||[])]){const i=colliders.indexOf(c);if(i>=0)colliders.splice(i,1);}for(const c of b.blocks||[]){const i=planeBlocks.indexOf(c);if(i>=0)planeBlocks.splice(i,1);}}},
  canEnter:()=>!navy?.rider&&!intercityRail?.rider&&!inCar&&!transport?.rider&&!metro?.rider&&!riding&&!sitting&&!action,
  playerPos:()=>player.position,firstPerson:()=>cameraView==='first',
- move(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);},
+ move(x,y,z,face){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);if(Number.isFinite(face))yaw=face;},
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
@@ -6800,10 +7037,10 @@ mobileControls = setupMobileControls({
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
-poisonLand=buildPoisonLand({scene,box,makeTex,interactables,toast,makeMonster,removeEnemy,removeGate,destinations:townPlaces.destinations,playerPosition:()=>player.position,inDungeon:()=>!!dungeon,hurt:hurtPlayer,
+poisonLand=buildPoisonLand({scene,box,makeTex,interactables,toast,makeMonster,removeEnemy,removeGate,destinations:townPlaces.destinations,playerPosition:()=>player.position,inDungeon:()=>!!dungeon,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Toxic gas and waste (Poison Land)'),
 createGate(o){const gm=makeGateMesh(0x92ed2a),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:'poison',tier:tierOf(o.level),name:o.name,persistent:o.persistent,finalBoss:o.finalBoss,poisonCity:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
 buildHighlandForest({scene,colliders,insideCollider,groundY,addBird});
-volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:hurtPlayer});regionalEnvironment.islands.push(volcanicIsland.island);
+volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Lava and volcanic heat')});regionalEnvironment.islands.push(volcanicIsland.island);
 ghostIsland=buildGhostIsland({scene,box,interactables,toast,stats,destinations:townPlaces.destinations,signboard,rand});regionalEnvironment.islands.push(ghostIsland.island);
 cityLife=buildCityLife({level:()=>prog.level,openSkills:()=>supportSkills?.show(true),scene,interactables,toast,islands:[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),killCount:()=>monsterQuestKills,reward(gold,xp){stats.gold+=gold;gainXp(xp);},removeGate,createGate(o){const gm=makeGateMesh(0xa883ff),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:o.theme,tier:tierOf(o.level),name:o.name,persistent:o.persistent,capitalGate:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
 for(let i=0;i<6;i++)addWildlife('skeleton',ghostIsland.chamberCentre.x+(rand()-0.5)*14,ghostIsland.chamberCentre.z+(rand()-0.5)*14);
@@ -6866,12 +7103,34 @@ townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
 const pauseForPanel=()=>{locked=false;mouseHeld=false;for(const key in keys)keys[key]=false;document.exitPointerLock();$('start').style.display='none';};
 roadLaw=createRoadLaw({roundaboutCells:ROUNDABOUT_CELLS,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},toast,raiseWanted,time:()=>performance.now()/1000,isRedLight:(cx,cz,axis)=>{const j=junctionControl.junctions.get(cx*40+','+cz*40);return !!j&&junctionControl.state(j,'car',axis)==='red';},licensedHunter:()=>!!hunterGuilds?.licensed});
-frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,glowMats,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+frontier=buildFrontierWorld({scene,colliders,planeBlocks,interactables,civicBuildings,glowMats,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
  destinations:townPlaces.destinations,toast,playerPosition:()=>inCar&&driving?driving.group.position:player.position,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},sleep,buyFood,
  authorised:()=>(hunterGuilds?.state.licensed&&hunterGuilds.state.rank>=3),
  makeTank(x,z,ry){const v=makeVehicle('tank',0x4f5a3a);v.group.position.set(x,.2,z);v.group.rotation.y=ry;v.ai={parked:true};v.militaryHome=new THREE.Vector3(x,.2,z);v.militaryYaw=ry;v.noSteal=true;return v;},
  makeMilitaryTruck(x,z,ry){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(x,.2,z);v.group.rotation.y=ry;v.ai={parked:true};return v;},
  onIntrusion(zone){if(militaryAlert<=0)toast(`${zone.name}: INTRUDER ALERT. Armoured units deployed — leave the restricted zone now.`);militaryAlert=45;}});
+// The guarded border fence around the edge of the map, with snowy mountains outside.
+// Leisure park, business district and the other real-life places on the outer land.
+venues=buildVenues({scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle});
+// Fade-out, move the player, fade-in (helicopters, the mountain climb).
+function teleportPlayer(pos, msg, ms = 650) {
+  $('fade').style.opacity = 1;
+  setTimeout(() => { if (inCar) exitVehicle(); player.position.copy(pos); vy = 0; pvel.set(0, 0, 0); $('fade').style.opacity = 0; if (msg) toast(msg); }, ms);
+}
+border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),interactables,toast,makeTex});
+// The power grid: the Aegis Prime Generator feeds every dungeon gate and the dungeon
+// arena through cables in the sewers; an open manhole beside each gate shows them.
+powerGrid=buildPowerGrid({scene,gates,interactables,toast,groundY,makeTex});
+// Helicopter carry points: helipads on top of the tallest towers and pickup pads on the ground.
+helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlayer,roofs:venues.towers.filter(t=>t.h>=27),ground:[
+  {name:'Ashford Beach helipad',x:150,z:176},{name:'Capital helipad',x:190,z:705},{name:'Leisure Park helipad',x:120,z:-735},{name:'Business District helipad',x:160,z:1068}]});
+drones=buildDrones({scene,dome:DOME});
+lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,
+  announce:t=>callout(t,0xffd166,true),shake:v=>{shake=Math.max(shake,v);},reward(){stats.gold+=500;stats.hp=maxHp();stats.energy=100;stats.hunger=100;}});
+// CCTV on every building: anything enterable that doesn't have a camera yet gets one
+// on its front corner.
+for(const b of civicBuildings){if(b.cctv||b.minX==null||b.realWorld||Math.abs(b.x)>3000)continue;b.cctv=true;addCCTV(b.maxX-0.4,3.6,b.maxZ+0.15,1);}
+
 hunterGuilds=createHunterGuilds({level:()=>prog.level,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons,bosses:supportCounters.bosses}),money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},earn:n=>{stats.gold+=n;},gainXp,toast,
  playerPosition:()=>player.position,checkpoints:{patrol:frontier.patrolPoints,spires:frontier.spires},interactables,heal(){stats.hp=maxHp();stats.energy=Math.max(stats.energy,60);},changed(){saveSolo();},
  pause:pauseForPanel,resume(){if(!boardOpen&&!settingsOpen)requestGameControl();}});
@@ -6925,6 +7184,7 @@ function frame() {
     updateNeeds(dt);
     if (riding) updateRiding(dt);
     else if (!inCar) updatePlayer(dt);
+    updateHover(dt);
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);
@@ -6937,8 +7197,12 @@ function frame() {
     updateBridgeLift(dt);
     if(inCar&&driving&&isRoadVehicle(driving))roadLaw.monitorDriving(driving,dt);
     hunterGuilds.update(dt);
-    frontier.update(dt,{sky,inSpace:!!spaceCentre?.inSpace,underground:!!(metro?.underground||sewers?.underground||dungeon||navy?.rider?.depth>2)});
+    frontier.update(dt,{sky,camera,inSpace:!!spaceCentre?.inSpace,underground:!!(metro?.underground||sewers?.underground||dungeon||inCivicInterior||navy?.rider?.depth>2)});
     updateMilitary(dt);
+    border?.update(dt, player.position);
+    powerGrid?.update(dt); helipads?.update(dt, player.position); drones?.update(dt); lostPeak?.update(dt);
+    venues?.update(dt, { playerPos: player.position, driving: inCar && driving ? driving : null });
+    interiors.update(dt);
     updateWeather(dt);
     updateFirefighters(dt);
     updateFireDamage(dt);

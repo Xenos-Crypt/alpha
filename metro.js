@@ -1,4 +1,5 @@
 import {buildSubwayEntrances} from './subway-entrances.js';
+import {makeHover} from './hover.js';
 import {buildSubwayPassengers} from './subway-passengers.js';
 import * as THREE from 'three';
 import {arrivalBoard,railArrival,formatWait} from './arrival-boards.js';
@@ -26,6 +27,8 @@ export function buildMetro(ctx){
  trainPart(12,.2,2.7,0,.3,0,0x477997);trainPart(12,.18,2.7,0,3.15,0,0x547989);
  for(const side of [-1,1]){trainPart(12,.65,.12,0,.75,side*1.38,0x477997);trainPart(12,.45,.12,0,2.85,side*1.38,0x477997);for(let x=-5.8;x<=5.8;x+=1.95)trainPart(.15,1.6,.12,x,1.9,side*1.38,0x526c7a);const window=new THREE.Mesh(new THREE.PlaneGeometry(11.6,1.65),new THREE.MeshStandardMaterial({color:0xa9d4e5,transparent:true,opacity:.12,depthWrite:false,side:THREE.DoubleSide}));window.position.set(0,1.95,side*1.4);group.add(window);trainPart(.2,2.8,2.7,side*6,1.7,0,0x477997);}
 
+ // The subway train hovers on glowing maglev strips.
+ makeHover(group,{lift:.25,bob:.012,width:12,length:2.7,strips:[-1,1].map(z=>({z:z*1.05,w:11,d:.22}))});
  const train={name:'Train',g:group,stops:stations.map(s=>s.tx),index:0,direction:1,doors:true,wait:10,speed:0};
  for(const s of stations){
   interactables.push({pos:new THREE.Vector3(s.x,s.y,s.z-6),r:2.5,label:'Enter subway - '+s.name,action:()=>{if(!ctx.canEnter())return;ctx.move(s.x,s.y,s.z-5);toast('Walk down the staircase to the platform.');}});
@@ -37,7 +40,13 @@ export function buildMetro(ctx){
   const seat={x:s.tx+9,z:-5,yaw:Math.PI,seatY:.75,label:'Sit at subway station'};sitSpots.push(seat);box(3,.15,.7,seat.x,.675,seat.z,0x747967,false);box(3,.6,.1,seat.x,1,seat.z-.3,0x747967,false);
   boards.push({s,board:arrivalBoard(ctx,'SUBWAY - '+s.name,s.tx-8,3,-6)});
   box(27,.025,.35,s.tx,.325,-3.15,0xe1c447,false);box(2.5,2,.15,s.tx+9,1.3,-7,0x385e7c,false);sign('TICKETS / EXIT',s.tx+8,2.5,-7.15,6);for(let i=0;i<3;i++){box(.4,.95,1,s.tx+5+i*1.3,.65,-5.6,0x6e8189,false);box(1,.05,.08,s.tx+5+i*1.3,1.05,-5.6,0xa2b7bc,false);}for(let i=0;i<14;i++)box(1.8,.05,.035,s.tx-12+i*2,1.5,-7.62,0x879b9e,false);
-  interactables.push({pos:new THREE.Vector3(s.tx,5.6,-23),r:2.5,label:'Exit subway to '+s.name,action:()=>{rider=false;underground=false;entranceCooldown=3;ctx.move(s.x,s.y-5.4,s.z+5);toast('Arrived in '+s.name+'.');}});
+  // Leaving puts you partway up the street staircase facing the street, well clear of the
+  // trigger at the bottom that takes you underground, so you can't fall straight back in.
+  const exitToStreet=()=>{rider=false;underground=false;entranceCooldown=3;const z=s.z+2.5,y=entrances?.groundAt(s.x,z)??s.y-3.6;ctx.move(s.x,y,z,0);toast('Arrived in '+s.name+'. Walk up the stairs to the street.');};
+  // The exit prompt appears as soon as you reach the top of the station stairs, and the
+  // TICKETS / EXIT sign on the platform is a real exit too.
+  interactables.push({pos:new THREE.Vector3(s.tx,5.6,-22),r:4.5,label:'Exit subway to '+s.name,action:exitToStreet});
+  interactables.push({pos:new THREE.Vector3(s.tx+5,.3,-6.6),r:2.2,label:'Exit subway to '+s.name,action:exitToStreet});
  }
  const rideAction={pos:new THREE.Vector3(),r:4,label:'Board subway train',action:()=>{if(!train.doors){toast('Wait for the train to stop and open its doors.');return;}if(rider){rider=false;ctx.move(group.position.x,.3,-4);toast('Left the subway train.');}else{if(!underground||!ctx.canEnter()){toast('Enter a subway station first.');return;}rider=true;ctx.prepareRide();toast('On the subway. Use Interact at a stop to leave.');}}};interactables.push(rideAction);
  const entrances=buildSubwayEntrances({...ctx,sign},stations),passengers=buildSubwayPassengers(ctx,stations,train);
@@ -54,5 +63,5 @@ export function buildMetro(ctx){
   for(const f of fish)f.f.position.set(f.x+Math.sin(time*.3+f.phase)*3,2+Math.cos(time*.4+f.phase),f.z);
   timer-=dt;if(timer<=0){timer=1;for(const {s,board}of boards){const eta=railArrival(train,s.tx);board.update(eta?.boarding?'BOARDING NOW':'ARRIVAL ~'+formatWait(eta?.seconds||0),'Old Town - Riverside - Capital - Poison Land - Northhaven');}}
  }
- return {stations,train,boards,fish,entrances,passengers:passengers.people,cutSurfaces:entrances.cutSurfaces,snapshot(){return {underground,rider,index:train.index,direction:train.direction,wait:train.wait,doors:train.doors,position:train.g?.position?.toArray?.()||group.position.toArray()};},restore(save){if(!save)return;underground=!!save.underground;rider=!!save.rider;Object.assign(train,{index:save.index,direction:save.direction,wait:save.wait,doors:save.doors});if(save.position)group.position.fromArray(save.position);},movementScale(p){if(entrances.groundAt(p.x,p.z)!=null)return .4;return stations.some(s=>Math.abs(p.x-s.tx)<2.5&&p.z>=-20&&p.z<=-8)?.4:1;},get underground(){return underground;},get rider(){return rider;},leave:()=>rideAction.action(),reset(){rider=false;underground=false;},groundAt(x,z){const entryFloor=entrances.groundAt(x,z);if(entryFloor!=null)return entryFloor;for(const s of stations){if(Math.abs(x-s.tx)<2.5&&z>=-20&&z<=-8)return Math.max(.2,5.6-Math.floor((z+20)/(12/18))*.3);if(Math.abs(x-s.tx)<15&&z>=-26.5&&z<=-20)return 5.6;}return x>origin-16&&x<origin+856&&Math.abs(z)<8?.2:null;},update};
+ return {stations,train,boards,fish,entrances,passengers:passengers.people,cutSurfaces:entrances.cutSurfaces,snapshot(){return {underground,rider,index:train.index,direction:train.direction,wait:train.wait,doors:train.doors,position:train.g?.position?.toArray?.()||group.position.toArray()};},restore(save){if(!save)return;underground=!!save.underground;rider=!!save.rider;Object.assign(train,{index:save.index,direction:save.direction,wait:save.wait,doors:save.doors});if(save.position)group.position.fromArray(save.position);},movementScale(p){if(entrances.groundAt(p.x,p.z)!=null)return .8;return stations.some(s=>Math.abs(p.x-s.tx)<2.5&&p.z>=-20&&p.z<=-8)?.8:1;},get underground(){return underground;},get rider(){return rider;},leave:()=>rideAction.action(),reset(){rider=false;underground=false;},groundAt(x,z){const entryFloor=entrances.groundAt(x,z);if(entryFloor!=null)return entryFloor;for(const s of stations){if(Math.abs(x-s.tx)<2.5&&z>=-20&&z<=-8)return Math.max(.2,5.6-Math.floor((z+20)/(12/18))*.3);if(Math.abs(x-s.tx)<15&&z>=-26.5&&z<=-20)return 5.6;}return x>origin-16&&x<origin+856&&Math.abs(z)<8?.2:null;},update};
 }

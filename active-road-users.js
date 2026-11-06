@@ -6,7 +6,7 @@ export function buildActiveRoadUsers({makeVehicle,makePerson,controller,travelLi
   const v=makeVehicle(kind,[0x466b72,0x9f3e33,0xcac6b0][i%3]);v.routeTraffic=true;v.noSteal=true;v.ai={cruise:kind==='bicycle'?4.5:10,stopTimer:0};
   const direction=i%2?-1:1,lane=kind==='bicycle'?ROAD_LAYOUT.cycleLane:ROAD_LAYOUT.carLane;
   v.group.position.set(20+i*80,0,-direction*lane);v.group.rotation.y=direction*Math.PI/2;
-  const h=makePerson({outfit:kind==='motorcycle'?0x26343d:0x527b6c,hair:0x292c2e,pants:0x293741});v.group.add(h.root);
+  const h=makePerson({outfit:kind==='motorcycle'?0x26343d:0x527b6c,hair:0x292c2e,pants:0x293741});(v.hoverBody||v.group).add(h.root);
   h.root.position.set(0,.13,-.27);h.rig.scale.setScalar(.82);
   h.armL.pivot.rotation.x=h.armR.pivot.rotation.x=-1.03;h.armL.pivot.rotation.z=-.18;h.armR.pivot.rotation.z=.18;
   h.legL.pivot.rotation.x=h.legR.pivot.rotation.x=-.76;
