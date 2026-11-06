@@ -5564,7 +5564,9 @@ function resolveInteractTarget() {
   const service = nearestInteractable();
   if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return {label:service.label,action:service.action};
   if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway'))) return { label: service.label, action: service.action };
-  const cb = nearestCivicBuilding();
+  // Inside a subway stairwell, E shouldn't open a nearby building instead.
+  const inStairwell = metro?.entrances?.groundAt(player.position.x, player.position.z) != null;
+  const cb = inStairwell ? null : nearestCivicBuilding();
   if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
   const g = nearestGate();
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
@@ -6927,7 +6929,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  clearEntrance(rect){for(let i=0;i<lampSpots.length;i++){const p=lampSpots[i];if(p.x>rect.minX-.4&&p.x<rect.maxX+.4&&p.z>rect.minZ-.4&&p.z<rect.maxZ+.4){p.z=rect.maxZ+2;placeLampInstance(i,p);}}for(const b of buildings)if(b.alive&&b.x+b.w/2>rect.minX-.5&&b.x-b.w/2<rect.maxX+.5&&b.z+b.d/2>rect.minZ&&b.z-b.d/2<rect.maxZ){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[]){m.visible=false;const i=camBlockers.indexOf(m);if(i>=0)camBlockers.splice(i,1);}for(const c of [b.collider,...(b.extraColliders||[])]){const i=colliders.indexOf(c);if(i>=0)colliders.splice(i,1);}for(const c of b.blocks||[]){const i=planeBlocks.indexOf(c);if(i>=0)planeBlocks.splice(i,1);}}},
  canEnter:()=>!navy?.rider&&!intercityRail?.rider&&!inCar&&!transport?.rider&&!metro?.rider&&!riding&&!sitting&&!action,
  playerPos:()=>player.position,firstPerson:()=>cameraView==='first',
- move(x,y,z){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);},
+ move(x,y,z,face){action=null;swimming=false;vy=0;pvel.set(0,0,0);player.position.set(x,y,z);if(Number.isFinite(face))yaw=face;},
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
