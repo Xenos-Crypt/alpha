@@ -498,6 +498,7 @@ const bridgePostLights = [], bridgeWarnStrips = [];
 const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
+  if (z < -9000) { const raceFloor = race?.groundAt(x, z); if (raceFloor != null) return raceFloor; }   // Ashford Racing track worlds
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const hillFloor=hills?.groundAt(x,z);if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
   const ridgeFloor=ridge?.groundAt(x,z);if(ridgeFloor!=null)return ridgeFloor;   // Sunset Ridge
@@ -7519,7 +7520,12 @@ venues=buildVenues({forest,scene,colliders,civicBuildings,interactables,sitSpots
   race = createRace({ scene, venues, makeVehicle, interactables, toast, money, spend, earn, playerPos: () => player.position,
     removeVehicle: v => { const i = vehicles.indexOf(v); if (i >= 0) vehicles.splice(i, 1); v.group.removeFromParent(); },
     enterVehicle: v => { if (inCar) exitVehicle(); player.position.copy(v.group.position); enterVehicle(v); },
-    isDriving: v => inCar && driving === v }); }
+    isDriving: v => inCar && driving === v, exitVehicle: f => exitVehicle(f), THREE, lowPower: touchDevice,
+    pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
+    fade: fn => { $('fade').style.opacity = 1; setTimeout(() => { fn(); setTimeout(() => { $('fade').style.opacity = 0; }, 120); }, 450); },
+    shake: s => { shake = Math.max(shake, s); },
+    entry: new THREE.Vector3(venues.raceway.x - 40, 0, venues.raceway.z + venues.raceway.r + venues.raceway.w / 2 + 4),
+    returnToRaceway: () => { if (inCar) exitVehicle(true); player.position.set(venues.raceway.x - 40, groundY(venues.raceway.x - 40, venues.raceway.z + venues.raceway.r + venues.raceway.w / 2 + 6) + 0.1, venues.raceway.z + venues.raceway.r + venues.raceway.w / 2 + 6); vy = 0; pvel.set(0, 0, 0); toast('Back at the Ashford Raceway.'); } }); }
 // Fade-out, move the player, fade-in (helicopters, the mountain climb).
 function teleportPlayer(pos, msg, ms = 650) {
   $('fade').style.opacity = 1;
@@ -7630,7 +7636,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); race?.update(dt); doors?.update(dt); property?.update(); forest.flush(); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
+    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); forest.flush(); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
@@ -7640,6 +7646,7 @@ function frame() {
     updateWaypoint();
     updateTrafficLights(dt);
     updateVehicles(dt);
+    race?.update(dt);
     updateParkLife(dt);
     updateBridgeLift(dt);
     if(inCar&&driving&&isRoadVehicle(driving))roadLaw.monitorDriving(driving,dt);
