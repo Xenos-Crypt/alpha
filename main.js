@@ -595,12 +595,16 @@ const leafGeo = new THREE.IcosahedronGeometry(1, 2);
 const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, 2.2, 7);
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
 const leafMats = [0x4a683c, 0x537442, 0x405d36, 0x607849].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
-const forest = createForest(scene);
+// Every tree is solid (a small trunk collider) and has a condition. Fallen trees stop blocking the way.
+const forest = createForest(scene, {
+  onAdd: t => { const h = 0.3 * Math.max(0.8, t.s); t.collider = { minX: t.x - h, maxX: t.x + h, minZ: t.z - h, maxZ: t.z + h, tree: t }; colliders.push(t.collider); },
+  onFall: t => { const i = colliders.indexOf(t.collider); if (i >= 0) colliders.splice(i, 1); },
+  onRegrow: t => { colliders.push(t.collider); },
+});
 function addTree(x, z, s = 1, trafficIsland=false) {
   if(!trafficIsland){const safe=roadsidePosition(x,z,13);x=safe.x;z=safe.z;}
   const y0 = groundY(x, z);
-  forest.add(x, y0, z, { kind: pickKind(x, z), scale: s * 0.9 });   // real trees: trunk, branches, layered canopy (see trees.js)
-  colliders.push({ minX: x - 0.3, maxX: x + 0.3, minZ: z - 0.3, maxZ: z + 0.3 });
+  forest.add(x, y0, z, { kind: pickKind(x, z), scale: s * 0.9 });   // real trees: trunk, branches, layered canopy (see trees.js); the forest adds the trunk collider
 }
 
 // =====================================================================
@@ -696,7 +700,11 @@ function addBuilding(x, z, faceX, faceZ) {
 // A small security camera mounted near a building's entrance, slowly panning.
 const cctvMat = new THREE.MeshStandardMaterial({ color: 0x24282c, roughness: 0.5 });
 const cctvLensMat = new THREE.MeshStandardMaterial({ color: 0x0a0d10, emissive: 0xff2222, emissiveIntensity: 0 });
+// Where every CCTV camera is and which side of the street it watches (used for road law: you're
+// only fined when a camera, a police patrol or a passer-by actually sees the offence).
+const cctvSpots = [];
 function addCCTV(x, y, z, faceZ) {
+  cctvSpots.push({ x, z, face: faceZ < 0 ? -1 : 1 });
   const g = new THREE.Group();
   const mount = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.3), cctvMat); mount.rotation.x = Math.PI / 2; g.add(mount);
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.4), cctvMat); body.position.set(0, -0.02, 0.28); g.add(body);
@@ -1363,12 +1371,19 @@ const houseLight = new THREE.PointLight(0xffe2b0, 6, 12, 2);
 houseLight.position.set(HOME.x, CURB + 2.7, HOME.z);
 scene.add(houseLight);
 
-for (const [x, z] of [[8, 9], [32, 9], [32, 32], [8, 32]]) addTree(x, z, 1.2);
+// Garden trees in the corners, kept clear of the driveway (x 10.7–14.5) and the front path; placed
+// exactly (not nudged to the roadside, which once pushed one onto the driveway in front of the gate).
+for (const [x, z] of [[8.6, 16.5], [31.4, 13.5], [31.4, 31.4], [8.6, 31.4]]) addTree(x, z, 1.2, true);
 
 // =====================================================================
 // MORE HOUSES (walk in through the door; the roof hides while you're inside)
 // =====================================================================
 const houses = [{ roof: houseRoof, minX: HOME.minX, maxX: HOME.maxX, minZ: HOME.minZ, maxZ: HOME.maxZ }];
+// Things inside a house (TV, bed, fridge, couch, stools...) only work from inside that house —
+// never from the garden, the street or round the back through the wall.
+const houseAt = (p, pad = 0) => houses.find(h => p.x > h.minX - pad && p.x < h.maxX + pad && p.z > h.minZ - pad && p.z < h.maxZ + pad) || null;
+const indoorArea = it => { if (it.indoor === undefined) it.indoor = houseAt(it.pos || it, -0.15); return it.indoor; };
+const usableFromHere = it => { const h = indoorArea(it); return !h || houseAt(player.position, -0.05) === h; };
 const HOUSE_COLORS = [[0xf6e3c5, 0x8e3b2f], [0xdfe8ef, 0x34495e], [0xf3d6d6, 0x6d2e46], [0xe3f1df, 0x4b6a3a]];
 // Unified sit system: any real seat (house couches, bus stop benches, the civic
 // interior's chair) registers here as {x,z,yaw}. One proximity check + one E
@@ -5713,7 +5728,7 @@ function eat() {
 }
 // The closest thing in reach wins (not whichever was added to the world first), so two
 // counters, an NPC and a door side by side each get picked when you stand at them.
-const nearestInteractable = () => { let best = null, bd = Infinity; for (const it of interactables) { const d = distXZ(player.position, it.pos); if (d < it.r && d < bd && Math.abs(player.position.y - it.pos.y) < 2) { bd = d; best = it; } } return best; };
+const nearestInteractable = () => { let best = null, bd = Infinity; for (const it of interactables) { const d = distXZ(player.position, it.pos); if (d < it.r && d < bd && Math.abs(player.position.y - it.pos.y) < 2 && usableFromHere(it)) { bd = d; best = it; } } return best; };
 function nearestVehicle() {
   let best = null, bd = 3.6;
   for (const v of vehicles) {
@@ -6099,7 +6114,7 @@ function updateCivicTv(dt) {
 function nearestSitSpot(maxD = 3) {
   let best = null, bestD = maxD;
   for (const s of sitSpots) {
-    if (s.broken || Math.abs(player.position.y - ((s.seatY ?? .5) - .5)) > 1.8) continue;
+    if (s.broken || Math.abs(player.position.y - ((s.seatY ?? .5) - .5)) > 1.8 || !usableFromHere(s)) continue;
     const d = Math.hypot(player.position.x - s.x, player.position.z - s.z);
     if (d < bestD) { bestD = d; best = s; }
   }
@@ -6124,13 +6139,9 @@ function toggleSit(spot) {
   }
   updateSitPrompt();
 }
-function updateSitPrompt() {
-  if (!locked || inCar || (action && !sitting)) { $('sitPrompt').style.display = 'none'; return; }
-  if (sitting) { $('sitPromptText').textContent = 'Stand up'; $('sitPrompt').style.display = 'block'; return; }
-  const seat = nearestSitSpot();
-  if (seat) { $('sitPromptText').textContent = seat.label || 'Sit'; $('sitPrompt').style.display = 'block'; }
-  else $('sitPrompt').style.display = 'none';
-}
+// Seats are offered by the one Interact prompt (resolveInteractTarget); the old separate sit prompt
+// showed a second copy underneath it, so it's gone.
+function updateSitPrompt() {}
 function applyCivicTheme(type) {
   const t = CIVIC_THEMES[type] || DEFAULT_CIVIC_THEME;
   civicFloor.material.color.set(t.floor);
@@ -6702,12 +6713,15 @@ function damageVehicle(v, deltaSpeed, point) {
   if (damage <= 0) return;
   v.health = Math.max(0, (v.health ?? 100) - damage);
   v.crashCooldown = 0.3;applyVehicleCondition(v);conditions?.crash(point, deltaSpeed, v === driving);
+  // hit a tree? it takes damage too, and falls over at 0%
+  const tr = forest.nearest(point.x, point.z, 3.2), treeHit = tr && forest.damage(tr, deltaSpeed, v.group.position.x, v.group.position.z);
+  const treeNote = !treeHit ? '' : treeHit.fell ? ' · 🌳 You knocked the tree down!' : ` · 🌳 Tree condition ${Math.ceil(treeHit.before)}% → ${Math.ceil(treeHit.after)}%`;
   if (deltaSpeed > 5) burst(at(point, 0.7), Math.min(25, Math.ceil(deltaSpeed)), [0xffc266, 0x777777], 5, 0.08, 0.3, 8, 1);
   if (deltaSpeed > 8) breakLampsNear(point, 1.5);   // ram a lamp post hard enough and it goes down
   if (v === driving) {
     stats.hp = Math.max(0, stats.hp - impactDamage(deltaSpeed, 0.12)); noteHpLoss('Car crash');
     shake = Math.max(shake, Math.min(0.8, deltaSpeed / 35));
-    toast('Crash! Vehicle condition: ' + Math.ceil(v.health) + '%');
+    toast('Crash! Vehicle condition: ' + Math.ceil(v.health) + '%' + treeNote);
   }
   if (v.health === 0) {
     v.disabled = true; v.speed = 0;
@@ -7336,8 +7350,9 @@ function updateHud(dt) {
   $('clock').textContent = `Time ${hh}:${mm}  ·  Gold ${stats.gold}`;
   $('extra').textContent = (inCar ? `Speed ${Math.round(Math.abs(driving.speed) * 2.237)} mph${isRoadVehicle(driving) ? ' · Condition ' + Math.ceil(driving.health ?? 100) + '%' : ''}`
       + (driving.kind === 'plane' ? `  ·  Alt ${Math.round(driving.alt)} m  ·  Throttle ${Math.round(driving.plane.throttle * 100)}%` : '')
-    : awaken > 0 ? `AWAKENED ${awaken.toFixed(1)}s` : `Slimes defeated: ${kills}`)
+    : awaken > 0 ? `AWAKENED ${awaken.toFixed(1)}s` : '')
     + (wanted > 0 ? `  ·  WANTED ${Math.ceil(wanted)}s` : '');
+  $('extra').style.display = $('extra').textContent.trim() ? '' : 'none';
 
   const interactTarget = resolveInteractTarget();
   let prompt = interactTarget ? 'E: ' + interactTarget.label : '';
@@ -7522,7 +7537,12 @@ worldExpansion=buildWorldExpansion({...regionalTransportContext,civicBuildings,f
 townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
 const pauseForPanel=()=>{locked=false;mouseHeld=false;for(const key in keys)keys[key]=false;document.exitPointerLock();$('start').style.display='none';};
-roadLaw=createRoadLaw({roundaboutCells:ROUNDABOUT_CELLS,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},toast,raiseWanted,time:()=>performance.now()/1000,isRedLight:(cx,cz,axis)=>{const j=junctionControl.junctions.get(cx*40+','+cz*40);return !!j&&junctionControl.state(j,'car',axis)==='red';},licensedHunter:()=>!!hunterGuilds?.licensed});
+roadLaw=createRoadLaw({roundaboutCells:ROUNDABOUT_CELLS,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},toast,raiseWanted,time:()=>performance.now()/1000,isRedLight:(cx,cz,axis)=>{const j=junctionControl.junctions.get(cx*40+','+cz*40);return !!j&&junctionControl.state(j,'car',axis)==='red';},licensedHunter:()=>!!hunterGuilds?.licensed,
+  witness:p=>{   // who (if anyone) sees the car at p
+    for(const v of vehicles)if(v.kind==='police'&&!v.disabled&&v!==driving&&distXZ(v.group.position,p)<60)return 'police';
+    for(const c of cctvSpots){const dx=p.x-c.x,dz=p.z-c.z;if(dx*dx+dz*dz<18*18&&dz*c.face>-2)return 'cctv';}
+    for(const e of peds)if(e.alive&&!e.hidden&&e.root&&distXZ(e.root.position,p)<15)return 'passer-by';
+    return null;}});
 frontier=buildFrontierWorld({forest,scene,colliders,planeBlocks,interactables,civicBuildings,glowMats,sign:signboard,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
  destinations:townPlaces.destinations,toast,playerPosition:()=>inCar&&driving?driving.group.position:player.position,money:()=>stats.gold,spend:n=>{stats.gold=Math.max(0,stats.gold-n);},sleep,buyFood,
  authorised:()=>(hunterGuilds?.state.licensed&&hunterGuilds.state.rank>=3),
@@ -7610,7 +7630,7 @@ worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosit
 const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>worldMap.show();document.body.append(mapButton);
 for(const it of interactables)if(it.label==='Open town travel board')it.action=()=>worldMap.show();
 movieTv=createMovieTv({interactables,position:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});movieTv.register(civicTvScreen,new THREE.Vector3(CIVIC_OFFSET.x,.3,CIVIC_OFFSET.z-7));
-const homeTv=mesh(new THREE.PlaneGeometry(2.8,1.6),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(HOME.x,1.85,HOME.maxZ-.25);homeTv.rotation.y=Math.PI;box(3.1,1.9,.15,HOME.x,1.85,HOME.maxZ-.16,0x172432,false);movieTv.register(homeTv,new THREE.Vector3(HOME.x,CURB,HOME.maxZ-2));
+const homeTv=mesh(new THREE.PlaneGeometry(2.8,1.6),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(HOME.x,1.85,HOME.maxZ-.25);homeTv.rotation.y=Math.PI;box(3.1,1.9,.15,HOME.x,1.85,HOME.maxZ-.16,0x172432,false);movieTv.register(homeTv,new THREE.Vector3(HOME.x,CURB,HOME.maxZ-2),()=>houseAt(player.position,-0.05)===houses[0]);
 onlineAccount=createOnlineAccount({client:supabase,active:()=>onlinePlayReady&&!!hosting.room,snapshot:()=>({prog:{...prog},stats:{...stats},inventory,hasBag,adventure:adventureServices.snapshot(),support:supportSkills.snapshot(),supportCounters,monsterQuestKills,heroDungeonKills,villainKills,ownedCars:cityServices.snapshot().owned,quests:cityLife.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target}))})});
 applyLayout();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
@@ -7654,7 +7674,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); forest.flush(); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
+    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); forest.flush(); forest.update(dt); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
