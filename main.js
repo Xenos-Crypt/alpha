@@ -254,7 +254,7 @@ scene.add(sunDisc, moonDisc);
 const SKY = {
   dayTop: new THREE.Color(0x4a90d9), dayHorizon: new THREE.Color(0xcfe8ff),
   duskTop: new THREE.Color(0x34407a), duskHorizon: new THREE.Color(0xffa36b),
-  nightTop: new THREE.Color(0x03050d), nightHorizon: new THREE.Color(0x141b33),
+  nightTop: new THREE.Color(0x0a1230), nightHorizon: new THREE.Color(0x2a3560),   // a lit city never gets pitch black: the sky glows above it
 };
 
 const starGeometry=new THREE.BufferGeometry(),starPositions=new Float32Array(1200*3);
@@ -833,7 +833,7 @@ const TL_MAT = { red: new THREE.MeshStandardMaterial({ color: 0x2a0a0a, emissive
   amber: new THREE.MeshStandardMaterial({ color: 0x2a1c0a, emissive: 0xffaa20, emissiveIntensity: 0 }),
   green: new THREE.MeshStandardMaterial({ color: 0x0a2a10, emissive: 0x20ff50, emissiveIntensity: 0 }) };
 function addTrafficLight(x, z, faceY,baseY=0,phase=null) {
- const cx=Math.round(x/40)*40,cz=Math.round(z/40)*40,sx=x<cx?-1:1,sz=z<cz?-1:1;if(Math.abs(Math.sin(faceY))>.7){x=cx+sx*13;z=cz+sz*9.6;}else{x=cx+sx*9.6;z=cz+sz*13;}
+ const cx=Math.round(x/40)*40,cz=Math.round(z/40)*40,sx=x<cx?-1:1,sz=z<cz?-1:1;if(Math.abs(Math.sin(faceY))>.7){x=cx+sx*13;z=cz+sz*7.4;}else{x=cx+sx*7.4;z=cz+sz*13;}
   const existing=trafficLights.find(t=>Math.abs(t.x-x)<.1&&Math.abs(t.z-z)<.1);if(existing)return existing;
   const axis=Math.abs(Math.sin(faceY))>.7?'x':'z';
   const junction=junctionControl.register(cx,cz,{tram:cz===0&&cx>=0&&cx<=600});
@@ -861,7 +861,7 @@ function updateTrafficLights(dt) {
 }
 
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x2b2f33, roughness: 0.6 });
-const lanternMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: 0xffc66b, emissiveIntensity: 0 });
+const lanternMat = new THREE.MeshStandardMaterial({ color: 0xfff6e6, emissive: 0xfff0d8, emissiveIntensity: 0 });
 // Sized with headroom: the bridge and regionalEnvironment both push more lamp
 // spots onto lampSpots *after* this point (addLampSpot() below handles those),
 // but an InstancedMesh's capacity is fixed at construction — undersizing it
@@ -930,8 +930,8 @@ function breakLampsNear(center, r) {
 
 // A small pool of real lights that follows the player to the nearest lamps at night.
 const lampLights = [];
-for (let i = 0; i < 6; i++) {
-  const l = new THREE.PointLight(0xffc77a, 0, 18, 2);
+for (let i = 0; i < (touchDevice ? 8 : 12); i++) {   // modern LED street lighting: more, brighter, further-reaching
+  const l = new THREE.PointLight(0xfff0d8, 0, 26, 1.6);
   scene.add(l);
   lampLights.push(l);
 }
@@ -1175,12 +1175,14 @@ function addWireRun(poleMat, points) {
 {
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x4a3a28, roughness: 0.9 });
   const wireMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
-  for (const x of [-140, -60, 60, 140]) {
-    const tops = [];
+  // Poles stand on the pavement edge beside north–south streets (x = -120, -40, 120), mid-block,
+  // so the wires run above the street instead of through the buildings.
+  for (const x of [-120, -40, 120]) {
+    const tops = [], px = x + 6.6;
     for (let z = -140; z <= 140; z += 40) {
-      box(0.18, 7, 0.18, x + 4, 3.5, z, poleMat, false);
-      box(2.4, 0.12, 0.12, x + 4, 6.6, z, poleMat, false);
-      tops.push(new THREE.Vector3(x + 4 - 1.1, 6.6, z), new THREE.Vector3(x + 4 + 1.1, 6.6, z));
+      box(0.18, 7, 0.18, px, 3.5, z, poleMat, false);
+      box(2.4, 0.12, 0.12, px - 0.9, 6.6, z, poleMat, false);
+      tops.push(new THREE.Vector3(px - 2, 6.6, z), new THREE.Vector3(px + 0.1, 6.6, z));
     }
     const left = tops.filter((_, i) => i % 2 === 0), right = tops.filter((_, i) => i % 2 === 1);
     addWireRun(wireMat, left); addWireRun(wireMat, right);
@@ -1201,7 +1203,7 @@ const TRAIN = new THREE.Vector3(60, CURB, 20);
 // choir loft, and an organ for worship.
 // =====================================================================
 (function buildChapel() {
-  const x = TRAIN.x, z = TRAIN.z, w = 20, d = 26, h1 = 4.6, h2 = 3.6;
+  const x = TRAIN.x, z = TRAIN.z, w = 18, d = 22, h1 = 4.6, h2 = 3.6;   // fits inside its block, clear of the pavement edge and the corner traffic lights
   const stoneMat = new THREE.MeshStandardMaterial({ color: 0xcfc3a8, roughness: 0.9 });
   const roofC = new THREE.MeshStandardMaterial({ color: 0x4a3a30, roughness: 0.85 });
   const woodC = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.8 });
@@ -5664,7 +5666,7 @@ function leaveDungeon() {
   enemyShots.length = 0;
   dungeon = null;
   $('bossbar').style.display = 'none';
-  for (const l of lampLights) l.color.set(0xffc77a);
+  for (const l of lampLights) l.color.set(0xfff0d8);
   player.position.copy(d.returnPos);
   player.position.y = groundY(player.position.x, player.position.z);
   vy = 0;
@@ -7195,7 +7197,8 @@ function updateNeeds(dt) {
 
 let lampTimer = 0;
 const sunColorLow = new THREE.Color(0xffa060), sunColorHigh = new THREE.Color(0xfff4e0);
-const hemiDay = new THREE.Color(0xcfe6ff), hemiNight = new THREE.Color(0x5566aa);
+const hemiDay = new THREE.Color(0xcfe6ff), hemiNight = new THREE.Color(0x8a9ad0);   // city glow at night
+const moonColor = new THREE.Color(0xb8c8ff);
 function updateWorldLight(dt) {
   const focus = inCar ? driving.group.position : player.position;
   const inSpace=!!spaceCentre?.inSpace;spaceStars.visible=inSpace;spaceStars.position.copy(camera.position);for(const cloud of clouds)cloud.visible=!inSpace&&!(navy?.rider?.depth>2)&&!metro?.underground&&!sewers?.underground&&!dungeon;
@@ -7203,13 +7206,16 @@ function updateWorldLight(dt) {
   const elev = Math.sin(a);
   const sunDir = new THREE.Vector3(Math.cos(a), elev, 0.35).normalize();
 
-  sun.position.copy(focus).addScaledVector(sunDir, 120);
-  if (elev < 0) sun.position.y = focus.y + 10;
-  sun.target.position.copy(focus);
   const day = clamp(elev * 3, 0, 1);
-  sun.intensity = 2.4 * day;
-  sun.color.copy(sunColorLow).lerp(sunColorHigh, day);
-  hemi.intensity = 0.25 + 0.75 * clamp(elev * 2 + 0.2, 0, 1);
+  // By day the light comes from the sun; at night the same light becomes moonlight from the
+  // opposite side of the sky, so streets keep soft shadows and never go fully dark.
+  const moon = elev < 0;
+  sun.position.copy(focus).addScaledVector(moon ? new THREE.Vector3(-sunDir.x, Math.max(0.35, -sunDir.y), -sunDir.z).normalize() : sunDir, 120);
+  sun.target.position.copy(focus);
+  sun.intensity = moon ? 0.55 * clamp(-elev * 4, 0, 1) : 2.4 * day;
+  if (moon) sun.color.copy(moonColor); else sun.color.copy(sunColorLow).lerp(sunColorHigh, day);
+  hemi.intensity = 0.62 + 0.38 * clamp(elev * 2 + 0.2, 0, 1);
+  renderer.toneMappingExposure = 1.1 + 0.25 * clamp(-elev * 3, 0, 1);
   hemi.color.copy(hemiNight).lerp(hemiDay, clamp(elev * 3 + 0.3, 0, 1));
 
   // Sky colours: dusk at the horizon, blending to day above and night below
@@ -7261,7 +7267,7 @@ function updateWorldLight(dt) {
     (dungeon ? torchSpots : lampSpots.filter((_, i) => !lampBroken[i])).map(p => ({ p, d: distXZ(p, focus) })).sort((x, y) => x.d - y.d).slice(0, lampLights.length)
       .forEach((n, i) => lampLights[i].position.set(n.p.x, dungeon ? n.p.y : n.p.y + 4, n.p.z));
   }
-  for (const l of lampLights) l.intensity = dungeon ? 40 : glow * 30;
+  for (const l of lampLights) l.intensity = dungeon ? 40 : glow * 48;
 
   if(inSpace){top.set(0x000106);horizon.set(0x02030a);scene.fog.color.set(0x000106);scene.fog.near=600;scene.fog.far=950;sunDisc.visible=moonDisc.visible=false;sun.intensity=1.1;sun.color.set(0xffffff);hemi.intensity=.35;hemi.color.set(0xc7d2e5);return;}
   if(navy?.rider?.depth>2){top.set(0x15465c);horizon.set(0x15465c);scene.fog.color.set(0x15465c);scene.fog.near=6;scene.fog.far=75;hemi.intensity=.65;hemi.color.set(0x8fc9dc);sunDisc.visible=moonDisc.visible=false;return;}
@@ -7599,6 +7605,22 @@ interactables.push({pos:new THREE.Vector3(186,.15,-187),r:2.5,label:'Licensing c
 metro.cutSurfaces();
 forest.flush();
 // Grass tufts around the player, only on grassy ground.
+{ // Nothing that belongs on the street may stand inside a building: once the whole world is
+  // built, any lamp post or traffic light inside a building's footprint is moved out to the
+  // nearest edge of that building (onto the pavement).
+  const foots = [...civicBuildings.filter(b => b.minX != null && b.minX > -4000), ...buildings.filter(b => b.w).map(b => ({ minX: b.x - b.w / 2, maxX: b.x + b.w / 2, minZ: b.z - b.d / 2, maxZ: b.z + b.d / 2 }))];
+  const pushOut = p => {
+    let moved = false;
+    for (let pass = 0; pass < 3; pass++) for (const f of foots) {
+      if (!(p.x > f.minX - 0.4 && p.x < f.maxX + 0.4 && p.z > f.minZ - 0.4 && p.z < f.maxZ + 0.4)) continue;
+      const opts = [[p.x - f.minX, 'x', f.minX - 0.7], [f.maxX - p.x, 'x', f.maxX + 0.7], [p.z - f.minZ, 'z', f.minZ - 0.7], [f.maxZ - p.z, 'z', f.maxZ + 0.7]].sort((a, b) => a[0] - b[0]);
+      p[opts[0][1]] = opts[0][2]; moved = true;
+    }
+    return moved;
+  };
+  lampSpots.forEach((p, i) => { if (pushOut(p)) placeLampInstance(i, p); });
+  for (const t of trafficLights) { const p = { x: t.root.position.x, z: t.root.position.z }; if (pushOut(p)) { t.root.position.x = t.x = p.x; t.root.position.z = t.z = p.z; } }
+}
 const roadGrid = new Map(), ROAD_CELL = 20;
 { // find every road-like surface once (dark, flat, low strips) so grass never grows on them
   const tmpC = new THREE.Color();
