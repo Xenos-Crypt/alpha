@@ -23,6 +23,7 @@ import {roadsidePosition} from './roadside-placement.js';
 import {buildWorldAdvertising} from './world-advertising.js';
 import {createWorldMap} from './world-map.js';
 import {createMovieTv} from './movie-tv.js';
+import { createHouseVisits } from './house-visits.js';
 import {createOnlineAccount} from './online-account.js';
 import {createSupportSkills} from './support-skills.js';
 import {buildCityServices,taxiRoute} from './city-services.js';
@@ -1882,7 +1883,8 @@ function toggleInventory(open) {
 const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
 player.position.copy(SPAWN);
 const DEFAULT_SPAWN=SPAWN.clone();
-const roomChat=createRoomChat({client:supabase,name:()=>playerUsername||'Player',alignment:playerAlignment,playerState:()=>({position:player.position.toArray(),yaw:player.rotation.y,classIndex:charIdx}),onPlayer:data=>onlinePlayers?.receive(data),onPlayerLeft:id=>onlinePlayers?.remove(id),onClearPlayers:()=>onlinePlayers?.clear(),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
+let houseVisits=null;
+const roomChat=createRoomChat({onGame:p=>houseVisits?.receive(p),client:supabase,name:()=>playerUsername||'Player',alignment:playerAlignment,playerState:()=>({position:player.position.toArray(),yaw:player.rotation.y,classIndex:charIdx}),onPlayer:data=>onlinePlayers?.receive(data),onPlayerLeft:id=>{onlinePlayers?.remove(id);houseVisits?.playerLeft(id);},onClearPlayers:()=>onlinePlayers?.clear(),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
 const hosting=createHosting({client:supabase,onRoomJoined:room=>roomChat.start(room),onRoomLeft:()=>roomChat.stop(),beforeRoomLeave:()=>onlineAccount?.save(),toast,setSpawn(city){SPAWN.set(city.x,groundY(city.x,city.z),city.z);},resetSpawn(){SPAWN.copy(DEFAULT_SPAWN);}});
 
 let vy = 0, onGround = true;
@@ -5924,7 +5926,7 @@ function resolveInteractTarget() {
   // Inside a subway stairwell, E shouldn't open a nearby building instead.
   const inStairwell = metro?.entrances?.groundAt(player.position.x, player.position.z) != null;
   const cb = inStairwell || player.position.y > 3 ? null : nearestCivicBuilding();   // not from a rooftop or mountain
-  if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
+  if (cb) { const visit = houseVisits?.gate(cb); if (visit) return visit; return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) }; }
   const g = nearestGate();
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
   const v = nearestVehicle();
@@ -7533,6 +7535,9 @@ doors = buildDoors({ scene, buildings: civicBuildings, colliders, groundY, makeT
 property = createProperty({ scene, buildings: civicBuildings, market, interactables, toast, colliders, groundY, sign: signboard, makePerson: o => makeHumanoid(o), narrows: NARROWS,
   money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, earn: n => { stats.gold += n; }, playerPos: () => player.position, day: () => reconstructionDays,
   wanted: () => wanted, clearWanted: () => { wanted = 0; }, raiseWanted, timeSkip: f => { dayTime = (dayTime + f) % 1; } });
+// Online rooms: visit other players' houses (knock, or break in — the owner can report you).
+houseVisits = createHouseVisits({ send: p => roomChat.sendGame(p), online: () => !!roomChat.connected, myId: () => roomChat.self, owned: () => property?.snapshot() || [],
+  toast, raiseWanted, enter: b => enterCivicBuilding(b), menu: (title, items) => snackShop.open(title, 'visit', items) });
 navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast });
 intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex});
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
@@ -7696,7 +7701,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); forest.flush(); forest.update(dt); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
+    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
