@@ -31,14 +31,19 @@ export function createProperty({ scene, buildings, market, interactables, toast,
   const markers = new Map();
   const beaconMat = new THREE.MeshBasicMaterial({ color: 0x22ff88, transparent: true, opacity: 0.65 });
   const area = b => Math.round((b.maxX - b.minX) * (b.maxZ - b.minZ));
-  const listings = buildings.filter(b => b.minX != null && Math.abs(b.x) < 4000 && Math.abs(b.z) < 4000 && KIND(b.type)).map(b => {
-    const kind = KIND(b.type), [base, per] = BASE[kind], a = area(b), central = Math.max(0, 100 - Math.hypot(b.x, b.z) / 12);
+  // Buildings keep being added while the city loads (houses come in late), so the listings are
+  // rebuilt whenever the building list has grown.
+  const cx = b => b.x ?? (b.minX + b.maxX) / 2, cz = b => b.z ?? (b.minZ + b.maxZ) / 2;
+  let listed = [], listedCount = -1;
+  const getListings = () => { if (buildings.length !== listedCount) { listedCount = buildings.length; listed = makeListings(); } return listed; };
+  const makeListings = () => buildings.filter(b => b.minX != null && Math.abs(cx(b)) < 4000 && Math.abs(cz(b)) < 4000 && KIND(b.type)).map(b => {
+    const kind = KIND(b.type), [base, per] = BASE[kind], a = area(b), central = Math.max(0, 100 - Math.hypot(cx(b), cz(b)) / 12);
     const price = Math.round((base + a * per) * (0.75 + central / 200) / 50) * 50;
     return { b, kind, price, size: Math.min(100, Math.round(a / 12)), income: INCOME[kind], location: Math.round(central) };
   });
   function mark(b) {
     if (markers.has(b.name)) return;
-    const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.8), beaconMat); m.position.set(b.x, (b.top || 12) + 4, b.z); scene.add(m); markers.set(b.name, m);
+    const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.8), beaconMat); m.position.set(cx(b), (b.top || 12) + 4, cz(b)); scene.add(m); markers.set(b.name, m);
   }
   function openShop(which = 'legal') {
     if (which === 'illegal') {
@@ -50,11 +55,11 @@ export function createProperty({ scene, buildings, market, interactables, toast,
       }, { tag: 'BLACK MARKET' });
       return;
     }
-    market.open('Ashford Property Centre: buildings for sale', listings.map(l => ({ id: l.b.name, name: l.b.name, icon: ICON[l.kind], category: l.kind, price: l.price, sold: owned.has(l.b.name),
+    market.open('Ashford Property Centre: buildings for sale', getListings().map(l => ({ id: l.b.name, name: l.b.name, icon: ICON[l.kind], category: l.kind, price: l.price, sold: owned.has(l.b.name),
       desc: l.income ? `Pays ${l.income} gold rent a day.` : l.kind === 'Mansion' ? 'A gated estate at the top of Highcliff Hills.' : 'A place to call home.',
       stats: { Size: l.size, Income: Math.min(100, Math.round(l.income / 1.2)), Location: l.location } })), item => {
       if (money() < item.price) { toast('Not enough gold.'); return false; }
-      const l = listings.find(x => x.b.name === item.id);
+      const l = getListings().find(x => x.b.name === item.id);
       spend(item.price); owned.add(l.b.name); mark(l.b);
       toast(`${ICON[l.kind]} You bought ${l.b.name}!${l.income ? ` It pays ${l.income} gold rent every day.` : ' The keys are yours.'} (Marked with a green diamond.)`);
     }, { categories: ['All', 'House', 'Apartment', 'Shop', 'Office', 'Business', 'Mansion'] });
@@ -79,7 +84,7 @@ export function createProperty({ scene, buildings, market, interactables, toast,
     if (d <= lastDay) return;
     const days = d - lastDay; lastDay = d;
     let total = 0, n = 0;
-    for (const l of listings) if (owned.has(l.b.name) && l.income) { total += l.income * days; n++; }
+    for (const l of getListings()) if (owned.has(l.b.name) && l.income) { total += l.income * days; n++; }
     if (total) { earn(total); toast(`🏦 Rent day: +${total} gold from ${n} propert${n === 1 ? 'y' : 'ies'}.`); }
   }
   // the estate agent's office
@@ -98,6 +103,6 @@ export function createProperty({ scene, buildings, market, interactables, toast,
   return {
     openShop, update, owns: name => owned.has(name),
     snapshot: () => [...owned],
-    restore(list) { if (!Array.isArray(list)) return; for (const id of list) { owned.add(id); const l = listings.find(x => x.b.name === id); if (l) mark(l.b); const h = HIDEOUTS.find(x => x.id === id); if (h) buildHideout(h); } },
+    restore(list) { if (!Array.isArray(list)) return; for (const id of list) { owned.add(id); const l = getListings().find(x => x.b.name === id); if (l) mark(l.b); const h = HIDEOUTS.find(x => x.id === id); if (h) buildHideout(h); } },
   };
 }

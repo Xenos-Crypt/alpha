@@ -6179,11 +6179,15 @@ async function enterCivicBuilding(b) {
   civicReturnPos = player.position.clone();
   $('fade').style.opacity = 1;
   let data = null;
-  try {
+  // Venues with a built interior open straight away; the online description just adds flavour when it arrives.
+  const fetched = (async () => { try {
     const res = await fetch('/api/civic-interior', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: b.type, name: b.name }), signal: AbortSignal.timeout(12000) });
-    data = await res.json(); if (!res.ok || data.error) data = null;
-    if (data?.exterior) applyBuildingExterior(b, data.exterior, true);
-  } catch {}
+    const d = await res.json(); if (!res.ok || d.error) return null;
+    if (d?.exterior) applyBuildingExterior(b, d.exterior, true);
+    return d;
+  } catch { return null; } })();
+  if (!interiors.layoutFor(b.type)) data = await fetched;
+  else fetched.then(d => { if (d?.description && inCivicInterior && currentVenueName === b.name) toast(d.description); });
   setTimeout(() => {
     inCivicInterior = true;
     const layout = interiors.layoutFor(b.type);
