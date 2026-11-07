@@ -83,7 +83,11 @@ export function styleCar(v, style, { headMat, tailMat } = {}) {
     P(2.05, 0.38, L, 0, 0.46, 0);
     const nose = P(1.95, 0.12, 1.4, 0, 0.62, 1.55); nose.rotation.x = 0.14;
     P(1.95, 0.35, 1.6, 0, 0.7, -1.25);                                                  // engine deck
-    const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.9, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), glassMat); canopy.scale.set(0.88, 0.5, 1.35); canopy.position.set(0, 0.64, 0.05); body.add(canopy);
+    // low cabin: painted roof, raked windscreen, tinted side and rear glass (the old dark glass dome looked like a head)
+    P(1.56, 0.34, 1.55, 0, 0.82, -0.15);
+    const ws = P(1.46, 0.46, 0.05, 0, 0.8, 0.78, glassMat, false); ws.rotation.x = -1.05;
+    const rs = P(1.4, 0.36, 0.05, 0, 0.8, -1.0, glassMat, false); rs.rotation.x = 0.95;
+    windows(0, 0.84, 0.26, -0.8, 0.55, 0.79);
     for (const s of [-1, 1]) { const vent = P(0.08, 0.32, 0.9, s * 1.03, 0.62, -0.9, darkMat, false); vent.rotation.y = s * 0.15; P(0.1, 0.42, 0.1, s * 0.75, 0.98, -2.0, darkMat); }
     P(2.1, 0.07, 0.55, 0, 1.2, -2.05, paint);                                            // big wing
     P(1.9, 0.14, 0.4, 0, 0.3, -L / 2 + 0.1, darkMat, false);                             // diffuser
