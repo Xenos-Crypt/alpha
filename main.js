@@ -5711,7 +5711,9 @@ function eat() {
   stats.hunger = 100;
   toast('You ate a snack. Hunger restored.');
 }
-const nearestInteractable = () => interactables.find(it => distXZ(player.position, it.pos) < it.r && Math.abs(player.position.y - it.pos.y) < 2);
+// The closest thing in reach wins (not whichever was added to the world first), so two
+// counters, an NPC and a door side by side each get picked when you stand at them.
+const nearestInteractable = () => { let best = null, bd = Infinity; for (const it of interactables) { const d = distXZ(player.position, it.pos); if (d < it.r && d < bd && Math.abs(player.position.y - it.pos.y) < 2) { bd = d; best = it; } } return best; };
 function nearestVehicle() {
   let best = null, bd = 3.6;
   for (const v of vehicles) {
@@ -5874,8 +5876,17 @@ function resolveInteractTarget() {
   if (inCar) return { label: driving.kind === 'plane' && driving.alt > 3 ? 'Jump with parachute' : 'Get out', action: () => exitVehicle() };
   if (sitting) return { label: 'Stand up', action: () => toggleSit(null) };
   if (action) return null;
+  // a bus waiting at the stop beside you beats the bench at the stop
+  const busHere = !inCar && !inCivicInterior && vehicles.find(b => b.kind === 'bus' && b.ai && b.ai.stopped && !b.disabled && distXZ(b.group.position, player.position) < 6.5);
+  if (busHere) return { label: 'Board the bus (2 gold)', action: () => boardBus(busHere) };
   const seat = nearestSitSpot();
-  if (seat) return { label: seat.label || 'Sit', action: () => toggleSit(seat) };
+  if (seat) {
+    // A chair only wins when you're closer to it than to whatever else is in reach (the
+    // secretary's desk, a counter, a bed...). Otherwise use that thing.
+    const other = inCivicInterior && interiors.active ? interiors.nearest(player.position) : nearestInteractable();
+    const seatD = Math.hypot(player.position.x - seat.x, player.position.z - seat.z), otherD = other ? distXZ(player.position, other.pos) : Infinity;
+    if (!other || seatD <= otherD) return { label: seat.label || 'Sit', action: () => toggleSit(seat) };
+  }
   if (inCivicInterior) {
     // Inside a home, shop or office you leave through the front door; elsewhere in the
     // building E uses whatever you're standing next to (bed, fridge, till...).
@@ -5885,17 +5896,20 @@ function resolveInteractTarget() {
     return { label: 'Leave', action: leaveCivicBuilding };
   }
   if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
+  // a bus waiting at the stop beside you beats the building or person behind the stop
+  const stoppedBus = !inCar && vehicles.find(b => b.kind === 'bus' && b.ai && b.ai.stopped && !b.disabled && distXZ(b.group.position, player.position) < 6.5);
+  if (stoppedBus) return { label: 'Board the bus (2 gold)', action: () => boardBus(stoppedBus) };
   const service = nearestInteractable();
   if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return {label:service.label,action:service.action};
   if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway') || /^(Take the lift|Board the intercity|Next intercity|Board the bus|Licensing|Talk to|Buy |Play |Use the vending)/.test(service.label))) return { label: service.label, action: service.action };
+  // Standing right at a counter, screen or person: use it, even if a door or a parked car is also in reach.
+  if (service && distXZ(player.position, service.pos) < 1.6) return { label: service.label, action: service.action };
   // Inside a subway stairwell, E shouldn't open a nearby building instead.
   const inStairwell = metro?.entrances?.groundAt(player.position.x, player.position.z) != null;
   const cb = inStairwell || player.position.y > 3 ? null : nearestCivicBuilding();   // not from a rooftop or mountain
   if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
   const g = nearestGate();
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
-  const stoppedBus = !inCar && vehicles.find(b => b.kind === 'bus' && b.ai && b.ai.stopped && !b.disabled && distXZ(b.group.position, player.position) < 6.5);
-  if (stoppedBus) return { label: 'Board the bus (2 gold)', action: () => boardBus(stoppedBus) };
   const v = nearestVehicle();
   if (v) {
     const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', bicycle: 'bicycle', motorcycle: 'motorbike' };
@@ -6178,11 +6192,15 @@ async function enterCivicBuilding(b) {
   civicReturnPos = player.position.clone();
   $('fade').style.opacity = 1;
   let data = null;
-  try {
+  // Venues with a built interior open straight away; the online description just adds flavour when it arrives.
+  const fetched = (async () => { try {
     const res = await fetch('/api/civic-interior', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: b.type, name: b.name }), signal: AbortSignal.timeout(12000) });
-    data = await res.json(); if (!res.ok || data.error) data = null;
-    if (data?.exterior) applyBuildingExterior(b, data.exterior, true);
-  } catch {}
+    const d = await res.json(); if (!res.ok || d.error) return null;
+    if (d?.exterior) applyBuildingExterior(b, d.exterior, true);
+    return d;
+  } catch { return null; } })();
+  if (!interiors.layoutFor(b.type)) data = await fetched;
+  else fetched.then(d => { if (d?.description && inCivicInterior && currentVenueName === b.name) toast(d.description); });
   setTimeout(() => {
     inCivicInterior = true;
     const layout = interiors.layoutFor(b.type);
@@ -7451,7 +7469,7 @@ addSeat(x,z){box(3,.15,.7,x,.7,z,0x6b5846,false);box(3,.6,.1,x,1,z+.3,0x6b5846,f
 resolve:resolveRoadMovement,
 travelLimit:roadTravelLimit,
 redSignal(p,target){const dir=target.clone().sub(p).setY(0).normalize();return junctionControl.limitTravel(p,dir,1,{length:4.2})<.01;},
-makeProfession(role,x,z,bounds){const h=makeHumanoid({outfit:/Scientist|Doctor/.test(role)?0xe2e7e9:/Imam|Sufi|priest|monk|Rabbi|minister|Theologian/.test(role)?0x98886b:0x526c81,hair:0x46362a,pants:0x2e3c4a});h.root.position.set(x,groundY(x,z),z);const node=nearestCorner(h.root.position,bounds);h.root.position.copy(cornerPos(node));h.root.position.y=groundY(h.root.position.x,h.root.position.z);const next=nextCorner(node,null,bounds),e=makeEnemy({kind:'npc',labelName:role,h,root:h.root,radius:.35,height:1.9,maxHp:50,flashMats:h.flashMats,profession:role,ped:{state:'wander',node:next,prev:node,target:cornerPos(next),speed:1.2,panicT:0,waitT:0,stop:null,bus:null,bounds}});peds.push(e);return e;}
+makeProfession(role,x,z,bounds){const h=makeHumanoid({outfit:/Scientist|Doctor/.test(role)?0xe2e7e9:/Imam|Sufi|priest|monk|Rabbi|minister|Theologian/.test(role)?0x98886b:0x526c81,hair:0x46362a,pants:0x2e3c4a});h.root.position.set(x,groundY(x,z),z);const node=nearestCorner(h.root.position,bounds);h.root.position.copy(cornerPos(node));h.root.position.y=groundY(h.root.position.x,h.root.position.z);const next=nextCorner(node,null,bounds);{const a=cornerPos(next);h.root.position.lerp(a,0.12+Math.random()*0.76);h.root.position.y=groundY(h.root.position.x,h.root.position.z);}const e=makeEnemy({kind:'npc',labelName:role,h,root:h.root,radius:.35,height:1.9,maxHp:50,flashMats:h.flashMats,profession:role,ped:{state:'wander',node:next,prev:node,target:cornerPos(next),speed:1.2,panicT:0,waitT:0,stop:null,bus:null,bounds}});peds.push(e);return e;}
 });
 onlinePlayers=createOnlineAvatars({classLook:index=>characters[index]?{outfit:characters[index].color,hair:characters[index].hair}:null,camera,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),dispose:disposeObj,position:()=>player.position,active:()=>onlinePlayReady&&!!hosting.room,firstPerson:()=>cameraView==='first',local:()=>({name:playerUsername||'Guest',alignment:playerAlignment()})});
 worldAudio=createWorldAudio({volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),state:()=>({playing:locked,position:player.position,birds,weather:weatherState,driving:inCar,speed:driving?.speed||0,swimming,airborne:!onGround,indoor:!!spaceCentre?.inSpace||!!metro?.underground||!!sewers?.underground||!!inCivicInterior,lava:Math.hypot(player.position.x-155,player.position.z-520)<35})});

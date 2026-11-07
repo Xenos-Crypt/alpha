@@ -832,7 +832,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     spot(7, 6.9, 1.8, 'Play bingo (3 gold)', () => hooks.bingo?.());
     spot(8.5, -5.5, 1.8, 'Join the yoga class (5 gold)', () => hooks.yoga?.());
     spot(-8.5, -5.5, 1.8, 'Volunteer at the food bank', () => hooks.volunteer?.());
-    spot(0, 7.6, 1.6, 'Hire the hall for a party (150 gold)', () => hooks.party?.());
+    spot(-4, -3.4, 1.6, 'Hire the hall for a party (150 gold)', () => hooks.party?.());
     L.light(-5, 0, 0.9, 13, 0xfff1d0); L.light(5, 0, 0.9, 13, 0xfff1d0); L.light(0, -7, 0.9, 10, 0xffe6b0);
   }
 
