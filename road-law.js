@@ -5,6 +5,8 @@
 //   10% + 2 mph threshold. Fixed penalty: 100 and 3 points. 12 points = disqualified.
 // - Red light: 100 + 3 points. Driving on the pavement: 100 fixed penalty.
 // - Driving without a licence: 300 and 6 points when caught committing another offence.
+// - Only offences someone witnesses count: a police patrol (60 m), a CCTV camera covering that
+//   stretch of street (18 m), or a passer-by (15 m). Nobody around, nobody to fine you.
 // - Fines take money; unpaid fines become debt, settled at the licensing office.
 // Amounts are in the world's currency (gold) at the same face value as the UK penalties.
 const g = n => `${n} gold`;
@@ -60,16 +62,14 @@ export function createRoadLaw(ctx) {
   };
   const signalised = (cx, cz) => Math.abs(cx) <= 3 && Math.abs(cz) <= 3 && !ctx.roundaboutCells.has(cx + ',' + cz);
 
-  function charge(key, extra = '') {
+  // Offences only count when someone sees them: a police patrol, a CCTV camera or a passer-by.
+  const SEEN_BY = { police: '🚔 Seen by a police patrol', cctv: '📸 Caught on CCTV', 'passer-by': '👀 A passer-by reported you' };
+  function charge(key, extra = '', at = null) {
     const o = OFFENCES[key];
     if ((cooldown[key] || 0) > ctx.time()) return false;
+    const seen = at && ctx.witness ? ctx.witness(at) : 'police';
+    if (!seen) return false;   // nobody saw it
     cooldown[key] = ctx.time() + 25;
-    // Every time you're stopped, the officer runs your licence: a forged one may not survive it.
-    if (licence.forged && Math.random() < 0.4) {
-      licence.held = false; licence.forged = false; licence.points = 0;
-      ctx.toast('🚔 The officer checks your licence number… it\'s a FORGERY. Licence seized and you\'re under arrest.');
-      ctx.raiseWanted(90);
-    }
     // Every time you're stopped, the officer runs your licence: a forged one may not survive it.
     if (licence.forged && Math.random() < 0.4) {
       licence.held = false; licence.forged = false; licence.points = 0;
@@ -87,7 +87,7 @@ export function createRoadLaw(ctx) {
     if (licence.held) licence.points += points;
     licence.history.unshift({ key, fine, points, at: Math.round(ctx.time()) });
     licence.history.length = Math.min(licence.history.length, 12);
-    let msg = `${o.label}${note}${extra}. Fixed penalty ${g(fine)}` + (points && licence.held ? `, ${points} points (${licence.points}/12)` : '');
+    let msg = `${at ? SEEN_BY[seen] + ': ' : ''}${o.label}${note}${extra}. Fixed penalty ${g(fine)}` + (points && licence.held ? `, ${points} points (${licence.points}/12)` : '');
     if (licence.held && licence.points >= POINTS_BAN && !licence.banned) {
       licence.banned = true; msg += '. 12 points reached: you are DISQUALIFIED from driving.';
     }
@@ -100,18 +100,18 @@ export function createRoadLaw(ctx) {
   // Called every frame while the player drives a road vehicle.
   function monitorDriving(v, dt) {
     const p = v.group.position;
-    if (licence.banned) charge('disqualified');
+    if (licence.banned) charge('disqualified', '', p);
     if (!inTownGrid(p)) { prevPos = null; overT = 0; return; }
     const mph = Math.abs(v.speed || 0) / MPH;
-    if (mph > 50) { overT += dt; if (overT > 1) charge('dangerous', ` (${Math.round(mph)} mph)`); }
-    else if (mph > TOWN_LIMIT_MPH * 1.1 + 2) { overT += dt; if (overT > 1.5) charge('speeding', ` (${Math.round(mph)} mph)`); }
+    if (mph > 50) { overT += dt; if (overT > 1) charge('dangerous', ` (${Math.round(mph)} mph)`, p); }
+    else if (mph > TOWN_LIMIT_MPH * 1.1 + 2) { overT += dt; if (overT > 1.5) charge('speeding', ` (${Math.round(mph)} mph)`, p); }
     else overT = 0;
-    if (!onRoad(p) && mph > 3) charge('pavement');
+    if (!onRoad(p) && mph > 3) charge('pavement', '', p);
     const cx = Math.round(p.x / 40), cz = Math.round(p.z / 40);
     const inBox = q => Math.abs(q.x - cx * 40) < 5 && Math.abs(q.z - cz * 40) < 5;
     if (prevPos && signalised(cx, cz) && inBox(p) && !inBox(prevPos)) {
       const axis = Math.abs(prevPos.x - cx * 40) > Math.abs(prevPos.z - cz * 40) ? 'x' : 'z';
-      if (ctx.isRedLight(cx, cz, axis)) charge('redLight');
+      if (ctx.isRedLight(cx, cz, axis)) charge('redLight', '', p);
     }
     prevPos = { x: p.x, z: p.z };
   }

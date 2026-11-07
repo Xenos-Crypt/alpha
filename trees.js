@@ -54,33 +54,74 @@ function palm(v) {
 }
 const BUILD = { oak, pine, birch, palm };
 
-export function createForest(scene) {
-  const lists = new Map(), meshes = [];   // key "kind:variant" -> [{x,y,z,s,r,tint}]
+// Every tree also has a condition (100% when healthy). Driving into one knocks it down a bit —
+// sturdy oaks and big trees take more, slim birches less — and at 0% it falls over, away from
+// whatever hit it. A fallen tree no longer blocks the way and grows back after a while.
+const STURDY = { oak: 1.25, pine: 1, birch: 0.7, palm: 0.85 };
+const REGROW = 240;   // seconds until a fallen tree stands again
+
+export function createForest(scene, { onAdd, onFall, onRegrow } = {}) {
+  const lists = new Map(), meshes = [], all = [];   // key "kind:variant" -> [tree]
+  const CELL = 8, grid = new Map(), cellKey = (x, z) => Math.floor(x / CELL) * 100003 + Math.floor(z / CELL);
+  const moving = new Set();
   let dirty = false;
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
   function add(x, y, z, { kind = 'oak', scale = 1, variant } = {}) {
     if (!BUILD[kind]) kind = 'oak';
     const v = variant ?? Math.floor(rnd() * 3), key = kind + ':' + v;
     if (!lists.has(key)) lists.set(key, []);
-    const g = 0.85 + rnd() * 0.3;
-    lists.get(key).push({ x, y, z, s: scale * (0.85 + rnd() * 0.3), r: rnd() * Math.PI * 2, tint: new THREE.Color(g, 0.9 + rnd() * 0.2, g) });
-    dirty = true;
+    const g = 0.85 + rnd() * 0.3, s = scale * (0.85 + rnd() * 0.3);
+    const t = { x, y, z, s, r: rnd() * Math.PI * 2, tint: new THREE.Color(g, 0.9 + rnd() * 0.2, g), kind, hp: 100, tilt: 0, fallDir: 0, down: 0, mesh: null, i: -1 };
+    lists.get(key).push(t); all.push(t);
+    const k = cellKey(x, z); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(t);
+    onAdd?.(t);
+    dirty = true; return t;
+  }
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qt = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), axis = new THREE.Vector3(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
+  function matrixOf(t) {   // standing, or tipped over towards fallDir by `tilt` radians, pivoting at the base
+    q.setFromAxisAngle(up, t.r);
+    if (t.tilt > 0) { axis.set(Math.cos(t.fallDir), 0, -Math.sin(t.fallDir)); qt.setFromAxisAngle(axis, t.tilt); q.premultiply(qt); }
+    return m4.compose(pos.set(t.x, t.y, t.z), q, sc.set(t.s, t.s, t.s));
   }
   function flush() {
     if (!dirty) return;
     for (const m of meshes) { m.removeFromParent(); m.dispose(); }
     meshes.length = 0;
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
     for (const [key, list] of lists) {
       const [kind, v] = key.split(':'), geo = BUILD[kind](+v);
       const im = new THREE.InstancedMesh(geo, material, list.length);
-      list.forEach((t, i) => { im.setMatrixAt(i, m4.compose(new THREE.Vector3(t.x, t.y, t.z), q.setFromAxisAngle(up, t.r), new THREE.Vector3(t.s, t.s, t.s))); im.setColorAt(i, t.tint); });
+      list.forEach((t, i) => { t.mesh = im; t.i = i; im.setMatrixAt(i, matrixOf(t)); im.setColorAt(i, t.tint); });
       im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false; im.userData.noCull = true; im.userData.isForest = true;
       scene.add(im); meshes.push(im);
     }
     dirty = false;
   }
-  return { add, flush, get count() { let n = 0; for (const l of lists.values()) n += l.length; return n; } };
+  // the tree nearest to a point (within maxD metres), standing ones only
+  function nearest(x, z, maxD = 1.6) {
+    let best = null, bd = maxD;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const t of grid.get(cellKey(x + a * CELL, z + b * CELL)) || []) {
+      if (t.hp <= 0) continue; const d = Math.hypot(t.x - x, t.z - z); if (d < bd) { bd = d; best = t; }
+    }
+    return best;
+  }
+  // a hit at `speed` m/s coming from (fromX, fromZ): returns { before, after, fell }
+  function damage(t, speed, fromX = t.x - 1, fromZ = t.z) {
+    if (!t || t.hp <= 0 || speed < 2) return null;
+    const before = t.hp;
+    t.hp = Math.max(0, t.hp - speed * 2.4 / ((STURDY[t.kind] || 1) * Math.max(0.6, t.s)));
+    if (t.hp <= 0) { t.fallDir = Math.atan2(t.x - fromX, t.z - fromZ); t.falling = true; t.down = 0; moving.add(t); onFall?.(t); }
+    else { t.shake = 0.35; moving.add(t); }
+    return { before, after: t.hp, fell: t.hp <= 0 };
+  }
+  function update(dt) {
+    for (const t of moving) {
+      if (t.falling) { t.tilt = Math.min(Math.PI / 2 - 0.08, t.tilt + dt * (0.6 + t.tilt * 3)); if (t.tilt >= Math.PI / 2 - 0.08) t.falling = false; }
+      else if (t.hp <= 0) { t.down += dt; if (t.down > REGROW) { t.hp = 100; t.tilt = 0; onRegrow?.(t); moving.delete(t); } }
+      else if (t.shake > 0) { t.shake -= dt; t.tilt = Math.max(0, Math.sin(t.shake * 40) * 0.05 * t.shake); t.fallDir = 0; if (t.shake <= 0) { t.tilt = 0; moving.delete(t); } }
+      if (t.mesh) { t.mesh.setMatrixAt(t.i, matrixOf(t)); t.mesh.instanceMatrix.needsUpdate = true; }
+    }
+  }
+  return { add, flush, update, nearest, damage, trees: all, get count() { return all.length; } };
 }
 export function pickKind(x, z) {   // a natural mix: mostly broadleaf, some pines and birches
   const h = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
