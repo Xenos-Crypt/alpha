@@ -5885,6 +5885,9 @@ function resolveInteractTarget() {
     return { label: 'Leave', action: leaveCivicBuilding };
   }
   if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
+  // a bus waiting at the stop beside you beats the building or person behind the stop
+  const stoppedBus = !inCar && vehicles.find(b => b.kind === 'bus' && b.ai && b.ai.stopped && !b.disabled && distXZ(b.group.position, player.position) < 6.5);
+  if (stoppedBus) return { label: 'Board the bus (2 gold)', action: () => boardBus(stoppedBus) };
   const service = nearestInteractable();
   if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return {label:service.label,action:service.action};
   if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway') || /^(Take the lift|Board the intercity|Next intercity|Board the bus|Licensing|Talk to|Buy |Play |Use the vending)/.test(service.label))) return { label: service.label, action: service.action };
@@ -5894,8 +5897,6 @@ function resolveInteractTarget() {
   if (cb) return { label: `Enter ${cb.name}`, action: () => enterCivicBuilding(cb) };
   const g = nearestGate();
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
-  const stoppedBus = !inCar && vehicles.find(b => b.kind === 'bus' && b.ai && b.ai.stopped && !b.disabled && distXZ(b.group.position, player.position) < 6.5);
-  if (stoppedBus) return { label: 'Board the bus (2 gold)', action: () => boardBus(stoppedBus) };
   const v = nearestVehicle();
   if (v) {
     const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', bicycle: 'bicycle', motorcycle: 'motorbike' };
