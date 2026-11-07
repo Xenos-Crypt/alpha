@@ -70,7 +70,7 @@ export function createSnackShop({ stats, maxHp, toast, pause, resume }) {
     list.replaceChildren(...items.map(s => {
       const row = document.createElement('div'); row.className = 'item';
       row.innerHTML = `<span class="ic">${s.icon}</span><span class="nm">${s.name}<small>${effect(s)}</small></span>`;
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = `${s.price} gold`; b.disabled = stats.gold < s.price;
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = s.price ? `${s.price} gold` : (s.button || 'Choose'); b.disabled = stats.gold < s.price;
       b.onclick = () => buy(s); if (s.owned?.()) { b.disabled = true; b.textContent = 'Owned'; } row.append(b); return row;
     }));
   }

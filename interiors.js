@@ -72,7 +72,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       return g;
     };
     const P = (g, w, h, d, x, y, z, c, o) => B(w, h, d, x, y, z, c, false, o, g);
-    const spot = (x, z, r, label, action) => L.spots.push({ pos: new THREE.Vector3(x0 + x, 0, z0 + z), r, label, action });
+    const spot = (x, z, r, label, action) => { const it = { pos: new THREE.Vector3(x0 + x, 0, z0 + z), r, action }; if (typeof label === 'function') Object.defineProperty(it, 'label', { get: label, enumerable: true }); else it.label = label; L.spots.push(it); };
     const seat = (x, z, yaw, seatY, label) => sitSpots.push({ x: x0 + x, z: z0 + z, yaw, seatY, label });
 
     // ---- shell: floor, walls with a front door, skirting ----
@@ -262,8 +262,12 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.table(6.2, 4, 1.8, 1.0);
     for (const cx of [5.7, 6.7]) { F.chair(cx, 3.15, 0); F.chair(cx, 4.85, Math.PI); }
     F.art(7, 1.9, -0.84, 0, 0xc9a24a);
-    spot(11, 7.4, 1.9, 'Have a snack from the fridge', () => hooks.eat(25, 0, 'You grab a snack from the fridge.'));
-    spot(11, 2.0, 1.5, 'Get a glass of water', () => hooks.drink());
+    // the same home cooking as your own house: fridge, cooker, sink and cookbook
+    spot(10.8, 7.4, 1.2, 'Open the fridge', () => hooks.kitchen ? hooks.kitchen().openFridge() : hooks.eat(25, 0, 'You grab a snack from the fridge.'));
+    spot(10.8, 4.15, 0.9, () => hooks.kitchen ? hooks.kitchen().cookerLabel() : 'Cook a meal', () => hooks.kitchen?.().openCooker());
+    spot(10.8, 2.0, 0.9, () => hooks.kitchen?.().dishes ? `Wash the dishes (${hooks.kitchen().dishes})` : 'Get a glass of water', () => hooks.kitchen?.().dishes ? hooks.kitchen().washUp() : hooks.drink());
+    spot(10.8, 5.6, 0.7, 'Read the cookbook', () => hooks.kitchen?.().openCookbook());
+    L.B(0.3, 0.05, 0.24, 11.35, 0.95, 5.6, 0xb5332e, false);
     // Bedroom (back left)
     F.rug(-6, -5, 3.6, 2.6, 0x6b7f99);
     F.bed(-6, -7.65, 0, true); F.bedside(-7.4, -8.5, 0); F.bedside(-4.6, -8.5, 0);
@@ -294,6 +298,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.B(3.2, 0.5, 0.05, 0, 3.0, 8.82, 0xc0392b, false, { emissive: 0xc0392b, ei: 0.4 });   // shop name strip above the door
     L.B(1.6, 0.35, 0.05, -8, 2.65, -1.9, 0x333333);                                          // STAFF ONLY plate
     spot(7.2, 7.8, 2.0, 'Buy snacks and drinks at the till', () => hooks.shop('Corner shop'));
+    spot(-10.0, 5.8, 1.6, 'Buy groceries for cooking', () => hooks.groceries ? hooks.groceries('Corner shop groceries') : hooks.shop('Corner shop'));
     for (const x of [-6.5, -2, 2.5]) spot(x + 0.9, 2.6, 1.4, 'Browse the shelves', () => hooks.toast('Bread, tins, snacks, cleaning stuff... the usual. The meal deals are at the till.'));
     spot(10.6, 2.2, 1.6, 'Look in the chiller', () => hooks.toast('Milk, juice, sandwiches and ready meals, all chilled.'));
     // Stockroom

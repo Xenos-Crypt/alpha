@@ -137,6 +137,12 @@ export function buildHills({ scene, colliders, civicBuildings, interactables, ma
 // Sunset Ridge: a long ridge south of the nightlife strip. The road from the boulevard climbs
 // over it (about 8% at the steepest) past a viewpoint car park at the crest.
 export const RIDGE = { x: 960, z: 800, half: 200, width: 70, top: 10, roadFrom: 1093, roadTo: 560 };
+// Sunset Ridge Tunnel runs through the ridge beside the scenic road over the top (see tunnel.js).
+// x/half: the channel's centre line and half-width (on terrain grid lines, so the hole has clean edges);
+// the road is in an open cutting from z0 to c0 and c1 to z1, and under the ridge from c0 to c1.
+export const TUNNEL = { x: 930.25, half: 5.25, z0: 600, z1: 1000, c0: 740, c1: 860, ceiling: 6.3, roof: 7.2 };
+export const inTunnelChannel = (x, z) => Math.abs(x - TUNNEL.x) < TUNNEL.half && z > TUNNEL.z0 && z < TUNNEL.z1;
+export const tunnelCovered = z => z > TUNNEL.c0 && z < TUNNEL.c1;
 export function ridgeHeight(x, z) {
   const u = (z - RIDGE.z) / RIDGE.half, w = Math.abs(x - RIDGE.x);
   if (Math.abs(u) >= 1 || w >= RIDGE.width) return 0;
@@ -149,6 +155,11 @@ export function buildRidge({ scene, makeTex, interactables, sitSpots, toast, des
   const W = RIDGE.width * 2, L = RIDGE.half * 2, tg = new THREE.PlaneGeometry(W, L, 40, 100); tg.rotateX(-Math.PI / 2);
   const pos = tg.attributes.position;
   for (let i = 0; i < pos.count; i++) pos.setY(i, ridgeHeight(pos.getX(i) + RIDGE.x, pos.getZ(i) + RIDGE.z) + 0.03);
+  // cut the open sections of the tunnel approach out of the ground (the covered part stays: it's the hill above the tunnel)
+  { const idx = tg.index.array, keep = [];
+    for (let i = 0; i < idx.length; i += 3) { let x = 0, z = 0; for (let k = 0; k < 3; k++) { x += pos.getX(idx[i + k]) / 3; z += pos.getZ(idx[i + k]) / 3; } x += RIDGE.x; z += RIDGE.z;
+      if (inTunnelChannel(x, z) && !tunnelCovered(z)) continue; keep.push(idx[i], idx[i + 1], idx[i + 2]); }
+    tg.setIndex(keep); }
   tg.computeVertexNormals();
   const terrain = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ map: grass, roughness: 1 })); terrain.position.set(RIDGE.x, 0, RIDGE.z); terrain.receiveShadow = true; scene.add(terrain);
   // road ribbon following the ground
@@ -164,5 +175,7 @@ export function buildRidge({ scene, makeTex, interactables, sitSpots, toast, des
   for (const dz of [-6, 0, 6]) { const bench = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.45, 2.2), new THREE.MeshStandardMaterial({ color: 0x6e6051 })); bench.position.set(RIDGE.x + 16, RIDGE.top + 0.35, RIDGE.z + dz); scene.add(bench); sitSpots?.push({ x: RIDGE.x + 16, z: RIDGE.z + dz, yaw: -Math.PI / 2, seatY: RIDGE.top + 0.95, label: 'Sit and watch the sunset' }); }
   interactables.push({ pos: new THREE.Vector3(RIDGE.x + 12, RIDGE.top, RIDGE.z), r: 3, label: 'Look out from Sunset Ridge', action: () => toast('🌇 The whole city spreads out below you, all the way to the shimmer of the dome.') });
   destinations?.push({ name: 'Sunset Ridge viewpoint', x: RIDGE.x + 10, z: RIDGE.z });
-  return { groundAt(x, z) { if (Math.abs(x - RIDGE.x) >= RIDGE.width || Math.abs(z - RIDGE.z) >= RIDGE.half) return null; const lay = Math.abs(x - RIDGE.x - 10.5) <= 6 && Math.abs(z - RIDGE.z) <= 12; return lay ? RIDGE.top + 0.15 : ridgeHeight(x, z); } };
+  return { groundAt(x, z, bodyY = null) { if (Math.abs(x - RIDGE.x) >= RIDGE.width || Math.abs(z - RIDGE.z) >= RIDGE.half) return null;
+    if (inTunnelChannel(x, z) && (!tunnelCovered(z) || bodyY == null || bodyY < TUNNEL.roof - 0.4)) return 0;   // the tunnel road (or the cutting)
+    const lay = Math.abs(x - RIDGE.x - 10.5) <= 6 && Math.abs(z - RIDGE.z) <= 12; return lay ? RIDGE.top + 0.15 : ridgeHeight(x, z); } };
 }

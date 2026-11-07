@@ -139,7 +139,7 @@ export function buildPlaces(ctx) {
     for (let z = -76; z <= -62; z += 2) for (const side of [-1, 1]) box(.35, .5, .8, x + side * 1.2, 1.05, z, side < 0 ? 0xb06840 : 0x75a064, false);
   }
   sign('PRODUCE    GROCERIES    HOUSEHOLD', 590, 3.8, -79, 18);
-  desk(590, -53, 'Buy groceries (£15)', ctx.buyGroceries);
+  desk(590, -53, 'Pay at the checkout: buy groceries', ctx.buyGroceries);
   parking(590, -29, 44);
 
   const mall = room('ASHFORD GALLERIA', 625, 55, 70, 44, 0xd8d0c4, 8);
