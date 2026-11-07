@@ -78,11 +78,16 @@ import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physi
 import { buildPlaces } from './places.js';
 import { createKitchen } from './kitchen.js';
 import { furnishHouse } from './house-rooms.js';
+import { floorTexture, floorMaterial } from './floor-textures.js';
 import { buildBuildingSites } from './building-sites.js';
 import { buildCircus } from './circus.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
 import { buildTunnel } from './tunnel.js';
+import { buildBranches } from './branches.js';
+import { buildUniversity, CAMPUS } from './university.js';
+import { createCareers, JOBS } from './careers.js';
+import { createRecovery, DEPOT } from './recovery.js';
 import { createReconstruction } from './reconstruction.js';
 import { setupMobileControls } from './mobile-controls.js';
 import { buildHarbour } from './harbour.js';
@@ -1351,7 +1356,7 @@ doorPath.castShadow = false;
 // Furniture: proper rooms (hallway, living room, bedroom, kitchen, bathroom, storage) — see house-rooms.js
 const F_Y = CURB;
 let kitchen = null;
-const homeRooms = furnishHouse({ scene, colliders, sitSpots, interactables, kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
+const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
   { cx: HOME.x, front: HOME.minZ, dir: 1, W: HOME.maxX - HOME.minX, D: HOME.maxZ - HOME.minZ, y: CURB, sideWindows: [3, 7.5] });
 const houseRoomList = [homeRooms];
 
@@ -1404,7 +1409,7 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   scene.add(roof);
 
   // Rooms and furniture (face = direction from the back wall towards the door)
-  houseRoomList.push(furnishHouse({ scene, colliders, sitSpots, interactables, kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
+  houseRoomList.push(furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
     { cx: x0, front, dir: -face, W, D, y: CURB, sideWindows: [D / 4, D * 3 / 4] }));
 
   const lawnEdge = cellZ + face * 13;
@@ -2169,7 +2174,7 @@ function saveSolo() {
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
-      kitchen:kitchen?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
+      kitchen:kitchen?.snapshot(),careers:careers?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
       metro:metro?.snapshot(),sewer:sewers?.snapshot(),law:roadLaw?.snapshot(),hunter:hunterGuilds?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
       navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
       driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
@@ -2200,7 +2205,7 @@ function applySoloSave(save) {
   supportSkills?.restore(save.support);if(save.supportCounters)supportCounters=save.supportCounters;specialUnlocked=!!supportSkills?.equipped;buildHotbar();
   heroDungeonKills=save.heroDungeonKills||0;
   monsterQuestKills=save.monsterQuestKills||0;for(const q of cityLife?.quests||[]){const saved=save.questState?.find(s=>s.name===q.name);if(saved)Object.assign(q,saved);}
-  kitchen?.restore(save.kitchen);roadWear?.restore(save.roadWear);conditions?.restore(save.buildingCondition);property?.restore(save.property);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
+  kitchen?.restore(save.kitchen);careers?.restore(save.careers);roadWear?.restore(save.roadWear);conditions?.restore(save.buildingCondition);property?.restore(save.property);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
   if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
   adventureServices?.restore(save.adventure);
   roadLaw?.restore(save.law);hunterGuilds?.restore(save.hunter);
@@ -4502,32 +4507,7 @@ function explodeVehicle(v, criminal = true) {
   setTimeout(() => dispatchTowTruck(v), 20000); // give it time to actually burn before towing it off
 }
 // A tow truck drives out from off-map, hooks the wreck, and hauls it away for good.
-function dispatchTowTruck(v) {
-  if (v.towDispatched || !vehicles.includes(v)) return;
-  v.towDispatched = true;
-  const dest = v.group.position.clone();
-  const start = dest.clone().add(new THREE.Vector3((Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 30), 0, (Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 30)));
-  const tow = makeVehicle('car', 0xffaa00);
-  tow.ai = null;
-  tow.group.position.copy(start); tow.group.position.y = 0;
-  toast('A tow truck is on its way to clear the wreckage.');
-  const st = { phase: 1, exit: null };
-  addTask({ dur: 150, update(dt, t, task) {
-    const p = tow.group.position, target = st.phase === 1 ? dest : st.exit;
-    if (!target) return;
-    const dir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z), d = dir.length();
-    if (d > 2.5) {
-      dir.normalize(); p.addScaledVector(dir, 9 * dt);
-      tow.group.rotation.y = lerpAngle(tow.group.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-5 * dt));
-    } else if (st.phase === 1) {
-      st.phase = 2;
-      st.exit = dest.clone().add(new THREE.Vector3((Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 40), 0, (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 40)));
-      const i = vehicles.indexOf(v); if (i >= 0) vehicles.splice(i, 1);
-      disposeObj(v.group);
-      toast('Wreckage hooked up — tow truck heading out.');
-    } else task.t = task.dur;
-  }, end() { const i = vehicles.indexOf(tow); if (i >= 0) vehicles.splice(i, 1); disposeObj(tow.group); } });
-}
+function dispatchTowTruck(v) { recovery?.dispatch(v); }   // a flatbed comes, winches the wreck on and carries it away (recovery.js)
 
 // =====================================================================
 // TAXI: wait at the rank, board it (you're a passenger, not the driver), then
@@ -5858,6 +5838,7 @@ function resolveInteractTarget() {
   if (metro?.rider) return { label: 'Leave the subway', action: () => metro.leave() };
   if (riding) return { label: 'Dismount', action: dismountHorse };
   if (transport?.rider) return { label: 'Leave', action: () => transport.leave() };
+  if (inCar && driving?.isTow) { const a = recovery?.action(driving, player.position); if (a) return a; }   // tow truck: winch / drop wrecks
   if (inCar) return { label: driving.kind === 'plane' && driving.alt > 3 ? 'Jump with parachute' : 'Get out', action: () => exitVehicle() };
   if (sitting) return { label: 'Stand up', action: () => toggleSit(null) };
   if (action) return null;
@@ -5898,7 +5879,7 @@ function resolveInteractTarget() {
   const v = nearestVehicle();
   if (v) {
     const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', bicycle: 'bicycle', motorcycle: 'motorbike' };
-    const label = v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' && !v.stolen ? 'Steal the ' : ['bicycle','motorcycle'].includes(v.kind) ? 'Ride the ' : 'Drive the ') + (names[v.kind] || v.kind);
+    const label = v.isTow ? (v.company && !careers?.job?.tow ? 'Steal the recovery truck' : 'Drive the recovery truck') : v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' && !v.stolen ? 'Steal the ' : ['bicycle','motorcycle'].includes(v.kind) ? 'Ride the ' : 'Drive the ') + (names[v.kind] || v.kind);
     return { label, action: () => enterVehicle(v) };
   }
   const it = nearestInteractable();
@@ -5939,6 +5920,7 @@ let civicFloor, civicWalls = [], civicLight;
 let civicTvCanvas,civicTvTexture,civicTvScreen,civicTvT=0;
 (function buildCivicInterior() {
   civicFloor = box(26, 0.3, 20, CIVIC_OFFSET.x, 0.15, CIVIC_OFFSET.z, 0xcfc9ba);             // floor
+  civicFloor.material = new THREE.MeshStandardMaterial({ map: floorTexture(makeTex, 'tiles', 0xffffff, 26, 20), roughness: 0.4 });
   civicWalls.push(box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z - 10, 0xe8e4d8));        // back wall
   civicWalls.push(box(26, 6, 0.4, CIVIC_OFFSET.x, 3, CIVIC_OFFSET.z + 10, 0xe8e4d8));        // front wall
   civicWalls.push(box(0.4, 6, 20, CIVIC_OFFSET.x - 13, 3, CIVIC_OFFSET.z, 0xe8e4d8));
@@ -6022,6 +6004,7 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
   hooks: {
     toast: m => toast(m),
     kitchen: () => kitchen,
+    careers: what => { if (!careers) return; if (what === 'university') careers.openUniversity(currentVenueName); else if (what === 'jobs') careers.openJobs(); else if (what === 'school') careers.openSchool(); else careers[what]?.(); },
     groceries: name => kitchen?.openGroceries(name),
     leave: () => leaveCivicBuilding(),
     casino: game => casino.open(game, currentVenueName || 'Casino'),
@@ -6508,7 +6491,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 300; // seconds per in-game day
 let reconstructionDays = 0;
-let buildingSites = null, roadWear = null, circus = null, tunnel = null;
+let buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -6999,6 +6982,7 @@ function arrestPlayer() {
   player.position.y = groundY(player.position.x, player.position.z);
   vy = 0; pvel.set(0, 0, 0);
   toast(fine > 0 ? `Arrested! Released after paying a $${fine} fine.` : 'Arrested! You had nothing on you to fine — released with a warning.');
+  careers?.convict('Arrested by the police');   // it goes on your criminal record
 }
 function policeChase(v, dt) {
   const ai = v.ai, p = v.group.position;
@@ -7508,7 +7492,7 @@ property = createProperty({ scene, buildings: civicBuildings, market, interactab
   wanted: () => wanted, clearWanted: () => { wanted = 0; }, raiseWanted, timeSkip: f => { dayTime = (dayTime + f) % 1; } });
 // Online rooms: visit other players' houses (knock, or break in — the owner can report you).
 houseVisits = createHouseVisits({ send: p => roomChat.sendGame(p), online: () => !!roomChat.connected, myId: () => roomChat.self, owned: () => property?.snapshot() || [],
-  toast, raiseWanted, enter: b => enterCivicBuilding(b), menu: (title, items) => snackShop.open(title, 'visit', items) });
+  toast, raiseWanted: n => { raiseWanted(n); careers?.convict('Reported for breaking into a home'); }, enter: b => enterCivicBuilding(b), menu: (title, items) => snackShop.open(title, 'visit', items) });
 navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast });
 intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex});
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
@@ -7543,6 +7527,13 @@ buildingSites=buildBuildingSites({scene,colliders,civicBuildings,interactables,m
 const personAnim=(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt);
 circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,callout:t=>callout(t,0xffd166,false),gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations});
 const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations});
+branches=buildBranches({scene,colliders,civicBuildings,makeTex,glowMats,destinations:townPlaces.destinations});   // shops, arcades, churches, mosques... round the city
+university=buildUniversity({scene,colliders,civicBuildings,makeTex,glowMats,sitSpots,makePerson:makeHumanoid,animatePerson:personAnim,destinations:townPlaces.destinations});
+careers=createCareers({toast,pause:()=>pauseForPanel(),resume:()=>{if(!boardOpen&&!settingsOpen)requestGameControl();},money:()=>stats.gold,earn:n=>{stats.gold+=n;},spend:n=>{stats.gold=Math.max(0,stats.gold-n);},level:()=>prog.level,wanted:()=>wanted,
+  drive:()=>!!(roadLaw?.licence?.held&&!roadLaw.licence.banned),drivingPoints:()=>roadLaw?.licence?.points||0,energy:()=>stats.energy,useEnergy:n=>{stats.energy=clamp(stats.energy-n,0,100);},gainXp:n=>gainXp(n),day:()=>reconstructionDays,startsWithSchool:()=>!isHomeless(),
+  onTowShift:()=>{if(recovery?.breakdown&&vehicles.includes(recovery.breakdown.v))return toast('📟 You already have a call-out. Follow the waypoint to the broken-down car.');recovery?.spawnBreakdown();}});
+{ const careerButton=document.createElement('button');careerButton.id='careerButton';careerButton.type='button';careerButton.textContent='💼 Career';careerButton.onclick=()=>careers.openCareer();document.body.append(careerButton);
+  const st=document.createElement('style');st.textContent='#careerButton{position:fixed;top:100px;right:calc(max(16px,env(safe-area-inset-right)) + 96px);z-index:14;min-height:44px;background:#183349e8;color:white;border:1px solid #7896aa;border-radius:9px;padding:9px 12px;font:14px system-ui;cursor:pointer}body.racing #careerButton{display:none!important}';document.head.append(st); }
 { const money = () => stats.gold, spend = n => { stats.gold = Math.max(0, stats.gold - n); }, earn = n => { stats.gold += n; };
   const animatePerson = (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt);
   football = createFootball({ scene, venues, makePerson: o => makeHumanoid(o), animatePerson, interactables, toast, money, spend, earn, playerPos: () => player.position });
@@ -7635,6 +7626,20 @@ roadWear = createRoadWear({ scene, makeTex, groundY, toast, interactables, isRoa
   crewMenu(crew) { snackShop.open('Road crew', 'visit', [
     { name: 'How are the roads?', icon: '🚧', price: 0, desc: `${roadWear.potholes} potholes across the city right now. Buses, lorries, tanks, frost and rain wear the roads down; we fix the worst first.`, onBuy: () => { toast(`🚧 "${roadWear.potholes} potholes out there. We'll get to them."`); return false; } },
     { name: 'Help resurface this road', icon: '🛠️', price: 0, desc: 'Grab a shovel: +40 gold, +8 XP, −15 energy, and this job finishes quickly.', onBuy: () => { if (stats.energy < 15) { toast('You are too tired to help right now.'); return false; } if (!roadWear.help(crew)) { toast('They are packing up.'); return false; } stats.gold += 40; stats.energy -= 15; gainXp(8); toast('🛠️ You help lay fresh tarmac: +40 gold, +8 XP.'); snackShop.close(); return false; } }]); } });
+// Westhaven Recovery: flatbed tow trucks that winch wrecks on and carry them away (see recovery.js).
+recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTex, colliders, raiseWanted, blocked: (x, z, r) => blockedAt(x, z, r), isRoad: isRoadAt, roadRects: () => roadRectList, waypoint: d => setWaypoint(d), destinations: townPlaces.destinations,
+  onUnloaded(truck, w, scrap) { if (!scrap) return toast('The wreck is off the truck.');
+    const call = recovery.breakdown?.v === w; if (call) recovery.clearBreakdown();
+    if (careers?.job?.tow && !truck.stolenFlag) { const fee = call ? 60 : 35; careers.finishTow(fee); }
+    else { const cash = 55 + Math.floor(Math.random() * 45); stats.gold += cash; toast(`💷 The yard pays ${cash} gold cash for the wreck. No questions asked... mostly.`); } } });
+// Staff kiosks at every workplace: ask about jobs there, or start your shift if you work there.
+{ const kioskTex = makeTex(256, 128, g => { g.fillStyle = '#1f4e8c'; g.fillRect(0, 0, 256, 128); g.fillStyle = '#fff'; g.font = 'bold 34px sans-serif'; g.textAlign = 'center'; g.fillText('STAFF &', 128, 52); g.fillText('CAREERS 💼', 128, 96); });
+  const fixed = { 'Westhaven Superstore': [31, -212], 'Cirque Aurora': [228, -738], 'Westhaven Recovery': [DEPOT.x + 8, DEPOT.z + DEPOT.d / 2 + 3], 'Ashford Construction': [477, -50], 'Ashford Police HQ': [418, -48], 'University of Westhaven': [CAMPUS.x + 5, -233] };
+  const where = name => { if (fixed[name]) return fixed[name]; const b = branches.find(name); if (b) return b.front.map((v, i) => v + (i === 0 ? 0 : 0)); const c = civicBuildings.find(c => c.name === name); return c ? [c.x + Math.min(6, (c.maxX - c.minX) / 2 - 1), c.maxZ + 2.6] : null; };
+  for (const place of [...new Set(JOBS.map(j => j.place))]) { const p = where(place); if (!p) continue; const [x, z] = place in fixed || !branches.find(place) ? p : (() => { const b = branches.find(place), dx = p[0] - b.x, dz = p[1] - b.z, L = Math.hypot(dx, dz) || 1; return [p[0] + dz / L * 6, p[1] - dx / L * 6]; })();
+    box(0.12, 2.2, 0.12, x, 1.1, z, 0x333333, false); const panel = mesh(new THREE.BoxGeometry(1.1, 0.6, 0.06), new THREE.MeshStandardMaterial({ map: kioskTex, emissive: 0xffffff, emissiveMap: kioskTex, emissiveIntensity: 0.25 })); panel.position.set(x, 2.1, z);
+    interactables.push({ pos: new THREE.Vector3(x, 0, z), r: 1.9, get label() { return careers.kioskLabel(place); }, action: () => careers.work(place) }); } }
+
 function grassSpot(x, z) {
   if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 4) return null;
   const terrain = hills?.groundAt(x, z) ?? ridge?.groundAt(x, z);
@@ -7747,6 +7752,7 @@ function frame() {
   if (running) {
     circus?.update(rawDt, player.position, !!sitting); superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
+    recovery?.update(rawDt, { driving: inCar ? driving : null, employed: !!careers?.job?.tow }); university?.update(rawDt, player.position);
     roadWear?.update(rawDt, { vehicles, playerPos: player.position, weather: weatherState, driving: inCar ? driving : null, extraWear });
   }
   if(running) harbour.update(reconstructionDays * DAY_LEN, rawDt);

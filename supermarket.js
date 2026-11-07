@@ -5,6 +5,7 @@
 // Everything you buy goes into your kitchen at home, ready to cook (see kitchen.js).
 import * as THREE from 'three';
 import { AISLES } from './kitchen.js';
+import { floorMaterial } from './floor-textures.js';
 
 export const SUPERSTORE = { x0: 36, x1: 72, z0: -242, z1: -198, door: -220 };   // the doors face west, onto the North Road
 
@@ -36,7 +37,7 @@ export function buildSupermarket(ctx) {
   const big = makeTex(1024, 192, g => { g.fillStyle = '#0f5132'; g.fillRect(0, 0, 1024, 192); g.fillStyle = '#ffd23f'; g.beginPath(); g.arc(96, 96, 62, 0, Math.PI * 2); g.fill(); g.fillStyle = '#0f5132'; g.font = 'bold 70px sans-serif'; g.textAlign = 'center'; g.fillText('W', 96, 120); g.fillStyle = '#fff'; g.font = 'bold 92px sans-serif'; g.textAlign = 'left'; g.fillText('WESTHAVEN SUPERSTORE', 180, 128, 820); });
   const bigSign = new THREE.Mesh(new THREE.PlaneGeometry(20, 3.75), new THREE.MeshStandardMaterial({ map: big, emissive: 0xffffff, emissiveMap: big, emissiveIntensity: 0.35 })); bigSign.position.set(S.x0 - 0.45, 5.0, cz); bigSign.rotation.y = -Math.PI / 2; scene.add(bigSign);
   // ---- inside: floor, lights ----
-  B(S.x0, S.x1, 0.0, 0.05, S.z0, S.z1, 0xc9d0d3, false, { rough: 0.6 });
+  B(S.x0, S.x1, 0.0, 0.05, S.z0, S.z1, floorMaterial(makeTex, 'tiles', 0xdfe3e2, S.x1 - S.x0, S.z1 - S.z0));
   B(S.x0 + 0.1, S.x1 - 0.1, H - 0.03, H - 0.01, S.z0 + 0.1, S.z1 - 0.1, 0xe6e9ec, false, { emissive: 0x6a6d70, ei: 1 });   // ceiling
   const panel = mat(0xffffff, { emissive: 0xffffff, ei: 1.2 });
   for (let x = S.x0 + 5; x < S.x1 - 2; x += 8) for (let z = S.z0 + 5; z < S.z1 - 2; z += 8) B(x - 1.2, x + 1.2, H - 0.06, H - 0.02, z - 0.4, z + 0.4, panel);
