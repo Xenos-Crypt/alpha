@@ -46,7 +46,7 @@ export function buildCityServices(ctx){
  function callTaxi(pos){
   if(rider){ctx.toast('You are already riding.');return;}
   const busy=taxis.find(c=>c.called);if(busy){ctx.toast(busy.arrived?'🚕 Your taxi is already waiting for you.':'🚕 Your taxi is on its way.');return;}
-  const free=taxis.filter(c=>!c.v.stolen&&!c.v.disabled&&c.arrived&&!c.riderNPC).sort((a,b)=>a.v.group.position.distanceTo(pos)-b.v.group.position.distanceTo(pos))[0];
+  const free=taxis.filter(c=>!c.v.stolen&&!c.v.disabled&&!c.riderNPC).sort((a,b)=>a.v.group.position.distanceTo(pos)-b.v.group.position.distanceTo(pos))[0];
   if(!free){ctx.toast('🚕 All taxis are busy. Try again in a moment.');return;}
   free.called=true;free.route=taxiRoute(free.v.group.position,pos);free.route.push(new THREE.Vector3(pos.x+3,0,pos.z));free.index=0;free.arrived=false;
   const eta=Math.ceil(free.v.group.position.distanceTo(pos)/9);
