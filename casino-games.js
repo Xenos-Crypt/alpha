@@ -19,9 +19,13 @@ export function createCasino({ money, spend, earn, toast, pause, resume }) {
     #casinoGame button{background:#ffd23f;color:#111;border:0;border-radius:10px;padding:10px 14px;margin:4px;font-weight:800;font-size:15px;min-height:44px}
     #casinoGame button.alt{background:#2a3f2f;color:#fff}#casinoGame button:disabled{opacity:.4}
     #casinoGame .wheel{font-size:clamp(40px,9vw,60px);font-weight:900}
-  </style><div class="box"></div>`;
+    #casinoGame .x{position:fixed;top:calc(env(safe-area-inset-top) + 10px);right:calc(env(safe-area-inset-right) + 10px);background:#2a3f2f;color:#fff;z-index:1;margin:0}
+    @media (max-height:520px){#casinoGame .box{max-height:100vh;padding:4px 10px}#casinoGame h2{margin:0;font-size:18px}#casinoGame .gold{margin-bottom:2px;font-size:13px}
+      #casinoGame button{min-height:38px;padding:6px 12px;margin:2px}#casinoGame .table{padding:8px;min-height:0;margin:4px 0;border-width:4px}#casinoGame .reels{font-size:38px}#casinoGame .msg{margin:3px 0}}
+  </style><button type="button" class="x">✕ Leave</button><div class="box"></div>`;
   document.body.append(root);
   const box = root.querySelector('.box');
+  root.querySelector('.x').onclick = () => close();
   addEventListener('keydown', e => { if (!root.hidden && e.code === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); } }, true);
   let bet = 10, name = 'Casino';
   const el = (tag, html, cls) => { const n = document.createElement(tag); if (html != null) n.innerHTML = html; if (cls) n.className = cls; return n; };

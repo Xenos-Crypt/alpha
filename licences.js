@@ -48,11 +48,13 @@ export function createLicences({ money, spend, toast, day, wanted, pause, resume
       #licencePanel .row .nm{flex:1}#licencePanel .row small{display:block;opacity:.7}
       #licencePanel button{background:#2f6f9f;border:0;color:#fff;border-radius:9px;padding:9px 12px;font-size:14px;min-height:40px}
       #licencePanel button.ghost{background:#444;width:100%;margin-top:8px}#licencePanel .opt{display:block;width:100%;text-align:left;margin:6px 0;background:#24384a}
+      #licencePanel .box{position:relative}#licencePanel button.x{position:sticky;top:0;float:right;background:#444;margin:-6px -6px 0 8px;z-index:1}
     </style><div class="box"></div>`;
     document.body.append(panel);
     addEventListener('keydown', e => { if (!panel.hidden && e.code === 'Escape') { e.preventDefault(); close(); } }, true);
   }
   const box = panel?.querySelector('.box');
+  const topClose = () => { if (!box) return; const x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '✕'; x.setAttribute('aria-label', 'Close'); x.onclick = () => close(); box.prepend(x); };
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
   function refresh() {
     for (const id in state) if (state[id].status === 'pending' && day() >= state[id].ready) { state[id].status = 'held'; toast(`${LICENCES[id].icon} Your ${LICENCES[id].name.toLowerCase()} has been issued.`); }
@@ -72,7 +74,7 @@ export function createLicences({ money, spend, toast, day, wanted, pause, resume
   let title = 'Licensing Office';
   function list() {
     refresh();
-    box.replaceChildren(el('h2', title), el('p', 'Apply, pay the fee, pass a short test, then wait about half a day while it is processed. Driving licences: DVLA counter. Hunter licences: Hunter Association.'));
+    box.replaceChildren(el('h2', title), el('p', 'Apply, pay the fee, pass a short test, then wait about half a day while it is processed. Driving licences: DVLA counter. Hunter licences: Hunter Association.')); topClose();
     for (const [id, L] of Object.entries(LICENCES)) {
       const row = el('div', null, 'row'), s = state[id];
       const nm = el('span', `${L.icon} ${L.name}`, 'nm');
@@ -99,7 +101,7 @@ export function createLicences({ money, spend, toast, day, wanted, pause, resume
       list(); return;
     }
     const [q, opts, ans] = qs[i];
-    box.replaceChildren(el('h2', `${L.icon} ${L.name} test`), el('p', `Question ${i + 1} of ${qs.length}`), el('p', q));
+    box.replaceChildren(el('h2', `${L.icon} ${L.name} test`), el('p', `Question ${i + 1} of ${qs.length}`), el('p', q)); topClose();
     const order = opts.map((o, k) => k).sort(() => Math.random() - 0.5);
     for (const k of order) { const b = el('button', opts[k], 'opt'); b.onclick = () => quiz(id, qs, i + 1, right + (k === ans ? 1 : 0)); box.append(b); }
   }
