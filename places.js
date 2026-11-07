@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { floorMaterial } from './floor-textures.js';
 
 export function buildPlaces(ctx) {
   const { scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast } = ctx;
@@ -56,7 +57,7 @@ export function buildPlaces(ctx) {
     const m = box(w, h, d, x, y, z, colour); camBlockers.push(m); return m;
   }
   function room(name, x, z, w, d, colour = palette.wall, h = 6) {
-    slab(w, d, x, z, palette.floor);
+    { const f = slab(w, d, x, z, palette.floor); f.material = floorMaterial(makeTex, /POLICE|COURT|BANK/.test(name) ? 'marble' : /SUPERMARKET|GALLERIA|TERMINAL/.test(name) ? 'tiles' : 'stone', /POLICE|COURT|BANK/.test(name) ? 0xe7e3da : 0xd2cfc6, w, d); }   // patterned floors
     wall(w, h, .4, x, h / 2, z - d / 2, colour);
     wall(.4, h, d, x - w / 2, h / 2, z, colour); wall(.4, h, d, x + w / 2, h / 2, z, colour);
     // Four-metre door opening: both walking and the third-person camera fit.

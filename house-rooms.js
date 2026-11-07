@@ -30,7 +30,7 @@ export function furnishHouse(ctx, h) {
     return m;
   }
   const cyl = (u, v, r, y0, y1, c, o) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, y1 - y0, 14), mat(c, o)); m.position.set(X(u), y + (y0 + y1) / 2, Z(v)); scene.add(m); return m; };
-  const floorPatch = (u0, u1, v0, v1, c) => B(u0, u1, v0, v1, 0.02, 0.035, c);
+  const floorPatch = (u0, u1, v0, v1, c, kind) => B(u0, u1, v0, v1, 0.02, 0.035, kind && ctx.floorMaterial ? ctx.floorMaterial(ctx.makeTex, kind, c, Math.abs(u1 - u0), Math.abs(v1 - v0)) : c);
   const spot = (u, v, r, label, action) => { const it = { pos: P(u, v, y), r, action }; if (typeof label === 'function') Object.defineProperty(it, 'label', { get: label }); else it.label = label; interactables.push(it); return it; };
   // wall along u at v, from u0 to u1, with doorway gaps [[a,b],...]
   const plaster = mat(0xf1ece2, { rough: 0.95 }), tile = mat(0xdfe6e8, { rough: 0.4 });
@@ -48,9 +48,9 @@ export function furnishHouse(ctx, h) {
   wallU(mid, 1, hw - 0.05);     // kitchen | bathroom
   wallU(store0, 1, hw - 0.05);  // bathroom | storage
   // floors: tiles in the kitchen, bathroom and storage, carpet in the bedroom, runner in the hall
-  floorPatch(1.05, hw - 0.1, 0.1, mid - 0.05, 0xd9d4c7); floorPatch(1.05, hw - 0.1, mid + 0.05, store0 - 0.05, 0xc9d8de);
-  floorPatch(1.05, hw - 0.1, store0 + 0.05, D - 0.1, 0xa7a196); floorPatch(-hw + 0.1, -1.05, mid + 0.05, D - 0.1, 0x7b8fa8);
-  floorPatch(-0.6, 0.6, 0.4, D - 0.4, 0x8a3b3b);
+  floorPatch(1.05, hw - 0.1, 0.1, mid - 0.05, 0xe2ddd2, 'checker'); floorPatch(1.05, hw - 0.1, mid + 0.05, store0 - 0.05, 0xd3e3ea, 'tiles');
+  floorPatch(1.05, hw - 0.1, store0 + 0.05, D - 0.1, 0xa7a196, 'stone'); floorPatch(-hw + 0.1, -1.05, mid + 0.05, D - 0.1, 0x7b8fa8, 'carpet');
+  floorPatch(-0.6, 0.6, 0.4, D - 0.4, 0x8a3b3b, 'carpet');
   // ceiling lights (glowing discs, no extra light sources)
   const lamp = mat(0xfff4dc, { emissive: 0xfff0cc, ei: 0.8 });
   for (const [u, v] of [[0, mid], [-hw / 2 - 0.5, mid / 2], [-hw / 2 - 0.5, mid + mid / 2], [hw / 2 + 0.5, mid / 2], [hw / 2 + 0.5, mid + bathD / 2], [hw / 2 + 0.5, (store0 + D) / 2]]) cyl(u, v, 0.22, WALL_H - 0.08, WALL_H - 0.02, 0xffffff).material = lamp;
@@ -66,7 +66,7 @@ export function furnishHouse(ctx, h) {
   B(lu0 + 0.05, lu0 + 0.3, lv - 1.1, lv + 1.1, 0.45, 0.95, 0x4b5d70);              // back
   for (const s of [-1, 1]) B(lu0 + 0.05, lu0 + 0.95, lv + s * 1.1 - 0.12, lv + s * 1.1 + 0.12, 0.45, 0.7, 0x4b5d70);
   sitSpots.push({ x: X(lu0 + 0.6), z: Z(lv), yaw: dir > 0 ? Math.PI / 2 : Math.PI / 2, seatY: y + 0.45, label: 'Sit on the sofa' });
-  floorPatch(lu0 + 1.1, lu1 - 0.4, lv - 1.2, lv + 1.2, 0xb0644e);                    // rug
+  floorPatch(lu0 + 1.1, lu1 - 0.4, lv - 1.2, lv + 1.2, 0xb0644e, 'carpet');           // rug
   B((lu0 + lu1) / 2 - 0.35, (lu0 + lu1) / 2 + 0.35, lv - 0.55, lv + 0.55, 0.36, 0.42, 0x7a5636);   // coffee table
   B((lu0 + lu1) / 2 - 0.3, (lu0 + lu1) / 2 + 0.3, lv - 0.5, lv + 0.5, 0, 0.36, 0x6a4a30);
   B(lu1 - 0.5, lu1 - 0.06, lv - 0.9, lv + 0.9, 0, 0.5, 0x2c2c2c, true);               // TV stand
@@ -86,7 +86,7 @@ export function furnishHouse(ctx, h) {
   for (const s of [-1, 1]) { const u = bu + s * (bw / 2 + 0.3); if (Math.abs(u) > 1.2 && Math.abs(u) < hw - 0.2) { B(u - 0.22, u + 0.22, D - 0.5, D - 0.1, 0, 0.5, 0x7a5636); cyl(u, D - 0.3, 0.1, 0.5, 0.75, 0xfff0cc, { emissive: 0xffd58a, ei: 0.6 }); } }
   B(-hw + 0.08, -hw + 0.65, mid + 0.25, mid + 1.65, 0, 2.05, 0x8a6a4a, true);        // wardrobe
   B(-hw + 0.64, -hw + 0.66, mid + 0.95, mid + 0.96, 0.2, 1.9, 0x3b2b1f);
-  floorPatch(bu - 0.9, bu + 0.9, D - 3.0, D - 2.25, 0x6b7f99);
+  floorPatch(bu - 0.9, bu + 0.9, D - 3.0, D - 2.25, 0xc9b18a, 'carpet');
   spot(bu, D - 1.1, 1.7, 'Sleep in the bed', ctx.sleep);
   spot(-hw + 1.0, mid + 0.95, 1.0, 'Open the wardrobe', () => K().openStorage());
 
