@@ -187,7 +187,7 @@ export function createRecovery(ctx) {
         const target = j.phase === 'drive' ? j.dest : j.exit, dir = tmp.set(target.x - p.x, 0, target.z - p.z), dist = dir.length();
         const stop = j.phase === 'drive' ? 7.5 : 2;
         if (dist > stop) { dir.normalize(); p.addScaledVector(dir, Math.min(11, dist) * dt); t.speed = 9; t.group.rotation.y += Math.atan2(Math.sin(Math.atan2(dir.x, dir.z) - t.group.rotation.y), Math.cos(Math.atan2(dir.x, dir.z) - t.group.rotation.y)) * Math.min(1, dt * 4); }
-        else if (j.phase === 'drive') { t.speed = 0; if (!vehicles.includes(j.wreck) && !j.wreck.carriedBy) { j.phase = 'leave'; } else { j.phase = 'load'; t.group.rotation.y = Math.atan2(p.x - j.dest.x, p.z - j.dest.z); startLoad(t, j.wreck); } }
+        else if (j.phase === 'drive') { t.speed = 0; if (!vehicles.includes(j.wreck) && !j.wreck.carriedBy) { j.phase = 'leave'; j.exit = clearSpot(p, 60, 110) || p.clone().add(new THREE.Vector3(110, 0, 0)); } else { j.phase = 'load'; t.group.rotation.y = Math.atan2(p.x - j.dest.x, p.z - j.dest.z); startLoad(t, j.wreck); } }
         else { scene.remove(t.group); const k = vehicles.indexOf(t); if (k >= 0) vehicles.splice(k, 1); if (t.carrying) scene.remove(t.carrying.group); jobs.splice(i, 1); }
       } else if (j.phase === 'load' && !t.towState && t.carrying) { j.phase = 'leave'; const a = Math.random() * Math.PI * 2; j.exit = clearSpot(j.t.group.position, 60, 110) || j.dest.clone().add(new THREE.Vector3(Math.cos(a) * 110, 0, Math.sin(a) * 110)); toast('🚛 Wreck winched on and strapped down. The recovery truck heads back to the yard.'); }
     }
