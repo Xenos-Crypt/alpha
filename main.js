@@ -7599,7 +7599,7 @@ forest.flush();
 }
 const roadGrid = new Map(), ROAD_CELL = 20;
 { // find every road-like surface once (dark, flat, low strips) so grass never grows on them
-  const tmpC = new THREE.Color();
+  const tmpC = new THREE.Color(); scene.updateMatrixWorld(true);   // positions of things built this frame aren't in matrixWorld yet
   scene.traverse(o => {
     if (!o.isMesh || o.isInstancedMesh) return; const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m?.color) return;
     const g = o.geometry; if (!['BoxGeometry', 'PlaneGeometry'].includes(g.type)) return;
@@ -7640,8 +7640,11 @@ recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTe
     box(0.12, 2.2, 0.12, x, 1.1, z, 0x333333, false); const panel = mesh(new THREE.BoxGeometry(1.1, 0.6, 0.06), new THREE.MeshStandardMaterial({ map: kioskTex, emissive: 0xffffff, emissiveMap: kioskTex, emissiveIntensity: 0.25 })); panel.position.set(x, 2.1, z);
     interactables.push({ pos: new THREE.Vector3(x, 0, z), r: 1.9, get label() { return careers.kioskLabel(place); }, action: () => careers.work(place) }); } }
 
+// floors that aren't roads or buildings but still shouldn't sprout grass
+const noGrass = [{ cx: 242, cz: -704, r: 21 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
 function grassSpot(x, z) {
   if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 4) return null;
+  for (const n of noGrass) if (n.r ? Math.hypot(x - n.cx, z - n.cz) < n.r : x > n.minX && x < n.maxX && z > n.minZ && z < n.maxZ) return null;
   const terrain = hills?.groundAt(x, z) ?? ridge?.groundAt(x, z);
   const y = terrain ?? groundY(x, z, 0);
   if (terrain == null && (y > 0.1 || y < -0.2)) return null;                       // pavements, raised floors, water
