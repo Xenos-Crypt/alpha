@@ -83,12 +83,14 @@ import { buildBuildingSites } from './building-sites.js';
 import { buildCircus } from './circus.js';
 import { buildFunfair, FAIR } from './funfair.js';
 import { createWindows, windowView } from './windows.js';
+import { makeCloud, tintClouds, createBirds } from './sky-life.js';
 import { buildFairExtras, NO_GRASS as FAIR_NO_GRASS } from './fair-extras.js';
 import { createFairGames } from './fair-games.js';
 import { createSports } from './leisure-sports.js';
 import { buildVentura, VENTURA, FOUNTAIN, KARTS } from './ventura.js';
 import { buildRecCentre, REC } from './rec-centre.js';
 import { buildGrandPark, PARK_NO_GRASS } from './grand-park.js';
+import { buildBeach } from './beach.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
 import { buildTunnel } from './tunnel.js';
@@ -287,18 +289,9 @@ const cloudGeo = new THREE.IcosahedronGeometry(1, 1);
 // Clouds used to sit only over the starting town (22 within 250 m). Now there's a
 // bigger field that wraps around the camera, so the sky is cloudy everywhere.
 const CLOUD_SPAN = 1400;   // stays inside the 1000 m draw distance
-for (let i = 0; i < 60; i++) {
-  const c = new THREE.Group();
-  const n = 4 + Math.floor(rand() * 4);
-  for (let j = 0; j < n; j++) {
-    const puff = new THREE.Mesh(cloudGeo, cloudMat);
-    const s = 5 + rand() * 6;
-    puff.scale.set(s, s * 0.6, s);
-    puff.position.set((j - n / 2) * 6 + rand() * 3, rand() * 3, rand() * 6);
-    c.add(puff);
-  }
-  c.position.set((rand() - 0.5) * CLOUD_SPAN, 85 + rand() * 45, (rand() - 0.5) * CLOUD_SPAN);
-  c.rotation.y = rand() * Math.PI * 2;
+for (let i = 0; i < 46; i++) {   // soft, layered sprite clouds (see sky-life.js)
+  const c = makeCloud(makeTex, rand);
+  c.position.set((rand() - 0.5) * CLOUD_SPAN, 95 + rand() * 50, (rand() - 0.5) * CLOUD_SPAN);
   scene.add(c);
   clouds.push(c);
 }
@@ -1117,24 +1110,18 @@ function updateBees(dt) {
   }
 }
 // Birds circling over town — there was nothing at all flying overhead before.
-const birds = [];
-function addBird(x, z, h) {
-  const m = new THREE.Mesh(new THREE.CircleGeometry(0.18, 3), new THREE.MeshBasicMaterial({ color: 0x2b2b2b, side: THREE.DoubleSide }));
-  scene.add(m);
-  birds.push({ m, cx: x, cz: z, r: 14 + rand() * 10, h, state:'flying',timer:8+rand()*10,landing:new THREE.Vector3(x,0,z), phase: rand() * 10, speed: 0.3 + rand() * 0.2 });
-}
-for (let i = 0; i < 8; i++) addBird(PARK.x + (rand() - 0.5) * 60, PARK.z + (rand() - 0.5) * 60, 13 + rand() * 6);
-function updateBirds(dt) {
-  for(const b of birds){b.timer-=dt;b.phase+=b.speed*dt;
-    const flight=new THREE.Vector3(b.cx+Math.cos(b.phase)*b.r,b.h+Math.sin(b.phase*3)*.4,b.cz+Math.sin(b.phase)*b.r);
-    if(b.state==='flying'&&b.timer<=0){const x=b.cx+Math.cos(b.phase)*5,z=b.cz+Math.sin(b.phase)*5;if(!insideCollider(new THREE.Vector3(x,0,z))&&!waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)){b.landing.set(x,groundY(x,z)+.12,z);b.state='landing';}else b.timer=3;}
-    if(b.state==='landing'){const d=b.m.position.distanceTo(b.landing);b.m.position.lerp(b.landing,Math.min(1,6*dt/(d||1)));if(d<.2){b.state='landed';b.timer=5+rand()*4;}}
-    else if(b.state==='landed'){b.m.rotation.x=0;if(b.timer<=0||b.m.position.distanceTo(player.position)<2){b.state='taking-off';b.timer=3;}}
-    else if(b.state==='taking-off'){b.m.position.lerp(flight,1-Math.exp(-dt));if(b.timer<=0){b.state='flying';b.timer=12;}}
-    else b.m.position.copy(flight);
-    if(b.state!=='landed'){b.m.rotation.y=-b.phase;b.m.rotation.x=-Math.PI/2+Math.sin(b.phase*9)*.3;}
-  }
-}
+// Proper birds (sky-life.js): pigeons in the park and squares, seagulls on the beach, sparrows in the
+// gardens. They circle, glide down, land, peck and hop about, and scatter when you walk up to them.
+const birdLife = createBirds({ scene, groundY: (x, z) => groundY(x, z), canLand: (x, z) => groundY(x, z) > -0.1 && !insideCollider(new THREE.Vector3(x, 0, z)) && !waterZones.some(w => Math.hypot(x - w.x, z - w.z) < w.r + 0.5) });
+const birds = birdLife.birds;
+birdLife.hub(PARK.x, PARK.z, { kind: 'pigeon', n: 9, r: 16, h: 14, radius: 14 });
+birdLife.hub(PARK.x - 4, PARK.z + 6, { kind: 'sparrow', n: 5, r: 9, h: 7, radius: 10 });
+for (const [x, z] of [[100, 20], [-100, -60], [60, -120], [-60, 100]]) birdLife.hub(x, z, { kind: 'pigeon', n: 5, r: 14, h: 16, radius: 6 });
+for (const x of [90, 150, 200, 260, -260]) birdLife.hub(x, 176, { kind: 'seagull', n: 5, r: 22, h: 18, radius: 9 });
+for (const [x, z] of [[531, -808], [420, -935], [300, -660], [470, -945], [290, -1000]]) birdLife.hub(x, z, { kind: x === 290 ? 'sparrow' : 'pigeon', n: 6, r: 15, h: 13, radius: 9 });
+function updateBirds(dt) { birdLife.update(dt, player.position); }
+// other areas add single birds (regional towns, the highland forest)
+function addBird(x, z, h) { birdLife.hub(x, z, { kind: h > 15 ? 'pigeon' : 'sparrow', n: 1, r: 12 + rand() * 10, h, radius: 8 }); }
 // Squirrels — small, skittish, dart between a few trees near the park.
 const squirrels = [];
 function addSquirrel(x, z) {
@@ -6514,7 +6501,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 300; // seconds per in-game day
 let reconstructionDays = 0;
-let funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let beachLife = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -7205,6 +7192,7 @@ function updateWorldLight(dt) {
   const inSpace=!!spaceCentre?.inSpace;spaceStars.visible=inSpace;spaceStars.position.copy(camera.position);for(const cloud of clouds)cloud.visible=!inSpace&&!(navy?.rider?.depth>2)&&!metro?.underground&&!sewers?.underground&&!dungeon;
   const a = dayTime * Math.PI * 2;
   const elev = Math.sin(a);
+  tintClouds(elev, weatherState === 'rain' || weatherState === 'storm');
   const sunDir = new THREE.Vector3(Math.cos(a), elev, 0.35).normalize();
 
   const day = clamp(elev * 3, 0, 1);
@@ -7588,7 +7576,9 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
     pose:(h,p,dt)=>animateHumanoid(h,p,false,false,true,dt),
     input:()=>locked?{forward:keys.KeyW||keys.ArrowUp?1:0,back:keys.KeyS||keys.ArrowDown?1:0,left:keys.KeyA||keys.ArrowLeft?1:0,right:keys.KeyD||keys.ArrowRight?1:0}:{forward:0,back:0,left:0,right:0}};
   // The leisure strip north of the boulevard: Ventura (fun centre, Fountain Park, karting), the Recreation Centre, and the Grand Park with its lake and zoo
-  ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx); }
+  ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx);
+  // Ashford Beach: rippling sea, surf, parasols, sunbathers, lifeguard, volleyball, a beach bar
+  beachLife=buildBeach(leisureCtx,{sea,seaZ:SEA_Z}); }
 const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations,onShoplift:v=>raiseWanted(Math.min(90,30+v*2))});
 branches=buildBranches({scene,colliders,civicBuildings,makeTex,glowMats,destinations:townPlaces.destinations});   // shops, arcades, churches, mosques... round the city
 university=buildUniversity({scene,colliders,civicBuildings,makeTex,glowMats,sitSpots,makePerson:makeHumanoid,animatePerson:personAnim,destinations:townPlaces.destinations});
@@ -7834,7 +7824,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, reconstructionDays, player.position, dtm > 0.52 || dtm < 0.02); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
