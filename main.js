@@ -81,6 +81,7 @@ import { furnishHouse } from './house-rooms.js';
 import { floorTexture, floorMaterial } from './floor-textures.js';
 import { buildBuildingSites } from './building-sites.js';
 import { buildCircus } from './circus.js';
+import { buildFunfair, FAIR } from './funfair.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
 import { buildTunnel } from './tunnel.js';
@@ -6491,7 +6492,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 300; // seconds per in-game day
 let reconstructionDays = 0;
-let buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let funfair = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -7526,6 +7527,10 @@ buildingSites=buildBuildingSites({scene,colliders,civicBuildings,interactables,m
     {name:'Who is building this?',icon:'🏗️',price:0,desc:`${site.crew.name}. When they finish here they move straight on to their next plot: Westhaven never stops building.`,onBuy:()=>false}]);}});
 const personAnim=(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt);
 circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,callout:t=>callout(t,0xffd166,false),gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations});
+// Westhaven Funfair round the circus: Ferris wheel, carousel, swings, drop tower, dodgems, stalls, all fenced in.
+funfair=buildFunfair({scene,colliders,interactables,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations,
+  giveItem:it=>{if(!hasBag)return toast('You have no bag to carry it in.');inventory.push({...it});if(inventoryOpen)renderInventory();},
+  seat:spot=>{if(sitting)toggleSit(null);toggleSit(spot);},unseat:spot=>{if(sitting&&activeSitSpot===spot)toggleSit(null);},isSeated:spot=>sitting&&activeSitSpot===spot});
 const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations});
 branches=buildBranches({scene,colliders,civicBuildings,makeTex,glowMats,destinations:townPlaces.destinations});   // shops, arcades, churches, mosques... round the city
 university=buildUniversity({scene,colliders,civicBuildings,makeTex,glowMats,sitSpots,makePerson:makeHumanoid,animatePerson:personAnim,destinations:townPlaces.destinations});
@@ -7641,7 +7646,7 @@ recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTe
     interactables.push({ pos: new THREE.Vector3(x, 0, z), r: 1.9, get label() { return careers.kioskLabel(place); }, action: () => careers.work(place) }); } }
 
 // floors that aren't roads or buildings but still shouldn't sprout grass
-const noGrass = [{ cx: 242, cz: -704, r: 21 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
+const noGrass = [{ cx: 242, cz: -704, r: 21 }, { minX: 194, maxX: 210, minZ: -682, maxZ: -664 }, { minX: 313, maxX: 331, minZ: -661, maxZ: -649 }, { cx: 330, cz: -690, r: 8 }, { cx: 378, cz: -655, r: 3.6 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
 function grassSpot(x, z) {
   if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 4) return null;
   for (const n of noGrass) if (n.r ? Math.hypot(x - n.cx, z - n.cz) < n.r : x > n.minX && x < n.maxX && z > n.minZ && z < n.maxZ) return null;
@@ -7753,7 +7758,9 @@ function frame() {
   kitchen?.update(running ? rawDt : 0); for (const r of houseRoomList) r.update();
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, reconstructionDays, player.position, dtm > 0.52 || dtm < 0.02); }
   if (running) {
-    circus?.update(rawDt, player.position, !!sitting); superstore?.update(rawDt, player.position);
+    circus?.update(rawDt, player.position, !!sitting);
+    { const dtm = dayTime % 1; funfair?.update(rawDt, player.position, dtm > 0.52 || dtm < 0.02); }
+    if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
     recovery?.update(rawDt, { driving: inCar ? driving : null, employed: !!careers?.job?.tow }); university?.update(rawDt, player.position);
     roadWear?.update(rawDt, { vehicles, playerPos: player.position, weather: weatherState, driving: inCar ? driving : null, extraWear });
