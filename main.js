@@ -91,6 +91,7 @@ import { buildVentura, VENTURA, FOUNTAIN, KARTS } from './ventura.js';
 import { buildRecCentre, REC } from './rec-centre.js';
 import { buildGrandPark, PARK_NO_GRASS } from './grand-park.js';
 import { buildBeach } from './beach.js';
+import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
 import { buildTunnel } from './tunnel.js';
@@ -6501,7 +6502,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 300; // seconds per in-game day
 let reconstructionDays = 0;
-let beachLife = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -7578,7 +7579,12 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // The leisure strip north of the boulevard: Ventura (fun centre, Fountain Park, karting), the Recreation Centre, and the Grand Park with its lake and zoo
   ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx);
   // Ashford Beach: rippling sea, surf, parasols, sunbathers, lifeguard, volleyball, a beach bar
-  beachLife=buildBeach(leisureCtx,{sea,seaZ:SEA_Z}); }
+  beachLife=buildBeach(leisureCtx,{sea,seaZ:SEA_Z});
+  // St Mary's, the port and the naval base, brought up to date
+  { const up={...leisureCtx,glowMats,maxHp:()=>maxHp()};
+    hospitalPlus=upgradeHospital(up,{top:24}); HOSPITAL_POS.copy(hospitalPlus.bay);
+    const hc=civicBuildings.find(b=>b.name==='St. Mary General Hospital'); if(hc)hc.minZ=-224;
+    portPlus=upgradePort(up,harbour); navyPlus=upgradeNavy(up,navy); } }
 const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations,onShoplift:v=>raiseWanted(Math.min(90,30+v*2))});
 branches=buildBranches({scene,colliders,civicBuildings,makeTex,glowMats,destinations:townPlaces.destinations});   // shops, arcades, churches, mosques... round the city
 university=buildUniversity({scene,colliders,civicBuildings,makeTex,glowMats,sitSpots,makePerson:makeHumanoid,animatePerson:personAnim,destinations:townPlaces.destinations});
@@ -7824,7 +7830,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, reconstructionDays, player.position, dtm > 0.52 || dtm < 0.02); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
