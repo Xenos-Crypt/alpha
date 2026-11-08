@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { floorMaterial } from './floor-textures.js';
 
 export function buildPlaces(ctx) {
   const { scene, box, colliders, camBlockers, planeBlocks, sitSpots, interactables, makeTex, toast } = ctx;
@@ -56,7 +57,7 @@ export function buildPlaces(ctx) {
     const m = box(w, h, d, x, y, z, colour); camBlockers.push(m); return m;
   }
   function room(name, x, z, w, d, colour = palette.wall, h = 6) {
-    slab(w, d, x, z, palette.floor);
+    { const f = slab(w, d, x, z, palette.floor); f.material = floorMaterial(makeTex, /POLICE|COURT|BANK/.test(name) ? 'marble' : /SUPERMARKET|GALLERIA|TERMINAL/.test(name) ? 'tiles' : 'stone', /POLICE|COURT|BANK/.test(name) ? 0xe7e3da : 0xd2cfc6, w, d); }   // patterned floors
     wall(w, h, .4, x, h / 2, z - d / 2, colour);
     wall(.4, h, d, x - w / 2, h / 2, z, colour); wall(.4, h, d, x + w / 2, h / 2, z, colour);
     // Four-metre door opening: both walking and the third-person camera fit.
@@ -139,7 +140,7 @@ export function buildPlaces(ctx) {
     for (let z = -76; z <= -62; z += 2) for (const side of [-1, 1]) box(.35, .5, .8, x + side * 1.2, 1.05, z, side < 0 ? 0xb06840 : 0x75a064, false);
   }
   sign('PRODUCE    GROCERIES    HOUSEHOLD', 590, 3.8, -79, 18);
-  desk(590, -53, 'Buy groceries (£15)', ctx.buyGroceries);
+  desk(590, -53, 'Pay at the checkout: buy groceries', ctx.buyGroceries);
   parking(590, -29, 44);
 
   const mall = room('ASHFORD GALLERIA', 625, 55, 70, 44, 0xd8d0c4, 8);
