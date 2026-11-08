@@ -132,6 +132,29 @@ export function createKitchen({ stats, maxHp, toast, pause, resume, gainXp, bag,
       })));
     });
   }
+  // ---- a real shop: take things off the shelf into your basket, then pay at the till (or don't...) ----
+  const basket = {};
+  const basketCount = () => Object.values(basket).reduce((a, b) => a + b, 0);
+  const basketValue = () => Object.entries(basket).reduce((a, [k, n]) => a + ING[k].price * n, 0);
+  function openShelf(shelfName, only) {
+    show(shelfName, () => {
+      $s.textContent = `🧺 In your basket: ${basketCount()} items (${basketValue()} gold). Take what you want, then pay at the tills by the door.`;
+      $l.replaceChildren(...rows('', INGREDIENTS.filter(i => !only || only.includes(i.id)).map(i => ({ icon: i.icon, name: i.name, sub: `${i.price} gold each · ${basket[i.id] ? `${basket[i.id]} in your basket` : 'not in your basket'}`, btns: [
+        { text: 'Take 1', fn: () => { basket[i.id] = (basket[i.id] || 0) + 1; } },
+        { text: 'Take 5', fn: () => { basket[i.id] = (basket[i.id] || 0) + 5; } },
+        { text: 'Put back', disabled: !basket[i.id], fn: () => { if (!--basket[i.id]) delete basket[i.id]; } }] }))));
+    });
+  }
+  function openTill(shopName) {
+    show(`${shopName}: checkout`, () => {
+      const total = basketValue();
+      $s.textContent = basketCount() ? `The cashier scans your basket. Total: ${total} gold (you have ${Math.floor(stats.gold)}).` : 'Your basket is empty. Pick things up from the aisles first.';
+      const lines = Object.entries(basket).map(([k, n]) => ({ icon: ING[k].icon, name: `${ING[k].name} × ${n}`, sub: `${ING[k].price * n} gold`, btns: [{ text: 'Put back', fn: () => { if (!--basket[k]) delete basket[k]; } }] }));
+      $l.replaceChildren(...rows('', lines), ...rows('', basketCount() ? [{ icon: '💳', name: `Pay ${total} gold`, sub: 'Everything goes to your kitchen at home.', btns: [{ text: 'Pay', disabled: stats.gold < total, fn: () => { stats.gold -= total; for (const [k, n] of Object.entries(basket)) { pantry[k] = (pantry[k] || 0) + n; delete basket[k]; } toast(`🧾 Paid ${total} gold. Thank you for shopping with us! Your groceries go to your kitchen.`); } }] }] : []));
+    });
+  }
+  // walking out without paying: you keep what you took, but it's theft
+  function stealBasket() { const n = basketCount(), v = basketValue(); for (const [k, c] of Object.entries(basket)) { pantry[k] = (pantry[k] || 0) + c; delete basket[k]; } return { n, v }; }
   function buy(i, n, cost) { if (stats.gold < cost) return toast('Not enough gold.'); stats.gold -= cost; pantry[i.id] = (pantry[i.id] || 0) + n; toast(`${i.icon} Bought ${n} × ${i.name}. It goes in your kitchen at home.`); }
 
   // ---- the fridge: what you've got, leftovers, quick bites ----
@@ -217,7 +240,7 @@ export function createKitchen({ stats, maxHp, toast, pause, resume, gainXp, bag,
   }
 
   return {
-    openGroceries, openFridge, openCookbook, openCooker, washUp, openStorage, update, close,
+    openGroceries, openShelf, openTill, stealBasket, get basketCount() { return basketCount(); }, get basketValue() { return basketValue(); }, openFridge, openCookbook, openCooker, washUp, openStorage, update, close,
     get cooking() { return cooking; }, get dishes() { return dishes; }, get pantry() { return pantry; }, get meals() { return meals; }, get storage() { return storage; },
     get isOpen() { return !panel.hidden; },
     cookerLabel() { return cooking?.ready ? (cooking.burnt ? 'Bin the burnt food' : `Take the ${cooking.r.name.toLowerCase()} off the cooker`) : cooking ? `Check the cooking (${Math.ceil(cooking.left)} s)` : 'Cook a meal at the cooker'; },
