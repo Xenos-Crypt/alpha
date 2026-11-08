@@ -46,7 +46,7 @@ export function buildFunfair(ctx) {
       for (let a = -L / 2 + 0.6; a < L / 2; a += 0.3) B(g, 0.025, 1.5, 0.025, a, 1.0, 0, rail);
       colliders.push({ minX: Math.min(x0, x1) - 0.15, maxX: Math.max(x0, x1) + 0.15, minZ: Math.min(z0, z1) - 0.15, maxZ: Math.max(z0, z1) + 0.15 }); };
     let x = minX; for (const [g0, g1] of FAIR.gates) { run(x, minZ, g0, minZ); x = g1; } run(x, minZ, maxX, minZ);
-    run(maxX, minZ, maxX, maxZ); run(minX, maxZ, maxX, maxZ); run(minX, minZ, minX, maxZ);
+    run(maxX, minZ, maxX, -715); run(maxX, -645, maxX, maxZ); run(minX, maxZ, maxX, maxZ);   // the gap opens into the extension (fair-extras.js) run(minX, minZ, minX, maxZ);
     // gate arches with flashing bulbs
     for (const [g0, g1] of FAIR.gates) { const cx = (g0 + g1) / 2;
       for (const s of [-1, 1]) { C(root, 0.35, 0.4, 7, cx + s * 5.3, 3.5, minZ, red); C(root, 0.6, 0.6, 0.8, cx + s * 5.3, 7.3, minZ, gold); }
@@ -158,10 +158,10 @@ export function buildFunfair(ctx) {
 
   // ---------------- game stalls and food ----------------
   const games = [
-    { name: 'Hook-a-duck', icon: '🦆', x: 200, win: 0.6, prize: { name: 'Rubber duck', icon: '🦆' } },
-    { name: 'Hoopla', icon: '⭕', x: 214, win: 0.35, prize: { name: 'Goldfish in a bag', icon: '🐟' } },
-    { name: 'Shooting gallery', icon: '🎯', x: 268, win: 0.3, prize: { name: 'Giant teddy bear', icon: '🧸' } },
-    { name: 'Coconut shy', icon: '🥥', x: 282, win: 0.25, prize: { name: 'Coconut', icon: '🥥' } },
+    { id: 'hookaduck', name: 'Hook-a-duck', icon: '🦆', x: 200, win: 0.6, prize: { name: 'Rubber duck', icon: '🦆' } },
+    { id: 'hoopla', name: 'Hoopla', icon: '⭕', x: 214, win: 0.35, prize: { name: 'Goldfish in a bag', icon: '🐟' } },
+    { id: 'shooting', name: 'Shooting gallery', icon: '🎯', x: 268, win: 0.3, prize: { name: 'Giant teddy bear', icon: '🧸' } },
+    { id: 'coconutshy', name: 'Coconut shy', icon: '🥥', x: 282, win: 0.25, prize: { name: 'Coconut', icon: '🥥' } },
   ];
   for (const gm of games) { const g = new THREE.Group(); g.position.set(gm.x, 0, -652); root.add(g);
     B(g, 5, 3, 0.2, 0, 1.5, 1.4, 0x6d0f1f); for (const s of [-1, 1]) B(g, 0.2, 3, 3, s * 2.5, 1.5, 0, 0x6d0f1f);
@@ -170,6 +170,7 @@ export function buildFunfair(ctx) {
     const s = sign(gm.name.toUpperCase(), '3 gold a go', 3.6, '#6d0f1f', '#ffd23f'); s.position.set(0, 3.7, -1.6); g.add(s);
     solid(gm.x - 2.6, gm.x + 2.6, -652 - 0.6, -652 + 1.6);
     interactables.push({ pos: new THREE.Vector3(gm.x, 0, -654.6), r: 2.0, label: `Play ${gm.name} (3 gold)`, action: () => {
+      if (ctx.games) return ctx.games.open(gm.id);   // the real mini-game
       if (stats.gold < 3) return toast('Not enough gold.'); stats.gold -= 3;
       if (Math.random() < gm.win) { ctx.giveItem?.(gm.prize); toast(`${gm.icon} You win! A ${gm.prize.name.toLowerCase()} goes in your bag.`); }
       else toast(`${gm.icon} ${['So close!', 'Unlucky! Have another go?', 'Nearly had it!', 'Not this time.'][Math.floor(Math.random() * 4)]}`); } });
@@ -190,7 +191,8 @@ export function buildFunfair(ctx) {
   const crowd = [];
   if (ctx.makePerson) {
     const loops = [[[242, -755], [242, -740], [300, -713], [360, -713], [372, -735], [372, -755]], [[195, -643], [300, -643], [303, -680], [303, -713], [250, -713]], [[397, -650], [397, -713], [330, -713], [303, -700], [303, -650]], [[250, -713], [350, -713], [350, -680], [320, -675], [303, -700]]];
-    loops.forEach((pts, i) => { for (let k = 0; k < 3; k++) { const h = ctx.makePerson({ outfit: [0xc0392b, 0x2980b9, 0x8e44ad, 0x16a085, 0xf39c12, 0x2c3e50][(i * 3 + k) % 6], hair: [0x2b1d14, 0xc9a26a, 0x111111, 0x5a3b22][(i + k) % 4], pants: 0x2d3142 }); crowd.push({ h, pts, t: k * 9 + i * 4 }); } });
+    loops.forEach((pts, i) => { for (let k = 0; k < 3; k++) { const h = ctx.makePerson({ outfit: [0xc0392b, 0x2980b9, 0x8e44ad, 0x16a085, 0xf39c12, 0x2c3e50][(i * 3 + k) % 6], hair: [0x2b1d14, 0xc9a26a, 0x111111, 0x5a3b22][(i + k) % 4], pants: 0x2d3142 }); crowd.push({ h, pts, t: k * 9 + i * 4 });
+      if (k !== 1) { const kid = ctx.makePerson({ child: true, outfit: [0xff6b9d, 0x4dabf7, 0xffd43b, 0x69db7c][(i + k) % 4], hair: [0x2b1d14, 0x111111, 0xc9a26a][(i + k) % 3], skin: [0xffdcc0, 0x8d5a3b, 0xd9a07a][(i + k) % 3], pants: 0x3b5bdb }); crowd.push({ h: kid, pts, t: k * 9 + i * 4 - 1.1 }); } } });
   }
 
   // ---------------- riding ----------------
