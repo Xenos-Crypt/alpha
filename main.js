@@ -85,6 +85,10 @@ import { buildFunfair, FAIR } from './funfair.js';
 import { createWindows, windowView } from './windows.js';
 import { buildFairExtras, NO_GRASS as FAIR_NO_GRASS } from './fair-extras.js';
 import { createFairGames } from './fair-games.js';
+import { createSports } from './leisure-sports.js';
+import { buildVentura, VENTURA, FOUNTAIN, KARTS } from './ventura.js';
+import { buildRecCentre, REC } from './rec-centre.js';
+import { buildGrandPark, PARK_NO_GRASS } from './grand-park.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
 import { buildTunnel } from './tunnel.js';
@@ -1869,7 +1873,7 @@ const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
 player.position.copy(SPAWN);
 const DEFAULT_SPAWN=SPAWN.clone();
 let houseVisits=null;
-const roomChat=createRoomChat({onGame:p=>houseVisits?.receive(p),client:supabase,name:()=>playerUsername||'Player',alignment:playerAlignment,playerState:()=>({position:player.position.toArray(),yaw:player.rotation.y,classIndex:charIdx}),onPlayer:data=>onlinePlayers?.receive(data),onPlayerLeft:id=>{onlinePlayers?.remove(id);houseVisits?.playerLeft(id);},onClearPlayers:()=>onlinePlayers?.clear(),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
+const roomChat=createRoomChat({onGame:p=>{if(p?.kind==='versus')sportsGames?.receive(p);else houseVisits?.receive(p);},client:supabase,name:()=>playerUsername||'Player',alignment:playerAlignment,playerState:()=>({position:player.position.toArray(),yaw:player.rotation.y,classIndex:charIdx}),onPlayer:data=>onlinePlayers?.receive(data),onPlayerLeft:id=>{onlinePlayers?.remove(id);houseVisits?.playerLeft(id);},onClearPlayers:()=>onlinePlayers?.clear(),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
 const hosting=createHosting({client:supabase,onRoomJoined:room=>roomChat.start(room),onRoomLeft:()=>roomChat.stop(),beforeRoomLeave:()=>onlineAccount?.save(),toast,setSpawn(city){SPAWN.set(city.x,groundY(city.x,city.z),city.z);},resetSpawn(){SPAWN.copy(DEFAULT_SPAWN);}});
 
 let vy = 0, onGround = true;
@@ -6510,7 +6514,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 300; // seconds per in-game day
 let reconstructionDays = 0;
-let funfair = null, fairExtras = null, fairGames = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -7553,7 +7557,16 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
     seat:spot=>{if(sitting)toggleSit(null);toggleSit(spot);},unseat:spot=>{if(sitting&&activeSitSpot===spot)toggleSit(null);},isSeated:spot=>sitting&&activeSitSpot===spot};
   funfair=buildFunfair(rideCtx);
   // the second half: Thunderbolt rollercoaster, pirate ship, teacups, the Games Pavilion, kiosks, Starlight Cinema
-  fairExtras=buildFairExtras(rideCtx); }
+  fairExtras=buildFairExtras(rideCtx);
+  // Head-to-head sports (vs the people you meet, or an online player in your room)
+  sportsGames=createSports({stats,toast,gainXp:n=>gainXp(n),pause:()=>{locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl(),
+    send:p=>roomChat.sendGame(p),myId:()=>roomChat.self,online:()=>!!roomChat.connected&&onlinePlayReady,players:()=>onlinePlayers?.list?.()||[]});
+  const leisureCtx={...rideCtx,camBlockers,planeBlocks,sitSpots,floorMaterial,sports:sportsGames,
+    tree:(x,z,kind,sc=1)=>forest.add(x,groundY(x,z),z,{kind:kind||pickKind(x,z),scale:sc*0.9}),
+    pose:(h,p,dt)=>animateHumanoid(h,p,false,false,true,dt),
+    input:()=>locked?{forward:keys.KeyW||keys.ArrowUp?1:0,back:keys.KeyS||keys.ArrowDown?1:0,left:keys.KeyA||keys.ArrowLeft?1:0,right:keys.KeyD||keys.ArrowRight?1:0}:{forward:0,back:0,left:0,right:0}};
+  // The leisure strip north of the boulevard: Ventura (fun centre, Fountain Park, karting), the Recreation Centre, and the Grand Park with its lake and zoo
+  ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx); }
 const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations});
 branches=buildBranches({scene,colliders,civicBuildings,makeTex,glowMats,destinations:townPlaces.destinations});   // shops, arcades, churches, mosques... round the city
 university=buildUniversity({scene,colliders,civicBuildings,makeTex,glowMats,sitSpots,makePerson:makeHumanoid,animatePerson:personAnim,destinations:townPlaces.destinations});
@@ -7669,7 +7682,7 @@ recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTe
     interactables.push({ pos: new THREE.Vector3(x, 0, z), r: 1.9, get label() { return careers.kioskLabel(place); }, action: () => careers.work(place) }); } }
 
 // floors that aren't roads or buildings but still shouldn't sprout grass
-const noGrass = [...FAIR_NO_GRASS, { cx: 242, cz: -704, r: 21 }, { minX: 194, maxX: 210, minZ: -682, maxZ: -664 }, { minX: 313, maxX: 331, minZ: -661, maxZ: -649 }, { cx: 330, cz: -690, r: 8 }, { cx: 378, cz: -655, r: 3.6 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
+const noGrass = [...FAIR_NO_GRASS, ...PARK_NO_GRASS, { minX: VENTURA.x0, maxX: VENTURA.x1, minZ: VENTURA.z0, maxZ: VENTURA.z1 }, { minX: REC.x0, maxX: REC.x1, minZ: REC.z0, maxZ: REC.z1 }, { minX: FOUNTAIN.plaza[0], maxX: FOUNTAIN.plaza[1], minZ: FOUNTAIN.plaza[2], maxZ: FOUNTAIN.plaza[3] }, { minX: KARTS.box[0], maxX: KARTS.box[1], minZ: KARTS.box[2], maxZ: KARTS.box[3] }, { cx: 242, cz: -704, r: 21 }, { minX: 194, maxX: 210, minZ: -682, maxZ: -664 }, { minX: 313, maxX: 331, minZ: -661, maxZ: -649 }, { cx: 330, cz: -690, r: 8 }, { cx: 378, cz: -655, r: 3.6 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
 // Building footprints, indexed in 20 m cells: no grass ever grows inside a building, whatever its floor is made of.
 const footprintIndex = { key: '', cells: new Map() };
 function insideFootprint(x, z) {
@@ -7799,7 +7812,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, reconstructionDays, player.position, dtm > 0.52 || dtm < 0.02); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
     recovery?.update(rawDt, { driving: inCar ? driving : null, employed: !!careers?.job?.tow }); university?.update(rawDt, player.position);
