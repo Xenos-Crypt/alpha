@@ -225,8 +225,13 @@ export function buildFrontierWorld(ctx) {
   // apartment blocks on the boulevard frontage (west end) — mixed-use with ground-floor shops
   for (const x of [40, 75]) building(x, -470, 26, 16, 15, B.mat(0xbfb6a8), { floors: 5, face: 1 });
   // arcology towers: tiered cylinders with luminous rings and sky gardens
+  // (apartment towers, so they get a facade of windows and balconies; dark bare cylinders read as cooling towers)
+  const towerWall = (() => { const c = document.createElement('canvas'); c.width = 256; c.height = 128; const g = c.getContext('2d'); g.fillStyle = '#ece6d8'; g.fillRect(0, 0, 256, 128);
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { g.fillStyle = (x * 3 + y * 5) % 7 === 0 ? '#ffe2a0' : '#6d93b5'; g.fillRect(x * 32 + 5, y * 32 + 5, 22, 19); g.fillStyle = '#b9b1a2'; g.fillRect(x * 32 + 1, y * 32 + 25, 30, 4); g.fillStyle = '#8a8478'; g.fillRect(x * 32 + 15, y * 32 + 5, 2, 19); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 1.5); t.anisotropy = 4;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.55, metalness: 0.05 }); })();
   for (const [x, z, h] of [[355, -612, 70], [395, -585, 54]]) {
-    for (let i = 0; i < 4; i++) { const r = 11 - i * 2, seg = h / 4; cyl(r, r + 0.6, seg, x, seg * i + seg / 2, z, i % 2 ? C.glass : C.hull, 24); cyl(r + 0.9, r + 0.9, 0.7, x, seg * (i + 1), z, C.glow, 24); sphere(r * 0.45, x + r * 0.55, seg * (i + 1) + 1.2, z, C.leaf, 8); }
+    for (let i = 0; i < 4; i++) { const r = 11 - i * 2, seg = h / 4; cyl(r, r + 0.6, seg, x, seg * i + seg / 2, z, towerWall, 24); cyl(r + 0.9, r + 0.9, 0.7, x, seg * (i + 1), z, C.glow, 24); sphere(r * 0.45, x + r * 0.55, seg * (i + 1) + 1.2, z, C.leaf, 8); }
     cyl(0.25, 0.25, 14, x, h + 7, z, C.steel, 6);
     ctx.colliders.push({ minX: x - 11.6, maxX: x + 11.6, minZ: z - 11.6, maxZ: z + 11.6, circleX: x, circleZ: z, circleRadius: 11.6 });
     ctx.planeBlocks?.push({ minX: x - 11, maxX: x + 11, minZ: z - 11, maxZ: z + 11, top: h + 1 });

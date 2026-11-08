@@ -82,6 +82,8 @@ import { floorTexture, floorMaterial } from './floor-textures.js';
 import { buildBuildingSites } from './building-sites.js';
 import { buildCircus } from './circus.js';
 import { buildFunfair, FAIR } from './funfair.js';
+import { buildFairExtras, NO_GRASS as FAIR_NO_GRASS } from './fair-extras.js';
+import { createFairGames } from './fair-games.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
 import { buildTunnel } from './tunnel.js';
@@ -1665,11 +1667,11 @@ function drawSpeedLines(dt) {
 // HUMANOID MODEL + ANIMATION (shared by the player and the dummies)
 // =====================================================================
 const stdMat = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 });
-function makeHumanoid({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes = 0x1b1b2f, handScale = 1 }) {
+function makeHumanoid({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes = 0x1b1b2f, handScale = 1, child = false }) {
   const root = new THREE.Group();
   scene.add(root);
   const rig = new THREE.Group();
-  rig.scale.setScalar(0.9);
+  rig.scale.setScalar(child ? 0.56 : 0.9);   // children are a bit over half an adult's height
   root.add(rig);
   const mats = { outfit: stdMat(outfit), hair: stdMat(hair), skin: stdMat(skin), pants: stdMat(pants), dark: stdMat(shoes) };
 
@@ -6047,6 +6049,10 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
       stats.gold -= cost;
       arcade.start(kind);   // a real game you play yourself; tickets depend on your score
     },
+    cinema(what) {   // Starlight Cinema: a ticket gets you in to watch; the concessions sell snacks
+      if (what === 'ticket') { if (cinemaTicket === currentVenueName) { toast('🎟️ You already have a ticket. Find a seat and enjoy the film!'); return; } if (stats.gold < 8) { toast('A cinema ticket is 8 gold.'); return; } stats.gold -= 8; cinemaTicket = currentVenueName; toast('🎟️ One adult ticket, screen 1. Take any seat, then press E by the screen to choose the film.'); return; }
+      snackShop.open(currentVenueName || 'Cinema', 'visit', [{ name: 'Large popcorn', icon: '🍿', price: 5, hunger: 15 }, { name: 'Nachos with cheese', icon: '🧀', price: 6, hunger: 20 }, { name: 'Hot dog', icon: '🌭', price: 5, hunger: 22 }, { name: 'Pick-n-mix', icon: '🍬', price: 4, energy: 10 }, { name: 'Large cola', icon: '🥤', price: 3, energy: 12 }, { name: 'Ice-cream tub', icon: '🍨', price: 4, hunger: 8, energy: 6 }]);
+    },
     rest(amount, msg) { stats.energy = Math.min(100, stats.energy + amount); toast(msg); },
     sleep() {
       $('fade').style.opacity = 1;
@@ -6184,7 +6190,7 @@ async function enterCivicBuilding(b) {
     toast(desc + staff + (layout ? ' Walk around and press E on things to use them. Leave through the front door behind you.' : ' There’s a chair by a TV straight ahead — walk up and press E to sit.'));
   }, 650);
 }
-let currentVenueName = null;
+let currentVenueName = null, cinemaTicket = null;
 const hotelBookings = new Map();   // hotel name -> room type booked
 function leaveCivicBuilding() {
   $('fade').style.opacity = 1;
@@ -6492,7 +6498,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 300; // seconds per in-game day
 let reconstructionDays = 0;
-let funfair = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let funfair = null, fairExtras = null, fairGames = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -7528,9 +7534,14 @@ buildingSites=buildBuildingSites({scene,colliders,civicBuildings,interactables,m
 const personAnim=(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt);
 circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,callout:t=>callout(t,0xffd166,false),gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations});
 // Westhaven Funfair round the circus: Ferris wheel, carousel, swings, drop tower, dodgems, stalls, all fenced in.
-funfair=buildFunfair({scene,colliders,interactables,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations,
-  giveItem:it=>{if(!hasBag)return toast('You have no bag to carry it in.');inventory.push({...it});if(inventoryOpen)renderInventory();},
-  seat:spot=>{if(sitting)toggleSit(null);toggleSit(spot);},unseat:spot=>{if(sitting&&activeSitSpot===spot)toggleSit(null);},isSeated:spot=>sitting&&activeSitSpot===spot});
+{ const giveItem=it=>{if(!hasBag)return toast('You have no bag to carry it in.');inventory.push({...it});if(inventoryOpen)renderInventory();};
+  // fairground games from round the world, each a mini-game you play yourself (fair-games.js)
+  fairGames=createFairGames({stats,toast,giveItem,gainXp:n=>gainXp(n),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
+  const rideCtx={scene,colliders,interactables,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations,civicBuildings,games:fairGames,giveItem,
+    seat:spot=>{if(sitting)toggleSit(null);toggleSit(spot);},unseat:spot=>{if(sitting&&activeSitSpot===spot)toggleSit(null);},isSeated:spot=>sitting&&activeSitSpot===spot};
+  funfair=buildFunfair(rideCtx);
+  // the second half: Thunderbolt rollercoaster, pirate ship, teacups, the Games Pavilion, kiosks, Starlight Cinema
+  fairExtras=buildFairExtras(rideCtx); }
 const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations});
 branches=buildBranches({scene,colliders,civicBuildings,makeTex,glowMats,destinations:townPlaces.destinations});   // shops, arcades, churches, mosques... round the city
 university=buildUniversity({scene,colliders,civicBuildings,makeTex,glowMats,sitSpots,makePerson:makeHumanoid,animatePerson:personAnim,destinations:townPlaces.destinations});
@@ -7646,7 +7657,7 @@ recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTe
     interactables.push({ pos: new THREE.Vector3(x, 0, z), r: 1.9, get label() { return careers.kioskLabel(place); }, action: () => careers.work(place) }); } }
 
 // floors that aren't roads or buildings but still shouldn't sprout grass
-const noGrass = [{ cx: 242, cz: -704, r: 21 }, { minX: 194, maxX: 210, minZ: -682, maxZ: -664 }, { minX: 313, maxX: 331, minZ: -661, maxZ: -649 }, { cx: 330, cz: -690, r: 8 }, { cx: 378, cz: -655, r: 3.6 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
+const noGrass = [...FAIR_NO_GRASS, { cx: 242, cz: -704, r: 21 }, { minX: 194, maxX: 210, minZ: -682, maxZ: -664 }, { minX: 313, maxX: 331, minZ: -661, maxZ: -649 }, { cx: 330, cz: -690, r: 8 }, { cx: 378, cz: -655, r: 3.6 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
 function grassSpot(x, z) {
   if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 4) return null;
   for (const n of noGrass) if (n.r ? Math.hypot(x - n.cx, z - n.cz) < n.r : x > n.minX && x < n.maxX && z > n.minZ && z < n.maxZ) return null;
@@ -7665,6 +7676,7 @@ worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosit
 const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>worldMap.show();document.body.append(mapButton);
 for(const it of interactables)if(it.label==='Open town travel board')it.action=()=>worldMap.show();
 movieTv=createMovieTv({interactables,position:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});movieTv.register(civicTvScreen,new THREE.Vector3(CIVIC_OFFSET.x,.3,CIVIC_OFFSET.z-7));
+if(interiors.layouts.cinema_screen)movieTv.register(interiors.layouts.cinema_screen,new THREE.Vector3(-7000,.3,-1.5),()=>interiors.active===interiors.layouts.cinema);   // Starlight Cinema's big screen
 const homeTvAt=homeRooms.tv;const homeTv=mesh(new THREE.PlaneGeometry(homeTvAt.w,homeTvAt.h),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(homeTvAt.x-.03,homeTvAt.y,homeTvAt.z);homeTv.rotation.y=homeTvAt.yaw;movieTv.register(homeTv,new THREE.Vector3(homeTvAt.x-1.4,CURB,homeTvAt.z),()=>houseAt(player.position,-0.05)===houses[0]);   // on the living-room wall, facing the sofa
 onlineAccount=createOnlineAccount({client:supabase,active:()=>onlinePlayReady&&!!hosting.room,snapshot:()=>({prog:{...prog},stats:{...stats},inventory,hasBag,adventure:adventureServices.snapshot(),support:supportSkills.snapshot(),supportCounters,monsterQuestKills,heroDungeonKills,villainKills,ownedCars:cityServices.snapshot().owned,quests:cityLife.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target}))})});
 applyLayout();
@@ -7759,7 +7771,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, reconstructionDays, player.position, dtm > 0.52 || dtm < 0.02); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1; funfair?.update(rawDt, player.position, dtm > 0.52 || dtm < 0.02); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
     recovery?.update(rawDt, { driving: inCar ? driving : null, employed: !!careers?.job?.tow }); university?.update(rawDt, player.position);

@@ -10,7 +10,7 @@
 // world (x = -5100 and beyond) so they never show up outside.
 import * as THREE from 'three';
 import { floorMaterial } from './floor-textures.js';
-const FLOOR_KIND = { home: 'wood', 'home-up': 'carpet', shop: 'checker', office: 'carpet', 'office-up': 'carpet', cyber: 'tech', court: 'parquet', arcade: 'carpet', gov: 'marble', library: 'parquet', pub: 'wood', nightclub: 'tech', restaurant: 'terracotta', casino: 'carpet', church: 'stone', hotel: 'marble', 'hotel-room': 'carpet', community: 'wood', mosque: 'carpet', university: 'parquet', jobcentre: 'tiles' };
+const FLOOR_KIND = { home: 'wood', 'home-up': 'carpet', shop: 'checker', office: 'carpet', 'office-up': 'carpet', cyber: 'tech', court: 'parquet', arcade: 'carpet', gov: 'marble', library: 'parquet', pub: 'wood', nightclub: 'tech', restaurant: 'terracotta', casino: 'carpet', church: 'stone', hotel: 'marble', 'hotel-room': 'carpet', community: 'wood', mosque: 'carpet', university: 'parquet', jobcentre: 'tiles', cinema: 'carpet' };
 
 const W = 24, D = 18, H = 3.6;            // shell size: x from -12 to 12, z from -9 to 9
 const DOOR_W = 1.2;
@@ -904,6 +904,33 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.light(-5, 0, 0.9, 13, 0xfff1d0); L.light(5, 0, 0.9, 13, 0xfff1d0); L.light(0, -7, 0.9, 10, 0xffe6b0);
   }
 
+  // =========================== CINEMA (screen, raked seats, concessions) ===========================
+  {
+    const L = makeLayout('cinema', -7000, 0, 0x2a0f1f, 0x5a0f1f), { F, spot, B } = L;
+    // the big screen on the back wall: the movie TV plays on it (main.js registers it)
+    B(19, 3.0, 0.2, 0, 1.9, -8.75, mat(0x111111));
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(18, 2.7), tvMaterial || mat(0xdddddd)); screen.position.set(L.x0, 1.9, L.z0 - 8.6); scene.add(screen); layouts.cinema_screen = screen;
+    for (const s of [-1, 1]) B(1.6, 3.5, 0.3, s * 10.3, 1.75, -8.6, mat(0x7a0f1f, { rough: 0.95 }));   // curtains
+    // rows of red seats, each row a step higher
+    for (let r = 0; r < 5; r++) {
+      const z = -3.6 + r * 1.55, y = r * 0.18;
+      if (r) B(22, y, 1.55, 0, y / 2, z, mat(0x3a0f1a));
+      for (let k = 0; k < 12; k++) { if (k === 6) continue; const x = -9.6 + k * 1.6;
+        B(0.9, 0.18, 0.7, x, y + 0.45, z, mat(0xb3122e)); B(0.9, 0.8, 0.12, x, y + 0.85, z + 0.36, mat(0xb3122e)); B(0.08, 0.5, 0.7, x - 0.5, y + 0.4, z, mat(0x2a2a2a));
+        L.seat(x, z, Math.PI, y + 0.55, 'Sit and watch the film'); }
+    }
+    // the audience
+    for (const [x, r] of [[-8, 0], [-3.2, 1], [4.8, 1], [6.4, 1], [-6.4, 3], [1.6, 2], [8, 4], [-1.6, 4]]) L.worker(x, -3.6 + r * 1.55, Math.PI, { seatY: r * 0.18 + 0.55, outfit: [0x2980b9, 0xc0392b, 0x16a085, 0x8e44ad, 0xf39c12][Math.abs(Math.round(x)) % 5], task: 'idle' });
+    // concessions by the door
+    F.counter(-8, 6.4, 0, 4, 0xffd23f, 0x7a0f1f); B(1.0, 1.4, 0.8, -10, 0.8, 7.6, mat(0xffffff, { emissive: 0xfff2c0, ei: 0.3 }));   // popcorn machine
+    L.worker(-8, 7.5, Math.PI, { sit: false, outfit: 0x7a0f1f, task: 'idle' });
+    spot(-8, 5.2, 1.8, 'Concessions: popcorn, nachos and drinks', () => hooks.cinema?.('snacks'));
+    F.counter(8, 6.4, 0, 3, 0x111111, 0x2a0f1f); L.worker(8, 7.5, Math.PI, { sit: false, outfit: 0x111111, task: 'type' });
+    spot(8, 5.2, 1.8, 'Box office: buy a ticket', () => hooks.cinema?.('ticket'));
+    for (const [x, c] of [[-11.8, '#1f3a8a'], [11.8, '#7a0f1f']]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.8), new THREE.MeshBasicMaterial({ map: makeTex(64, 96, g => { g.fillStyle = c; g.fillRect(0, 0, 64, 96); g.fillStyle = '#ffd23f'; g.font = 'bold 12px serif'; g.textAlign = 'center'; g.fillText('NOW', 32, 70); g.fillText('SHOWING', 32, 84); g.font = '30px sans-serif'; g.fillText('🎬', 32, 44); }) })); p.position.set(L.x0 + x * 0.985, 1.7, L.z0 + 3); p.rotation.y = x < 0 ? Math.PI / 2 : -Math.PI / 2; scene.add(p); }
+    L.light(0, 4, 0.5, 14, 0xffd9a0); L.light(-8, 6.5, 0.7, 8, 0xfff2c0); L.light(8, 6.5, 0.6, 8, 0xfff2c0);
+  }
+
   let active = null, time = 0;
   const api = {
     layouts,
@@ -917,6 +944,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (/mosque|masjid/.test(t)) return layouts.mosque;
       if (/university|college|polytechnic/.test(t)) return layouts.university;
       if (/government|townhall|town_hall|council|post_office/.test(t)) return layouts.gov;
+      if (/^(cinema|movie_theater|movie_theatre|multiplex)$/.test(t)) return layouts.cinema;
       if (/arcade|amusement|games/.test(t)) return layouts.arcade;
       if (/^(casino|gambling)$/.test(t)) return layouts.casino;
       if (/^(hotel|motel|hostel|guest_house)$/.test(t)) return layouts.hotel;
