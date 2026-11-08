@@ -42,8 +42,8 @@ export function detailHome({scene,box,makeTex,home,curb,wallMat,roof,glowMats}){
   add(2.05,.17,.28,0,.83,.06,trim);
   return group;
  }
- const windows=[window(16.5,minZ-.2,Math.PI),window(23.5,minZ-.2,Math.PI)];
- for(const pz of [20,24.5]){windows.push(window(minX-.2,pz,-Math.PI/2),window(maxX+.2,pz,Math.PI/2));}
+ // The home's windows are real openings now (windows.js builds them into the walls), so no painted-on ones here.
+ const windows=[];void window;
  // Low brick plinths and pale corner stones give the walls physical depth.
  for(const px of [minX,maxX]){
   piece(.42,.26,maxZ-minZ+.3,px,curb+.13,z,stone);
