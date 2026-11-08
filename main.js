@@ -6450,7 +6450,7 @@ addEventListener('mousemove', e => {
   yaw -= e.movementX * 0.0025;
   pitch = clamp(pitch + e.movementY * 0.0025, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2);
 });
-addEventListener('mousedown', e => { if (locked && e.button === 0) { mouseHeld = true; m1(); } });
+addEventListener('mousedown', e => { if (locked && e.button === 0 && !e.target?.closest?.('button, a, input, select, textarea, [role="button"], section, dialog')) { mouseHeld = true; m1(); } });   // tapping a HUD button (torch, taxi, career...) shouldn't also throw a punch
 addEventListener('mouseup', e => { if (e.button === 0) mouseHeld = false; });
 addEventListener('wheel', e => {
   // Only zoom the game camera while actually playing — scrolling over an open
