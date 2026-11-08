@@ -8,7 +8,7 @@ import { makeKit } from './leisure-kit.js';
 export function buildBeach(ctx, { sea, seaZ = 187, beachZ0 = 165 }) {
   const K = makeKit(ctx), { B, C, S, mat, solid, sign, place, spot, stander, sitter, walker, family } = K;
   const { scene, makeTex, sports, toast, stats } = ctx, root = new THREE.Group(); scene.add(root);
-  const ZONES = [[70, 138], [162, 205], [242, 296], [-298, -215]];   // clear stretches of sand (port, bridges, pier and helipad left alone)
+  const ZONES = [[70, 138], [162, 205], [242, 296], [-298, -252]];   // clear stretches of sand (port, bridges, pier and helipad left alone)
   const inZone = x => ZONES.some(([a, b]) => x > a && x < b);
 
   // ---------------- the sea: a rippling surface, shallows and surf ----------------
@@ -30,7 +30,7 @@ export function buildBeach(ctx, { sea, seaZ = 187, beachZ0 = 165 }) {
 
   // ---------------- palms, parasols, loungers, towels ----------------
   for (let x = 72; x < 296; x += 11) if (inZone(x)) ctx.tree?.(x + (x % 3), beachZ0 + 2.2, 'palm', 1.1 + (x % 5) * 0.05);
-  for (let x = -296; x < -215; x += 12) ctx.tree?.(x, beachZ0 + 2.2, 'palm', 1.15);
+  for (let x = -296; x < -252; x += 12) ctx.tree?.(x, beachZ0 + 2.2, 'palm', 1.15);
   const parasolCols = [['#e63946', '#ffffff'], ['#1f6fd1', '#ffd23f'], ['#22c55e', '#ffffff'], ['#ff922b', '#ffffff'], ['#7b2cbf', '#ffd6e8']];
   const parasolMats = parasolCols.map(([a, b]) => { const t = makeTex(128, 16, g => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? a : b; g.fillRect(i * 16, 0, 16, 16); } }); return new THREE.MeshStandardMaterial({ map: t, side: THREE.DoubleSide }); });
   let k = 0;
@@ -76,7 +76,7 @@ export function buildBeach(ctx, { sea, seaZ = 187, beachZ0 = 165 }) {
   // ---------------- people: strollers along the water, swimmers in the shallows ----------------
   family([[75, seaZ - 3], [204, seaZ - 3]], { kids: 1, speed: 0.8 });
   family([[204, seaZ - 4], [75, seaZ - 4]], { kids: 2, speed: 0.8, t: 60 });
-  walker([[244, seaZ - 3], [294, seaZ - 3]], { speed: 1.0 }); walker([[-296, seaZ - 3], [-218, seaZ - 3]], { speed: 2.6 });   // a jogger
+  walker([[244, seaZ - 3], [294, seaZ - 3]], { speed: 1.0 }); walker([[-296, seaZ - 3], [-254, seaZ - 3]], { speed: 2.6 });   // a jogger
   walker([[80, 170], [135, 170], [135, 172], [80, 172]], { speed: 1.1 });
   const swimmers = [];
   for (let i = 0; i < 9; i++) { const x = 100 + i * 11 + (i % 2) * 4, z = seaZ + 5 + (i % 3) * 3; const h = K.person(x, z, Math.PI * (i % 2), { child: i % 3 === 0 }); if (h) { swimmers.push({ h, x, z, ph: i * 1.3 }); } }
