@@ -113,7 +113,11 @@ export function createPerformanceBudget({ THREE, scene, camera, renderer, mobile
     scaleV.setFromMatrixScale(o.matrixWorld);
     const r = g.boundingSphere.radius * Math.max(scaleV.x, scaleV.y, scaleV.z);
     if (!(r < 12)) return;
-    detail.push({ m: o, r, cx: g.boundingSphere.center.x, cy: g.boundingSphere.center.y, cz: g.boundingSphere.center.z });
+    // Flat pieces lying on the ground (road tiles, pavements, crossings, markings) stay drawn much
+    // further: from a helicopter or a rooftop, missing road tiles leave bare ground showing.
+    if (!g.boundingBox) g.computeBoundingBox();
+    const bb = g.boundingBox, flat = !!bb && (bb.max.y - bb.min.y) * scaleV.y < 0.4 && o.matrixWorld.elements[13] < 1;
+    detail.push({ m: o, r, flat, cx: g.boundingSphere.center.x, cy: g.boundingSphere.center.y, cz: g.boundingSphere.center.z });
   }
   function registerMeshes() {
     scene.updateMatrixWorld();
@@ -148,7 +152,7 @@ export function createPerformanceBudget({ THREE, scene, camera, renderer, mobile
       if (!m.parent) { e.dead = true; removed = true; continue; }
       const me = m.matrixWorld.elements;
       const dx = me[12] - camPos.x, dy = me[13] - camPos.y, dz = me[14] - camPos.z;
-      const lim = detailDistance(e.r, k);
+      const lim = detailDistance(e.r, k) * (e.flat ? 3 : 1);
       const near = dx * dx + dy * dy + dz * dz < lim * lim;
       if (near) m.layers.mask |= DETAIL_BIT; else m.layers.mask &= ~DETAIL_BIT;
     }
