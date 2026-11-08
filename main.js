@@ -7021,7 +7021,8 @@ function policeChase(v, dt) {
   v.speed=lerp(v.speed,captureSpeed,1-Math.exp(-3*dt));
   ai.warningTimer=(ai.warningTimer||0)-dt;if(ai.warningTimer<=0&&d<35){toast('Police: stop and surrender. Use Interact near an officer.');ai.warningTimer=10;}
   policeShoot(v, ai, d, actualTarget, dt);
-  if(inCar&&d<6&&Math.abs(driving.speed)<1){exitVehicle(true);arrestPlayer();return;}
+  // Close enough: pull over, and an officer gets out and comes to cuff you on foot (or drag you out of your stopped car).
+  if(!transitTarget&&(ai.officer?.out||(d<16&&(!inCar||Math.abs(driving.speed)<1.5)))){policeOnFoot(v,ai,dt);return;}
   const h = v.group.rotation.y;
   p.x += Math.sin(h) * v.speed * dt;
   p.z += Math.cos(h) * v.speed * dt;
@@ -7032,10 +7033,30 @@ function policeChase(v, dt) {
   if (d < 3 && ai.ramCd <= 0) {
     ai.ramCd = 1.5;
     if (inCar) { /* Central collision response handles vehicle impacts. */ }
-    else if(distXZ(p,player.position)<4)arrestPlayer();
   }
 }
 
+// An officer out of the car: runs to you, cuffs you if you stay put, gives up and goes back to the car if you get away.
+function policeOnFoot(v, ai, dt) {
+  const car = v.group.position;
+  v.speed = lerp(v.speed, 0, 1 - Math.exp(-6 * dt));
+  car.x += Math.sin(v.group.rotation.y) * v.speed * dt; car.z += Math.cos(v.group.rotation.y) * v.speed * dt; car.y = groundY(car.x, car.z);
+  const o = ai.officer ??= { h: makeHumanoid({ outfit: 0x243c58, hair: 0x2b1d14, pants: 0x1c2f43, skin: [0x8d5a3b, 0xd9a07a, 0xffdcc0, 0x6b4430][Math.floor(Math.random() * 4)] }), out: false, cuff: 0, back: false };
+  if (!o.h.cap) { const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.12, 12), new THREE.MeshStandardMaterial({ color: 0x1c2f43 })); cap.position.y = 1.9; o.h.rig.add(cap); o.h.cap = cap; }
+  if (!o.out) { if (Math.abs(v.speed) > 1) return; const side = new THREE.Vector3(Math.cos(v.group.rotation.y), 0, -Math.sin(v.group.rotation.y)).multiplyScalar(1.4); o.h.root.position.copy(car).add(side); o.h.root.visible = true; o.out = true; o.back = false; o.cuff = 0; toast('👮 An officer jumps out: "Stay where you are! Hands where I can see them!"'); }
+  const target = inCar ? driving.group.position : player.position, op = o.h.root.position;
+  const toYou = Math.hypot(target.x - op.x, target.z - op.z), toCar = Math.hypot(car.x - op.x, car.z - op.z);
+  if (!o.back && (toYou > 38 || (inCar && Math.abs(driving.speed) > 4))) { o.back = true; toast('👮 The officer gives up the foot chase and runs back to the car.'); }
+  const goal = o.back ? car : target, gd = o.back ? toCar : toYou;
+  if (o.back && toCar < 1.8) { o.out = false; o.h.root.visible = false; return; }   // back in the car, the chase goes on
+  if (gd > 1.1) { const sp = Math.min(gd, 6.2 * dt); const dx = (goal.x - op.x) / gd, dz = (goal.z - op.z) / gd; op.x += dx * sp; op.z += dz * sp; collide(op, 0.35); op.y = groundY(op.x, op.z); o.h.root.rotation.y = Math.atan2(dx, dz); animateHumanoid(o.h, null, true, true, true, dt); o.cuff = Math.max(0, o.cuff - dt); }
+  else if (!o.back) {   // right next to you: cuffs on if you don't break away
+    o.h.root.rotation.y = Math.atan2(target.x - op.x, target.z - op.z); animateHumanoid(o.h, null, false, false, true, dt); o.h.armR.pivot.rotation.x = o.h.armL.pivot.rotation.x = -1.3;
+    if (o.cuff === 0) toast(inCar ? '👮 The officer yanks your door open: "Out of the car!"' : '👮 "You\'re under arrest." Run now or the cuffs go on!');
+    o.cuff += dt;
+    if (o.cuff > 1.6) { if (inCar) exitVehicle(true); o.out = false; o.h.root.visible = false; o.cuff = 0; arrestPlayer(); }
+  }
+}
 // Police carry pistols. They only open fire when you're armed (a gun out) or very wanted
 // (stolen police car, shooting at people); otherwise they just chase and arrest.
 function policeShoot(v, ai, d, target, dt) {
@@ -7086,6 +7107,7 @@ function updateVehicles(dt) {
     if (v.disabled || (v.ai?.parked && !(v.kind==='police'&&wanted>0) && !(v.kind === 'tank' && militaryAlert > 0))) { v.speed = 0; continue; }
     v.crashCooldown = Math.max(0, (v.crashCooldown || 0) - dt);
     const roadStart = v.group.position.clone();
+    if (v.ai?.officer?.out && !(v.kind === 'police' && wanted > 0)) { v.ai.officer.out = false; v.ai.officer.h.root.visible = false; }   // chase over: the officer is back in the car
     if (v === driving || !v.ai) driveVehicle(v, dt);
     else if (v.kind === 'police' && wanted > 0 && !dungeon) policeChase(v, dt);
     else if (!v.ai.from && !v.ai.chasing && v.kind !== 'tank' && !(v.kind === 'police' && v.stationHome)) { v.speed = 0; continue; }   // no lane route: just wait (never crash the traffic code)
@@ -7567,7 +7589,7 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
     input:()=>locked?{forward:keys.KeyW||keys.ArrowUp?1:0,back:keys.KeyS||keys.ArrowDown?1:0,left:keys.KeyA||keys.ArrowLeft?1:0,right:keys.KeyD||keys.ArrowRight?1:0}:{forward:0,back:0,left:0,right:0}};
   // The leisure strip north of the boulevard: Ventura (fun centre, Fountain Park, karting), the Recreation Centre, and the Grand Park with its lake and zoo
   ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx); }
-const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations});
+const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations,onShoplift:v=>raiseWanted(Math.min(90,30+v*2))});
 branches=buildBranches({scene,colliders,civicBuildings,makeTex,glowMats,destinations:townPlaces.destinations});   // shops, arcades, churches, mosques... round the city
 university=buildUniversity({scene,colliders,civicBuildings,makeTex,glowMats,sitSpots,makePerson:makeHumanoid,animatePerson:personAnim,destinations:townPlaces.destinations});
 careers=createCareers({toast,pause:()=>pauseForPanel(),resume:()=>{if(!boardOpen&&!settingsOpen)requestGameControl();},money:()=>stats.gold,earn:n=>{stats.gold+=n;},spend:n=>{stats.gold=Math.max(0,stats.gold-n);},level:()=>prog.level,wanted:()=>wanted,
@@ -7813,7 +7835,8 @@ function frame() {
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
     { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); }
-    if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride superstore?.update(rawDt, player.position);
+    if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
+    superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
     recovery?.update(rawDt, { driving: inCar ? driving : null, employed: !!careers?.job?.tow }); university?.update(rawDt, player.position);
     roadWear?.update(rawDt, { vehicles, playerPos: player.position, weather: weatherState, driving: inCar ? driving : null, extraWear });
