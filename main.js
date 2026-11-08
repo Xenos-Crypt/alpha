@@ -82,6 +82,7 @@ import { floorTexture, floorMaterial } from './floor-textures.js';
 import { buildBuildingSites } from './building-sites.js';
 import { buildCircus } from './circus.js';
 import { buildFunfair, FAIR } from './funfair.js';
+import { createWindows, windowView } from './windows.js';
 import { buildFairExtras, NO_GRASS as FAIR_NO_GRASS } from './fair-extras.js';
 import { createFairGames } from './fair-games.js';
 import { buildSupermarket } from './supermarket.js';
@@ -1284,11 +1285,22 @@ const RUNWAY = new THREE.Vector3(TRAIN.x, 0, 200);
 const HOME = { x: 20, z: 22, minX: 14, maxX: 26, minZ: 17, maxZ: 27 };
 const wallMat = new THREE.MeshStandardMaterial({ color: 0xf3ead8, roughness: 0.9 });
 const WALL_Y = CURB + 1.5;
-box(12, 3, 0.3, HOME.x, WALL_Y, HOME.maxZ, wallMat);           // back
-box(0.3, 3, 10, HOME.minX, WALL_Y, HOME.z, wallMat);           // left
-box(0.3, 3, 10, HOME.maxX, WALL_Y, HOME.z, wallMat);           // right
-box(5, 3, 0.3, 16.5, WALL_Y, HOME.minZ, wallMat);              // front-left
-box(5, 3, 0.3, 23.5, WALL_Y, HOME.minZ, wallMat);              // front-right
+// Real windows in the outside walls (see windows.js): glass you can see through from inside, and they open.
+const winSys = createWindows({ scene, interactables, glowMats });
+// The outside walls of a house laid out like house-rooms.js: front wall at `front` (with the door gap
+// u -1..1), `dir` pointing to the back. Window spots match the rooms (living, bedroom, kitchen sink, bathroom).
+function houseShell(cx, front, dir, W, D, wm) {
+  const hw = W / 2, mid = D / 2, back = front + dir * D, b0 = mid + 0.05;
+  const solid = (x0, x1, z0, z1) => colliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
+  const wall = (ax, az, bx, bz, inward, holes) => { winSys.wall({ ax, az, bx, bz, y: CURB, h: 3, t: 0.3, mat: wm, inward, holes }); solid(ax - (ax === bx ? 0.15 : 0), bx + (ax === bx ? 0.15 : 0), az - (az === bz ? 0.15 : 0), bz + (az === bz ? 0.15 : 0)); };
+  const fw = Math.min(1.6, hw - 1.9);
+  wall(cx - hw - 0.15, front, cx - 1, front, [0, dir], [{ at: (hw - 1) / 2 + 0.15, w: fw, sill: 1.0, h: 1.2 }]);     // front, living room
+  wall(cx + 1, front, cx + hw + 0.15, front, [0, dir], [{ at: (hw - 1) / 2, w: fw, sill: 1.0, h: 1.2 }]);                  // front, kitchen
+  wall(cx - hw, front, cx - hw, back, [1, 0], [{ at: mid / 2, w: 1.5, sill: 1.0, h: 1.2 }, { at: mid + 2.6, w: 1.3, sill: 1.05, h: 1.15 }]);   // living + bedroom side
+  wall(cx + hw, front, cx + hw, back, [-1, 0], [{ at: 1.4, w: 1.0, sill: 1.05, h: 0.95 }, { at: b0 + 0.5, w: 0.6, sill: 1.6, h: 0.7, frosted: true }]);   // kitchen sink, bathroom
+  wall(cx - hw - 0.15, back, cx + hw + 0.15, back, [0, -dir], [{ at: (-hw + 0.05 - 1) / 2 + hw + 0.15, w: 1.2, sill: 1.15, h: 1.1 }]);   // bedroom, over the bed
+}
+houseShell(HOME.x, HOME.minZ, 1, HOME.maxX - HOME.minX, HOME.maxZ - HOME.minZ, wallMat);
 box(2, 0.8, 0.3, HOME.x, CURB + 2.6, HOME.minZ, wallMat, false); // above door
 // A real front door in the doorway: E opens and closes it, and it's solid when shut.
 const homeDoor = new THREE.Group(); homeDoor.position.set(HOME.x - 1, CURB, HOME.minZ); scene.add(homeDoor);
@@ -1374,12 +1386,17 @@ for (const [x, z] of [[8.6, 16.5], [31.4, 13.5], [31.4, 31.4], [8.6, 31.4]]) add
 // =====================================================================
 // MORE HOUSES (walk in through the door; the roof hides while you're inside)
 // =====================================================================
-const houses = [{ roof: houseRoof, minX: HOME.minX, maxX: HOME.maxX, minZ: HOME.minZ, maxZ: HOME.maxZ }];
+const houses = [{ roof: houseRoof, minX: HOME.minX, maxX: HOME.maxX, minZ: HOME.minZ, maxZ: HOME.maxZ, rooms: homeRooms.rooms }];
 // Things inside a house (TV, bed, fridge, couch, stools...) only work from inside that house —
 // never from the garden, the street or round the back through the wall.
 const houseAt = (p, pad = 0) => houses.find(h => p.x > h.minX - pad && p.x < h.maxX + pad && p.z > h.minZ - pad && p.z < h.maxZ + pad) || null;
 const indoorArea = it => { if (it.indoor === undefined) it.indoor = houseAt(it.pos || it, -0.15); return it.indoor; };
-const usableFromHere = it => { const h = indoorArea(it); return !h || houseAt(player.position, -0.05) === h; };
+// ...and from the same room: you can't work the living-room TV from the bedroom through the wall.
+const roomIn = (p, h, pad = 0) => h?.rooms?.find(r => p.x > r.minX - pad && p.x < r.maxX + pad && p.z > r.minZ - pad && p.z < r.maxZ + pad) || null;
+const roomAt = p => roomIn(p, houseAt(p, -0.05));
+const usableFromHere = it => { const h = indoorArea(it); if (!h) return true; if (houseAt(player.position, -0.05) !== h) return false;
+  if (it.room === undefined) it.room = roomIn(it.pos || it, h, -0.02); if (!it.room) return true;   // doors and things in doorways work from either side
+  return roomIn(player.position, h, 0.1) === it.room; };
 const HOUSE_COLORS = [[0xf6e3c5, 0x8e3b2f], [0xdfe8ef, 0x34495e], [0xf3d6d6, 0x6d2e46], [0xe3f1df, 0x4b6a3a]];
 // Unified sit system: any real seat (house couches, bus stop benches, the civic
 // interior's chair) registers here as {x,z,yaw}. One proximity check + one E
@@ -1389,14 +1406,8 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   const W = 10, D = 8;
   const wm = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
   const front = z0 + face * D / 2, back = z0 - face * D / 2;
-  box(W, 3, 0.3, x0, WALL_Y, back, wm);
-  box(0.3, 3, D, x0 - W / 2, WALL_Y, z0, wm);
-  box(0.3, 3, D, x0 + W / 2, WALL_Y, z0, wm);
-  box(4, 3, 0.3, x0 - 3, WALL_Y, front, wm);
-  box(4, 3, 0.3, x0 + 3, WALL_Y, front, wm);
+  houseShell(x0, front, -face, W, D, wm);
   box(2, 0.8, 0.3, x0, CURB + 2.6, front, wm, false);
-  for (const x of [x0 - 3, x0 + 3]) box(1.6, 1.1, 0.06, x, CURB + 1.7, front + face * 0.17, houseWindowMat, false);
-  for (const s of [-1, 1]) for (const v of [D / 4, D * 3 / 4]) box(0.06, 1.1, 1.6, x0 + s * (W / 2 + 0.17), CURB + 1.7, front - face * v, houseWindowMat, false);   // one window per room
   const fl = mesh(new THREE.PlaneGeometry(W - 0.3, D - 0.3), new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.7 }));
   fl.rotation.x = -Math.PI / 2;
   fl.position.set(x0, CURB + 0.02, z0);
@@ -1421,7 +1432,7 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   path.position.set(x0, CURB + 0.02, (front + lawnEdge) / 2);
   path.castShadow = false;
 
-  houses.push({ roof, minX: x0 - W / 2, maxX: x0 + W / 2, minZ: Math.min(front, back), maxZ: Math.max(front, back) });
+  houses.push({ roof, minX: x0 - W / 2, maxX: x0 + W / 2, minZ: Math.min(front, back), maxZ: Math.max(front, back), rooms: houseRoomList[houseRoomList.length - 1].rooms });
 }
 residentialCells.forEach(([cx, cz], i) => {
   for (const s of [-1, 1]) {
@@ -6312,9 +6323,10 @@ $('closeBoard').addEventListener('click', () => toggleBoard(false));
 // =====================================================================
 // SETTINGS (controls / sound / graphics)
 // =====================================================================
-let cameraView = localStorage.getItem('cameraView') === 'first' ? 'first' : 'third';
+// First-person is the default view; third-person is a choice in Settings (remembered once you pick it there).
+let cameraView = localStorage.getItem('cameraViewPicked') === '1' && localStorage.getItem('cameraView') === 'third' ? 'third' : 'first';
 let firstPersonVehicle = null;
-function setCameraView(view) { cameraView = view === 'first' ? 'first' : 'third'; if(cameraView==='first'&&driving){yaw=driving.group.rotation.y+Math.PI;pitch=0;}if(cameraView==='third')pitch=clamp(pitch,-.1,1.2); localStorage.setItem('cameraView', cameraView); renderSettings(); updateCamera(0); }
+function setCameraView(view) { cameraView = view === 'first' ? 'first' : 'third'; if(cameraView==='first'&&driving){yaw=driving.group.rotation.y+Math.PI;pitch=0;}if(cameraView==='third')pitch=clamp(pitch,-.1,1.2); localStorage.setItem('cameraView', cameraView); localStorage.setItem('cameraViewPicked', '1'); renderSettings(); updateCamera(0); }
 let settingsOpen = false, settingsTab = 'controls';
 function renderSettings() {
   document.querySelectorAll('#settingsPanel .tab').forEach(b => b.classList.toggle('active', b.dataset.stab === settingsTab));
@@ -7658,9 +7670,25 @@ recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTe
 
 // floors that aren't roads or buildings but still shouldn't sprout grass
 const noGrass = [...FAIR_NO_GRASS, { cx: 242, cz: -704, r: 21 }, { minX: 194, maxX: 210, minZ: -682, maxZ: -664 }, { minX: 313, maxX: 331, minZ: -661, maxZ: -649 }, { cx: 330, cz: -690, r: 8 }, { cx: 378, cz: -655, r: 3.6 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
+// Building footprints, indexed in 20 m cells: no grass ever grows inside a building, whatever its floor is made of.
+const footprintIndex = { key: '', cells: new Map() };
+function insideFootprint(x, z) {
+  const key = buildings.length + '|' + houses.length + '|' + civicBuildings.length;
+  if (key !== footprintIndex.key) {
+    footprintIndex.key = key; footprintIndex.cells.clear();
+    const addRect = (minX, maxX, minZ, maxZ) => { if (!(maxX > minX && maxZ > minZ) || maxX - minX > 400 || maxZ - minZ > 400) return; const r = { minX, maxX, minZ, maxZ };
+      for (let i = Math.floor(minX / 20); i <= Math.floor(maxX / 20); i++) for (let j = Math.floor(minZ / 20); j <= Math.floor(maxZ / 20); j++) { const k = i * 100003 + j; if (!footprintIndex.cells.has(k)) footprintIndex.cells.set(k, []); footprintIndex.cells.get(k).push(r); } };
+    for (const b of buildings) if (b.w && b.d) addRect(b.x - b.w / 2, b.x + b.w / 2, b.z - b.d / 2, b.z + b.d / 2);
+    for (const h of houses) addRect(h.minX, h.maxX, h.minZ, h.maxZ);
+    for (const c of civicBuildings) if (c.minX != null) addRect(c.minX, c.maxX, c.minZ, c.maxZ);
+  }
+  for (const r of footprintIndex.cells.get(Math.floor(x / 20) * 100003 + Math.floor(z / 20)) || []) if (x > r.minX - 0.3 && x < r.maxX + 0.3 && z > r.minZ - 0.3 && z < r.maxZ + 0.3) return true;
+  return false;
+}
 function grassSpot(x, z) {
   if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 4) return null;
   for (const n of noGrass) if (n.r ? Math.hypot(x - n.cx, z - n.cz) < n.r : x > n.minX && x < n.maxX && z > n.minZ && z < n.maxZ) return null;
+  if (insideFootprint(x, z)) return null;
   const terrain = hills?.groundAt(x, z) ?? ridge?.groundAt(x, z);
   const y = terrain ?? groundY(x, z, 0);
   if (terrain == null && (y > 0.1 || y < -0.2)) return null;                       // pavements, raised floors, water
@@ -7677,7 +7705,7 @@ const mapButton=document.createElement('button');mapButton.id='worldMapButton';m
 for(const it of interactables)if(it.label==='Open town travel board')it.action=()=>worldMap.show();
 movieTv=createMovieTv({interactables,position:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});movieTv.register(civicTvScreen,new THREE.Vector3(CIVIC_OFFSET.x,.3,CIVIC_OFFSET.z-7));
 if(interiors.layouts.cinema_screen)movieTv.register(interiors.layouts.cinema_screen,new THREE.Vector3(-7000,.3,-1.5),()=>interiors.active===interiors.layouts.cinema);   // Starlight Cinema's big screen
-const homeTvAt=homeRooms.tv;const homeTv=mesh(new THREE.PlaneGeometry(homeTvAt.w,homeTvAt.h),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(homeTvAt.x-.03,homeTvAt.y,homeTvAt.z);homeTv.rotation.y=homeTvAt.yaw;movieTv.register(homeTv,new THREE.Vector3(homeTvAt.x-1.4,CURB,homeTvAt.z),()=>houseAt(player.position,-0.05)===houses[0]);   // on the living-room wall, facing the sofa
+const homeTvAt=homeRooms.tv;const homeTv=mesh(new THREE.PlaneGeometry(homeTvAt.w,homeTvAt.h),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(homeTvAt.x-.03,homeTvAt.y,homeTvAt.z);homeTv.rotation.y=homeTvAt.yaw;movieTv.register(homeTv,new THREE.Vector3(homeTvAt.x-1.4,CURB,homeTvAt.z),()=>houseAt(player.position,-0.05)===houses[0]&&roomAt(player.position)?.name==='living');   // on the living-room wall, facing the sofa
 onlineAccount=createOnlineAccount({client:supabase,active:()=>onlinePlayReady&&!!hosting.room,snapshot:()=>({prog:{...prog},stats:{...stats},inventory,hasBag,adventure:adventureServices.snapshot(),support:supportSkills.snapshot(),supportCounters,monsterQuestKills,heroDungeonKills,villainKills,ownedCars:cityServices.snapshot().owned,quests:cityLife.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target}))})});
 applyLayout();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
@@ -7767,7 +7795,7 @@ function frame() {
   worldAudio?.update(running?rawDt:0);
   mobileControls?.update();
   townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar, reconstructionDays * DAY_LEN, running ? rawDt : 0);
-  kitchen?.update(running ? rawDt : 0); for (const r of houseRoomList) r.update();
+  kitchen?.update(running ? rawDt : 0); for (const r of houseRoomList) r.update(rawDt); winSys.update(rawDt);
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, reconstructionDays, player.position, dtm > 0.52 || dtm < 0.02); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);

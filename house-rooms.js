@@ -4,7 +4,8 @@
 //   a kitchen with dining table (front, other side), a bathroom and a storage room behind it.
 // The kitchen has a fridge, cooker with hood, sink, worktops, wall cupboards and the cookbook;
 // the bathroom a shower, toilet and basin; the storage room shelves, a washing machine and a
-// storage cupboard. Doorways are open (no doors to get stuck on).
+// storage cupboard. Every inside doorway has a real door (E to open or close it). The house
+// reports its rooms so things only work from the room they're in (no TV from the bedroom).
 //
 // House frame: `front` is the z of the wall with the front door, `dir` (+1/-1) points from the
 // front wall to the back wall, the door is centred on `cx`, the house is W wide and D deep.
@@ -37,13 +38,29 @@ export function furnishHouse(ctx, h) {
   function wallU(v, u0, u1, gaps = [], m = plaster) { let a = u0; for (const [g0, g1] of [...gaps, [u1, u1]]) { if (g0 - a > 0.05) B(a, g0, v - WALL_T / 2, v + WALL_T / 2, 0, WALL_H, m, true); a = g1; } }
   function wallV(u, v0, v1, gaps = [], m = plaster) {
     let a = v0;
-    for (const [g0, g1] of [...gaps, [v1, v1]]) { if (g0 - a > 0.05) B(u - WALL_T / 2, u + WALL_T / 2, a, g0, 0, WALL_H, m, true); if (g1 > g0) B(u - WALL_T / 2, u + WALL_T / 2, g0, g1, 2.15, WALL_H, m); a = g1; }   // lintel over each doorway
+    for (const [g0, g1, shut] of [...gaps, [v1, v1]]) { if (g0 - a > 0.05) B(u - WALL_T / 2, u + WALL_T / 2, a, g0, 0, WALL_H, m, true); if (g1 > g0) { B(u - WALL_T / 2, u + WALL_T / 2, g0, g1, 2.15, WALL_H, m); door(u, g0, g1, !!shut); } a = g1; }   // lintel and a door in each doorway
+  }
+  // inside doors: hinged at one side of the doorway, swing into the side room, solid when shut
+  const doors = [], doorMat = mat(0xf3eee4, { rough: 0.6 }), knobMat = mat(0xc9b26b, { metal: 0.8, rough: 0.3 });
+  function door(u, g0, g1, shut) {
+    const len = g1 - g0 - 0.04, hinge = new THREE.Group(); hinge.position.set(X(u), y, Z(g0 + 0.02)); scene.add(hinge);
+    const leaf = new THREE.Mesh(geo, doorMat); leaf.scale.set(0.045, 2.08, len); leaf.position.set(0, 1.06, dir * len / 2); leaf.castShadow = true; hinge.add(leaf);
+    for (const sx of [-1, 1]) { const k = new THREE.Mesh(geo, knobMat); k.scale.set(0.07, 0.04, 0.12); k.position.set(sx * 0.05, 1.0, dir * (len - 0.12)); hinge.add(k); }
+    for (const yy of [0.55, 1.5]) for (const sx of [-1, 1]) { const p = new THREE.Mesh(geo, mat(0xe6e0d4)); p.scale.set(0.01, 0.7, len - 0.3); p.position.set(sx * 0.025, yy, dir * len / 2); hinge.add(p); }   // panels
+    const xs = [X(u) - 0.06, X(u) + 0.06], zs = [Z(g0), Z(g1)], col = { minX: xs[0], maxX: xs[1], minZ: Math.min(...zs), maxZ: Math.max(...zs) };
+    const d = { hinge, col, open: shut ? 0 : 1, target: shut ? 0 : 1, swing: Math.sign(u) * dir * Math.PI / 2 * 0.94 };
+    hinge.rotation.y = d.swing * d.open; if (!d.open) colliders.push(col);
+    interactables.push({ pos: P(u, (g0 + g1) / 2, y), r: 1.2, get label() { return d.target ? 'Close the door' : 'Open the door'; }, action: () => { d.target = d.target ? 0 : 1; const i = colliders.indexOf(col); if (d.target && i >= 0) colliders.splice(i, 1); else if (!d.target && i < 0) colliders.push(col); }, door: true });
+    doors.push(d);
   }
 
   const hw = W / 2, mid = D / 2, bathD = D * 0.28, store0 = mid + bathD;
   // ---------------- inside walls ----------------
-  wallV(-1, 0.02, D - 0.02, [[0.3, 1.3], [mid + 0.35, mid + 1.3]]);                 // hallway | living + bedroom
-  wallV(1, 0.02, D - 0.02, [[0.3, 1.3], [mid + 0.6, mid + 1.5], [store0 + 0.2, Math.min(D - 0.2, store0 + 1.1)]]);   // hallway | kitchen + bathroom + storage
+  wallV(-1, 0.02, D - 0.02, [[0.3, 1.3], [mid + 0.35, mid + 1.3, true]]);                 // hallway | living + bedroom (bedroom door shut)
+  wallV(1, 0.02, D - 0.02, [[0.3, 1.3], [mid + 0.6, mid + 1.5, true], [store0 + 0.2, Math.min(D - 0.2, store0 + 1.1), true]]);   // hallway | kitchen + bathroom + storage
+  // the rooms, in world coordinates (a hair inside the walls, so a doorway belongs to no room)
+  const rect = (name, u0, u1, v0, v1) => { const xs = [X(u0), X(u1)], zs = [Z(v0), Z(v1)]; return { name, minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) }; };
+  const rooms = [rect('hall', -0.95, 0.95, 0, D), rect('living', -hw, -1.05, 0, mid - 0.05), rect('bedroom', -hw, -1.05, mid + 0.05, D), rect('kitchen', 1.05, hw, 0, mid - 0.05), rect('bathroom', 1.05, hw, mid + 0.05, store0 - 0.05), rect('storage', 1.05, hw, store0 + 0.05, D)];
   wallU(mid, -hw + 0.05, -1);   // living | bedroom
   wallU(mid, 1, hw - 0.05);     // kitchen | bathroom
   wallU(store0, 1, hw - 0.05);  // bathroom | storage
@@ -154,5 +171,5 @@ export function furnishHouse(ctx, h) {
   spot(1.4, s1 - 1.0, 0.7, 'Do the laundry', () => ctx.rest(-3, '👕 Clothes in, powder in, start. Your clothes are clean again.'));
 
   // the hob glows and a pan appears while something's cooking
-  return { tv, update() { const k = K(); if (!k) return; const on = !!k.cooking && !k.cooking.ready; pan.visible = !!k.cooking; for (const r of ring) r.material.emissiveIntensity = on ? 0.9 : 0; } };
+  return { tv, rooms, doors, update(dt = 1 / 60) { for (const d of doors) if (d.open !== d.target) { d.open += Math.sign(d.target - d.open) * Math.min(Math.abs(d.target - d.open), dt * 3); d.hinge.rotation.y = d.swing * d.open; } const k = K(); if (!k) return; const on = !!k.cooking && !k.cooking.ready; pan.visible = !!k.cooking; for (const r of ring) r.material.emissiveIntensity = on ? 0.9 : 0; } };
 }

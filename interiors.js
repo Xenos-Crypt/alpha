@@ -9,6 +9,7 @@
 // glowing EXIT sign, and the main furniture is solid. Interiors live far from the
 // world (x = -5100 and beyond) so they never show up outside.
 import * as THREE from 'three';
+import { createWindows, windowView } from './windows.js';
 import { floorMaterial } from './floor-textures.js';
 const FLOOR_KIND = { home: 'wood', 'home-up': 'carpet', shop: 'checker', office: 'carpet', 'office-up': 'carpet', cyber: 'tech', court: 'parquet', arcade: 'carpet', gov: 'marble', library: 'parquet', pub: 'wood', nightclub: 'tech', restaurant: 'terracotta', casino: 'carpet', church: 'stone', hotel: 'marble', 'hotel-room': 'carpet', community: 'wood', mosque: 'carpet', university: 'parquet', jobcentre: 'tiles', cinema: 'carpet' };
 
@@ -42,6 +43,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
   });
 
   const layouts = {};
+  const windowSets = []; let viewTex = null;
 
   function makeLayout(key, x0, z0, wallColor, floorColor, { exit = true } = {}) {
     const L = { key, origin: new THREE.Vector3(x0, 0, z0), spawn: new THREE.Vector3(x0, 0, z0 + 5.6), spots: [], lights: [] };   // a few steps inside, so the camera stays in the room
@@ -82,7 +84,12 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     const wallMat = mat(wallColor);
     const wall = (w, d, x, z) => { const m = B(w, H, d, x, H / 2, z, wallMat, true); camBlockers.push(m); return m; };
     wall(W, 0.3, 0, -D / 2);                                                   // back
-    wall(0.3, D, -W / 2, 0); wall(0.3, D, W / 2, 0);                           // sides
+    // side walls with real windows (a painted city view outside them), which open like any other
+    for (const sx of [-1, 1]) {
+      const win = windowSets[windowSets.length] = createWindows({ scene, interactables: L.spots });
+      const x = x0 + sx * W / 2, r = win.wall({ ax: x, az: z0 - D / 2, bx: x, bz: z0 + D / 2, y: 0, h: H, t: 0.3, mat: wallMat, inward: [-sx, 0], holes: [{ at: 4.5, w: 1.6, sill: 1.2, h: 1.6 }, { at: 12.5, w: 1.6, sill: 1.2, h: 1.6 }], view: viewTex || (viewTex = windowView(makeTex)) });
+      camBlockers.push(...r.meshes); colliders.push({ minX: x - 0.15, maxX: x + 0.15, minZ: z0 - D / 2, maxZ: z0 + D / 2 });
+    }
     if (!exit) wall(W, 0.3, 0, D / 2);                                         // upper floors: no street door
     else {
       const half = (W - 1.6) / 2;
@@ -963,6 +970,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     exit() { if (active) { for (const l of active.lights) l.visible = false; for (const w of active.workers) w.h.root.visible = false; } active = null; },
     get active() { return active; },
     update(dt) {
+      for (const w of windowSets) w.update(dt);
       if (!active) return;
       if (active.spin) for (const o of active.spin) o.rotation.y += dt * 0.8;
       time += dt;
