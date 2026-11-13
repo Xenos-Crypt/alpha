@@ -14,7 +14,7 @@ import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
 import {buildNavy} from './navy.js';
-import {buildIntercityRail} from './intercity-rail.js';
+import {buildIntercityRail, ROUTE as RAIL_ROUTE, STATIONS as RAIL_STATIONS} from './intercity-rail.js';
 import {shipNeedsBridge,shipCanAdvance,driftVelocity,rollAircraft} from './transport-rules.js';
 import {fenceSegments,conditionFactors,applyVehicleCondition} from './crash-infrastructure.js';
 import {buildBridgeTraffic} from './bridge-traffic.js';
@@ -664,7 +664,17 @@ function addTower(x, baseY, z, w, h, d, f, collide) {
 const civicBuildings = [];
 const stairRamps = []; // exterior fire-escape stairs you can actually walk/climb — see groundY()
 let buildingAddressN = 100;
+// Ground kept clear of town buildings: under the elevated intercity line (its viaduct and track)
+// and round each of its stations (platform, stairs and lift), so no block ever runs into the line
+// or sits where you board the train.
+const RAIL_KEEP_CLEAR = (() => { const r = [];
+  for (let i = 1; i < RAIL_ROUTE.length; i++) { const [ax, az] = RAIL_ROUTE[i - 1], [bx, bz] = RAIL_ROUTE[i]; r.push({ minX: Math.min(ax, bx) - 3.5, maxX: Math.max(ax, bx) + 3.5, minZ: Math.min(az, bz) - 3.5, maxZ: Math.max(az, bz) + 3.5 }); }
+  for (const st of RAIL_STATIONS) { const a = st.x + st.side * 2.5, b = st.x + st.side * 13; r.push({ minX: Math.min(a, b), maxX: Math.max(a, b), minZ: st.z - 20, maxZ: st.z + 23 }); }
+  return r; })();
+const onRailLand = (x, z, hw = 4, hd = 4) => RAIL_KEEP_CLEAR.some(r => x + hw > r.minX && x - hw < r.maxX && z + hd > r.minZ && z - hd < r.maxZ);
+let railSkipped = 0;
 function addBuilding(x, z, faceX, faceZ) {
+  if (onRailLand(x, z)) { railSkipped++; return; }
   const centreBoost = Math.max(0, 1 - Math.hypot(x, z) / 130);
   const floors = 2 + Math.floor(rand() * rand() * 10 + centreBoost * rand() * 10);
   const tall = floors >= 8;

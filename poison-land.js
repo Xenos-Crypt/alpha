@@ -8,7 +8,8 @@ export function buildPoisonLand(ctx){
  ctx.box(180,.08,14,510,0,240,0x333b3a,false);
  function sign(text,x,z){const texture=ctx.makeTex(768,96,g=>{g.fillStyle='#223c2a';g.fillRect(0,0,768,96);g.fillStyle='#c7f884';g.font='bold 32px sans-serif';g.textAlign='center';g.fillText(text,384,60);});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(7,.9),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));mesh.position.set(x,5,z);ctx.scene.add(mesh);}
  sign('POISON LAND / INDUSTRIAL EXCLUSION ZONE',600,232);
- for(const [x,z]of [[620,220],[660,220],[740,220],[820,220],[620,300],[700,300],[780,300],[820,380],[620,420],[700,420]]){
+ // (the factories that stood on z 300 are on z 340: the intercity line runs along z 300 on its viaduct)
+ for(const [x,z]of [[620,220],[660,220],[740,220],[820,220],[620,340],[700,340],[780,340],[820,380],[620,420],[700,420]]){
  ctx.box(24,10,24,x,5,z,0x626959,true);ctx.box(25,.4,25,x,10.2,z,0x40483e,false);ctx.box(4,20,4,x+7,10,z+7,0x4b5148,true);
  const h={x:x+7,z:z+7,r:12};hazards.push(h);
  for(let i=0;i<3;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(2.7,7,5),new THREE.MeshBasicMaterial({color:0x8eac51,transparent:true,opacity:.2,depthWrite:false}));m.position.set(h.x,22+i*4,h.z);ctx.scene.add(m);smoke.push({m,h,i});}
