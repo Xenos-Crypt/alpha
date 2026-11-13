@@ -522,6 +522,7 @@ function groundY(x, z, bodyY = null) {
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const hillFloor=hills?.groundAt(x,z);if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
   const estateFloor=estate?.groundAt(x,z,bodyY??player.position.y);if(estateFloor!=null)return estateFloor;   // The Reserve: mansion upper floors and staircases
+  const linkFloor=roadLinks?.groundAt(x,z);if(linkFloor!=null)return linkFloor;   // country roads over the hills, on embankments
   const ridgeFloor=ridge?.groundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player.position.y));if(ridgeFloor!=null)return ridgeFloor;   // Sunset Ridge
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
@@ -2389,7 +2390,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, estate = null, property = null;
+let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, estate = null, roadLinks = null, property = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -7741,7 +7742,7 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // fences round the stadium, the sports courts and the lido
   venueFences=buildVenueFences(leisureCtx);
   // connector roads so every district joins the network (road-links.js)
-  buildRoadLinks({scene,makeTex});
+  roadLinks = buildRoadLinks({scene,makeTex});
   // everything at the fair, the leisure strip, the beach and the upgraded venues answers E first
   for(let i=priorityFrom;i<interactables.length;i++)if(!interactables[i].door&&!interactables[i].window)interactables[i].priority=true;
   // the outdoor courts: real basketball and tennis against the regulars (or an online player)
