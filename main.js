@@ -14,6 +14,7 @@ import {createSociety} from './society.js';
 import {createWorldWatch} from './world-watch.js';
 import {buildProject} from './innovations.js';
 import {buildAtlasWorld} from './atlas-world.js';
+import {createWorldIds} from './world-ids.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -124,7 +125,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -2576,7 +2577,7 @@ const _fwd = new THREE.Vector3();
 function updateFlashlight() {
   const xo = $('exoBtn'); if (xo) { const w = !!military?.wearing; if ((xo.style.display !== 'none') !== w) xo.style.display = w ? '' : 'none'; if (!xo.onclick) xo.onclick = () => military?.takeOff(); }
   for (const id of ['torchBtn', 'taxiBtn']) { const el = $(id); if (el && el.style.display !== 'none') el.style.visibility = inCar || !canAct() ? 'hidden' : 'visible'; }   // no torch or taxi call while you're in a vehicle
-  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } const hb = $('cityBtn'); if (hb) { hb.style.display = ''; hb.onclick = () => society?.openHall(); } }
+  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } const hb = $('cityBtn'); if (hb) { hb.style.display = ''; hb.onclick = () => society?.openHall(); } const ib = $('idBtn'); if (ib) { ib.style.display = ''; ib.onclick = () => worldIds?.open(); } }
   flashlight.intensity = flashlightOn && !inCar ? 90 : 0;
   if (!flashlightOn) return;
   camera.getWorldDirection(_fwd);
@@ -6590,6 +6591,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyV') toggleFlashlight();
   if (e.code === 'KeyY' && !inCar) cityServices?.callTaxi(player.position.clone());
   if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
+  if (e.code === 'KeyK' && locked && !e.repeat) worldIds?.open();
   if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
@@ -6635,7 +6637,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -7624,7 +7626,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -7727,7 +7729,7 @@ regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareS
 society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPosition:()=>player.position,dayTime:()=>dayTime,
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},walk:(e,t,sp,dt)=>walkTowards(e,t,sp,dt),animate:(e,pose,moving,run,dt)=>animateHumanoid(e.h,pose,moving,run,e.onGround,dt),
   resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
-  arrest:(e,done)=>arrestPed(e,done),
+  arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),
   petitions:()=>worldWatch?.list||[],note:t=>worldWatch?.note(t),
   cityAt:p=>p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
   assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,level:()=>prog.level,
@@ -7742,7 +7744,16 @@ npcConversations=createNpcConversations({converse:e=>society?.converse(e),nameOf
 // Residents report what breaks the laws of the world: Rule Keepers fix it, the Lawgiver hears of it (world-watch.js).
 // What the nation's progress looks like: the ATLAS base, its robots, the temple dig, self-driving cars (atlas-world.js).
 atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,interactables,vehicles:()=>vehicles,openTab:t=>society.openTab(t),makePerson:o=>makeHumanoid(o),animate:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt)});
-worldWatch=createWorldWatch({scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
+// Every building, house, road tile, block, resident, vehicle and the player gets a unique ID (world-ids.js).
+const idBlocks=[];for(const [city,b] of [['Ashford',MAIN_BOUNDS],['Riverside',RIVERSIDE_BOUNDS],['Capital',CAPITAL_BOUNDS]])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)idBlocks.push({city,bx,bz});
+let idNewRoads=null;
+const idExtra=[{code:'rp',seed:'atlas-base',kind:'AI base',name:'ATLAS national AI base',pos:{x:80,z:922}},{code:'rp',seed:'temple-dig',kind:'archaeological site',name:'Ancient temple dig',pos:{x:-147,z:-357}}];
+worldIds=createWorldIds({THREE,scene,player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
+  roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
+  extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={code:'bh',seed:'innovation:'+b.group.name,kind:'resident-built project',name:b.group.name.replace('innovation:',''),pos:null}))],
+  citizenOf:e=>society?.citizenOf(e),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
+  pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
   unstick:e=>{const s=e.ped;s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;e.root.position.copy(cornerPos(s.node));e.root.position.y=groundY(e.root.position.x,e.root.position.z);s.target=cornerPos(nextCorner(s.node,null,s.bounds));s.state='wander';},
   onNew:(r,name)=>society?.petitionFiled(r,name)});
@@ -8040,7 +8051,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);worldIds?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);

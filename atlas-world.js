@@ -105,5 +105,5 @@ export function buildAtlasWorld(ctx) {
       });
     }
   }
-  return { update };
+  return { update, robots: () => [...robots, ...soldiers] };
 }

@@ -184,7 +184,7 @@ export function buildBuildingSites(ctx) {
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: signTex(p.name.toUpperCase(), { office: 'Offices', apartments: 'Apartments', shop: 'Shops and cafés' }[p.kind] + ' · built by ' + crew.name) }));
     sign.position.set(sx, 4.2, sz); sign.rotation.y = F.yaw; g.add(sign);
     const collider = { minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 }; colliders.push(collider);
-    const civic = { type: p.kind === 'shop' ? 'shop' : p.kind === 'office' ? 'office' : 'apartments', name: p.name, x: cx, z: cz, minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 }; civicBuildings.push(civic);
+    const civic = { builtBy: 'bots', type: p.kind === 'shop' ? 'shop' : p.kind === 'office' ? 'office' : 'apartments', name: p.name, x: cx, z: cz, minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 }; civicBuildings.push(civic);
     const dest = { name: p.name, x: cx, z: cz }; ctx.destinations?.push(dest);
     void door; finished.set(base, { gen, g, collider, civic, dest });
   }
