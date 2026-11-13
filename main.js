@@ -13,6 +13,7 @@ import {createNpcConversations} from './npc-conversations.js';
 import {createSociety} from './society.js';
 import {createWorldWatch} from './world-watch.js';
 import {buildProject} from './innovations.js';
+import {buildAtlasWorld} from './atlas-world.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -123,7 +124,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -948,6 +949,8 @@ function breakLamp(i) {
   burst(at(p, 4), 14, [0xfff1c9, 0xffc66b, 0x444444], 8, 0.15, 0.4, 6);
   shake = Math.max(shake, 0.15);
 }
+// An electrician (society.js) puts a broken lamp back up.
+function fixLamp(i) { if (!lampBroken[i]) return; lampBroken[i] = false; placeLampInstance(i, lampSpots[i]); }
 function breakLampsNear(center, r) {
   for (let i = 0; i < lampSpots.length; i++) {
     if (!lampBroken[i] && distXZ(lampSpots[i], center) < r + 0.6) breakLamp(i);
@@ -7726,6 +7729,10 @@ society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPo
   resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
   arrest:(e,done)=>arrestPed(e,done),
   petitions:()=>worldWatch?.list||[],note:t=>worldWatch?.note(t),
+  cityAt:p=>p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
+  assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,level:()=>prog.level,
+  brokenLamps:()=>{const out=[];for(let i=0;i<lampSpots.length;i++)if(lampBroken[i]&&distXZ(lampSpots[i],player.position)<80)out.push({i,p:lampSpots[i]});return out;},fixLamp,
+  askAtlas:async(question,state)=>{if(!navigator.onLine)return null;const r=await fetch('/api/atlas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,state})});return r.ok?(await r.json()).answer:null;},
   research:async(topic,city,name)=>{if(!navigator.onLine)return null;const r=await fetch('/api/citizen-research',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({topic,city,name})});return r.ok?r.json():null;},
   built:id=>innovationsBuilt.push(buildProject(id,{scene,groundY,lamps:()=>lampSpots,
     corners:()=>{const out=[];for(const b of [MAIN_BOUNDS,CAPITAL_BOUNDS])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)for(const sx of [-1,1])for(const sz of [-1,1]){const p=cornerPos({bx,bz,sx,sz});if(!blockedAt(p.x+sx*1.3,p.z+sz*1.3,.5))out.push({x:p.x,z:p.z,ox:sx,oz:sz});}return out;},
@@ -7733,6 +7740,8 @@ society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPo
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 npcConversations=createNpcConversations({converse:e=>society?.converse(e),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // Residents report what breaks the laws of the world: Rule Keepers fix it, the Lawgiver hears of it (world-watch.js).
+// What the nation's progress looks like: the ATLAS base, its robots, the temple dig, self-driving cars (atlas-world.js).
+atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,interactables,vehicles:()=>vehicles,openTab:t=>society.openTab(t),makePerson:o=>makeHumanoid(o),animate:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt)});
 worldWatch=createWorldWatch({scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
   unstick:e=>{const s=e.ped;s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;e.root.position.copy(cornerPos(s.node));e.root.position.y=groundY(e.root.position.x,e.root.position.z);s.target=cornerPos(nextCorner(s.node,null,s.bounds));s.state='wander';},
@@ -8031,7 +8040,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);

@@ -102,6 +102,7 @@ export function createProperty({ scene, buildings, market, interactables, toast,
   }
   return {
     openShop, update, owns: name => owned.has(name),
+    worth: () => { let n = 0; for (const id of owned) { const l = getListings().find(x => x.b.name === id); n += l ? l.price : HIDEOUTS.find(h => h.id === id)?.price || 0; } return n; },
     snapshot: () => [...owned],
     restore(list) { if (!Array.isArray(list)) return; for (const id of list) { owned.add(id); const l = getListings().find(x => x.b.name === id); if (l) mark(l.b); const h = HIDEOUTS.find(x => x.id === id); if (h) buildHideout(h); } },
   };
