@@ -93,6 +93,7 @@ import { buildGrandPark, PARK_NO_GRASS } from './grand-park.js';
 import { buildBeach } from './beach.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
+import { buildRoadLinks } from './road-links.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
 import { buildTunnel } from './tunnel.js';
@@ -7588,6 +7589,8 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
     portPlus=upgradePort(up,harbour); navyPlus=upgradeNavy(up,navy); }
   // fences round the stadium, the sports courts and the lido
   venueFences=buildVenueFences(leisureCtx);
+  // connector roads so every district joins the network (road-links.js)
+  buildRoadLinks({scene,makeTex});
   // the outdoor courts: real basketball and tennis against the regulars (or an online player)
   for(const it of interactables){
     if(it.label==='Shoot a hoop'){const o={name:'the court regulars',skill:0.6,prize:3};Object.defineProperty(it,'label',{get:()=>sportsGames.label('basketball',o),configurable:true});it.action=()=>sportsGames.menu('basketball',o);}
