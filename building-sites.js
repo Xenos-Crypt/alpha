@@ -1,16 +1,20 @@
 // Westhaven is always building.
 // Building crews work round the edge of the city. Each crew has a list of plots and builds them one
-// after another, over in-game days you can watch:
+// after another, over real hours (they work round the clock, even while you're away):
 //   groundworks (an excavator digs, a dump truck waits; any access road is laid first)
 //   -> foundations (the slab is poured from a mixer truck)
 //   -> the frame goes up floor by floor (a tower crane swings steel up to the top)
 //   -> glazing and cladding climb the frame
 //   -> the hoarding comes down and the finished building stays: offices, flats or shops you can walk into.
-// Then the crew packs up and starts on the next plot. Everything follows the saved in-game day, so a
+// Then the crew packs up and starts on the next plot. Everything follows the real clock, so a
 // building you left half-built is further along when you come back.
 import * as THREE from 'three';
 
-export const BUILD_DAYS = 2;    // in-game days per building (one in-game day = 5 real minutes)
+export const BUILD_DAYS = 2;    // the crews' "day" units per building (see siteDaysNow)
+// The crews work to the real clock, not the game's: a building takes SITE_HOURS real hours, carries on
+// while the game is closed, never resets on a reload, and is at the same stage for every player.
+export const SITE_HOURS = 6, SITE_EPOCH = Date.UTC(2026, 10, 10, 6);
+export const siteDaysNow = (now = Date.now()) => Math.max(0, (now - SITE_EPOCH) / (SITE_HOURS * 3600e3)) * BUILD_DAYS;
 const FLOOR_H = 3.4;
 
 // face: which side the road is on (the gate and front door go there). access: a road the crew lays first.
@@ -318,9 +322,9 @@ export function buildBuildingSites(ctx) {
     update, crews, CREWS,
     get sites() { return crews.map(c => c.site).filter(Boolean); },
     describe(site) {
-      const st = stageOf(site.t), pct = Math.round(site.t * 100), left = (1 - site.t) * BUILD_DAYS;
+      const st = stageOf(site.t), pct = Math.round(site.t * 100), left = (1 - site.t) * SITE_HOURS;
       const words = { groundworks: 'digging out the foundations', foundations: 'pouring the concrete slab', frame: `putting up the frame, floor ${Math.max(1, site.built)} of ${site.p.floors}`, cladding: 'fitting the windows and cladding', handover: 'cleaning up for the opening' };
-      return { pct, stage: st, text: `We're ${words[st]}. ${pct}% done; ${site.p.name} opens in about ${left < 0.1 ? 'an hour' : left.toFixed(1) + ' in-game days'}.` };
+      return { pct, stage: st, text: `We're ${words[st]}. ${pct}% done; ${site.p.name} opens in about ${left < 1 ? Math.max(5, Math.round(left * 60)) + ' minutes' : left.toFixed(1) + ' hours'}. We work round the clock, so it'll be further on next time you come by.` };
     },
   };
 }

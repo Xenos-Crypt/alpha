@@ -81,7 +81,8 @@ import { createChores } from './chores.js';
 import { buildEstate } from './estate.js';
 import { furnishHouse } from './house-rooms.js';
 import { floorTexture, floorMaterial } from './floor-textures.js';
-import { buildBuildingSites } from './building-sites.js';
+import { buildBuildingSites, siteDaysNow } from './building-sites.js';
+import { buildRoadCrew } from './road-crew.js';
 import { buildCircus } from './circus.js';
 import { buildFunfair, FAIR } from './funfair.js';
 import { createWindows, windowView } from './windows.js';
@@ -2390,7 +2391,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, estate = null, roadLinks = null, property = null;
+let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, estate = null, roadLinks = null, roadCrew = null, property = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -7743,6 +7744,8 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   venueFences=buildVenueFences(leisureCtx);
   // connector roads so every district joins the network (road-links.js)
   roadLinks = buildRoadLinks({scene,makeTex});
+  // Westhaven Highways builds new roads on the real clock (road-crew.js)
+  roadCrew = buildRoadCrew({ scene, interactables, toast, makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), resurface: roadLinks.links, groundY: (x, z) => groundY(x, z, 0) });
   // everything at the fair, the leisure strip, the beach and the upgraded venues answers E first
   for(let i=priorityFrom;i<interactables.length;i++)if(!interactables[i].door&&!interactables[i].window)interactables[i].priority=true;
   // the outdoor courts: real basketball and tennis against the regulars (or an online player)
@@ -7993,7 +7996,7 @@ function frame() {
   mobileControls?.update();
   townPlaces.update(inCar && driving ? { position: driving.group.position } : player, inCar, reconstructionDays * DAY_LEN, running ? rawDt : 0);
   kitchen?.update(running ? rawDt : 0); for (const r of houseRoomList) r.update(rawDt); winSys.update(rawDt);
-  { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, reconstructionDays, player.position, dtm > 0.52 || dtm < 0.02); }
+  { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
     { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
