@@ -128,6 +128,7 @@ let specialTrainingKills=Math.min(5,Math.max(0,Number(localStorage.getItem('spec
 let activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};
 import { createClient } from '@supabase/supabase-js';
 import { buildCityFromGeoJSON } from './assets/map/importOsm.js';
+import { buildWelcomeBanners, fixSignBacks } from './welcome-banners.js';
 
 const supabase = createClient(
   'https://teyuiwdcqzjcvzejlsnc.supabase.co',
@@ -7445,7 +7446,7 @@ for(const pet of parkPets.filter(a=>a.kind==='dog').slice(0,2)){
 }
 const companion=parkPets.filter(a=>a.kind==='dog')[2];
 interactables.push({pos:companion.home.clone(),r:3,label:'Adopt companion dog',action:()=>{if(companion.owner){toast('Your companion dog follows you around town.');return;}companion.owner=player;companion.leash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xa68752}));scene.add(companion.leash);toast('You adopted a dog. Your companion will follow you.');}});
-harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex});
+harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex});buildWelcomeBanners({scene});
 townPlaces.destinations.push({name:'Harbour bridge',x:220,z:85});
 transport=buildTransport({scene,box,makeTex,sitSpots,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
  tramTravelLimit(p,dir,distance,s){return junctionControl.limitTravel(p,dir,distance,{kind:'tram',length:s.length});},
@@ -7904,4 +7905,5 @@ const OVERLAY_IDS=['auth','menu','spawn','classSelect','gameLoading'];
 let overlayCheckAt=0,overlayCovered=true;
 function coveredByOverlay(){const now=performance.now();if(now-overlayCheckAt<250)return overlayCovered;overlayCheckAt=now;overlayCovered=overlayScan();return overlayCovered;}
 function overlayScan(){for(const id of OVERLAY_IDS){const el=document.getElementById(id);if(el&&el.isConnected&&!el.hidden&&getComputedStyle(el).display!=='none'&&getComputedStyle(el).visibility!=='hidden')return true;}return false;}
+fixSignBacks(scene); setTimeout(() => fixSignBacks(scene), 8000);   // readable sign backs (again later for anything built lazily)
 frame();

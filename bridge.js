@@ -23,8 +23,7 @@ export function buildBridge(ctx){
  // Far-bank landing: a real destination rather than a bridge ending in water.
  box(120,.4,100,220,0,745,0x7d906c,false);
  box(24,.08,80,220,.24,760,0x626b70,false);
- const map=makeTex(768,96,g=>{g.fillStyle='#214656';g.fillRect(0,0,768,96);g.fillStyle='#ffffff';g.font='bold 34px sans-serif';g.textAlign='center';g.fillText('ASHFORD HARBOUR BRIDGE',384,60);});
- const sign=new THREE.Mesh(new THREE.PlaneGeometry(6,.75),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));sign.position.set(220,5.2,90);sign.rotation.y=Math.PI;scene.add(sign);for(const x of [208,232])box(.2,6,.2,x,3,90,0x536675,false);box(24,.15,.2,220,6,90,0x536675,false);
+ // (the name sign over the town end is now a welcome / goodbye gantry: see welcome-banners.js)
  for(let z=startZ;z<endZ;z+=8){const y=heightAt(z+4);ctx.planeBlocks?.push({minX:centerX-10,maxX:centerX+10,minZ:z,maxZ:z+8,bottom:y-.7,top:y+.5});}
  for(const z of [330,490])for(const dx of [-11,11])ctx.planeBlocks?.push({minX:centerX+dx-1,maxX:centerX+dx+1,minZ:z-1,maxZ:z+1,bottom:0,top:48});
  return {centerX,startZ,endZ,heightAt,groundAt(x,z,y){if(Math.abs(x-centerX)<=width/2&&z>=startZ&&z<=endZ){const floor=heightAt(z);if(z<=187||z>=695||y>=floor-1)return Math.max(floor+(Math.abs(x-centerX)>7?.08:0),z>=720?.28:floor);}if(x>=160&&x<=280&&z>=695&&z<=795)return Math.abs(x-centerX)<=12&&z>=720?.28:.2;return null;}};
