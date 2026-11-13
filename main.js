@@ -1334,7 +1334,8 @@ function updateHomeGates(dt) {
   }
 }
 function updateHomeDoor(dt) {
-  updateHomeGates(dt); homeDoor.rotation.y += ((homeDoorOpen ? -Math.PI / 2 : 0) - homeDoor.rotation.y) * Math.min(1, dt * 6); }
+  updateHomeGates(dt); homeDoor.rotation.y += ((homeDoorOpen ? -Math.PI / 2 : 0) - homeDoor.rotation.y) * Math.min(1, dt * 6);
+  for (const d of houseFrontDoors) { const want = d.open ? d.swing : 0; if (Math.abs(want - d.door.rotation.y) > 0.001) d.door.rotation.y += (want - d.door.rotation.y) * Math.min(1, dt * 6); } }
 
 const houseWindowMat = new THREE.MeshStandardMaterial({ color: 0x8fb3cc, roughness: 0.1, emissive: 0xffd58a, emissiveIntensity: 0 });
 glowMats.push(houseWindowMat);
@@ -1396,12 +1397,22 @@ const HOUSE_COLORS = [[0xf6e3c5, 0x8e3b2f], [0xdfe8ef, 0x34495e], [0xf3d6d6, 0x6
 // interior's chair) registers here as {x,z,yaw}. One proximity check + one E
 // handler covers all of them, instead of a separate one-off per location.
 sitSpots.push(...streetSeats);
+const houseFrontDoors = [];
 function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   const W = 10, D = 8;
   const wm = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
   const front = z0 + face * D / 2, back = z0 - face * D / 2;
   houseShell(x0, front, -face, W, D, wm);
   box(2, 0.8, 0.3, x0, CURB + 2.6, front, wm, false);
+  // a front door: shut by default (so passers-by don't wander in); E opens it
+  { const door = new THREE.Group(); door.position.set(x0 - 1, CURB, front); scene.add(door);
+    const panel = mesh(new THREE.BoxGeometry(1.96, 2.18, 0.08), 0x6b3f22, door); panel.position.set(0.99, 1.1, 0);
+    for (const y of [0.55, 1.55]) mesh(new THREE.BoxGeometry(1.5, 0.75, 0.1), 0x5a3320, door).position.set(0.99, y, 0);
+    const knob = mesh(new THREE.SphereGeometry(0.06, 10, 8), 0xd4af37, door); knob.position.set(1.75, 1.05, face * 0.08);
+    const col = { minX: x0 - 1, maxX: x0 + 1, minZ: front - 0.12, maxZ: front + 0.12 }; colliders.push(col);
+    const d = { door, col, open: false, t: 0, swing: Math.PI / 2 * face }; houseFrontDoors.push(d);
+    interactables.push({ pos: new THREE.Vector3(x0, CURB, front), r: 2.0, get label() { return d.open ? 'Close the front door' : 'Open the front door'; }, action: () => {
+      d.open = !d.open; const i = colliders.indexOf(col); if (d.open && i >= 0) colliders.splice(i, 1); else if (!d.open && i < 0) colliders.push(col); } }); }
   const fl = mesh(new THREE.PlaneGeometry(W - 0.3, D - 0.3), new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.7 }));
   fl.rotation.x = -Math.PI / 2;
   fl.position.set(x0, CURB + 0.02, z0);
@@ -4017,10 +4028,24 @@ function nextCorner(n, prev, b = MAIN_BOUNDS) {
   if (n.bx + n.sx >= b.bx0 && n.bx + n.sx <= b.bx1) opts.push({ bx: n.bx + n.sx, bz: n.bz, sx: -n.sx, sz: n.sz }); // cross the road
   if (n.bz + n.sz >= b.bz0 && n.bz + n.sz <= b.bz1) opts.push({ bx: n.bx, bz: n.bz + n.sz, sx: n.sx, sz: -n.sz });
   const same = (a, b2) => b2 && a.bx === b2.bx && a.bz === b2.bz && a.sx === b2.sx && a.sz === b2.sz;
-  const f = opts.filter(o => !same(o, prev));
-  return pick(f.length ? f : opts);
+  // never take a stretch of pavement that something has been built across (houses, kiosks, sites...)
+  const clear = opts.filter(o => !pavementBlocked(n, o));
+  const pool = clear.length ? clear : opts;
+  const f = pool.filter(o => !same(o, prev));
+  return pick(f.length ? f : pool);
 }
 
+// Is the straight walk from corner a to corner b blocked by a wall or a house? (checked every half metre, cached
+// until the set of colliders changes, since the city keeps building)
+const pavementCache = new Map(); let pavementColCount = -1;
+function pavementBlocked(a, b) {
+  if (pavementColCount !== colliders.length) { pavementCache.clear(); pavementColCount = colliders.length; }
+  const key = `${a.bx},${a.bz},${a.sx},${a.sz}>${b.bx},${b.bz},${b.sx},${b.sz}`;
+  if (pavementCache.has(key)) return pavementCache.get(key);
+  const A = cornerPos(a), Bp = cornerPos(b), L = distXZ(A, Bp); let blocked = false;
+  for (let t = 0; t <= L && !blocked; t += 0.5) { const q = new THREE.Vector3(A.x + (Bp.x - A.x) * t / L, 0, A.z + (Bp.z - A.z) * t / L); if (blockedAt(q.x, q.z, 0.3) || houseAt(q, 0.3)) blocked = true; }
+  pavementCache.set(key, blocked); return blocked;
+}
 const peds = [];
 function addPedPopulation(count, bounds) {
   for (let i = 0; i < count; i++) {
