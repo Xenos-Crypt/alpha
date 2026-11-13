@@ -6037,6 +6037,7 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
   tvMaterial: new THREE.MeshBasicMaterial({ map: civicTvTexture }),
   hooks: {
     toast: m => toast(m),
+    playerPos: () => player.position,
     kitchen: () => kitchen,
     careers: what => { if (!careers) return; if (what === 'university') careers.openUniversity(currentVenueName); else if (what === 'jobs') careers.openJobs(); else if (what === 'school') careers.openSchool(); else careers[what]?.(); },
     groceries: name => kitchen?.openGroceries(name),
@@ -6171,6 +6172,26 @@ function applyBuildingExterior(b, exterior, persist = false) {
     b.sign.position.set(b.x - CITY_OFFSET.x, b.height + 1, b.z - CITY_OFFSET.z); b.sign.scale.set(8, 1.5, 1); b.group.add(b.sign);
   }
   if (persist) { buildingAppearances[b.id] = appearance; try { localStorage.setItem('anotherworld-building-exteriors', JSON.stringify(buildingAppearances)); } catch {} }
+}
+// Walk in through a building's door: no need to press E. Push into the doorway (moving toward the
+// building) and you're inside. Shops with their shutters down at night stay shut.
+let walkInCooldown = 0;
+function walkInThroughDoors(dt) {
+  walkInCooldown = Math.max(0, walkInCooldown - dt);
+  if (walkInCooldown > 0 || inCar || interiors.active || inCivicInterior || dungeon || sitting || action || player.position.y > 3) return;
+  const dir = inputDir(); if (dir.lengthSq() < 0.1) return;
+  const p = player.position;
+  for (const b of civicBuildings) {
+    const d = b.door, f = d?.f; if (!f || f.nx == null) continue;
+    const fx = f.x + f.nx * 0.7, fz = f.z + f.nz * 0.7;
+    if (Math.abs(p.x - fx) > 1.4 || Math.abs(p.z - fz) > 1.4) continue;
+    const lateral = Math.abs((p.x - fx) * f.nz - (p.z - fz) * f.nx), along = (p.x - f.x) * f.nx + (p.z - f.z) * f.nz;
+    if (lateral > 1.0 || along > 1.3 || along < -0.2) continue;
+    if (dir.x * -f.nx + dir.z * -f.nz < 0.55) continue;   // must be walking into the building
+    if (!doors?.isOpen(b)) { if (walkInCooldown <= 0) { toast(`${b.name} is closed for the night.`); walkInCooldown = 3; } return; }
+    if (houseVisits?.gate(b)) return;   // someone's home: knock with E instead
+    walkInCooldown = 2; enterCivicBuilding(b); return;
+  }
 }
 function nearestCivicBuilding() {
   let best = null, bestD = 6;
@@ -6345,8 +6366,11 @@ $('closeBoard').addEventListener('click', () => toggleBoard(false));
 // =====================================================================
 // First-person is the default view; third-person is a choice in Settings (remembered once you pick it there).
 let cameraView = localStorage.getItem('cameraViewPicked') === '1' && localStorage.getItem('cameraView') === 'third' ? 'third' : 'first';
+// The view you picked in Settings; indoors the camera always goes first-person (no seeing through
+// roofs and walls), and goes back to your choice when you step outside.
+let cameraViewSetting = cameraView;
 let firstPersonVehicle = null;
-function setCameraView(view) { cameraView = view === 'first' ? 'first' : 'third'; if(cameraView==='first'&&driving){yaw=driving.group.rotation.y+Math.PI;pitch=0;}if(cameraView==='third')pitch=clamp(pitch,-.1,1.2); localStorage.setItem('cameraView', cameraView); localStorage.setItem('cameraViewPicked', '1'); renderSettings(); updateCamera(0); }
+function setCameraView(view) { cameraView = cameraViewSetting = view === 'first' ? 'first' : 'third'; if(cameraView==='first'&&driving){yaw=driving.group.rotation.y+Math.PI;pitch=0;}if(cameraView==='third')pitch=clamp(pitch,-.1,1.2); localStorage.setItem('cameraView', cameraView); localStorage.setItem('cameraViewPicked', '1'); renderSettings(); updateCamera(0); }
 let settingsOpen = false, settingsTab = 'controls';
 function renderSettings() {
   document.querySelectorAll('#settingsPanel .tab').forEach(b => b.classList.toggle('active', b.dataset.stab === settingsTab));
@@ -6354,7 +6378,7 @@ function renderSettings() {
   $('stabSound').style.display = settingsTab === 'sound' ? '' : 'none';
   $('stabGraphics').style.display = settingsTab === 'graphics' ? '' : 'none';
   $('stabView').style.display = settingsTab === 'view' ? '' : 'none';
-  document.querySelectorAll('[data-view]').forEach(b=>{const selected=b.dataset.view===cameraView;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected));});
+  document.querySelectorAll('[data-view]').forEach(b=>{const selected=b.dataset.view===cameraViewSetting;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected));});
   document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.classList.toggle('active', b.dataset.gfx === gfxQuality));
 }
 function toggleSettings(open) {
@@ -7312,6 +7336,12 @@ function updateWorldLight(dt) {
 
 const raycaster = new THREE.Raycaster();
 function updateCamera(dt) {
+  { // indoors (a house, a building interior, or under any roof) -> first person
+    const p = player.position;
+    const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
+    const want = indoors ? 'first' : cameraViewSetting;
+    if (want !== cameraView) { cameraView = want; pitch = want === 'third' ? clamp(pitch, -.1, 1.2) : pitch; }
+  }
   if(firstPersonVehicle && (cameraView !== 'first' || firstPersonVehicle !== driving || cine)){firstPersonVehicle.group.visible=!firstPersonVehicle.crashed;firstPersonVehicle=null;}
   if(inCar&&cameraView==='first'&&!cine){firstPersonVehicle=driving;driving.group.visible=false;}
   player.visible = !inCar && (cameraView !== 'first' || !!cine);
@@ -7845,6 +7875,7 @@ function frame() {
     powerGrid?.update(dt); helipads?.update(dt, player.position); drones?.update(dt); lostPeak?.update(dt);
     venues?.update(dt, { playerPos: player.position, driving: inCar && driving ? driving : null });
     interiors.update(dt);
+    walkInThroughDoors(dt);
     updateWeather(dt);
     updateFirefighters(dt);
     updateFireDamage(dt);

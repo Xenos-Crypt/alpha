@@ -76,7 +76,8 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       return g;
     };
     const P = (g, w, h, d, x, y, z, c, o) => B(w, h, d, x, y, z, c, false, o, g);
-    const spot = (x, z, r, label, action) => { const it = { pos: new THREE.Vector3(x0 + x, 0, z0 + z), r, action }; if (typeof label === 'function') Object.defineProperty(it, 'label', { get: label, enumerable: true }); else it.label = label; L.spots.push(it); };
+    const spot = (x, z, r, label, action) => { const it = { pos: new THREE.Vector3(x0 + x, 0, z0 + z), r, action }; if (typeof label === 'function') Object.defineProperty(it, 'label', { get: label, enumerable: true }); else it.label = label; L.spots.push(it); return it; };
+    L.auto = []; L.lifts = [];   // walk-through stairs/escalators, and lifts with real cabs (see update())
     const seat = (x, z, yaw, seatY, label) => sitSpots.push({ x: x0 + x, z: z0 + z, yaw, seatY, label });
 
     // ---- shell: floor, walls with a front door, skirting ----
@@ -100,7 +101,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       B(0.9, 0.28, 0.06, 0, 2.75, D / 2 - 0.2, 0x0d6b2f, false, { emissive: 0x19c25a, ei: 1.4 });   // EXIT sign
       B(0.22, 0.12, 0.02, 0, 2.75, D / 2 - 0.24, 0xffffff, false, { emissive: 0xffffff, ei: 1 });
       B(2.4, 0.02, 1.4, 0, 0.11, D / 2 - 1, 0x5b4a3a);                           // doormat
-      spot(0, D / 2 - 1, 2.2, 'Leave the building', () => hooks.leave());
+      { const ex = spot(0, D / 2 - 1, 2.2, 'Leave the building', () => hooks.leave()); ex.autoR = 0.6; ex.pos.z += 0.5; L.auto.push(ex); }   // walk out of the door
     }
 
     // ---- interior walls with doorways (door frame + an open door) ----
@@ -189,7 +190,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       }
       for (const s of [-1, 1]) { const r = B(0.06, 0.06, Math.hypot(len, H), x + s * 0.63, H / 2 + 0.95, z, side); r.rotation.x = -dir * Math.atan2(H, len); }
       colliders.push({ minX: x0 + x - 0.65, maxX: x0 + x + 0.65, minZ: z0 + z - len / 2, maxZ: z0 + z + len / 2 });
-      spot(sx, sz, 1.8, label, onUse);
+      L.auto.push(spot(sx, sz, 1.8, label, onUse));   // just walk up to the foot of the stairs
     };
     // Upstairs, the stairs show as an opening in the floor with railings round it.
     L.stairwell = (x, z, len, label, onUse, sx, sz) => {
@@ -198,17 +199,31 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       for (const s of [-1, 1]) { B(0.06, 1.0, len, x + s * 0.68, 0.6, z, rail); B(0.06, 0.06, len, x + s * 0.68, 1.1, z, rail); }
       B(1.4, 1.0, 0.06, x, 0.6, z - len / 2, rail);
       colliders.push({ minX: x0 + x - 0.7, maxX: x0 + x + 0.7, minZ: z0 + z - len / 2, maxZ: z0 + z + len / 2 });
-      spot(sx, sz, 1.8, label, onUse);
+      L.auto.push(spot(sx, sz, 1.8, label, onUse));
     };
     // Lift doors set into a wall facing `rot` (front faces +z at rot 0), with a call button.
+    // A lift: a real cab standing against the wall (front faces +z at rot 0). E opens the doors;
+    // step inside and it takes you up (or down); on arrival the doors open and you step out.
     L.lift = (x, z, rot, label, onUse) => {
       const g = new THREE.Group(); g.position.set(x0 + x, 0, z0 + z); g.rotation.y = rot; scene.add(g);
-      P(g, 2.2, 2.8, 0.2, 0, 1.4, 0, 0xc9ced4, { metal: 0.6, rough: 0.35 });
-      for (const s of [-1, 1]) P(g, 0.78, 2.3, 0.05, s * 0.4, 1.2, 0.12, 0xaab2bb, { metal: 0.85, rough: 0.2 });
-      P(g, 0.12, 0.2, 0.04, 1.0, 1.25, 0.13, 0x333333); P(g, 0.06, 0.06, 0.02, 1.0, 1.25, 0.16, 0x7ad8ff, { emissive: 0x7ad8ff, ei: 2 });
-      P(g, 0.6, 0.18, 0.03, 0, 2.65, 0.13, 0x111111); P(g, 0.3, 0.1, 0.01, 0, 2.65, 0.15, 0xff9a3c, { emissive: 0xff7a1c, ei: 1.5 });
-      const f = new THREE.Vector3(Math.sin(rot), 0, Math.cos(rot));
-      spot(x + f.x * 1.1, z + f.z * 1.1, 1.7, label, onUse);
+      const steel = { metal: 0.25, rough: 0.4 }, D = 1.9;
+      P(g, 2.3, 2.9, 0.15, 0, 1.45, 0, 0xc9ced4, steel);                                  // back wall
+      P(g, 1.8, 1.7, 0.02, 0, 1.35, 0.09, 0xdfe8f0, { metal: 0.9, rough: 0.05 });          // mirror
+      for (const s2 of [-1, 1]) P(g, 0.1, 2.75, D, s2 * 1.1, 1.375, D / 2, 0xb8c0c8, steel);   // side walls
+      P(g, 2.3, 0.12, D + 0.1, 0, 2.8, D / 2, 0xa8b0b8, steel); P(g, 1.2, 0.03, 0.8, 0, 2.73, D / 2, 0xffffff, { emissive: 0xfff4dc, ei: 1.4 });   // roof and light
+      P(g, 2.1, 0.02, D - 0.05, 0, 0.02, D / 2, 0x3a3f45);                                 // floor
+      P(g, 0.05, 0.05, D - 0.3, -1.03, 0.95, D / 2, 0xd9dde2, steel);                       // handrail
+      P(g, 0.04, 0.45, 0.22, 1.04, 1.2, D - 0.45, 0x333333); for (let k = 0; k < 4; k++) P(g, 0.02, 0.05, 0.05, 1.02, 1.05 + k * 0.1, D - 0.45, 0x7ad8ff, { emissive: 0x7ad8ff, ei: 1.5 });   // buttons
+      P(g, 2.3, 0.35, 0.14, 0, 2.6, D, 0xc9ced4, steel); P(g, 0.5, 0.14, 0.02, 0, 2.6, D + 0.08, 0x111111); P(g, 0.25, 0.08, 0.01, 0, 2.6, D + 0.095, 0xff9a3c, { emissive: 0xff7a1c, ei: 1.5 });
+      const doors = [-1, 1].map(s2 => P(g, 1.0, 2.4, 0.05, s2 * 0.5, 1.2, D, 0xc4cbd2, { metal: 0.3, rough: 0.3 }));
+      P(g, 0.12, 0.2, 0.04, 1.3, 1.25, D + 0.05, 0x333333); P(g, 0.06, 0.06, 0.02, 1.3, 1.25, D + 0.08, 0x7ad8ff, { emissive: 0x7ad8ff, ei: 2 });   // call button
+      const W = (lx, lz) => new THREE.Vector3(x0 + x + lx * Math.cos(rot) + lz * Math.sin(rot), 0, z0 + z - lx * Math.sin(rot) + lz * Math.cos(rot));
+      const rect = (ax, az, bx, bz) => { const a = W(ax, az), b = W(bx, bz); return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minZ: Math.min(a.z, b.z), maxZ: Math.max(a.z, b.z) }; };
+      colliders.push(rect(-1.16, 0, -1.04, D), rect(1.04, 0, 1.16, D));
+      const front = rect(-1.1, D - 0.06, 1.1, D + 0.06); colliders.push(front);
+      const lift = { doors, open: 0, target: 0, front, inside: rect(-0.95, 0.15, 0.95, D - 0.15), onUse, wait: 0, armed: true, idle: 0 };
+      L.lifts.push(lift);
+      const f = W(0, D + 0.9); spot(f.x - x0, f.z - z0, 1.6, () => lift.target ? 'The lift doors are open: step inside' : 'Call the lift (open the doors)', () => { lift.target = 1; lift.idle = 0; });
     };
     // An escalator: a sloped moving stairway with glass sides, bottom end at (x, zBottom).
     L.escalator = (x, zBottom, len, dir, label, onUse, goingUp = true) => {
@@ -221,7 +236,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       }
       colliders.push({ minX: x0 + x - 0.7, maxX: x0 + x + 0.7, minZ: z0 + Math.min(zBottom, zBottom + dir * len), maxZ: z0 + Math.max(zBottom, zBottom + dir * len) });
       const at = goingUp ? zBottom - dir * 0.9 : zBottom + dir * (len + 0.9);
-      spot(x, at, 1.7, label, onUse);
+      L.auto.push(spot(x, at, 1.7, label, onUse));
     };
     // ---- people working here ----
     // sit: seated at a desk/chair (seatY = top of the seat); task: 'type' | 'idle' | 'talk' | 'read'
@@ -966,12 +981,30 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (/apartment|house|home|residential|terrace|detached|bungalow|flat|dormitory|cabin|farm|building|^yes$/.test(t)) return layouts.home;
       return null;   // civic types use the themed civic hall
     },
-    enter(L) { this.exit(); active = L; for (const l of L.lights) l.visible = true; for (const w of L.workers) w.h.root.visible = true; },
+    enter(L) { this.exit(); active = L; L.autoArmed = false; for (const l of L.lifts || []) { l.armed = false; l.riding = false; } for (const l of L.lights) l.visible = true; for (const w of L.workers) w.h.root.visible = true; },
     exit() { if (active) { for (const l of active.lights) l.visible = false; for (const w of active.workers) w.h.root.visible = false; } active = null; },
     get active() { return active; },
     update(dt) {
       for (const w of windowSets) w.update(dt);
       if (!active) return;
+      const pp = hooks.playerPos?.();
+      if (pp) {
+        // stairs and escalators: walk up to them and you go; you must step away after arriving first
+        let nearAny = false;
+        for (const s of active.auto || []) { const d = Math.hypot(pp.x - s.pos.x, pp.z - s.pos.z); if (d < 1.6) nearAny = true; if (active.autoArmed && d < (s.autoR ?? 0.85)) { active.autoArmed = false; s.action(); return; } }
+        if (!nearAny) active.autoArmed = true;
+        // lifts: doors slide; step in and it goes; arrive inside with the doors opening
+        for (const l of active.lifts || []) {
+          const inCab = pp.x > l.inside.minX && pp.x < l.inside.maxX && pp.z > l.inside.minZ && pp.z < l.inside.maxZ;
+          if (inCab && !l.armed && l.open < 0.05) l.target = 1;          // just arrived: let them out
+          if (!inCab) { l.armed = true; if (l.target) { l.idle += dt; if (l.idle > 4) l.target = 0; } }
+          if (inCab && l.armed && l.open > 0.9) { l.wait += dt; if (l.wait > 0.6) { l.target = 0; l.riding = true; } } else l.wait = 0;
+          if (l.riding && l.open < 0.02) { l.riding = false; l.armed = false; l.onUse(); return; }
+          l.open += Math.sign(l.target - l.open) * Math.min(Math.abs(l.target - l.open), dt * 1.8);
+          l.doors[0].position.x = -0.5 - l.open * 0.95; l.doors[1].position.x = 0.5 + l.open * 0.95;
+          const i = colliders.indexOf(l.front); if (l.open > 0.7 && i >= 0) colliders.splice(i, 1); else if (l.open <= 0.7 && i < 0) colliders.push(l.front);
+        }
+      }
       if (active.spin) for (const o of active.spin) o.rotation.y += dt * 0.8;
       time += dt;
       if (active.flash) { const beat = Math.floor(time * 2.2); active.flash.forEach((m, i) => { m.material.emissiveIntensity = ((i * 7 + beat) % 5) < 2 ? 2.2 : 0.25; }); }
