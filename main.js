@@ -2702,6 +2702,7 @@ for (let cx = 3; cx <= 10; cx++) for (let cz = 17; cz <= 22; cz++) {
   if ([340,380].includes(x0) && [740,780,860].includes(z0)) continue;
   if (Math.hypot(x0 - CAPITAL_CX, z0 - CAPITAL_CZ) < 36) continue;   // leave the central plaza for the Capitol itself
   if (Math.abs(x0 - 220) < 55 && z0 < 740) continue;   // keep a real clear plaza at the bridge's mouth, not houses pressed right up against it
+  if (x0 === 220 && z0 === 740) continue;   // the harbour bridge comes down right here: no block on top of its road, which runs on to the street
   pavement(x0, z0, lawnMat);
   for (const [ox, oz] of [[-5.5, -5.5], [5.5, -5.5], [-5.5, 5.5], [5.5, 5.5]]) {
     if (rand() < 0.1) { addTree(x0 + ox, z0 + oz, 1.1); continue; }
