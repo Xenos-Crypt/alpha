@@ -78,6 +78,7 @@ import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physi
 import { buildPlaces } from './places.js';
 import { createKitchen } from './kitchen.js';
 import { createChores } from './chores.js';
+import { buildEstate } from './estate.js';
 import { furnishHouse } from './house-rooms.js';
 import { floorTexture, floorMaterial } from './floor-textures.js';
 import { buildBuildingSites } from './building-sites.js';
@@ -520,6 +521,7 @@ function groundY(x, z, bodyY = null) {
   if (z < -9000) { const raceFloor = race?.groundAt(x, z); if (raceFloor != null) return raceFloor; }   // Ashford Racing track worlds
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const hillFloor=hills?.groundAt(x,z);if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
+  const estateFloor=estate?.groundAt(x,z,bodyY??player.position.y);if(estateFloor!=null)return estateFloor;   // The Reserve: mansion upper floors and staircases
   const ridgeFloor=ridge?.groundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player.position.y));if(ridgeFloor!=null)return ridgeFloor;   // Sunset Ridge
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
@@ -2387,7 +2389,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, property = null;
+let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, estate = null, property = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
@@ -7662,6 +7664,11 @@ drivingSchool = buildDrivingSchool({ scene, colliders, interactables, makeTex, m
 ridge = buildRidge({ scene, makeTex, interactables, sitSpots, toast, destinations: townPlaces.destinations });
 tunnel = buildTunnel({ scene, colliders, camBlockers, makeTex, destinations: townPlaces.destinations });   // Sunset Ridge Tunnel, beside the road over the top
 hills = buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position });
+estate = buildEstate({ scene, colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
+  makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeVehicle: (k, c, st) => makeVehicle(k, c, st),
+  sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => chores?.open(k, o), sleep: () => sleep(),
+  eat: (n, cost, msg) => { stats.hunger = Math.min(100, stats.hunger + n); toast(msg); }, rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); },
+  workout: () => { stats.energy = Math.max(0, stats.energy - 8); gainXp(3); toast('🏋️ A proper session on the treadmill and the weights. +3 XP'); } });
 conditions = createConditions({ buildings, collapse: b => collapseBuilding(b, false), toast, playerPos: () => player.position,
   nearVehicle: () => { let best = null, bd = 3.2; for (const v of vehicles) { if (v.disabled || !isRoadVehicle(v)) continue; const d = distXZ(v.group.position, player.position); if (d < bd) { bd = d; best = v; } } return best; } });
 for (const b of buildings) if (b.x > HOME.minX - 2 && b.x < HOME.maxX + 2 && b.z > HOME.minZ - 2 && b.z < HOME.maxZ + 2) { b.quality = 'solid'; b.ageYears = 0; }   // your own house is new and well built
@@ -7937,7 +7944,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null);
+    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
