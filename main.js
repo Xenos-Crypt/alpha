@@ -94,6 +94,7 @@ import { buildBeach } from './beach.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
 import { buildRoadLinks } from './road-links.js';
+import { createCockpit, EYE as COCKPIT_EYE } from './car-cockpit.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
 import { buildTunnel } from './tunnel.js';
@@ -7335,6 +7336,15 @@ function updateWorldLight(dt) {
 }
 
 const raycaster = new THREE.Raycaster();
+// First-person driving: you sit in a proper cabin (car-cockpit.js)
+const cockpit = createCockpit({ scene, makeTex });
+const hasCockpit = v => v && ['car', 'police', 'ambulance'].includes(v.kind) && !v.isTow;
+function updateCockpit(dt) {
+  const on = inCar && cameraView === 'first' && !cine && hasCockpit(driving);
+  if (!on) return cockpit.update(null);
+  const st = carControls.state || {};
+  cockpit.update(driving, { speed: driving.speed, maxSpeed: driving.maxSpeed, steer: (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0), gear: st.stalled ? '!' : transmissionAuto ? st.sel : st.gear, handbrake: !!keys.Space || st.sel === 'P', lights: st.lights && st.lights !== 'off' && lastNightGlow > 0.3, revs: st.rev }, dt);
+}
 function updateCamera(dt) {
   { // indoors (a house, a building interior, or under any roof) -> first person
     const p = player.position;
@@ -7342,6 +7352,7 @@ function updateCamera(dt) {
     const want = indoors ? 'first' : cameraViewSetting;
     if (want !== cameraView) { cameraView = want; pitch = want === 'third' ? clamp(pitch, -.1, 1.2) : pitch; }
   }
+  updateCockpit(dt || 0.016);
   if(firstPersonVehicle && (cameraView !== 'first' || firstPersonVehicle !== driving || cine)){firstPersonVehicle.group.visible=!firstPersonVehicle.crashed;firstPersonVehicle=null;}
   if(inCar&&cameraView==='first'&&!cine){firstPersonVehicle=driving;driving.group.visible=false;}
   player.visible = !inCar && (cameraView !== 'first' || !!cine);
@@ -7355,7 +7366,8 @@ function updateCamera(dt) {
   } else if (cameraView === 'first') {
     const focus=inCar?driving.group.position:player.position;
     const forward=new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),-Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
-    if(inCar){const h=driving.group.rotation.y;camera.position.set(focus.x+Math.sin(h)*1.2,focus.y+2,focus.z+Math.cos(h)*1.2);}
+    if(inCar&&hasCockpit(driving)){const h=driving.group.rotation.y,c=Math.cos(h),sn=Math.sin(h);camera.position.set(focus.x+COCKPIT_EYE.x*c+COCKPIT_EYE.z*sn,focus.y+COCKPIT_EYE.y,focus.z-COCKPIT_EYE.x*sn+COCKPIT_EYE.z*c);}   // the driver's seat (wheel on the right)
+    else if(inCar){const h=driving.group.rotation.y;camera.position.set(focus.x+Math.sin(h)*1.2,focus.y+2,focus.z+Math.cos(h)*1.2);}
     else camera.position.copy(focus).y+=1.65;
     camera.lookAt(camera.position.clone().add(forward));
     camera.near=.03;camera.updateProjectionMatrix();
