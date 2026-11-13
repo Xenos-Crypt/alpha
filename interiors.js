@@ -953,7 +953,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.light(0, 4, 0.5, 14, 0xffd9a0); L.light(-8, 6.5, 0.7, 8, 0xfff2c0); L.light(8, 6.5, 0.6, 8, 0xfff2c0);
   }
 
-  let active = null, time = 0;
+  let active = null, time = 0, autoCool = 0;
   const api = {
     layouts,
     /** Which layout a building type uses. Unknown non-civic types count as homes. */
@@ -981,7 +981,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (/apartment|house|home|residential|terrace|detached|bungalow|flat|dormitory|cabin|farm|building|^yes$/.test(t)) return layouts.home;
       return null;   // civic types use the themed civic hall
     },
-    enter(L) { this.exit(); active = L; L.autoArmed = false; for (const l of L.lifts || []) { l.armed = false; l.riding = false; } for (const l of L.lights) l.visible = true; for (const w of L.workers) w.h.root.visible = true; },
+    enter(L) { this.exit(); active = L; L.autoArmed = false; autoCool = 1.5; for (const l of L.lifts || []) { l.armed = false; l.riding = false; } for (const l of L.lights) l.visible = true; for (const w of L.workers) w.h.root.visible = true; },
     exit() { if (active) { for (const l of active.lights) l.visible = false; for (const w of active.workers) w.h.root.visible = false; } active = null; },
     get active() { return active; },
     update(dt) {
@@ -991,8 +991,11 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (pp) {
         // stairs and escalators: walk up to them and you go; you must step away after arriving first
         let nearAny = false;
-        for (const s of active.auto || []) { const d = Math.hypot(pp.x - s.pos.x, pp.z - s.pos.z); if (d < 1.6) nearAny = true; if (active.autoArmed && d < (s.autoR ?? 0.85)) { active.autoArmed = false; s.action(); return; } }
-        if (!nearAny) active.autoArmed = true;
+        autoCool -= dt;
+        // (after arriving you must first walk well clear of every stair before any of them work again,
+        //  and nothing fires while the screen is fading to the other floor, so you can't bounce up and down)
+        for (const s of active.auto || []) { const d = Math.hypot(pp.x - s.pos.x, pp.z - s.pos.z); if (d < 2.4) nearAny = true; if (active.autoArmed && autoCool <= 0 && d < (s.autoR ?? 0.85)) { active.autoArmed = false; autoCool = 2; s.action(); return; } }
+        if (!nearAny && autoCool <= 0) active.autoArmed = true;
         // lifts: doors slide; step in and it goes; arrive inside with the doors opening
         for (const l of active.lifts || []) {
           const inCab = pp.x > l.inside.minX && pp.x < l.inside.maxX && pp.z > l.inside.minZ && pp.z < l.inside.maxZ;
