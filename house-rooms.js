@@ -48,7 +48,7 @@ export function furnishHouse(ctx, h) {
     for (const sx of [-1, 1]) { const k = new THREE.Mesh(geo, knobMat); k.scale.set(0.07, 0.04, 0.12); k.position.set(sx * 0.05, 1.0, dir * (len - 0.12)); hinge.add(k); }
     for (const yy of [0.55, 1.5]) for (const sx of [-1, 1]) { const p = new THREE.Mesh(geo, mat(0xe6e0d4)); p.scale.set(0.01, 0.7, len - 0.3); p.position.set(sx * 0.025, yy, dir * len / 2); hinge.add(p); }   // panels
     const xs = [X(u) - 0.06, X(u) + 0.06], zs = [Z(g0), Z(g1)], col = { minX: xs[0], maxX: xs[1], minZ: Math.min(...zs), maxZ: Math.max(...zs) };
-    const d = { hinge, col, open: shut ? 0 : 1, target: shut ? 0 : 1, swing: Math.sign(u) * dir * Math.PI / 2 * 0.94 };
+    const d = { hinge, col, len, dir, open: shut ? 0 : 1, target: shut ? 0 : 1, swing: Math.sign(u) * dir * Math.PI / 2 * 0.94 };
     hinge.rotation.y = d.swing * d.open; if (!d.open) colliders.push(col);
     interactables.push({ pos: P(u, (g0 + g1) / 2, y), r: 1.2, get label() { return d.target ? 'Close the door' : 'Open the door'; }, action: () => { d.target = d.target ? 0 : 1; const i = colliders.indexOf(col); if (d.target && i >= 0) colliders.splice(i, 1); else if (!d.target && i < 0) colliders.push(col); }, door: true });
     doors.push(d);
@@ -138,7 +138,7 @@ export function furnishHouse(ctx, h) {
   for (const s of [-1, 1]) { B(tu - 0.2, tu + 0.2, tv2 + s * 0.65 - 0.2, tv2 + s * 0.65 + 0.2, 0.42, 0.46, 0x6b4a30); B(tu - 0.2, tu + 0.2, tv2 + s * 0.85 - 0.03, tv2 + s * 0.85 + 0.03, 0.46, 0.95, 0x6b4a30);
     sitSpots.push({ x: X(tu), z: Z(tv2 + s * 0.65), yaw: (s * dir > 0) ? Math.PI : 0, seatY: y + 0.46, label: 'Sit at the table' }); }
   spot(kf - 0.4, 0.5, 1.0, 'Open the fridge', () => K().openFridge());
-  spot(kf - 0.4, sinkV, 0.75, () => K().dishes ? `Wash the dishes (${K().dishes})` : 'Use the sink', () => K().washUp());
+  spot(kf - 0.4, sinkV, 0.75, () => K().dishes ? `Wash the dishes (${K().dishes})` : 'Use the sink', () => K().dishes && ctx.chore ? ctx.chore('dishes', { count: K().dishes }) : K().washUp());
   spot(kf - 0.4, cookV, 0.8, () => K().cookerLabel(), () => K().openCooker());
   spot(kf - 0.4, bookV, 0.6, 'Read the cookbook', () => K().openCookbook());
 
@@ -156,7 +156,7 @@ export function furnishHouse(ctx, h) {
   B(1.06, 1.08, b0 + 0.08, b0 + 0.68, 1.15, 1.8, 0xcfe4ee, false, { metal: 0.9, rough: 0.05 });                     // mirror
   B(1.06, 1.3, b1 - 0.6, b1 - 0.1, 1.2, 1.25, 0xd9c49a);                                                           // towel rail
   spot(hw - 0.55, b1 - 0.5, 0.9, 'Take a shower', () => ctx.rest(12, '🚿 A hot shower. You feel fresh and wide awake.'));
-  spot(1.6, b0 + 0.4, 0.6, 'Wash your hands', () => ctx.toast('🧼 Squeaky clean.'));
+  spot(1.6, b0 + 0.4, 0.6, 'Wash your hands', () => ctx.chore ? ctx.chore('handwash') : ctx.toast('🧼 Squeaky clean.'));
 
   // ---------------- storage room (back, right) ----------------
   const s0 = store0 + 0.05, s1 = D - 0.05;
@@ -168,8 +168,14 @@ export function furnishHouse(ctx, h) {
   B(1.9, Math.min(hw - 0.6, 2.9), s1 - 0.62, s1 - 0.6, 0.65, 0.7, 0x3b2b1f);
   cyl(1.2, s0 + 0.3, 0.02, 0, 1.4, 0x8a6a4a).rotation.z = 0.25;                            // broom
   spot(Math.min(hw - 0.6, 2.9) - 0.5, s1 - 0.95, 0.9, 'Open the storage cupboard', () => K().openStorage());
-  spot(1.4, s1 - 1.0, 0.7, 'Do the laundry', () => ctx.rest(-3, '👕 Clothes in, powder in, start. Your clothes are clean again.'));
+  spot(1.4, s1 - 1.0, 0.7, 'Do the laundry', () => ctx.chore ? ctx.chore('laundry') : ctx.rest(-3, '👕 Clothes in, powder in, start. Your clothes are clean again.'));
 
   // the hob glows and a pan appears while something's cooking
-  return { tv, rooms, doors, update(dt = 1 / 60) { for (const d of doors) if (d.open !== d.target) { d.open += Math.sign(d.target - d.open) * Math.min(Math.abs(d.target - d.open), dt * 3); d.hinge.rotation.y = d.swing * d.open; } const k = K(); if (!k) return; const on = !!k.cooking && !k.cooking.ready; pan.visible = !!k.cooking; for (const r of ring) r.material.emissiveIntensity = on ? 0.9 : 0; } };
+  return { tv, rooms, doors, update(dt = 1 / 60) { for (const d of doors) if (d.open !== d.target) {
+      const n = d.open + Math.sign(d.target - d.open) * Math.min(Math.abs(d.target - d.open), dt * 3);
+      if (ctx.sweep) {   // the door stops against anyone standing in its swing
+        const r = ctx.sweep(d.hinge.position.x, d.hinge.position.z, 0, d.dir, d.len, d.hinge.rotation.y, d.swing * n);
+        if (r.by) { d.hinge.rotation.y = r.angle; d.open = r.angle / d.swing; ctx.blocked?.(r.by); continue; }
+      }
+      d.open = n; d.hinge.rotation.y = d.swing * d.open; } const k = K(); if (!k) return; const on = !!k.cooking && !k.cooking.ready; pan.visible = !!k.cooking; for (const r of ring) r.material.emissiveIntensity = on ? 0.9 : 0; } };
 }
