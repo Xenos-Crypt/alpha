@@ -2,6 +2,7 @@
 // AI in the Capital), scientists' discoveries and the temple dig. Runs every city hour from society.js.
 // The country only moves forward: its DEVELOPMENT level never drops, and as it rises the basic standards
 // (clean streets, health, roads, schools) have a higher floor, so the cities go from good to better.
+import { stepSupply } from './supply-chain.js';
 import { SECTORS, sectorOfJob, COMPANIES, ATLAS_LEVELS, atlasLevel, makeDiscovery, RELICS, DIG_STAGES } from './nation.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -41,6 +42,8 @@ export function createNationSim(api) {
     gdp += S.atlas.robots * 1.5;
     E.gdp = gdp;
     S.treasury += gdp * S.tax / 100 * .06 + (lvl >= 1 ? 2 : 0);   // business taxes, and the grid savings once ATLAS runs it
+    // raw materials are extracted and turned into materials and goods (supply-chain.js)
+    stepSupply(S, workers, E.boost);
     // companies research, grow and occasionally make a breakthrough
     for (const co of S.companies) {
       co.value *= 1 + .0005 * (1 + (E.boost[co.sector] || 0));

@@ -21,11 +21,12 @@
 // steel tower made at the owner's request …rpglsstl…. Its record lists each material's own ID.
 import { INGREDIENTS, AISLES, RECIPES } from './kitchen.js';
 import { SNACKS } from './snack-shop.js';
+import { ALL as SUPPLY, GROCERY_FROM, MAKER, chainText } from './supply-chain.js';
 const CODES = {
   np: 'the player', npc: 'resident', po: 'police officer on foot', rb: 'ATLAS robot',
   rp: "building made at the owner's request", bh: 'built by the bots (NPC crews, ATLAS, the residents)', hs: 'house',
   rt: 'road tile', gt: 'city block', gr: 'grass tuft', fl: 'floor tile', sf: 'other surface',
-  gc: 'grocery', fd: 'food', in: 'instrument', mt: 'material',
+  gc: 'grocery', fd: 'food', in: 'instrument', mt: 'material (raw or made)', mn: 'dungeon monster (made by ATLAS)',
   vc: "resident's vehicle (traffic)", vg: 'government vehicle (police, ambulance, bus, army)', vo: 'vehicle you own', vs: 'stolen vehicle', vx: 'vehicle got illegally (black market, hot plates)',
 };
 const MAT = { tiles: 'cer', checker: 'cer', terracotta: 'ter', marble: 'mar', wood: 'wd', parquet: 'pqt', carpet: 'cpt', stone: 'stn', tech: 'tch' };
@@ -36,7 +37,7 @@ export function colourCode(c) {   // nearest named colour to a THREE.Color or a 
   const R = c.r != null ? c.r * 255 : (c >> 16) & 255, G = c.g != null ? c.g * 255 : (c >> 8) & 255, B = c.b != null ? c.b * 255 : c & 255;
   let best = '', bd = 1e9; for (const [n, r, g, b] of PALETTE) { const d = (R - r) ** 2 + (G - g) ** 2 + (B - b) ** 2; if (d < bd) { bd = d; best = n; } } return best;
 }
-export const MATERIALS = { hay: 'hay', mud: 'mud', brk: 'brick', gls: 'glass', stl: 'steel', con: 'concrete', wd: 'wood', stn: 'stone', plr: 'plaster', sht: 'roof shingle', asp: 'asphalt', cer: 'ceramic', mar: 'marble', pqt: 'parquet', cpt: 'carpet', ter: 'terracotta', tch: 'tech tile', fab: 'fabric', pls: 'plastic', rub: 'rubber' };
+export const MATERIALS = { ...Object.fromEntries(Object.entries(SUPPLY).map(([k, m]) => [k, m.name])), hay: 'hay', mud: 'mud', brk: 'brick', gls: 'glass', stl: 'steel', con: 'concrete', wd: 'wood', stn: 'stone', plr: 'plaster', sht: 'roof shingle', asp: 'asphalt', cer: 'ceramic', mar: 'marble', pqt: 'parquet', cpt: 'carpet', ter: 'terracotta', tch: 'tech tile', fab: 'fabric', pls: 'plastic', rub: 'rubber' };
 // what a THREE material is made of, judged by how it looks
 export function materialOf(m) {
   if (!m) return null;
@@ -99,16 +100,16 @@ export function createWorldIds(ctx) {
   // ---- register the world -----------------------------------------------------------------------------
   // the materials themselves, each with its own ID
   const matIds = {};
-  for (const [code, name] of Object.entries(MATERIALS)) matIds[code] = add('mt', 'm:' + code, { material: code }, { full: code, kind: 'material', name, pos: () => null }).id;
+  for (const [code, name] of Object.entries(MATERIALS)) { const sp = SUPPLY[code]; matIds[code] = add('mt', 'm:' + code, { material: code }, { full: code, kind: sp ? `${sp.stage} · ${sp.company}` : 'material', name, maker: sp?.company, chain: chainText(code), pos: () => null }).id; }
   function madeOf(meshes, vehicle) {   // main materials first, by how much of the thing is made of each
     const n = {};
     for (const o of meshes || []) { if (!o) continue; o.traverse?.(m => { if (!m.isMesh) return; let k = materialOf(Array.isArray(m.material) ? m.material[0] : m.material); if (!k) return; if (vehicle) k = k === 'pls' ? 'stl' : k === 'sht' ? 'rub' : k; /* a vehicle's paintwork is steel, its black parts rubber */ const g = m.geometry; g.boundingBox || g.computeBoundingBox?.(); const bb = g.boundingBox; const v = bb ? Math.max(.01, (bb.max.x - bb.min.x) * (bb.max.y - bb.min.y) + (bb.max.z - bb.min.z) * (bb.max.y - bb.min.y) + (bb.max.x - bb.min.x) * (bb.max.z - bb.min.z)) * (m.scale?.x || 1) : 1; n[k] = (n[k] || 0) + v; }); }
     return Object.entries(n).sort((a, b) => b[1] - a[1]).map(x => x[0]);
   }
   function registerStatic() {
-    for (const b of ctx.buildings()) if (!byObj.has(b)) { const mats = madeOf(b.meshes); add('rp', `b:${Math.round(b.x)},${Math.round(b.z)},${Math.round(b.w)}x${Math.round(b.d)}`, b, { look: mats.slice(0, 3).join(''), materials: mats, colour: colourCode(b.meshes?.find(m => m.material?.color)?.material.color), kind: 'building', name: b.name || 'City building', pos: () => ({ x: b.x, z: b.z }) }); }
+    for (const b of ctx.buildings()) if (!byObj.has(b)) { const mats = madeOf(b.meshes); add('rp', `b:${Math.round(b.x)},${Math.round(b.z)},${Math.round(b.w)}x${Math.round(b.d)}`, b, { look: mats.slice(0, 3).join(''), materials: mats, maker: MAKER.building, colour: colourCode(b.meshes?.find(m => m.material?.color)?.material.color), kind: 'building', name: b.name || 'City building', pos: () => ({ x: b.x, z: b.z }) }); }
     for (const b of ctx.civicBuildings()) if (!byObj.has(b)) { const code = b.builtBy === 'bots' ? 'bh' : 'rp'; add(code, `c:${b.type}:${Math.round(b.x)},${Math.round(b.z)}`, b, { kind: b.type || 'building', name: b.name || b.type, pos: () => ({ x: b.x, z: b.z }) }); }
-    for (const h of ctx.houses()) if (!byObj.has(h)) add('hs', `h:${Math.round((h.minX + h.maxX) / 2)},${Math.round((h.minZ + h.maxZ) / 2)}`, h, { look: madeOf(h.meshes || [h.roof, ...(h.walls || [])]).slice(0, 3).join('') || 'sht', materials: madeOf(h.meshes || [h.roof, ...(h.walls || [])]), kind: 'house', name: h.name || 'House', pos: () => ({ x: (h.minX + h.maxX) / 2, z: (h.minZ + h.maxZ) / 2 }) });
+    for (const h of ctx.houses()) if (!byObj.has(h)) add('hs', `h:${Math.round((h.minX + h.maxX) / 2)},${Math.round((h.minZ + h.maxZ) / 2)}`, h, { look: madeOf(h.meshes || [h.roof, ...(h.walls || [])]).slice(0, 3).join('') || 'sht', materials: madeOf(h.meshes || [h.roof, ...(h.walls || [])]), maker: MAKER.house, kind: 'house', name: h.name || 'House', pos: () => ({ x: (h.minX + h.maxX) / 2, z: (h.minZ + h.maxZ) / 2 }) });
     for (const r of ctx.roads()) if (!byObj.has(r)) add(r.byBots ? 'bh' : 'rt', `r:${Math.round(r.minX)},${Math.round(r.minZ)},${Math.round(r.maxX)},${Math.round(r.maxZ)}`, r, { look: 'asp', kind: r.byBots ? 'new road' : 'road tile', name: r.name || 'Road', pos: () => ({ x: (r.minX + r.maxX) / 2, z: (r.minZ + r.maxZ) / 2 }) });
     for (const t of ctx.blocks()) if (!byObj.has(t)) add('gt', `g:${t.bx},${t.bz}`, t, { kind: 'city block', name: `${t.city} block ${t.bx},${t.bz}`, pos: () => ({ x: t.bx * 40 + 20, z: t.bz * 40 + 20 }) });
     for (const x of ctx.extra?.() || []) if (!byObj.has(x)) add(x.code, x.seed, x, { kind: x.kind, name: x.name, pos: () => x.pos });
@@ -118,14 +119,14 @@ export function createWorldIds(ctx) {
       // a grocery's code is its own (bre bread, egg eggs…); a dish's code is made of its ingredients' codes,
       // so buttered toast (bread + butter) is …fdbrebut…, and its record links each ingredient's ID
       const ing = id => String(id).slice(0, 3).toLowerCase(), ingIds = {};
-      for (const it of INGREDIENTS) { const aisle = AISLES.find(a => a.items.includes(it.id)); const e = add('gc', 'g:' + it.id, it, { look: ing(it.id), kind: 'grocery · ' + (aisle?.name || 'general'), name: it.name, pos: () => null }); ingIds[it.id] = e.id; goods.push(e); }
+      for (const it of INGREDIENTS) { const aisle = AISLES.find(a => a.items.includes(it.id)); const e = add('gc', 'g:' + it.id, it, { look: ing(it.id), kind: 'grocery · ' + (aisle?.name || 'general'), name: it.name, maker: GROCERY_FROM[it.id] ? SUPPLY[GROCERY_FROM[it.id]].company + ', sold by MarketWay Retail' : 'MarketWay Retail', chain: GROCERY_FROM[it.id] ? chainText(GROCERY_FROM[it.id]) : null, pos: () => null }); ingIds[it.id] = e.id; goods.push(e); }
       for (const r of RECIPES) { const parts = Object.keys(r.need || {}); goods.push(add('fd', 'r:' + r.id, r, { look: parts.map(ing).join(''), parts: parts.map(p => [INGREDIENTS.find(i => i.id === p)?.name || p, ingIds[p]]), kind: 'dish', name: r.name, pos: () => null })); }
       for (const s of SNACKS) goods.push(add('fd', 's:' + s.name, s, { look: 'snk', kind: 'snack', name: s.name, pos: () => null }));
     }
     // instruments: anything you can play
     for (const it of ctx.interactables?.() || []) if (!byObj.has(it) && /piano|guitar|drum|jukebox|violin|organ|harp|trumpet|saxophone|instrument/i.test(it.label || '')) {
       const t = /piano/i.test(it.label) ? 'pno' : /guitar/i.test(it.label) ? 'gtr' : /drum/i.test(it.label) ? 'drm' : /jukebox/i.test(it.label) ? 'jbx' : /violin/i.test(it.label) ? 'vln' : 'ins';
-      add('in', `i:${Math.round(it.pos.x)},${Math.round(it.pos.z)}:${it.label}`, it, { look: t, kind: 'instrument', name: it.label.replace(/^Play (the )?/i, ''), pos: () => it.pos });
+      add('in', `i:${Math.round(it.pos.x)},${Math.round(it.pos.z)}:${it.label}`, it, { look: t + 'wdstl', materials: ['wd', 'stl'], maker: MAKER.instrument, kind: 'instrument', name: it.label.replace(/^Play (the )?/i, ''), pos: () => it.pos });
     }
   }
   const vcode = v => v.stolen ? 'vs' : v.stolenGoods ? 'vx' : v.owned ? 'vo' : ['police', 'ambulance', 'bus', 'tank', 'fire', 'army'].includes(v.kind) ? 'vg' : 'vc';
@@ -133,11 +134,13 @@ export function createWorldIds(ctx) {
   function registerMoving() {
     ctx.peds().forEach((e, i) => { if (!byObj.has(e)) { const c = ctx.citizenOf?.(e); add('npc', `p:${i}`, e, { kind: 'resident', name: c?.name || e.labelName || 'Resident', pos: () => e.hidden ? (e.socHome || null) : e.root.position }); } });
     for (const e of ctx.cops?.() || []) if (!byObj.has(e)) add('po', `cop:${vSeq++}`, e, { kind: 'police officer', name: 'Police officer', pos: () => e.root.position });
-    for (const h of ctx.robots?.() || []) if (!byObj.has(h)) add('rb', `rb:${vSeq++}`, h, { kind: 'ATLAS robot', name: 'Robot', pos: () => h.root.position });
+    for (const h of ctx.robots?.() || []) if (!byObj.has(h)) add('rb', `rb:${vSeq++}`, h, { look: 'alytch', materials: ['aly', 'tch'], maker: MAKER.robot, kind: 'ATLAS robot', name: 'Robot', pos: () => h.root.position });
+    // the dungeon monsters are not born: ATLAS's Foundry fabricates them from bio-gel and alloy
+    for (const m of ctx.monsters?.() || []) if (!byObj.has(m)) add('mn', `mn:${m.monsterType || m.labelName || ''}:${vSeq++}`, m, { look: 'bglaly', materials: ['bgl', 'aly'], maker: MAKER.monster, kind: 'dungeon monster', name: m.labelName || m.monsterType || 'Monster', pos: () => m.root?.position });
     for (const v of ctx.vehicles()) {
       const code = vcode(v), e = byObj.get(v);
       const look = VKIND[v.kind] || String(v.kind || 'veh').slice(0, 3);
-      if (!e) { const mats = madeOf([v.group], true); add(code, `v:${v.kind}:${vSeq++}`, v, { look: look + mats.slice(0, 2).join(''), materials: mats, kind: v.kind, name: v.name || v.kind, pos: () => v.group.position }); continue; }
+      if (!e) { const mats = madeOf([v.group], true); add(code, `v:${v.kind}:${vSeq++}`, v, { look: look + mats.slice(0, 2).join(''), materials: mats, maker: MAKER[v.kind] || 'Velo Motors', kind: v.kind, name: v.name || v.kind, pos: () => v.group.position }); continue; }
       if (e.code !== code) {   // it was stolen / bought / seized: new code, old ID kept as an alias
         const old = e.id, n = add(code, old, v, { look: look + (e.materials || []).slice(0, 2).join(''), materials: e.materials, kind: e.kind, name: e.name, pos: e.pos });
         n.history = e.history; n.aliases = [...(e.aliases || []), old]; alias.set(old, n.id); reg.delete(old);
@@ -252,7 +255,7 @@ export function createWorldIds(ctx) {
     panel.innerHTML = `<button class="x" type="button" data-close>Close</button><h2>🆔 World ID tracker</h2>
       <div>Your ID: <b>${playerId}</b> · ${reg.size} things registered</div>
       <div style="margin-top:8px"><input data-q placeholder="Search an ID (e.g. 169273npc820w8x) or a name" value="${esc(query)}"><button type="button" data-find>Find</button><button type="button" data-tags class="${tagsOn ? 'on' : ''}">${tagsOn ? 'Hide' : 'Show'} ID tags in the world</button></div>
-      ${hit ? `<h3>${esc(hit.id)}</h3><div>${esc(CODES[hit.code])} · ${esc(hit.name)} · at ${at(hit.pos?.())}${heading(hit)}${hit.aliases ? ' · earlier IDs: ' + hit.aliases.map(esc).join(', ') : ''}</div>${hit.materials?.length ? `<div>Made of: ${hit.materials.map(m => `${esc(MATERIALS[m] || m)} <a href="#" data-id="${matIds[m]}" style="color:#9fd3ff">${matIds[m]}</a>`).join(' + ')}</div>` : ''}${hit.parts?.length ? `<div>Made from: ${hit.parts.map(([n, i]) => `${esc(n)} <a href="#" data-id="${i}" style="color:#9fd3ff">${i}</a>`).join(' + ')}</div>` : ''}<table>${hit.history.map(h => `<tr><td>${new Date(h.t).toLocaleTimeString()}</td><td>${esc(h.what)}</td><td>${h.x != null ? `(${h.x}, ${h.z})` : ''}</td></tr>`).join('') || '<tr><td>Nothing recorded yet.</td></tr>'}</table>` : query ? '<h3>No match</h3>' : ''}
+      ${hit ? `<h3>${esc(hit.id)}</h3><div>${esc(CODES[hit.code])} · ${esc(hit.name)} · at ${at(hit.pos?.())}${heading(hit)}${hit.aliases ? ' · earlier IDs: ' + hit.aliases.map(esc).join(', ') : ''}</div>${hit.materials?.length ? `<div>Made of: ${hit.materials.map(m => `${esc(MATERIALS[m] || m)} <a href="#" data-id="${matIds[m]}" style="color:#9fd3ff">${matIds[m]}</a>`).join(' + ')}</div>` : ''}${hit.maker ? `<div>Made by: ${esc(hit.maker)}</div>` : ''}${hit.chain ? `<div>Where it comes from: ${esc(hit.chain)}</div>` : ''}${hit.parts?.length ? `<div>Made from: ${hit.parts.map(([n, i]) => `${esc(n)} <a href="#" data-id="${i}" style="color:#9fd3ff">${i}</a>`).join(' + ')}</div>` : ''}<table>${hit.history.map(h => `<tr><td>${new Date(h.t).toLocaleTimeString()}</td><td>${esc(h.what)}</td><td>${h.x != null ? `(${h.x}, ${h.z})` : ''}</td></tr>`).join('') || '<tr><td>Nothing recorded yet.</td></tr>'}</table>` : query ? '<h3>No match</h3>' : ''}
       <h3>Codes</h3><div>${Object.entries(CODES).map(([c, d]) => `<button type="button" data-code="${c}" class="${filter === c ? 'on' : ''}" title="${esc(d)}">${c} · ${esc(d)} (${counts[c] || 0})</button>`).join('')}</div>
       ${stock.length ? `<h3>${esc(CODES[filter])}</h3><table>${stock.map(e => `<tr><td><a href="#" data-id="${e.id}" style="color:#9fd3ff">${e.id}</a></td><td>${esc(e.name)}</td></tr>`).join('')}</table>` : ''}
       <h3>Problems found (${bugs.size})</h3><div><button type="button" data-scan>${scan && !scan.done ? `Scanning… ${Math.round(100 * scan.i / scan.list.length)}%` : 'Scan the world for overlaps'}</button></div><table>${[...bugs.values()].slice(-30).reverse().map(b => `<tr><td>${esc(b.cat)}</td><td>(${b.x}, ${b.z})</td><td>${b.ids.map(i => `<a href="#" data-id="${i}" style="color:#ffb37f">${i}</a>`).join(' + ')}</td><td>${b.count > 1 ? '×' + b.count : ''}</td></tr>`).join('') || '<tr><td>None found yet.</td></tr>'}</table>

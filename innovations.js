@@ -4,15 +4,16 @@
 // how other cities do things (/api/citizen-research searches the real web). If what they find is more
 // advanced than what this city has, they bring it to the council. If the council votes to fund it,
 // the residents build it over a few real hours, and it appears in the world and changes how the city
-// works (cleaner streets, cheaper power, healthier people...).
+// works (cleaner streets, cheaper power, healthier people...). Nothing appears from nowhere: each project
+// uses real materials from the supply chain (needs), and waits until the factories have made enough.
 import * as THREE from 'three';
 
 export const PROJECTS = [
-  { id: 'solar-lamps', name: 'Solar street lights', topic: 'solar-powered street lights in cities', cost: 900, hours: 2, effect: { treasury: 3 }, about: 'Solar panels on every street lamp, so the city stops paying to light the streets at night.' },
-  { id: 'recycling', name: 'Street recycling stations', topic: 'smart recycling bins on city streets', cost: 600, hours: 1.5, effect: { clean: .06 }, about: 'Sorted bins for paper, plastic, glass and food on street corners.' },
-  { id: 'bike-share', name: 'Bike-share docks', topic: 'city bike-share schemes and docking stations', cost: 800, hours: 2, effect: { health: .05 }, about: 'Docks of rentable bikes around town for short trips.' },
-  { id: 'crossings', name: 'Smart pedestrian crossings', topic: 'smart LED pedestrian crossings that light up for walkers', cost: 700, hours: 1.5, effect: { crime: -.03 }, about: 'Crossings with glowing kerb lights that make walkers visible to drivers at night.' },
-  { id: 'wind-farm', name: 'Wind turbines', topic: 'small wind farms that power towns', cost: 2200, hours: 4, effect: { treasury: 6 }, about: 'Wind turbines outside town that sell clean power to the grid.' },
+  { id: 'solar-lamps', needs: { gls: 40, stl: 25, sil: 20 }, name: 'Solar street lights', topic: 'solar-powered street lights in cities', cost: 900, hours: 2, effect: { treasury: 3 }, about: 'Solar panels on every street lamp, so the city stops paying to light the streets at night.' },
+  { id: 'recycling', needs: { stl: 20, pls: 30 }, name: 'Street recycling stations', topic: 'smart recycling bins on city streets', cost: 600, hours: 1.5, effect: { clean: .06 }, about: 'Sorted bins for paper, plastic, glass and food on street corners.' },
+  { id: 'bike-share', needs: { stl: 30, rub: 12, pls: 8 }, name: 'Bike-share docks', topic: 'city bike-share schemes and docking stations', cost: 800, hours: 2, effect: { health: .05 }, about: 'Docks of rentable bikes around town for short trips.' },
+  { id: 'crossings', needs: { stl: 15, pls: 10, gls: 10 }, name: 'Smart pedestrian crossings', topic: 'smart LED pedestrian crossings that light up for walkers', cost: 700, hours: 1.5, effect: { crime: -.03 }, about: 'Crossings with glowing kerb lights that make walkers visible to drivers at night.' },
+  { id: 'wind-farm', needs: { stl: 120, con: 80, pls: 30 }, name: 'Wind turbines', topic: 'small wind farms that power towns', cost: 2200, hours: 4, effect: { treasury: 6 }, about: 'Wind turbines outside town that sell clean power to the grid.' },
 ];
 export const projectById = id => PROJECTS.find(p => p.id === id);
 

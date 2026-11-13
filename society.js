@@ -27,6 +27,7 @@ import { PROJECTS, projectById } from './innovations.js';
 import { PARTIES, CITIES, COUNTRY, TERM, YEAR, SECTORS, sectorOfJob, ATLAS_LEVELS, atlasLevel, DIG_STAGES } from './nation.js';
 import { createGovernment, INVITE } from './government.js';
 import { createNationSim } from './nation-sim.js';
+import { RAW, MADE, SERVICES, ALL, consume } from './supply-chain.js';
 
 const KEY = 'aw.society.v1', TICK = 60e3, POP = 500;
 const FIRST = ['Amara','Ben','Chloe','Dev','Ella','Femi','Grace','Hassan','Isla','Jamal','Kemi','Liam','Maya','Noah','Olu','Priya','Quinn','Ravi','Sara','Tom','Uma','Victor','Wen','Yusuf','Zara','Aidan','Bisi','Cara','Dami','Ethan','Fatima','George','Hana','Ibrahim','Jade','Kofi','Lena','Marcus','Nia','Oscar','Pearl','Rhys','Sofia','Tunde','Vera','Will','Ada','Bola','Leo','Mia','Omar','Ruth','Sam','Tara','Joel','Kira','Luca','Nora','Ola','Seun'];
@@ -192,7 +193,7 @@ export function createSociety(ctx) {
       case 'jobs': { let n = 0; for (const c of citizens) if (c.job === 'Unemployed' && n < 12 && c.age < 66) { c.job = 'Street cleaner'; remember(c, 'Got a job on the public jobs scheme'); n++; } S.treasury -= 300; break; }
       case 'curfewOn': S.laws.curfew = true; break; case 'curfewOff': S.laws.curfew = false; break;
       case 'cctvOn': S.laws.cctv = true; S.treasury -= 900; break; case 'watchOn': S.laws.watch = true; break;
-      default: if (p.id.startsWith('build:')) { const id = p.id.slice(6), P = projectById(id); S.treasury -= P.cost; S.projects[id] = { start: Date.now(), end: Date.now() + P.hours * 3600e3, done: false }; news(`The residents start building ${P.name.toLowerCase()} together. Ready in about ${P.hours} hours.`, true); } break;
+      default: if (p.id.startsWith('build:')) { const id = p.id.slice(6), P = projectById(id); S.treasury -= P.cost; S.projects[id] = { waiting: true, need: P.needs || {} }; news(`Approved: ${P.name.toLowerCase()}. Ordering the materials (${Object.entries(P.needs || {}).map(([k, n]) => n + ' ' + (ALL[k]?.name || k)).join(', ')}).`, true); } break;
       case 'contract': { if (!proposer) break; const take = Math.min(400, S.treasury * .15); S.treasury -= take; proposer.skimmed = (proposer.skimmed || 0) + take; proposer.wealth += take; break; }
     }
   }
@@ -214,6 +215,7 @@ export function createSociety(ctx) {
   }
   function checkProjects(first) {
     for (const [id, pr] of Object.entries(S.projects)) {
+      if (pr.waiting) { const short = consume(S, pr.need || {}); if (!short) { const P = projectById(id); Object.assign(pr, { waiting: false, start: Date.now(), end: Date.now() + P.hours * 3600e3, done: false }); news(`The materials for ${P.name.toLowerCase()} arrived. The residents start building it together, ready in about ${P.hours} hours.`, true); save(); } else pr.short = short; continue; }
       if (!pr.done && Date.now() >= pr.end) { pr.done = true; if (!first) news(`Finished! The residents built ${projectById(id)?.name.toLowerCase()} together.`, true); save(); }
       if (pr.done && !shown.has(id)) { shown.add(id); ctx.built?.(id); }
     }
@@ -533,9 +535,13 @@ export function createSociety(ctx) {
       const out = S.eco.out || {}, gdp = S.eco.gdp || 1;
       body = `<h3>Output by sector · GDP ${fmt(gdp * 1000)} a year</h3><ul>${Object.entries(SECTORS).sort((a, b) => (out[b[0]] || 0) - (out[a[0]] || 0)).map(([k, v]) => `<li>${esc(v.name)} ${bar(100 * (out[k] || 0) / gdp * 4)} · ${v.jobs.join(', ')}${S.eco.boost[k] ? ` · +${Math.round(S.eco.boost[k] * 100)}% from new tech` : ''}</li>`).join('')}</ul>
       <h3>Companies</h3><ul>${S.companies.map(co => `<li><b>${esc(co.name)}</b> (${esc(SECTORS[co.sector].name)}) · worth ${fmt(co.value)} · founder ${esc(nameOf(co.founder))} · researching ${esc(co.focus)} ${bar(co.rd)}%${co.gen ? ' · generation ' + co.gen : ''}</li>`).join('')}</ul>
+      <h3>Supply chain: raw material → product → service</h3><div style="opacity:.75">Nothing appears from nowhere: everything is made from something that already existed. Stock on hand in brackets.</div>
+      <div><b>Primary</b> (farmed, mined, quarried, drilled): ${RAW.map(r => `${esc(r.name)} · ${esc(r.company)} (${fmt(S.stock?.[r.code] || 0)})`).join(' · ')}</div>
+      <div style="margin-top:6px"><b>Secondary</b> (made in factories): ${MADE.map(m => `${esc(m.name)} ← ${Object.keys(m.inputs).map(k => esc(ALL[k]?.name || k)).join(' + ')} · ${esc(m.company)} (${fmt(S.stock?.[m.code] || 0)})`).join(' · ')}</div>
+      <div style="margin-top:6px"><b>Tertiary</b> (build, sell, move, service): ${SERVICES.map(s => `${esc(s.name)}: ${esc(s.does)}`).join(' · ')}</div>
       <div>Self-driving share of traffic: <b>${Math.round(S.selfDriving * 100)}%</b></div>
       <h3>Ideas residents found online</h3><ul>${PROJECTS.filter(p => S.research[p.id]).map(p => { const r = S.research[p.id], pr = S.projects[p.id];
-        const status = pr?.done ? '✅ built' : pr ? `🏗 being built: ${Math.round(100 * clamp((Date.now() - pr.start) / (pr.end - pr.start), 0, 1))}%` : r.advanced ? 'proposed to the Assembly' : 'not needed';
+        const status = pr?.done ? '✅ built' : pr?.waiting ? `⏳ waiting for materials${pr.short ? ': short of ' + Object.entries(pr.short).map(([k, n]) => n + ' ' + (ALL[k]?.name || k)).join(', ') : ''}` : pr ? `🏗 being built: ${Math.round(100 * clamp((Date.now() - pr.start) / (pr.end - pr.start), 0, 1))}%` : r.advanced ? 'proposed to the Assembly' : 'not needed';
         return `<li><b>${esc(p.name)}</b> (${status}). ${esc(nameOf(r.by))}: "${esc(r.summary)}"${r.sources.length ? ' Sources: ' + r.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:#9fd3ff">${esc(s.title || 'link')}</a>`).join(', ') : ''}</li>`; }).join('') || '<li>Nobody has gone looking yet. Residents read up on new ideas about every half hour.</li>'}</ul>`;
     } else if (tab === 'atlas') {
       const L = atlasLevel(S.atlas.data), next = ATLAS_LEVELS[L + 1];
