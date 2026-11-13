@@ -28,6 +28,7 @@ import { PARTIES, CITIES, COUNTRY, TERM, YEAR, SECTORS, sectorOfJob, ATLAS_LEVEL
 import { createGovernment, INVITE } from './government.js';
 import { createNationSim } from './nation-sim.js';
 import { RAW, MADE, SERVICES, ALL, consume } from './supply-chain.js';
+import { ORGS, STAGES, TYPES, STAGE_OF_SECTOR } from './organisations.js';
 
 const KEY = 'aw.society.v1', TICK = 60e3, POP = 500;
 const FIRST = ['Amara','Ben','Chloe','Dev','Ella','Femi','Grace','Hassan','Isla','Jamal','Kemi','Liam','Maya','Noah','Olu','Priya','Quinn','Ravi','Sara','Tom','Uma','Victor','Wen','Yusuf','Zara','Aidan','Bisi','Cara','Dami','Ethan','Fatima','George','Hana','Ibrahim','Jade','Kofi','Lena','Marcus','Nia','Oscar','Pearl','Rhys','Sofia','Tunde','Vera','Will','Ada','Bola','Leo','Mia','Omar','Ruth','Sam','Tara','Joel','Kira','Luca','Nora','Ola','Seun'];
@@ -40,7 +41,7 @@ const JOBS = [['Street cleaner',8,1,null,7],['Shop worker',8,0,'supermarket',12]
   ['Farmer',8,0,null,4],['Miner',12,0,null,2],['Forester',9,0,null,1],['Power plant operator',13,0,null,2],['Electrician',12,0,null,3],['Plumber',11,0,null,3],
   ['Factory worker',9,0,null,6],['Car engineer',15,0,'office',2],['Architect',14,0,'office',1],['Software developer',16,0,'office',4],['AI researcher',20,0,'office',2],
   ['Scientist',16,0,'office',3],['Chemist',15,0,'office',2],['Archaeologist',12,0,null,2],['Banker',20,0,'office',2],['Lawyer',19,0,'office',2],['Tour guide',8,0,null,2],
-  ['Zookeeper',8,0,null,1],['Ranger',9,1,null,1],['Pilot',18,0,null,1],['Soldier',11,1,null,3],['Artist',7,0,null,2]];
+  ['Zookeeper',8,0,null,1],['Bin collector',9,1,null,2],['Recycling worker',8,0,null,0],['Ranger',9,1,null,1],['Pilot',18,0,null,1],['Soldier',11,1,null,3],['Artist',7,0,null,2]];
 const JOB = Object.fromEntries(JOBS.map(j => [j[0], { wage: j[1], pub: !!j[2], place: j[3] }]));
 const POLICIES = [
   { id: 'taxUp', name: 'Raise taxes by 2%', econ: 1, order: 0, ok: s => s.tax < 30 && s.treasury < 4000 },
@@ -56,6 +57,9 @@ const POLICIES = [
   { id: 'curfewOff', name: 'Lift the night curfew', econ: 0, order: -1, ok: s => s.crime < 35 && s.laws.curfew },
   { id: 'cctvOn', name: 'CCTV cameras on every street', econ: .2, order: 1, ok: s => s.crime > 35 && !s.laws.cctv && s.treasury > 1200 },
   { id: 'watchOn', name: 'Neighbourhood watch', econ: -.2, order: .6, ok: s => s.crime > 30 && !s.laws.watch },
+  { id: 'recycle', name: 'Recycling drive (sort more of the rubbish)', econ: .4, order: .2, ok: s => (s.waste?.rate || .15) < .45 && s.treasury > 500 },
+  { id: 'landfill', name: 'Open a new landfill cell', econ: .2, order: .1, ok: s => s.waste && s.waste.landfill > s.waste.cap * .7 && s.treasury > 900 },
+  { id: 'plasticBan', name: 'Ban single-use plastic', econ: .3, order: .4, ok: s => !s.laws.plasticBan && (s.waste?.pollution || 0) > 8 },
   { id: 'contract', name: 'Award a building contract to a friend', econ: 0, order: 0, corrupt: true, ok: s => s.treasury > 600 },
 ];
 
@@ -181,7 +185,7 @@ export function createSociety(ctx) {
   function score(m, p) {
     if (p.id.startsWith('build:')) return .5 + (S.treasury > 3000 ? .4 : 0) + p.econ * m.econ * .5 + m.traits.ambition * .3;   // how much a politician likes a policy: their views + what the city needs
     if (p.corrupt) return m.traits.honesty < .3 ? 1 : -2;
-    const need = { police: S.crime / 35 + (S.budget.police < .12 ? .6 : 0), curfewOn: S.crime / 60, cctvOn: S.crime / 60, watchOn: S.crime / 70, clean: (100 - S.clean) / 40, health: (100 - S.health) / 40, roads: (100 - S.roads) / 40, schools: (100 - S.edu) / 40, welfare: unemployedPct() / 10, jobs: unemployedPct() / 10, taxUp: S.treasury < 800 || (S.tax < 14 && (S.crime > 35 || S.clean < 45 || S.health < 45)) ? 1.3 : -.3, taxDown: S.treasury > 3000 ? 1 : 0, curfewOff: .8 }[p.id] || 0;
+    const need = { police: S.crime / 35 + (S.budget.police < .12 ? .6 : 0), curfewOn: S.crime / 60, cctvOn: S.crime / 60, watchOn: S.crime / 70, clean: (100 - S.clean) / 40, health: (100 - S.health) / 40, roads: (100 - S.roads) / 40, schools: (100 - S.edu) / 40, welfare: unemployedPct() / 10, jobs: unemployedPct() / 10, taxUp: S.treasury < 800 || (S.tax < 14 && (S.crime > 35 || S.clean < 45 || S.health < 45)) ? 1.3 : -.3, taxDown: S.treasury > 3000 ? 1 : 0, curfewOff: .8, recycle: (S.waste?.pollution || 0) / 25 + (S.waste ? S.waste.landfill / S.waste.cap : 0), landfill: S.waste ? S.waste.landfill / S.waste.cap * 1.6 : 0, plasticBan: (S.waste?.pollution || 0) / 20 }[p.id] || 0;
     return need - .8 + p.econ * m.econ * .7 + p.order * m.order * .7;
   }
   function shift(key, amt) { const b = S.budget; b[key] = clamp(b[key] + amt, .03, .6); const sum = Object.values(b).reduce((a, x) => a + x, 0); for (const k in b) b[k] /= sum; }
@@ -191,6 +195,9 @@ export function createSociety(ctx) {
       case 'police': shift('police', .06); break; case 'clean': shift('clean', .06); break; case 'health': shift('health', .06); break;
       case 'roads': shift('roads', .06); break; case 'schools': shift('schools', .06); break; case 'welfare': shift('welfare', .06); break;
       case 'jobs': { let n = 0; for (const c of citizens) if (c.job === 'Unemployed' && n < 12 && c.age < 66) { c.job = 'Street cleaner'; remember(c, 'Got a job on the public jobs scheme'); n++; } S.treasury -= 300; break; }
+      case 'recycle': S.waste.rate = Math.min(.5, S.waste.rate + .08); S.treasury -= 400; break;
+      case 'landfill': S.waste.cap += 30000; S.treasury -= 900; break;
+      case 'plasticBan': S.laws.plasticBan = true; break;
       case 'curfewOn': S.laws.curfew = true; break; case 'curfewOff': S.laws.curfew = false; break;
       case 'cctvOn': S.laws.cctv = true; S.treasury -= 900; break; case 'watchOn': S.laws.watch = true; break;
       default: if (p.id.startsWith('build:')) { const id = p.id.slice(6), P = projectById(id); S.treasury -= P.cost; S.projects[id] = { waiting: true, need: P.needs || {} }; news(`Approved: ${P.name.toLowerCase()}. Ordering the materials (${Object.entries(P.needs || {}).map(([k, n]) => n + ' ' + (ALL[k]?.name || k)).join(', ')}).`, true); } break;
@@ -505,7 +512,7 @@ export function createSociety(ctx) {
   function render() {
     const G = S.gov, P = gov.P, left = (G.snapAt != null ? G.snapAt : G.lastElection + TERM) - S.tick, ppl = citizens.filter(c => !c.jail), hk = housekeeper();
     const year = Math.floor(S.tick / YEAR) + 1, avgOp = citizens.reduce((n, c) => n + c.opinion, 0) / citizens.length;
-    const tabs = [['overview', 'Overview'], ['politics', 'Politics'], ['economy', 'Economy'], ['atlas', 'ATLAS & science'], ['lawgiver', 'The Lawgiver'], ['news', 'News']];
+    const tabs = [['overview', 'Overview'], ['politics', 'Politics'], ['economy', 'Economy'], ['orgs', 'Organisations'], ['atlas', 'ATLAS & science'], ['lawgiver', 'The Lawgiver'], ['news', 'News']];
     const head = `<button class="x" type="button" data-close>Close</button><h2>🏛 Government of ${COUNTRY}</h2><div style="opacity:.8">City year ${year} · Development level ${S.dev.toFixed(1)} (it only goes up)</div>
       <div class="row" style="margin:8px 0">${tabs.map(([k, n]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
     let body = '';
@@ -518,7 +525,7 @@ export function createSociety(ctx) {
       <h3>You</h3><div>Fame ${bar(S.fame)} · reputation: <b>${S.fame < 15 ? 'nobody knows you yet' : avgOp > 25 ? 'well liked' : avgOp > 5 ? 'liked' : avgOp > -10 ? 'mixed' : avgOp > -30 ? 'distrusted' : 'feared'}</b>${P.office ? ' · <b>' + esc(P.office) + '</b>' : ''}${P.party != null ? ' · member of the ' + esc(PARTIES[P.party].name) : ''}</div>
       <div style="opacity:.75">Fame grows with what you do, what you own and the offices you hold. Until people know you, they don't much care what you do.</div>
       <h3>Money</h3><div>Treasury <b>${fmt(S.treasury)}</b> gold · income tax <b>${S.tax}%</b> · ${Object.entries(S.budget).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · ')}</div>
-      <h3>Laws in force</h3><div>${[S.laws.curfew && 'Night curfew (10pm–6am)', S.laws.cctv && 'CCTV on every street', S.laws.watch && 'Neighbourhood watch'].filter(Boolean).join(' · ') || 'No special laws.'}</div>
+      <h3>Laws in force</h3><div>${[S.laws.curfew && 'Night curfew (10pm–6am)', S.laws.cctv && 'CCTV on every street', S.laws.watch && 'Neighbourhood watch', S.laws.plasticBan && 'Single-use plastic banned'].filter(Boolean).join(' · ') || 'No special laws.'}</div>
       <h3>Your staff</h3><div>${hk ? `${esc(citizens[hk.id].name)}, housekeeper (${WAGE.housekeeper} gold a day). They do your laundry and dishes for you.` : 'Nobody yet. Talk to a resident to offer them a job as your housekeeper.'}</div>`;
     else if (tab === 'politics') {
       const field = gov.field, assets = ctx.assets?.() || 0;
@@ -533,7 +540,12 @@ export function createSociety(ctx) {
       ${G.president === 'player' ? `<h3>Propose a law to the Assembly</h3><div>${allPolicies().filter(p => !p.corrupt && p.ok(stats())).map(p => `<button type="button" data-propose="${p.id}" class="${G.proposal === p.id ? 'on' : ''}">${esc(p.name)}</button>`).join('') || 'Nothing needs doing right now.'}</div>` : ''}`;
     } else if (tab === 'economy') {
       const out = S.eco.out || {}, gdp = S.eco.gdp || 1;
-      body = `<h3>Output by sector · GDP ${fmt(gdp * 1000)} a year</h3><ul>${Object.entries(SECTORS).sort((a, b) => (out[b[0]] || 0) - (out[a[0]] || 0)).map(([k, v]) => `<li>${esc(v.name)} ${bar(100 * (out[k] || 0) / gdp * 4)} · ${v.jobs.join(', ')}${S.eco.boost[k] ? ` · +${Math.round(S.eco.boost[k] * 100)}% from new tech` : ''}</li>`).join('')}</ul>
+      const byStage = {}; for (const [k, v] of Object.entries(out)) byStage[STAGE_OF_SECTOR[k] || 'tertiary'] = (byStage[STAGE_OF_SECTOR[k] || 'tertiary'] || 0) + v;
+      const W = S.waste || { totals: {}, landfill: 0, cap: 1, pollution: 0, backlog: 0, rate: .15 };
+      body = `<h3>The economy by stage</h3><div class="row">${STAGES.slice(0, 4).map(s => `<div>${s} ${bar(100 * (byStage[s] || 0) / gdp)}%</div>`).join('')}<div>quinary: the top decisions (government, courts, heads of universities and charities)</div></div>
+      <h3>Waste (nothing just disappears)</h3><div>Recycled ${Math.round(100 * Math.min(.7, W.rate + (S.projects?.recycling?.done ? .15 : 0) + (S.orgs?.slBonus || 0)))}% of sorted rubbish · landfill ${bar(100 * W.landfill / W.cap)}% full · pollution ${bar(W.pollution)} · ${Math.round(W.backlog)} tonnes waiting to be collected</div>
+      <div style="opacity:.75">So far: ${fmt(W.totals.generated || 0)} t thrown away → ${fmt(W.totals.recycled || 0)} recycled back into steel, glass, plastic and fabric · ${fmt(W.totals.composted || 0)} composted into biomass · ${fmt(W.totals.burned || 0)} burned for power · ${fmt(W.totals.landfilled || 0)} buried.</div>
+      <h3>Output by sector · GDP ${fmt(gdp * 1000)} a year</h3><ul>${Object.entries(SECTORS).sort((a, b) => (out[b[0]] || 0) - (out[a[0]] || 0)).map(([k, v]) => `<li>${esc(v.name)} ${bar(100 * (out[k] || 0) / gdp * 4)} · ${v.jobs.join(', ')}${S.eco.boost[k] ? ` · +${Math.round(S.eco.boost[k] * 100)}% from new tech` : ''}</li>`).join('')}</ul>
       <h3>Companies</h3><ul>${S.companies.map(co => `<li><b>${esc(co.name)}</b> (${esc(SECTORS[co.sector].name)}) · worth ${fmt(co.value)} · founder ${esc(nameOf(co.founder))} · researching ${esc(co.focus)} ${bar(co.rd)}%${co.gen ? ' · generation ' + co.gen : ''}</li>`).join('')}</ul>
       <h3>Supply chain: raw material → product → service</h3><div style="opacity:.75">Nothing appears from nowhere: everything is made from something that already existed. Stock on hand in brackets.</div>
       <div><b>Primary</b> (farmed, mined, quarried, drilled): ${RAW.map(r => `${esc(r.name)} · ${esc(r.company)} (${fmt(S.stock?.[r.code] || 0)})`).join(' · ')}</div>
@@ -543,6 +555,10 @@ export function createSociety(ctx) {
       <h3>Ideas residents found online</h3><ul>${PROJECTS.filter(p => S.research[p.id]).map(p => { const r = S.research[p.id], pr = S.projects[p.id];
         const status = pr?.done ? '✅ built' : pr?.waiting ? `⏳ waiting for materials${pr.short ? ': short of ' + Object.entries(pr.short).map(([k, n]) => n + ' ' + (ALL[k]?.name || k)).join(', ') : ''}` : pr ? `🏗 being built: ${Math.round(100 * clamp((Date.now() - pr.start) / (pr.end - pr.start), 0, 1))}%` : r.advanced ? 'proposed to the Assembly' : 'not needed';
         return `<li><b>${esc(p.name)}</b> (${status}). ${esc(nameOf(r.by))}: "${esc(r.summary)}"${r.sources.length ? ' Sources: ' + r.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:#9fd3ff">${esc(s.title || 'link')}</a>`).join(', ') : ''}</li>`; }).join('') || '<li>Nobody has gone looking yet. Residents read up on new ideas about every half hour.</li>'}</ul>`;
+    } else if (tab === 'orgs') {
+      const O = S.orgs || { funds: {}, helped: {} };
+      body = `<div style="opacity:.8">Public bodies are paid for by taxes, private companies run for profit, charities live on donations, social enterprises trade but put their profits into a social purpose, co-operatives are owned by their members, and NGOs campaign and volunteer.</div>
+      ${TYPES.map(t => { const list = ORGS.filter(o => o.type === t); return list.length ? `<h3>${esc(t)} (${list.length})</h3><ul>${list.map(o => `<li><b>${esc(o.name)}</b> · ${o.stage} · ${esc(o.does)}${O.funds[o.name] != null ? ` · funds ${fmt(O.funds[o.name])}` : ''}${O.helped[o.name] ? ` · helped ${fmt(O.helped[o.name])} times` : ''}${t === 'charity' || t === 'NGO' ? ` <button type="button" data-donate="${esc(o.name)}" data-amt="100">Donate 100</button><button type="button" data-donate="${esc(o.name)}" data-amt="1000">Donate 1,000</button>` : ''}</li>`).join('')}</ul>` : ''; }).join('')}`;
     } else if (tab === 'atlas') {
       const L = atlasLevel(S.atlas.data), next = ATLAS_LEVELS[L + 1];
       body = `<h3>ATLAS, the national AI (Capital)</h3><div>Level ${L}: <b>${ATLAS_LEVELS[L].name}</b>. ${ATLAS_LEVELS[L].does}</div>
@@ -566,6 +582,7 @@ export function createSociety(ctx) {
     if (d.leave != null) return say2(gov.actions.leave());
     if (d.run) return say2(gov.actions.run(d.run, d.city));
     if (d.propose) return say2(gov.actions.propose(d.propose));
+    if (d.donate) { const n = +d.amt; if (ctx.gold() < n) return say2(`You need ${n} gold to give that.`); ctx.addGold(-n); const O = S.orgs ||= { funds: {}, helped: {} }; O.funds[d.donate] = (O.funds[d.donate] || 0) + n; S.fameAcc += n / 400; if (S.fame >= 20) for (const c of citizens) c.opinion = clamp(c.opinion + n / 2000, -100, 100); news(`The newcomer gave ${n} gold to ${d.donate}.`, false); return say2(`💛 Thank you. ${d.donate} received ${n} gold.`); }
     if (d.askgo != null) { const q = panel.querySelector('[data-ask]').value.trim(), out = panel.querySelector('[data-answer]'); if (!q) return; out.textContent = 'ATLAS is thinking…';
       ctx.askAtlas?.(q, { year: Math.floor(S.tick / YEAR) + 1, president: gov.candName({ id: S.gov.president }), approval: Math.round(S.approval), crime: Math.round(S.crime), treasury: Math.round(S.treasury), tax: S.tax, atlasLevel: S.atlas.level, dev: Math.round(S.dev), discoveries: S.sci.list.slice(0, 3).map(x => x.name), finds: S.dig.finds.slice(-3).map(x => x.relic) })
         .then(a => { out.textContent = a || 'ATLAS is offline right now.'; nation.feedAtlas(2); }).catch(() => { out.textContent = 'ATLAS is offline right now.'; }); return; }

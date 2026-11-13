@@ -70,6 +70,7 @@ export function chainText(code, depth = 0) {
 export function stepSupply(S, workers, boost = {}) {
   const st = S.stock ||= {};
   for (const r of RAW) st[r.code] = Math.min(5000, (st[r.code] || 0) + (.8 + workers(r.sector) * .08) * (1 + (boost[r.sector] || 0)));
+  let made = 0;
   const start = (S.tick || 0) % MADE.length;   // factories take turns at the shared inputs
   for (let i = 0; i < MADE.length; i++) { const m = MADE[(start + i) % MADE.length];
     // each factory leaves a reserve of every input for the others (and for building sites) to use
@@ -77,7 +78,9 @@ export function stepSupply(S, workers, boost = {}) {
     if (can <= 0 || (st[m.code] || 0) > 3000) continue;
     for (const [k, n] of Object.entries(m.inputs)) st[k] -= can * n;
     st[m.code] = (st[m.code] || 0) + can;
+    made += can;
   }
+  return made;
 }
 // take materials out of stock for something being built; returns what is short (nothing if it's all there)
 export function consume(S, need) {
@@ -85,4 +88,29 @@ export function consume(S, need) {
   if (short.length) return Object.fromEntries(short.map(([k, n]) => [k, Math.ceil(n - (st[k] || 0))]));
   for (const [k, n] of Object.entries(need)) st[k] -= n;
   return null;
+}
+
+// WASTE — waste doesn't just disappear. Homes throw rubbish away, food goes off, and every factory leaves
+// offcuts, slag and scraps. Westhaven Waste Services collects what it can (more with a bigger cleaning
+// budget); the rest piles up in the streets. What is collected is sorted:
+//   recycled  → back into stock as steel, glass, plastic and fabric (Second Life Recycling helps)
+//   composted → food waste becomes biomass for the farms and labs
+//   burned    → the incinerator makes a little power (and a little pollution)
+//   landfill  → whatever is left; when the landfill is full, pollution rises and people get ill.
+export function stepWaste(S, people, made, recyclingBonus = 0) {
+  const W = S.waste ||= { landfill: 0, cap: 20000, pollution: 0, backlog: 0, totals: { generated: 0, recycled: 0, composted: 0, burned: 0, landfilled: 0 }, rate: .15 };
+  const homes = people * .02 * (S.laws?.plasticBan ? .85 : 1), industry = made * .15, gen = homes + industry + W.backlog;
+  const capacity = 6 + (S.budget?.clean || .14) * 70;
+  const collected = Math.min(gen, capacity);
+  W.backlog = Math.min(2000, gen - collected);
+  const food = collected * .3, rate = Math.min(.7, W.rate + recyclingBonus), recycled = (collected - food) * rate, composted = food * .8, burned = (collected - food - recycled) * .2;
+  const landfilled = collected - recycled - composted - burned;
+  const st = S.stock ||= {};
+  st.stl = (st.stl || 0) + recycled * .25; st.gls = (st.gls || 0) + recycled * .25; st.pls = (st.pls || 0) + recycled * .3; st.fab = (st.fab || 0) + recycled * .1;
+  st.bms = (st.bms || 0) + composted * .5;
+  W.landfill += landfilled;
+  const over = Math.max(0, W.landfill - W.cap);
+  W.pollution = Math.max(0, Math.min(100, W.pollution * .995 + burned * .01 + W.backlog * .002 + over * .001));
+  for (const [k, v] of [['generated', homes + industry], ['recycled', recycled], ['composted', composted], ['burned', burned], ['landfilled', landfilled]]) W.totals[k] += v;
+  return { burned, backlog: W.backlog, pollution: W.pollution, over };
 }

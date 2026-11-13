@@ -2,7 +2,8 @@
 // AI in the Capital), scientists' discoveries and the temple dig. Runs every city hour from society.js.
 // The country only moves forward: its DEVELOPMENT level never drops, and as it rises the basic standards
 // (clean streets, health, roads, schools) have a higher floor, so the cities go from good to better.
-import { stepSupply } from './supply-chain.js';
+import { stepSupply, stepWaste } from './supply-chain.js';
+import { ORGS } from './organisations.js';
 import { SECTORS, sectorOfJob, COMPANIES, ATLAS_LEVELS, atlasLevel, makeDiscovery, RELICS, DIG_STAGES } from './nation.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -43,7 +44,12 @@ export function createNationSim(api) {
     E.gdp = gdp;
     S.treasury += gdp * S.tax / 100 * .06 + (lvl >= 1 ? 2 : 0);   // business taxes, and the grid savings once ATLAS runs it
     // raw materials are extracted and turned into materials and goods (supply-chain.js)
-    stepSupply(S, workers, E.boost);
+    const made = stepSupply(S, workers, E.boost);
+    // ...and nothing is thrown away into thin air: rubbish is collected, recycled, composted, burned or buried
+    const w = stepWaste(S, citizens.length, made, (S.projects?.recycling?.done ? .15 : 0) + (S.orgs?.slBonus || 0));
+    S.clean = clamp(S.clean - w.backlog * .002, 0, 100); S.health = clamp(S.health - w.pollution * .004, 0, 100); S.treasury += w.burned * .5;
+    if (w.over > 0 && S.tick % 24 === 0) news('⚠️ The landfill is full. Rubbish is spilling over and pollution is rising. The Assembly needs to act.', true);
+    if (S.tick % 24 === 0) charities();
     // companies research, grow and occasionally make a breakthrough
     for (const co of S.companies) {
       co.value *= 1 + .0005 * (1 + (E.boost[co.sector] || 0));
@@ -88,6 +94,27 @@ export function createNationSim(api) {
     const floor = 15 + S.dev * .55;
     S.clean = Math.max(S.clean, floor); S.health = Math.max(S.health, floor); S.roads = Math.max(S.roads, floor); S.edu = Math.max(S.edu, floor);
     S.crime = Math.min(S.crime, 100 - S.dev * .6);
+  }
+  // charities live on donations, social enterprises on trade, and both put the money into helping people
+  function charities() {
+    const O = S.orgs ||= { funds: {}, helped: {}, slBonus: 0 };
+    const givers = ORGS.filter(o => o.type === 'charity' || o.type === 'NGO');
+    for (const c of citizens) if (!c.jail && c.traits.kindness > .6 && c.wealth > 300) { const d = c.wealth * .02, g = givers[c.id % givers.length]; c.wealth -= d; O.funds[g.name] = (O.funds[g.name] || 0) + d; }
+    const help = (name, cost, fn) => { let n = 0; while ((O.funds[name] || 0) >= cost && n < 20) { if (!fn()) break; O.funds[name] -= cost; n++; } if (n) O.helped[name] = (O.helped[name] || 0) + n; return n; };
+    const poor = () => citizens.filter(c => !c.jail && c.wealth < 60).sort((a, b) => a.wealth - b.wealth);
+    let fed = 0; help('A.T. Food Bank', 15, () => { const c = poor()[fed++]; if (!c) return false; c.hunger = 100; c.mood += 4; return true; });
+    let housed = 0; help('Shelter of Hope', 30, () => { const list = poor().filter(c => c.job === 'Unemployed'), c = (list.length ? list : poor())[housed++]; if (!c) return false; c.wealth += 25; c.mood += 6; return true; });
+    help('Riverside Animal Rescue', 50, () => { E.boost.tourism = (E.boost.tourism || 0) + .002; return true; });
+    help('Wild A.T. Trust', 50, () => { E.boost.tourism = (E.boost.tourism || 0) + .002; return true; });
+    help('Clean Coasts Collective', 30, () => { S.clean = clamp(S.clean + .5, 0, 100); if (S.waste) S.waste.pollution = Math.max(0, S.waste.pollution - .3); return true; });
+    help('Open Code A.T.', 60, () => { E.boost.tech = (E.boost.tech || 0) + .002; return true; });
+    // social enterprises: Second Life Recycling hires people who struggle to find work, and recycles more as it grows
+    const hire = citizens.filter(c => c.job === 'Unemployed' && !c.jail && c.age < 66).slice(0, 2);
+    for (const c of hire) { c.job = 'Recycling worker'; remember(c, 'Got a job at Second Life Recycling'); c.mood += 10; }
+    O.slBonus = Math.min(.15, (O.slBonus || 0) + hire.length * .003);
+    // Common Table Café: its profits pay for free meals
+    for (const c of poor().slice(0, 5)) c.hunger = Math.max(c.hunger, 90);
+    O.helped['Common Table Café'] = (O.helped['Common Table Café'] || 0) + Math.min(5, poor().length);
   }
   function breakthrough(co) {
     const founder = nameOf(co.founder);

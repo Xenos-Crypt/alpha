@@ -6,7 +6,7 @@
 //  • self-driving cars: as Velo Motors releases them, more and more traffic has no driver and a sensor on the roof.
 import * as THREE from 'three';
 
-export const ATLAS_BASE = { x: 80, z: 922 }, TEMPLE_DIG = { x: -147, z: -357 };
+export const ATLAS_BASE = { x: 80, z: 922 }, TEMPLE_DIG = { x: -147, z: -357 }, WASTE_CENTRE = { x: 283, z: -411 };
 
 export function buildAtlasWorld(ctx) {
   const { scene, groundY, S } = ctx;
@@ -71,6 +71,22 @@ export function buildAtlasWorld(ctx) {
   ctx.interactables.push({ pos: new THREE.Vector3(T.x, ty, T.z - 21), r: 3.5, label: 'Talk to the dig director', action: () => ctx.openTab('atlas') });
   ctx.destinations?.push({ name: 'Ancient temple dig', x: T.x, z: T.z - 25 });
 
+  // ---- the waste & recycling centre: the landfill mound grows with what is buried there ----------------
+  const R = WASTE_CENTRE, ry = groundY(R.x, R.z);
+  add(new THREE.BoxGeometry(44, .1, 44), M(0x5d5a52, { roughness: 1 }), R.x, ry + .05, R.z).castShadow = false;
+  const mound = add(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), M(0x6b6151, { roughness: 1 }), R.x + 8, ry, R.z + 6); mound.scale.set(.01, .01, .01);
+  for (const [i, c] of [[0, 0x2e7d4f], [1, 0x7a7f86], [2, 0x8a5a3a]]) { add(new THREE.BoxGeometry(10, 6, 8), M(c, { metalness: .3 }), R.x - 13, ry + 3, R.z - 12 + i * 10); solid(R.x - 18, R.x - 8, R.z - 16 + i * 10, R.z - 8 + i * 10, 6); }
+  const chimney = add(new THREE.CylinderGeometry(.8, 1.1, 18, 12), M(0x9aa0a6), R.x + 15, ry + 9, R.z - 15); solid(R.x + 14, R.x + 16, R.z - 16, R.z - 14, 18);
+  for (let i = 0; i < 6; i++) add(new THREE.BoxGeometry(1.6, 1.2, 1.2), M([0x2f7dd1, 0xe3b43a, 0x3a9a55, 0x7a7f86, 0x8a5a3a, 0x2f7dd1][i]), R.x - 6 + i * 2, ry + .6, R.z - 20);
+  {
+    const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 128; const g = cv.getContext('2d');
+    g.fillStyle = '#1f4d32'; g.fillRect(0, 0, 1024, 128); g.fillStyle = '#eaf5ec'; g.font = 'bold 50px system-ui,sans-serif'; g.textAlign = 'center'; g.fillText('WESTHAVEN WASTE & RECYCLING CENTRE', 512, 62); g.font = '28px system-ui,sans-serif'; g.fillText('Westhaven Waste Services · Second Life Recycling', 512, 104);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+    const s = add(new THREE.PlaneGeometry(10, 1.25), new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide }), R.x, ry + 2.2, R.z - 21.5); s.rotation.y = Math.PI;
+  }
+  ctx.interactables.push({ pos: new THREE.Vector3(R.x, ry, R.z - 19.5), r: 3.5, label: 'Read the waste centre board', action: () => ctx.openTab('economy') });
+  ctx.destinations?.push({ name: 'Waste & Recycling Centre', x: R.x, z: R.z - 25 });
+
   // ---- self-driving cars ---------------------------------------------------------------------------------
   const sensorGeo = new THREE.CylinderGeometry(.22, .26, .22, 12), sensorMat = M(0x1c1f22, { metalness: .6, emissive: 0x2244ff, emissiveIntensity: .4 });
   let carT = 0, t = 0;
@@ -86,6 +102,8 @@ export function buildAtlasWorld(ctx) {
       robots.forEach((h, i) => { const a = t * .25 + i * Math.PI * 2 / Math.max(1, robots.length), R = 11 + (i % 2) * 2.5; h.root.position.set(A.x + Math.cos(a) * R, ay + .4, A.z + Math.sin(a) * R); h.root.rotation.y = -a; ctx.animate(h, true, dt); });
       soldiers.forEach(h => ctx.animate(h, false, dt));
     }
+    // the landfill mound: up to 16 m tall and 18 m across as it fills (and more when it overflows)
+    const fill = S.waste ? Math.min(1.6, S.waste.landfill / S.waste.cap) : 0; mound.scale.set(2 + fill * 11, .3 + fill * 10, 2 + fill * 11);
     // the temple rises as the dig goes on
     const reveal = (S.dig?.progress || 0) / 100;
     temple.position.y = ty - 9.6 * (1 - reveal);

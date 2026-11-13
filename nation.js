@@ -42,7 +42,7 @@ export const SECTORS = {
   agriculture: { name: 'Agriculture', jobs: ['Farmer'], k: 1 },
   resources: { name: 'Mining & natural resources', jobs: ['Miner', 'Forester'], k: 1.3 },
   energy: { name: 'Energy', jobs: ['Power plant operator'], k: 1.6 },
-  utilities: { name: 'Utilities (power & water)', jobs: ['Electrician', 'Plumber'], k: 1.1 },
+  utilities: { name: 'Utilities (power, water & waste)', jobs: ['Electrician', 'Plumber', 'Recycling worker', 'Bin collector'], k: 1.1 },
   manufacturing: { name: 'Manufacturing', jobs: ['Factory worker'], k: 1.2 },
   automotive: { name: 'Automotive', jobs: ['Car engineer', 'Mechanic'], k: 1.4 },
   construction: { name: 'Construction', jobs: ['Builder', 'Architect'], k: 1.1 },

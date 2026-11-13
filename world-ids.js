@@ -22,11 +22,12 @@
 import { INGREDIENTS, AISLES, RECIPES } from './kitchen.js';
 import { SNACKS } from './snack-shop.js';
 import { ALL as SUPPLY, GROCERY_FROM, MAKER, chainText } from './supply-chain.js';
+import { ORGS, TYPE_CODE } from './organisations.js';
 const CODES = {
   np: 'the player', npc: 'resident', po: 'police officer on foot', rb: 'ATLAS robot',
   rp: "building made at the owner's request", bh: 'built by the bots (NPC crews, ATLAS, the residents)', hs: 'house',
   rt: 'road tile', gt: 'city block', gr: 'grass tuft', fl: 'floor tile', sf: 'other surface',
-  gc: 'grocery', fd: 'food', in: 'instrument', mt: 'material (raw or made)', mn: 'dungeon monster (made by ATLAS)',
+  gc: 'grocery', fd: 'food', in: 'instrument', mt: 'material (raw or made)', mn: 'dungeon monster (made by ATLAS)', og: 'organisation (pub public · prv private · chr charity · soc social enterprise · cop co-operative · ngo; then pr/sc/tr/qt/qn stage)',
   vc: "resident's vehicle (traffic)", vg: 'government vehicle (police, ambulance, bus, army)', vo: 'vehicle you own', vs: 'stolen vehicle', vx: 'vehicle got illegally (black market, hot plates)',
 };
 const MAT = { tiles: 'cer', checker: 'cer', terracotta: 'ter', marble: 'mar', wood: 'wd', parquet: 'pqt', carpet: 'cpt', stone: 'stn', tech: 'tch' };
@@ -116,6 +117,7 @@ export function createWorldIds(ctx) {
     // groceries and food: every product on sale, every dish, every snack
     if (!goods) {
       goods = [];
+      for (const o of ORGS) goods.push(add('og', 'o:' + o.name, o, { look: TYPE_CODE[o.type] + { primary: 'pr', secondary: 'sc', tertiary: 'tr', quaternary: 'qt', quinary: 'qn' }[o.stage], kind: `${o.type} · ${o.stage}`, name: o.name, maker: o.does, pos: () => null }));
       // a grocery's code is its own (bre bread, egg eggs…); a dish's code is made of its ingredients' codes,
       // so buttered toast (bread + butter) is …fdbrebut…, and its record links each ingredient's ID
       const ing = id => String(id).slice(0, 3).toLowerCase(), ingIds = {};
@@ -250,8 +252,8 @@ export function createWorldIds(ctx) {
   function render() {
     const counts = {}; for (const e of reg.values()) counts[e.code] = (counts[e.code] || 0) + 1;
     const hit = query ? find(query) : null;
-    const near = filter === 'gr' ? grassNear() : [...reg.values()].filter(e => (filter ? e.code === filter : !['mt', 'gc', 'fd'].includes(e.code)) && dist(e) < 120).sort((a, b) => dist(a) - dist(b)).slice(0, 40);
-    const stock = ['mt', 'gc', 'fd'].includes(filter) ? [...reg.values()].filter(e => e.code === filter) : [];
+    const near = filter === 'gr' ? grassNear() : [...reg.values()].filter(e => (filter ? e.code === filter : !['mt', 'gc', 'fd', 'og'].includes(e.code)) && dist(e) < 120).sort((a, b) => dist(a) - dist(b)).slice(0, 40);
+    const stock = ['mt', 'gc', 'fd', 'og'].includes(filter) ? [...reg.values()].filter(e => e.code === filter) : [];
     panel.innerHTML = `<button class="x" type="button" data-close>Close</button><h2>🆔 World ID tracker</h2>
       <div>Your ID: <b>${playerId}</b> · ${reg.size} things registered</div>
       <div style="margin-top:8px"><input data-q placeholder="Search an ID (e.g. 169273npc820w8x) or a name" value="${esc(query)}"><button type="button" data-find>Find</button><button type="button" data-tags class="${tagsOn ? 'on' : ''}">${tagsOn ? 'Hide' : 'Show'} ID tags in the world</button></div>
