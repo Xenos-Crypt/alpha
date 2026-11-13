@@ -5,10 +5,10 @@ export function buildCapitalServices(ctx){
  // offices open into the council offices with a records library, clerks and the mayor.
  const civicType={'GOVERNMENT OFFICES':'government','CAPITAL SUPERMARKET':'supermarket','CAPITAL CLINIC':'clinic','CAPITAL SCHOOL':'school','POLICE RECEPTION':'police','COMMUNITY MARKET':'market','COMMUNITY CENTRE':'community_centre'};
  for(const [name,x,z,color,action] of services){
- ctx.civicBuildings?.push({type:civicType[name]||'office',name:name.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase()),x,z,minX:x-11,maxX:x+11,minZ:z-9,maxZ:z+9});
- ctx.box(28,.2,28,x,.3,z,0xa6a79e,false);
+ ctx.civicBuildings?.push({type:civicType[name]||'office',name:name.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase()),x,z,minX:x-9.7,maxX:x+9.7,minZ:z-9,maxZ:z+9});   // inside the block, clear of the pavement
+ ctx.box(20,.2,20,x,.3,z,0xa6a79e,false);
  // An open entrance and interior, rather than an unenterable solid box.
- ctx.box(22,6,.4,x,3.4,z+9,color,true);for(const side of [-1,1]){ctx.box(.4,6,18,x+side*11,3.4,z,color,true);ctx.box(8,6,.4,x+side*7,3.4,z-9,color,true);}ctx.box(22,.4,18,x,6.6,z,color,false);
+ ctx.box(19.4,6,.4,x,3.4,z+9,color,true);for(const side of [-1,1]){ctx.box(.4,6,18,x+side*9.7,3.4,z,color,true);ctx.box(6.7,6,.4,x+side*6.35,3.4,z-9,color,true);}ctx.box(19.4,.4,18,x,6.6,z,color,false);
  ctx.box(10,1,2,x,.9,z+5,0x52606a,true);
  const map=ctx.makeTex(512,96,g=>{g.fillStyle='#172c3b';g.fillRect(0,0,512,96);g.fillStyle='white';g.textAlign='center';g.font='bold 27px sans-serif';g.fillText(name,256,60);});const sign=new THREE.Mesh(new THREE.PlaneGeometry(6.5,.8),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));sign.position.set(x,4.7,z-9.25);ctx.scene.add(sign);
  ctx.interactables.push({pos:new THREE.Vector3(x,.4,z+3),r:3,label:name+' service',action});ctx.destinations.push({name,x,z:z-12});
