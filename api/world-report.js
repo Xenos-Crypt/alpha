@@ -9,7 +9,7 @@ function sanitize(list){
   if(!Array.isArray(list))return null;
   return list.slice(0,20).map(r=>({cat:cleanText(r?.cat,30),title:cleanText(r?.title,60),x:clampNum(r?.x,-1e5,1e5),z:clampNum(r?.z,-1e5,1e5),count:clampNum(r?.count,0,1e6),fixed:clampNum(r?.fixed,0,1e6),
     who:Array.isArray(r?.who)?r.who.slice(0,6).map(w=>cleanText(w,40)):[],words:cleanText(r?.words,500),status:cleanText(r?.status,80),
-    ids:Array.isArray(r?.ids)?r.ids.slice(0,6).map(i=>cleanText(i,20)).filter(i=>/^\d{6}[a-z]+[0-9a-z]{6}$/.test(i)):[],reporters:Array.isArray(r?.reporters)?r.reporters.slice(0,6).map(i=>cleanText(i,20)).filter(i=>/^\d{6}[a-z]+[0-9a-z]{6}$/.test(i)):[]})).filter(r=>r.cat);
+    ids:Array.isArray(r?.ids)?r.ids.slice(0,6).map(i=>cleanText(i,20)).filter(i=>/^\d{6}[a-z]+\d[0-9a-z]{5}$/.test(i)):[],reporters:Array.isArray(r?.reporters)?r.reporters.slice(0,6).map(i=>cleanText(i,20)).filter(i=>/^\d{6}[a-z]+\d[0-9a-z]{5}$/.test(i)):[]})).filter(r=>r.cat);
 }
 async function toGitHub(reports){
   const token=process.env.GITHUB_TOKEN;if(!token)return false;

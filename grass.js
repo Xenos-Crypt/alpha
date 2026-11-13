@@ -46,8 +46,9 @@ export function createGrass({ scene, count = 3500, radius = 38, spot }) {
     const y = spot(x, z);
     if (y == null) { p.ok = false; mesh.setMatrixAt(i, zero); return; }
     p.ok = true;
-    const s = 0.6 + Math.random() * 0.6;
-    mesh.setMatrixAt(i, m4.compose(v.set(x, y + 0.01, z), q.setFromAxisAngle(up, Math.random() * 6.28), sc.set(s, s * (0.8 + Math.random() * 0.5), s)));
+    const s = 0.6 + Math.random() * 0.6, tall = 0.8 + Math.random() * 0.5;
+    p.s = s; p.tall = tall;   // how it looks (short / medium / long), used for its world ID
+    mesh.setMatrixAt(i, m4.compose(v.set(x, y + 0.01, z), q.setFromAxisAngle(up, Math.random() * 6.28), sc.set(s, s * tall, s)));
   }
   function update(dt, player, visible = true) {
     time.value += dt;
@@ -67,5 +68,5 @@ export function createGrass({ scene, count = 3500, radius = 38, spot }) {
     }
     if (changed) mesh.instanceMatrix.needsUpdate = true;
   }
-  return { update, mesh, setCount(n) { mesh.count = Math.max(0, Math.min(count, n)); } };
+  return { update, mesh, tufts: () => pts, setCount(n) { mesh.count = Math.max(0, Math.min(count, n)); } };
 }

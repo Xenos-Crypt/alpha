@@ -26,21 +26,23 @@ const WORDS = {
   'building-on-road': ['A building stands right across the road here. Who builds on a road? I petition the Lawgiver to move it.', 'The road runs straight into a building. It makes no sense. Lawgiver, please fix it.'],
   'shabby-building': ["This building doesn't look nice: it is falling apart. I ask the Lawgiver to have it rebuilt.", 'What an eyesore. Peeling, cracked, run-down. Surely the Lawgiver meant better for this street.'],
   'note': [''],
+  'grass-on-road': ['Grass is growing straight through the road.'], 'grass-in-building': ['Grass is growing inside a building.'],
+  'surface-overlap': ['Two floors lie on top of each other and flicker.'], 'building-overlap': ['Two buildings stand inside each other.'],
 };
-const TITLES = { 'car-on-water': 'Car driving on water', 'car-in-building': 'Car inside a building', 'person-floating': 'Person floating', 'person-underground': 'Person in the ground', 'person-stuck': 'Person stuck', 'building-on-road': 'Building across a road', 'shabby-building': "Building doesn't look nice", note: 'Note from the newcomer' };
+const TITLES = { 'car-on-water': 'Car driving on water', 'car-in-building': 'Car inside a building', 'person-floating': 'Person floating', 'person-underground': 'Person in the ground', 'person-stuck': 'Person stuck', 'building-on-road': 'Building across a road', 'shabby-building': "Building doesn't look nice", note: 'Note from the newcomer', 'grass-on-road': 'Grass on a road', 'grass-in-building': 'Grass inside a building', 'surface-overlap': 'Overlapping surfaces', 'building-overlap': 'Buildings inside each other' };
 
 export function createWorldWatch(ctx) {
   let list = []; try { list = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 200))); } catch { } };
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  function report(cat, pos, { who = null, fixed = false, words = null, subject = null } = {}) {
+  function report(cat, pos, { who = null, fixed = false, words = null, subject = null, ids = null } = {}) {
     const key = cat + ':' + Math.round(pos.x / 25) + ',' + Math.round(pos.z / 25);
     let r = list.find(x => x.key === key);
     const name = who ? (ctx.nameOf(who) || 'A resident') : 'A resident';
     if (!r) { r = { key, cat, title: TITLES[cat], x: Math.round(pos.x), z: Math.round(pos.z), first: Date.now(), count: 0, fixed: 0, who: [], words: words || pick(WORDS[cat]), sent: false }; list.unshift(r); ctx.onNew?.(r, name); }
     // the IDs of what was seen and who saw it, so the Lawgiver knows exactly which thing it is
     const sid = subject ? ctx.idOf?.(subject) : /building/.test(cat) ? ctx.nearestId?.(pos, ['rp', 'bh', 'hs']) : null, wid = who ? ctx.idOf?.(who) : ctx.playerId?.();
-    r.ids ||= []; if (sid && !r.ids.includes(sid) && r.ids.length < 6) r.ids.push(sid); r.reporters ||= []; if (wid && !r.reporters.includes(wid) && r.reporters.length < 6) r.reporters.push(wid);
+    r.ids ||= []; for (const i of [sid, ...(ids || [])]) if (i && !r.ids.includes(i) && r.ids.length < 6) r.ids.push(i); r.reporters ||= []; if (wid && !r.reporters.includes(wid) && r.reporters.length < 6) r.reporters.push(wid);
     r.count++; r.last = Date.now(); if (fixed) r.fixed++; if (!r.who.includes(name) && r.who.length < 6) r.who.push(name);
     r.status = fixed ? 'Put right by the Rule Keepers (the cause is with the Lawgiver)' : 'Awaiting the Lawgiver';
     r.sent = false; save();
