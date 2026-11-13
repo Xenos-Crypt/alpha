@@ -3589,10 +3589,15 @@ function applyHit(e, h) {
     e.vel.z += dir.z * (h.kb || 0);
     if (h.up) { e.vel.y = h.up; e.onGround = false; }
   }
-  if (e.kind === 'npc') {   // people run away, everyone nearby reacts, and the police get called
-    if (e.hp > 0 && e.hp <= 15) { e.ped.state = 'down'; e.ped.downT = 0; }
-    else { e.ped.state = 'panic'; e.ped.panicT = 6; }
+  if (e.kind === 'npc' && e.cop) {   // you hit a police officer: they fight back, and it's called in
+    if (byPlayer) { e.copAngry = 14; if (!e.copWarned) { e.copWarned = true; toast('👮 "Assaulting an officer! Get on the ground!" Backup is on its way.'); } raiseWanted(Math.min(200, Math.max(60, wanted + 40))); }
     reactBystanders(p, byPlayer);
+  } else if (e.kind === 'npc') {   // people run away (or square up to you), everyone nearby reacts, and the police get called
+    e.brave ??= Math.random() < 0.35;
+    reactBystanders(p, byPlayer);   // (first: it sets everyone nearby panicking, this person included)
+    if (e.hp > 0 && e.hp <= 15) { e.ped.state = 'down'; e.ped.downT = 0; }
+    else if (byPlayer && e.brave && e.ped.state !== 'down') { if (e.ped.state !== 'brawl') toast(['"Oi! You want some?"', '"Who do you think you are?!"', '"Right, come on then!"'][Math.floor(Math.random() * 3)]); e.ped.state = 'brawl'; e.ped.brawlT = 14; }
+    else { e.ped.state = 'panic'; e.ped.panicT = 6; }
   }
 
   // Damage numbers only appear for hits the player made; other people's fights and
@@ -3661,6 +3666,9 @@ function killEnemy(e, byPlayer = true) {
     popText(at(e.root.position, e.height + 0.6), `+${gold} gold`, 'info');
     gainXp(xp);
     if (e.superArmor) impactFrame(1.5);
+  } else if (e.kind === 'npc' && e.cop) {
+    e.respawn = 1e9; popText(at(e.root.position, 2.2), 'K.O.', 'break');
+    if (byPlayer) { raiseWanted(Math.min(240, Math.max(110, wanted + 50))); toast('🚨 Officer down! Every unit in the area is coming for you.'); gainXp(10); villainKills++; try { localStorage.setItem('villainKills', String(villainKills)); } catch {} if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); } saveAlignment(); }
   } else if (e.kind === 'npc') {
     e.respawn = 20;
     popText(at(e.root.position, 2.2), 'K.O.', 'break');
@@ -4225,7 +4233,7 @@ function dispatchAnimalControl(animal) {
 function reactBystanders(center, criminal) {
   for (const o of peds) {
     if (!o.alive || o.hidden) continue;
-    if (['boarding', 'riding', 'down', 'cpr'].includes(o.ped.state)) continue;
+    if (['boarding', 'riding', 'down', 'cpr', 'brawl'].includes(o.ped.state)) continue;
     const d = distXZ(o.root.position, center);
     if (d < 15) { o.ped.state = 'panic'; o.ped.panicT = 5 + Math.random() * 2; }
     else if (d < 45 && o.ped.state !== 'panic') {
@@ -4301,6 +4309,7 @@ function dispatchDeathAmbulance(e) {
 }
 function updatePed(e, dt) {
   const s = e.ped, p = e.root.position;
+  if (s.state === 'cop') return;   // officers on foot are run by policeOnFoot()
   // Skip full pathing/animation work for ordinary wandering peds far from the
   // player — with 4 separate populated districts, most of them aren't visible
   // at any given moment anyway. Anything mid-reaction (panic, down, boarding,
@@ -4315,6 +4324,17 @@ function updatePed(e, dt) {
   if (e.h.usingPhone) speed *= 0.7;
   if (e.stun > 0 || !e.onGround) { animateHumanoid(e.h, e.stun > 0 ? 'stunned' : null, false, false, e.onGround, dt); return; }
   switch (s.state) {
+    case 'brawl': {   // squaring up to you: chases you and throws punches, gives up after a while or if you get away
+      s.brawlT -= dt; s.punchCd = (s.punchCd || 0) - dt;
+      const tp = player.position, d = distXZ(p, tp);
+      if (s.brawlT <= 0 || d > 25 || inCar || stats.hp <= 0) { s.state = 'wander'; s.node = nearestCorner(p, s.bounds); s.prev = null; s.target = cornerPos(s.node); break; }
+      e.root.rotation.y = lerpAngle(e.root.rotation.y, Math.atan2(tp.x - p.x, tp.z - p.z), 1 - Math.exp(-10 * dt));
+      if (d > 1.25) { moving = walkTowards(e, tp, 3.8, dt); animateHumanoid(e.h, null, moving, true, e.onGround, dt); break; }
+      animateHumanoid(e.h, null, false, false, e.onGround, dt);
+      if (s.punchCd <= 0) { s.punchCd = 0.9 + Math.random() * 0.5; e.h.armR.pivot.rotation.x = -1.6; hurtPlayer(4 + Math.random() * 4, p, 4, 'Beaten up in a street fight'); }
+      else e.h.armR.pivot.rotation.x = lerp(e.h.armR.pivot.rotation.x, -0.4, 1 - Math.exp(-8 * dt));
+      break;
+    }
     case 'down': {
       s.downT = (s.downT || 0) + dt;
       animateHumanoid(e.h, 'stunned', false, false, e.onGround, dt);
@@ -4600,7 +4620,7 @@ function hitAround(center, r, hits, h, maxDy = 3) {
     }
   }
   for (const e of enemies) {
-    if (!e.alive || hits?.has(e)) continue;
+    if (!e.alive || e.hidden || hits?.has(e)) continue;
     if (distXZ(e.root.position, center) > r + e.radius || Math.abs(e.root.position.y - center.y) > maxDy) continue;
     applyHit(e, Object.assign({ from: center }, h));
     hits?.add(e);
@@ -4613,7 +4633,7 @@ function hitCone(origin, dir, range, minDot, hits, h, maxDy = 2.5) {
  for(let i=0;i<lampSpots.length;i++){const p=lampSpots[i],d=p.clone().sub(origin).setY(0);if(!lampBroken[i]&&Math.abs(p.y-origin.y)<=maxDy&&d.length()<range+.3&&(d.length()<.6||d.normalize().dot(dir)>=minDot))breakLamp(i);}
   let n = hitVehicles(origin, range, hits, h, maxDy, dir, minDot);
   for (const e of enemies) {
-    if (!e.alive || hits?.has(e)) continue;
+    if (!e.alive || e.hidden || hits?.has(e)) continue;
     const d = new THREE.Vector3(e.root.position.x - origin.x, 0, e.root.position.z - origin.z);
     const len = d.length();
     if (len > range + e.radius || Math.abs(e.root.position.y - origin.y) > maxDy) continue;
@@ -4630,7 +4650,7 @@ function aimForward() {
   const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
   let best = null, bestScore = 0.8;
   for (const e of enemies) {
-    if (!e.alive) continue;
+    if (!e.alive || e.hidden) continue;
     const d = new THREE.Vector3(e.root.position.x - player.position.x, 0, e.root.position.z - player.position.z);
     const len = d.length();
     if (len > 12 || len < 0.01) continue;
@@ -4645,7 +4665,7 @@ function aimForward() {
 function aimMelee() {
   let best = null, bestD = 4.5;
   for (const e of enemies) {
-    if (!e.alive) continue;
+    if (!e.alive || e.hidden) continue;
     const d = distXZ(e.root.position, player.position);
     if (d < bestD && Math.abs(e.root.position.y - player.position.y) < 2) { bestD = d; best = e; }
   }
@@ -4755,7 +4775,7 @@ function updateProjectiles(dt) {
     spawnParticle(pr.m.position, randUnit().multiplyScalar(1.2), pick([pr.color, 0xffffff]), (pr.size || 0.25) * 0.6, 0.3);
     let done = pr.dist > pr.range || insideCollider(pr.m.position) || pr.m.position.y < groundY(pr.m.position.x, pr.m.position.z);
     for (const e of enemies) {
-      if (!e.alive || pr.hits.has(e)) continue;
+      if (!e.alive || e.hidden || pr.hits.has(e)) continue;
       const c = at(e.root.position, e.height * 0.5);
       if (c.distanceTo(pr.m.position) > (pr.size || 0.4) + e.radius + 0.5) continue;
       if (pr.pierce) { pr.hits.add(e); applyHit(e, Object.assign({ from: pr.m.position.clone().addScaledVector(pr.vel, -0.1) }, pr.hit)); }
@@ -4856,7 +4876,7 @@ function spawnTornado(pos, o) {
     g.scale.setScalar(Math.min(1, t * 4));
     if (Math.random() < 0.6) spawnParticle(at(pos, Math.random() * 6 * o.scale), randUnit().multiplyScalar(3), pick([o.color, 0xffffff]), 0.12, 0.5);
     for (const e of enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || e.hidden) continue;
       const d = distXZ(e.root.position, pos);
       if (d > o.pullR) continue;
       const k = 1 - Math.exp(-5 * dt);
@@ -7120,18 +7140,33 @@ function policeOnFoot(v, ai, dt) {
   car.x += Math.sin(v.group.rotation.y) * v.speed * dt; car.z += Math.cos(v.group.rotation.y) * v.speed * dt; car.y = groundY(car.x, car.z);
   const o = ai.officer ??= { h: makeHumanoid({ outfit: 0x243c58, hair: 0x2b1d14, pants: 0x1c2f43, skin: [0x8d5a3b, 0xd9a07a, 0xffdcc0, 0x6b4430][Math.floor(Math.random() * 4)] }), out: false, cuff: 0, back: false };
   if (!o.h.cap) { const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.12, 12), new THREE.MeshStandardMaterial({ color: 0x1c2f43 })); cap.position.y = 1.9; o.h.rig.add(cap); o.h.cap = cap; }
-  if (!o.out) { if (Math.abs(v.speed) > 1) return; const side = new THREE.Vector3(Math.cos(v.group.rotation.y), 0, -Math.sin(v.group.rotation.y)).multiplyScalar(1.4); o.h.root.position.copy(car).add(side); o.h.root.visible = true; o.out = true; o.back = false; o.cuff = 0; toast('👮 An officer jumps out: "Stay where you are! Hands where I can see them!"'); }
+  // nobody is untouchable: the officer is a body you can hit (and knock out)
+  o.e ??= makeEnemy({ kind: 'npc', cop: true, h: o.h, root: o.h.root, radius: 0.35, height: 1.9, maxHp: 160, flashMats: o.h.flashMats, hidden: !o.out, ped: { state: 'cop', bounds: null } });
+  if (!o.e.alive) { o.cuff = 0; if (!o.downNoted) { o.downNoted = true; o.out = true; } return; }   // knocked out: lies there; the car waits
+  o.e.hidden = !o.out;
+  if (!o.out) { if (Math.abs(v.speed) > 1) return; const side = new THREE.Vector3(Math.cos(v.group.rotation.y), 0, -Math.sin(v.group.rotation.y)).multiplyScalar(1.4); o.h.root.position.copy(car).add(side); o.h.root.visible = true; o.out = true; o.back = false; o.cuff = 0; toast('👮 An officer jumps out: "Stay where you are! Hands where I can see them!"'); } o.e.hidden = !o.out;
   const target = inCar ? driving.group.position : player.position, op = o.h.root.position;
   const toYou = Math.hypot(target.x - op.x, target.z - op.z), toCar = Math.hypot(car.x - op.x, car.z - op.z);
   if (!o.back && (toYou > 38 || (inCar && Math.abs(driving.speed) > 4))) { o.back = true; toast('👮 The officer gives up the foot chase and runs back to the car.'); }
   const goal = o.back ? car : target, gd = o.back ? toCar : toYou;
-  if (o.back && toCar < 1.8) { o.out = false; o.h.root.visible = false; return; }   // back in the car, the chase goes on
+  if (o.back && toCar < 1.8) { o.out = false; o.h.root.visible = false; o.e.hidden = true; return; }   // back in the car, the chase goes on
+  if (o.e.stun > 0) return;
+  // you hit them: they stop trying to cuff you and fight (baton), until you go down or they lose you
+  o.e.copAngry = Math.max(0, (o.e.copAngry || 0) - dt);
+  if (o.e.copAngry > 0 && !o.back && !inCar && toYou <= 1.4) {
+    o.h.root.rotation.y = Math.atan2(target.x - op.x, target.z - op.z); animateHumanoid(o.h, null, false, false, true, dt);
+    o.hitCd = (o.hitCd || 0) - dt;
+    if (o.hitCd <= 0) { o.hitCd = 0.85; o.h.armR.pivot.rotation.x = -1.7; hurtPlayer(7 + Math.random() * 5, op, 5, 'Beaten by a police officer'); }
+    else o.h.armR.pivot.rotation.x = lerp(o.h.armR.pivot.rotation.x, -0.5, 1 - Math.exp(-8 * dt));
+    if (stats.hp < 25) { o.e.copAngry = 0; toast('👮 You\'re down. The cuffs go on.'); o.out = false; o.h.root.visible = false; o.e.hidden = true; o.cuff = 0; arrestPlayer(); }
+    return;
+  }
   if (gd > 1.1) { const sp = Math.min(gd, 6.2 * dt); const dx = (goal.x - op.x) / gd, dz = (goal.z - op.z) / gd; op.x += dx * sp; op.z += dz * sp; collide(op, 0.35); op.y = groundY(op.x, op.z); o.h.root.rotation.y = Math.atan2(dx, dz); animateHumanoid(o.h, null, true, true, true, dt); o.cuff = Math.max(0, o.cuff - dt); }
   else if (!o.back) {   // right next to you: cuffs on if you don't break away
     o.h.root.rotation.y = Math.atan2(target.x - op.x, target.z - op.z); animateHumanoid(o.h, null, false, false, true, dt); o.h.armR.pivot.rotation.x = o.h.armL.pivot.rotation.x = -1.3;
     if (o.cuff === 0) toast(inCar ? '👮 The officer yanks your door open: "Out of the car!"' : '👮 "You\'re under arrest." Run now or the cuffs go on!');
     o.cuff += dt;
-    if (o.cuff > 1.6) { if (inCar) exitVehicle(true); o.out = false; o.h.root.visible = false; o.cuff = 0; arrestPlayer(); }
+    if (o.cuff > 1.6) { if (inCar) exitVehicle(true); o.out = false; o.h.root.visible = false; o.e.hidden = true; o.cuff = 0; arrestPlayer(); }
   }
 }
 // Police carry pistols. They only open fire when you're armed (a gun out) or very wanted
@@ -7184,7 +7219,7 @@ function updateVehicles(dt) {
     if (v.disabled || (v.ai?.parked && !(v.kind==='police'&&wanted>0) && !(v.kind === 'tank' && militaryAlert > 0))) { v.speed = 0; continue; }
     v.crashCooldown = Math.max(0, (v.crashCooldown || 0) - dt);
     const roadStart = v.group.position.clone();
-    if (v.ai?.officer?.out && !(v.kind === 'police' && wanted > 0)) { v.ai.officer.out = false; v.ai.officer.h.root.visible = false; }   // chase over: the officer is back in the car
+    if (v.ai?.officer?.out && !(v.kind === 'police' && wanted > 0)) { const o = v.ai.officer; o.out = false; o.h.root.visible = false; if (o.e) { o.e.hidden = true; if (!o.e.alive) { o.e.alive = true; o.e.hp = o.e.maxHp; o.e.respawn = 0; o.h.rig.rotation.set(0, 0, 0); o.h.rig.position.y = 0; } o.e.copAngry = 0; } o.downNoted = false; }   // chase over: the officer is back in the car
     if (v === driving || !v.ai) driveVehicle(v, dt);
     else if (v.kind === 'police' && wanted > 0 && !dungeon) policeChase(v, dt);
     else if (!v.ai.from && !v.ai.chasing && v.kind !== 'tank' && !(v.kind === 'police' && v.stationHome)) { v.speed = 0; continue; }   // no lane route: just wait (never crash the traffic code)
