@@ -77,6 +77,7 @@ import { buildFrontierWorld } from './frontier-world.js';
 import { impactDamage, segmentDistance, collisionImpulse } from './vehicle-physics.js';
 import { buildPlaces } from './places.js';
 import { createKitchen } from './kitchen.js';
+import { createChores } from './chores.js';
 import { furnishHouse } from './house-rooms.js';
 import { floorTexture, floorMaterial } from './floor-textures.js';
 import { buildBuildingSites } from './building-sites.js';
@@ -1369,8 +1370,8 @@ doorPath.castShadow = false;
 
 // Furniture: proper rooms (hallway, living room, bedroom, kitchen, bathroom, storage) — see house-rooms.js
 const F_Y = CURB;
-let kitchen = null;
-const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
+let kitchen = null, chores = null;
+const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => chores?.open(k, o), kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
   { cx: HOME.x, front: HOME.minZ, dir: 1, W: HOME.maxX - HOME.minX, D: HOME.maxZ - HOME.minZ, y: CURB, sideWindows: [3, 7.5] });
 const houseRoomList = [homeRooms];
 
@@ -1457,7 +1458,7 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   scene.add(roof);
 
   // Rooms and furniture (face = direction from the back wall towards the door)
-  houseRoomList.push(furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
+  houseRoomList.push(furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => chores?.open(k, o), kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
     { cx: x0, front, dir: -face, W, D, y: CURB, sideWindows: [D / 4, D * 3 / 4] }));
 
   const lawnEdge = cellZ + face * 13;
@@ -6061,6 +6062,12 @@ const arcade = createArcade({ toast, pause: () => pauseForPanel(), resume: () =>
 const licences = createLicences({ caught: () => raiseWanted(70), money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, toast, day: () => reconstructionDays, wanted: () => wanted, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const snackShop = createSnackShop({ stats, maxHp, toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 kitchen = createKitchen({ stats, maxHp, toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); }, gainXp: n => gainXp(n), bag: () => inventory, bagChanged: () => { if (inventoryOpen) renderInventory(); } });
+chores = createChores({ toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
+  done(kind, score, res = {}) {
+    if (kind === 'handwash') { gainXp(1); toast(`🧼 Hands washed properly (${Math.round(score)}%). Squeaky clean.`); }
+    else if (kind === 'laundry') { stats.energy = Math.max(0, stats.energy - 3); gainXp(3); toast(res.pink ? '👕 Laundry done and pegged out… but everything white is pink now.' : `👕 Laundry done and pegged out (${Math.round(score)}%). Fresh clothes.`); }
+    else if (kind === 'dishes') kitchen?.washUp();
+  } });
 const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
   tvMaterial: new THREE.MeshBasicMaterial({ map: civicTvTexture }),
@@ -6068,6 +6075,7 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
     toast: m => toast(m),
     playerPos: () => player.position,
     kitchen: () => kitchen,
+    chore: (k, o) => chores?.open(k, o),
     careers: what => { if (!careers) return; if (what === 'university') careers.openUniversity(currentVenueName); else if (what === 'jobs') careers.openJobs(); else if (what === 'school') careers.openSchool(); else careers[what]?.(); },
     groceries: name => kitchen?.openGroceries(name),
     leave: () => leaveCivicBuilding(),
