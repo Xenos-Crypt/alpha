@@ -1442,7 +1442,7 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
 residentialCells.forEach(([cx, cz], i) => {
   for (const s of [-1, 1]) {
     const [wall, roofC] = HOUSE_COLORS[(i * 2 + (s + 1) / 2) % HOUSE_COLORS.length];
-    buildHouse(cx + s * 7.5, cz + 4, 1, cz, wall, roofC);
+    buildHouse(cx + s * 5.2, cz + 4, 1, cz, wall, roofC);   // both houses stay on the lawn, off the pavement (block land is ±10)
     addTree(cx + s * 9, cz - 9, 1.1);
   }
 });

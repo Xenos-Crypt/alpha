@@ -24,7 +24,7 @@ export function buildTransport(ctx){
  const isWheel=m=>m.isMesh&&(m.geometry.type==='BoxGeometry'&&m.geometry.parameters.width===.7&&m.geometry.parameters.height===.7&&m.geometry.parameters.depth===.25||m.geometry.type==='CylinderGeometry'&&m.geometry.parameters.radiusTop===.38);
  for(const [v,len] of [[tram,18],[train,32]])makeHover(v.g,{lift:.3,bob:.015,width:len,length:2.7,hide:v.g.children.filter(isWheel),strips:[-1,1].map(z=>({z:z*1.05,w:len-2,d:.22}))});
  for(const [min,max,z]of [[20,590,ROAD_LAYOUT.tramZ],[-220,100,155]]){box(max-min,.04,3.1,(min+max)/2,.075,z,0x667371,false);for(const offset of [-.8,.8])box(max-min,.045,.09,(min+max)/2,.12,z+offset,new THREE.MeshStandardMaterial({color:0xc1ced7,metalness:.8,roughness:.25}),false);for(let x=min;x<=max;x+=2)box(.18,.035,2.1,x,.105,z,0x4e5755,false);}
- services.push({...tram,length:18,stops:[20,300,420,580],z:ROAD_LAYOUT.tramZ,index:0,direction:1,speed:0,wait:10,doors:true});services.push({...train,length:32,stops:[-220,-100,100],z:155,index:0,direction:1,speed:0,wait:12,doors:true});
+ services.push({...tram,length:18,stops:[20,300,420,580],z:ROAD_LAYOUT.tramZ,index:0,direction:1,speed:0,wait:10,doors:true});services.push({...train,length:32,stops:[-220,-100,78],z:155,index:0,direction:1,speed:0,wait:12,doors:true});
  for(const s of services)for(const x of s.stops){
  const platformZ=s.z+(s.name==='Train'?6:-10);
  const seat={x:x+6,z:platformZ,yaw:Math.PI,seatY:.75,label:'Sit at '+s.name.toLowerCase()+' stop'};ctx.sitSpots?.push(seat);box(3,.15,.7,seat.x,.675,seat.z,0x6e6051,false);box(3,.65,.1,seat.x,1,seat.z+.3,0x6e6051,false);for(const dx of [-1,1])box(.12,.6,.5,seat.x+dx,.3,seat.z,0x3a454f,false);
