@@ -5903,6 +5903,7 @@ function resolveInteractTarget() {
   if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway') || /^(Take the lift|Board the intercity|Next intercity|Board the bus|Licensing|Talk to|Buy |Play |Use the vending)/.test(service.label))) return { label: service.label, action: service.action };
   // Standing right at a counter, screen or person: use it, even if a door or a parked car is also in reach.
   if (service && distXZ(player.position, service.pos) < 1.6) return { label: service.label, action: service.action };
+  if (service?.priority) return { label: service.label, action: service.action };   // rides, stalls, courts, kiosks...
   // Inside a subway stairwell, E shouldn't open a nearby building instead.
   const inStairwell = metro?.entrances?.groundAt(player.position.x, player.position.z) != null;
   const cb = inStairwell || player.position.y > 3 ? null : nearestCivicBuilding();   // not from a rooftop or mountain
@@ -6527,7 +6528,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 // UPDATE
 // =====================================================================
-const DAY_LEN = 300; // seconds per in-game day
+const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
 let venueFences = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
@@ -7182,10 +7183,15 @@ const CHEAT_NO_NEEDS = false;
 const CHEAT_SPEED_MULT = 1;
 function updateNeeds(dt) {
   if (!CHEAT_NO_NEEDS) {
-    // Real rhythm on the game clock: hungry again after ~6 game-hours, empty after ~1.2 days;
-    // energy lasts about a waking day and a half before you must sleep.
+    // Real rhythm on the game clock (3x real time): hungry again after ~6 game-hours (2 real
+    // hours), empty after ~1.2 game days.
     stats.hunger = clamp(stats.hunger - 100 / (DAY_LEN * 1.2) * drainMul() * dt, 0, 100);
-    stats.energy = clamp(stats.energy - 100 / (DAY_LEN * 1.6) * drainMul() * dt, 0, 100);
+    // Energy: hard work (sprinting, fighting, working) burns it; taking it easy gives it back.
+    // Standing still or sitting refills it in about an hour and a half; strolling, about three.
+    const strolling = inputDir().lengthSq() > 0 && !keys.ShiftLeft, resting = !strolling && !action && !keys.ShiftLeft;
+    if (sitting || resting || (inCar && !keys.ShiftLeft)) stats.energy = clamp(stats.energy + 100 / 5400 * dt, 0, 100);
+    else if (strolling && !action) stats.energy = clamp(stats.energy + 100 / 10800 * dt, 0, 100);
+    else stats.energy = clamp(stats.energy - 100 / (DAY_LEN * 0.4) * drainMul() * dt, 0, 100);
   }
   if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) { stats.hp -= 0.5 * dt; noteHpLoss(stats.hunger === 0 ? 'Starving: eat something' : 'Exhausted: get some sleep'); }   // starvation/exhaustion is slow, not instant
   else if (stats.hunger > 30) stats.hp += 1 * dt;
@@ -7588,7 +7594,7 @@ buildingSites=buildBuildingSites({scene,colliders,civicBuildings,interactables,m
 const personAnim=(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt);
 circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,callout:t=>callout(t,0xffd166,false),gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations});
 // Westhaven Funfair round the circus: Ferris wheel, carousel, swings, drop tower, dodgems, stalls, all fenced in.
-{ const giveItem=it=>{if(!hasBag)return toast('You have no bag to carry it in.');inventory.push({...it});if(inventoryOpen)renderInventory();};
+{ const priorityFrom=interactables.length; const giveItem=it=>{if(!hasBag)return toast('You have no bag to carry it in.');inventory.push({...it});if(inventoryOpen)renderInventory();};
   // fairground games from round the world, each a mini-game you play yourself (fair-games.js)
   fairGames=createFairGames({stats,toast,giveItem,gainXp:n=>gainXp(n),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
   const rideCtx={scene,colliders,interactables,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations,civicBuildings,games:fairGames,giveItem,
@@ -7616,6 +7622,8 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   venueFences=buildVenueFences(leisureCtx);
   // connector roads so every district joins the network (road-links.js)
   buildRoadLinks({scene,makeTex});
+  // everything at the fair, the leisure strip, the beach and the upgraded venues answers E first
+  for(let i=priorityFrom;i<interactables.length;i++)if(!interactables[i].door&&!interactables[i].window)interactables[i].priority=true;
   // the outdoor courts: real basketball and tennis against the regulars (or an online player)
   for(const it of interactables){
     if(it.label==='Shoot a hoop'){const o={name:'the court regulars',skill:0.6,prize:3};Object.defineProperty(it,'label',{get:()=>sportsGames.label('basketball',o),configurable:true});it.action=()=>sportsGames.menu('basketball',o);}
