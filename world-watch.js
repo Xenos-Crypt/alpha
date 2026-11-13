@@ -33,11 +33,14 @@ export function createWorldWatch(ctx) {
   let list = []; try { list = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 200))); } catch { } };
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  function report(cat, pos, { who = null, fixed = false, words = null } = {}) {
+  function report(cat, pos, { who = null, fixed = false, words = null, subject = null } = {}) {
     const key = cat + ':' + Math.round(pos.x / 25) + ',' + Math.round(pos.z / 25);
     let r = list.find(x => x.key === key);
     const name = who ? (ctx.nameOf(who) || 'A resident') : 'A resident';
     if (!r) { r = { key, cat, title: TITLES[cat], x: Math.round(pos.x), z: Math.round(pos.z), first: Date.now(), count: 0, fixed: 0, who: [], words: words || pick(WORDS[cat]), sent: false }; list.unshift(r); ctx.onNew?.(r, name); }
+    // the IDs of what was seen and who saw it, so the Lawgiver knows exactly which thing it is
+    const sid = subject ? ctx.idOf?.(subject) : /building/.test(cat) ? ctx.nearestId?.(pos, ['rp', 'bh', 'hs']) : null, wid = who ? ctx.idOf?.(who) : ctx.playerId?.();
+    r.ids ||= []; if (sid && !r.ids.includes(sid) && r.ids.length < 6) r.ids.push(sid); r.reporters ||= []; if (wid && !r.reporters.includes(wid) && r.reporters.length < 6) r.reporters.push(wid);
     r.count++; r.last = Date.now(); if (fixed) r.fixed++; if (!r.who.includes(name) && r.who.length < 6) r.who.push(name);
     r.status = fixed ? 'Put right by the Rule Keepers (the cause is with the Lawgiver)' : 'Awaiting the Lawgiver';
     r.sent = false; save();
@@ -64,11 +67,11 @@ export function createWorldWatch(ctx) {
       if (!wet && !inside) { lastOk.set(v, p.clone()); still.set(v, 0); continue; }
       const back = lastOk.get(v);
       if (wet) {
-        report('car-on-water', p, { who: witness(p), fixed: !!back });
+        report('car-on-water', p, { who: witness(p), fixed: !!back, subject: v });
         if (back) { p.copy(back); v.speed = 0; mark(p, 'a vehicle was driving on the water'); }
       } else {
         const n = (still.get(v) || 0) + 1; still.set(v, n);
-        if (n >= 3) { report('car-in-building', p, { who: witness(p), fixed: !!back }); if (back) { p.copy(back); v.speed = 0; mark(p, 'a vehicle was stuck inside a building'); } still.set(v, 0); }
+        if (n >= 3) { report('car-in-building', p, { who: witness(p), fixed: !!back, subject: v }); if (back) { p.copy(back); v.speed = 0; mark(p, 'a vehicle was stuck inside a building'); } still.set(v, 0); }
       }
     }
   }
@@ -78,11 +81,11 @@ export function createWorldWatch(ctx) {
       if (!e.alive || e.hidden || e.root.position.distanceTo(pp) > 90 || !e.ped) continue;
       const p = e.root.position, g = ctx.groundY(p.x, p.z, p.y), o = odd.get(e) || { f: 0, at: p.clone(), t: 0 };
       if (p.y - g > 1.6 && e.onGround !== false && !['riding', 'boarding'].includes(e.ped.state)) o.f++; else if (g - p.y > .9) o.f--; else o.f = 0;
-      if (o.f >= 3) { report('person-floating', p, { who: witness(p), fixed: true }); p.y = g; mark(p, 'someone was floating in the air'); o.f = 0; }
-      if (o.f <= -3) { report('person-underground', p, { who: witness(p), fixed: true }); p.y = g; mark(p, 'someone was sunk into the ground'); o.f = 0; }
+      if (o.f >= 3) { report('person-floating', p, { who: witness(p), fixed: true, subject: e }); p.y = g; mark(p, 'someone was floating in the air'); o.f = 0; }
+      if (o.f <= -3) { report('person-underground', p, { who: witness(p), fixed: true, subject: e }); p.y = g; mark(p, 'someone was sunk into the ground'); o.f = 0; }
       if (e.ped.state === 'wander') {
         if (p.distanceTo(o.at) > .6) { o.at.copy(p); o.t = 0; }
-        else if ((o.t += 2) >= 24) { report('person-stuck', p, { who: witness(p), fixed: true }); ctx.unstick(e); mark(e.root.position, 'someone was stuck against a wall'); o.t = 0; o.at.copy(e.root.position); }
+        else if ((o.t += 2) >= 24) { report('person-stuck', p, { who: witness(p), fixed: true, subject: e }); ctx.unstick(e); mark(e.root.position, 'someone was stuck against a wall'); o.t = 0; o.at.copy(e.root.position); }
       } else o.t = 0;
       odd.set(e, o);
     }
@@ -108,7 +111,7 @@ export function createWorldWatch(ctx) {
     for (const f of flaws) {
       if (f.done || f.pos.distanceTo(pp) > 120) continue;
       if (f.b && (ctx.condition?.(f.b) ?? 100) >= 35) { f.done = true; continue; }   // since repaired
-      const who = witness(f.pos); if (who && Math.random() < .25) { report(f.cat, f.pos, { who }); f.done = true; }
+      const who = witness(f.pos); if (who && Math.random() < .25) { report(f.cat, f.pos, { who, subject: f.b || null }); f.done = true; }
     }
   }
   // ---- sending reports to the Lawgiver ------------------------------------------------------------------
@@ -118,7 +121,7 @@ export function createWorldWatch(ctx) {
     if (!batch.length || sending || !navigator.onLine) return;
     sending = true;
     try {
-      const res = await fetch('/api/world-report', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reports: batch.map(({ key, cat, title, x, z, count, fixed, who, words, status, first, last }) => ({ key, cat, title, x, z, count, fixed, who, words, status, first, last })) }) });
+      const res = await fetch('/api/world-report', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reports: batch.map(({ key, cat, title, x, z, count, fixed, who, words, status, first, last, ids, reporters }) => ({ key, cat, title, x, z, count, fixed, who, words, status, first, last, ids, reporters })) }) });
       if (res.ok) { for (const r of batch) r.sent = true; save(); }
     } catch { } finally { sending = false; }
   }
