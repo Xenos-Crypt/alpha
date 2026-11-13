@@ -17,7 +17,7 @@ export function doorStyle(type = '') {
 export const SHOP_OPEN = 7, SHOP_CLOSE = 22;
 export const shopOpen = hour => hour >= SHOP_OPEN && hour < SHOP_CLOSE;
 
-export function buildDoors({ scene, buildings, colliders, groundY, playerPos, hourNow, makeTex }) {
+export function buildDoors({ scene, buildings, colliders, groundY, playerPos, hourNow, makeTex, sweep, blocked }) {
   const glass = new THREE.MeshStandardMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0.6, depthWrite: false, side: THREE.DoubleSide });
   const frame = new THREE.MeshStandardMaterial({ color: 0x2b2f33, metalness: 0.7, roughness: 0.35 });
   const wood = [0x6b4a2f, 0x2f4a6b, 0x7a1f1f, 0x2d5d3a, 0x3a3f45].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
@@ -90,7 +90,7 @@ export function buildDoors({ scene, buildings, colliders, groundY, playerPos, ho
       d.parts.shutter = sh;
       box(g, W, 0.05, 0.3, 0, 0.03, 0.2, frame);
     } else {
-      const hinge = new THREE.Group(); hinge.position.set(-W / 2, 0, 0.05); g.add(hinge);
+      const hinge = new THREE.Group(); hinge.position.set(-W / 2, 0, 0.05); hinge.userData.W = W; g.add(hinge);
       const leaf = box(hinge, W, H - 0.05, 0.08, W / 2, H / 2, 0, wood[(Math.abs(Math.round(b.x * 7 + b.z * 3))) % wood.length]);
       box(hinge, 0.08, 0.08, 0.12, W - 0.25, 1.05, 0.06, brass);
       for (const y of [0.7, 1.9]) box(hinge, W - 0.4, 0.04, 0.02, W / 2, y, 0.05, brass);
@@ -101,7 +101,7 @@ export function buildDoors({ scene, buildings, colliders, groundY, playerPos, ho
     doors.push(d);
   }
 
-  let lastHour = -1;
+  let lastHour = -1; const _hp = new THREE.Vector3();
   function update(dt) {
     const p = playerPos(), hour = hourNow();
     const hourChanged = Math.floor(hour) !== lastHour; lastHour = Math.floor(hour);
@@ -120,7 +120,15 @@ export function buildDoors({ scene, buildings, colliders, groundY, playerPos, ho
       if (d.style === 'revolving') { d.spin += ((near ? 1.4 : 0.25) - d.spin) * Math.min(1, dt * 2); d.parts.wings.rotation.y += d.spin * dt; continue; }
       d.open += THREE.MathUtils.clamp((near ? 1 : 0) - d.open, -dt * 2.5, dt * 2.5);
       if (d.style === 'sliding') for (const pnl of d.parts.panels) pnl.position.x = pnl.userData.home + pnl.userData.side * d.open * (pnl.scale.x * 0.95);
-      else d.parts.hinge.rotation.y = d.open * 1.45;
+      else {
+        // swing doors open outwards (inwards they disappeared into the building), and stop if
+        // the leaf would hit someone: it waits there and tells you something is in the way
+        const h = d.parts.hinge, want = -d.open * 1.45;
+        if (!sweep) { h.rotation.y = want; continue; }
+        h.getWorldPosition(_hp); const r = g.rotation.y, res = sweep(_hp.x, _hp.z, Math.cos(r), -Math.sin(r), h.userData.W, h.rotation.y, want);
+        h.rotation.y = res.angle;
+        if (res.by) { d.open = Math.max(0, Math.min(d.open, -res.angle / 1.45)); if (near) blocked?.(res.by); }
+      }
     }
   }
   return { doors, update, isOpen: b => !b.door || b.door.style !== 'shutter' || shopOpen(hourNow()) };

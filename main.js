@@ -1336,7 +1336,10 @@ function updateHomeGates(dt) {
 }
 function updateHomeDoor(dt) {
   updateHomeGates(dt); homeDoor.rotation.y += ((homeDoorOpen ? -Math.PI / 2 : 0) - homeDoor.rotation.y) * Math.min(1, dt * 6);
-  for (const d of houseFrontDoors) { const want = d.open ? d.swing : 0; if (Math.abs(want - d.door.rotation.y) > 0.001) d.door.rotation.y += (want - d.door.rotation.y) * Math.min(1, dt * 6); } }
+  for (const d of houseFrontDoors) { const want = d.open ? d.swing : 0, cur = d.door.rotation.y; if (Math.abs(want - cur) <= 0.001) continue;
+    const step = cur + (want - cur) * Math.min(1, dt * 6), p = d.door.position;
+    const r = doorSweep(p.x, p.z, 1, 0, 1.96, cur, step);   // the leaf runs along +x from its hinge
+    d.door.rotation.y = r.angle; if (r.by && distXZ(player.position, p) < 4) doorBlocked(r.by); } }
 
 const houseWindowMat = new THREE.MeshStandardMaterial({ color: 0x8fb3cc, roughness: 0.1, emissive: 0xffd58a, emissiveIntensity: 0 });
 glowMats.push(houseWindowMat);
@@ -1398,6 +1401,31 @@ const HOUSE_COLORS = [[0xf6e3c5, 0x8e3b2f], [0xdfe8ef, 0x34495e], [0xf3d6d6, 0x6
 // interior's chair) registers here as {x,z,yaw}. One proximity check + one E
 // handler covers all of them, instead of a separate one-off per location.
 sitSpots.push(...streetSeats);
+// A hinged door can only swing until its leaf meets someone (you or anyone else): given the hinge
+// (hx, hz), the leaf's closed direction (cx, cz), its length and the angle it is at and wants to reach
+// (rotation.y sense), returns how far it can actually go and who is in the way (null if nobody).
+function doorSweep(hx, hz, cx, cz, len, cur, want) {
+  if (Math.abs(want - cur) < 1e-4) return { angle: want, by: null };
+  const dir = Math.sign(want - cur), base = Math.atan2(cx, cz);
+  let angle = want, by = null;
+  const bodies = [{ p: player.position, r: 0.32, me: true }];
+  for (const e of enemies) if (!e.dead && e.root) bodies.push({ p: e.root.position, r: e.radius || 0.35 });
+  for (const b of bodies) {
+    if (Math.abs(b.p.y - player.position.y) > 3 && !b.me) continue;
+    const dx = b.p.x - hx, dz = b.p.z - hz, d = Math.hypot(dx, dz);
+    if (d > len + b.r || d < 0.2) continue;
+    let th = Math.atan2(dx, dz) - base; th = Math.atan2(Math.sin(th), Math.cos(th));
+    const half = Math.asin(Math.min(1, b.r / d)), stop = th - dir * half;
+    if ((stop - cur) * dir > -0.02 && (stop - angle) * dir < 0) { angle = (stop - cur) * dir > 0 ? stop : cur; by = b; }
+  }
+  return { angle, by };
+}
+let doorBlockToastAt = 0;
+function doorBlocked(by) {
+  if (!by || performance.now() - doorBlockToastAt < 3000) return;
+  doorBlockToastAt = performance.now();
+  toast(by.me ? "You're in the door's way. Step back so it can swing." : 'Something is blocking the door.');
+}
 const houseFrontDoors = [];
 function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   const W = 10, D = 8;
@@ -7595,7 +7623,7 @@ conditions = createConditions({ buildings, collapse: b => collapseBuilding(b, fa
   nearVehicle: () => { let best = null, bd = 3.2; for (const v of vehicles) { if (v.disabled || !isRoadVehicle(v)) continue; const d = distXZ(v.group.position, player.position); if (d < bd) { bd = d; best = v; } } return best; } });
 for (const b of buildings) if (b.x > HOME.minX - 2 && b.x < HOME.maxX + 2 && b.z > HOME.minZ - 2 && b.z < HOME.maxZ + 2) { b.quality = 'solid'; b.ageYears = 0; }   // your own house is new and well built
 for (const b of civicBuildings) if (b.minX != null && b.minX < HOME.maxX && b.maxX > HOME.minX && b.minZ < HOME.maxZ && b.maxZ > HOME.minZ) b.noDoor = true;   // your house has its own door
-doors = buildDoors({ scene, buildings: civicBuildings, colliders, groundY, makeTex, playerPos: () => player.position, hourNow: () => (6 + dayTime * 24) % 24 });
+doors = buildDoors({ scene, buildings: civicBuildings, colliders, groundY, makeTex, sweep: doorSweep, blocked: doorBlocked, playerPos: () => player.position, hourNow: () => (6 + dayTime * 24) % 24 });
 property = createProperty({ scene, buildings: civicBuildings, market, interactables, toast, colliders, groundY, sign: signboard, makePerson: o => makeHumanoid(o), narrows: NARROWS,
   money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, earn: n => { stats.gold += n; }, playerPos: () => player.position, day: () => reconstructionDays,
   wanted: () => wanted, clearWanted: () => { wanted = 0; }, raiseWanted, timeSkip: f => { dayTime = (dayTime + f) % 1; } });
