@@ -295,10 +295,7 @@ export function buildPlaces(ctx) {
     }
     panel.hidden = false; ctx.pause?.(); document.exitPointerLock();
   }
-  // Stood out on the lawn beside the house instead of pressed against the wall
-  // where it was covering the front door.
-  sign('TOWN TRAVEL - PRESS E', 12, 2, 14, 6);
-  interactables.push({ pos: new THREE.Vector3(12, 0, 14), r: 2.5, label: 'Open town travel board', action: openTravel });
+  // (no travel board at the house: the map is on M, and every destination still has its own board)
   for (const d of destinations.filter(d => !d.name.includes('BARRACKS'))) interactables.push({ pos: new THREE.Vector3(d.x + 5, 0, d.z), r: 2.5, label: 'Open town travel board', action: openTravel });
   // Street name signs at intersections around town, purely decorative — gives streets
   // a visible identity instead of every block looking the same.
