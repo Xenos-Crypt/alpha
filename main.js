@@ -3399,7 +3399,7 @@ function flyHelicopter(v, dt) {
   const up = mine ? (keys.Space ? 1 : 0) - (keys.ShiftLeft || keys.ShiftRight ? 1 : 0) : -1;
   const fwd = mine ? (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) : 0, turn = mine ? (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0) : 0;
   P.throttle = lerp(P.throttle, mine ? 1 : 0, 1 - Math.exp(-0.8 * dt));   // rotor spins up when you're in it
-  const ground = groundY(p.x, p.z), spun = P.throttle > 0.6;
+  const ground = groundY(p.x, p.z, v.alt), spun = P.throttle > 0.6;   // (with your height, so roofs and rooftop helipads count as ground)
   v.vy = lerp(v.vy || 0, spun ? up * 9 : -6, 1 - Math.exp(-2 * dt));
   v.alt = Math.min(260, Math.max(ground, v.alt + v.vy * dt));
   const airborne = v.alt > ground + 0.3;
@@ -7752,7 +7752,7 @@ worldIds=createWorldIds({THREE,scene,grass:()=>grass?.tufts?.()||[],isRoad:(x,z)
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
   extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={code:'bh',seed:'innovation:'+b.group.name,kind:'resident-built project',name:b.group.name.replace('innovation:',''),pos:null}))],
-  citizenOf:e=>society?.citizenOf(e),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
+  citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
@@ -7854,7 +7854,17 @@ border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,movin
 powerGrid=buildPowerGrid({scene,gates,interactables,toast,groundY,makeTex});
 // Helicopter carry points: helipads on top of the tallest towers and pickup pads on the ground.
 helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlayer,carry:p=>{player.position.copy(p);vy=0;pvel.set(0,0,0);},canBoard:()=>!inCar&&!sitting&&!action&&!navy?.rider&&!intercityRail?.rider&&!transport?.rider&&!metro?.rider,prepare(){action=null;vy=0;pvel.set(0,0,0);},land:p=>{player.position.copy(p);vy=0;pvel.set(0,0,0);},roofs:venues.towers.filter(t=>t.h>=27),ground:[
-  {name:'Ashford Beach helipad',x:150,z:176},{name:'Capital helipad',x:190,z:705},{name:'Leisure Park helipad',x:120,z:-735},{name:'Business District helipad',x:160,z:1068}]});
+  {name:'Government helipad (Capital)',x:190,z:705,owner:'government'}],
+  // a flight is something you ask for (and can be refused), or you steal the helicopter
+  request:p=>{
+    if(p.owner==='government'){const ok=society?.gov?.P?.office||(society?.state?.fame||0)>=70;if(!ok){toast('🏛 Request denied: government helicopters are for officials. Hold office, or be someone the whole country knows and trusts.');return false;}toast('🏛 Request approved. A government pilot will fly you.');return true;}
+    if(wanted>0){toast('🚁 SkyLink Charter: "We don\'t fly people the police are looking for."');return false;}
+    if(stats.gold<300){toast('🚁 SkyLink Charter: a flight costs 300 gold.');return false;}
+    stats.gold-=300;toast('🚁 SkyLink Charter: request accepted (300 gold). Your pilot is ready.');return true;},
+  steal:p=>{if(inCar||!p.heli)return false;const pos=new THREE.Vector3();p.heli.getWorldPosition(pos);const gov=p.owner==='government';
+    const v=makeHelicopter({name:gov?'Government helicopter':'SkyLink charter helicopter',color:gov?0x1a1a1a:0x2f6f8f,x:pos.x,z:pos.z,yaw:p.heli.rotation.y});v.group.position.y=pos.y;v.alt=pos.y;v.stolen=true;
+    raiseWanted(gov?240:150);enterVehicle(v);toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
+    society?.news?.(gov?'The newcomer stole a government helicopter from the Capital helipad!':'A charter helicopter was stolen from '+p.name+'.',true);if(society?.state)society.state.fameAcc+=gov?6:3;return true;}});
 drones=buildDrones({scene,dome:DOME});
 lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,
   announce:t=>callout(t,0xffd166,true),shake:v=>{shake=Math.max(shake,v);},reward(){stats.gold+=500;stats.hp=maxHp();stats.energy=100;stats.hunger=100;}});

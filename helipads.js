@@ -2,9 +2,12 @@
 // on the ground, linked by a helicopter service. Stand on a pad and press E to fly to
 // the destination shown; "Pick another destination" cycles through the others.
 // On a rooftop you can also take the lift down to the street.
+// Helicopters don't just sit about for anyone to fly: they live on the roofs of the tallest towers
+// (run by SkyLink Charter, who fly you for a fare) or at the government's helipad (officials only).
+// You either REQUEST a flight, which can be refused, or you STEAL the helicopter and fly it yourself.
 import * as THREE from 'three';
 
-export function buildHelipads({ scene, interactables, toast, makeTex, teleport, roofs, ground, carry, canBoard, prepare, land }) {
+export function buildHelipads({ scene, interactables, toast, makeTex, teleport, roofs, ground, carry, canBoard, prepare, land, request, steal }) {
   const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.6, metalness: o.metal ?? 0.2, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1, transparent: o.opacity != null, opacity: o.opacity ?? 1 });
   const hTex = makeTex(256, 256, g => {
     g.fillStyle = '#2b2f33'; g.fillRect(0, 0, 256, 256);
@@ -34,7 +37,7 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
 
   const pads = [], roofRects = [];
   const colors = [0x2f6f8f, 0xd0281f, 0xf2f2f2, 0x2d5d3a, 0x1a1a1a, 0xe8a33d];
-  function addPad({ name, x, z, y = 0, r = 5.5, roof = null, heli = true }) {
+  function addPad({ name, x, z, y = 0, r = 5.5, roof = null, heli = true, owner = 'charter' }) {
     const g = new THREE.Group(); g.position.set(x, y, z); scene.add(g);
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.16, 32), [mat(0x3a3f45), padMat, mat(0x3a3f45)]); pad.position.y = 0.08; g.add(pad);
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2, l = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.2), lightMat); l.position.set(Math.cos(a) * (r + 0.2), 0.12, Math.sin(a) * (r + 0.2)); g.add(l); }
@@ -42,9 +45,10 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
     const sock = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.1, 10, 1, true), mat(0xff6a00)); sock.rotation.z = Math.PI / 2; sock.position.set(r + 1.95, 2.45, 0); g.add(sock);
     let h = null;
     if (heli) { h = helicopter(colors[pads.length % colors.length]); h.position.set(0, 0.16, 0); h.rotation.y = (pads.length * 1.3) % (Math.PI * 2); g.add(h); }
-    const p = { name, x, z, y, r, roof, choice: 0, sock, heli: h, group: g };
-    p.fly = { pos: new THREE.Vector3(x, y + 0.2, z), r: r + 1, label: '', action: () => flyFrom(p) };
-    Object.defineProperty(p.fly, 'label', { get: () => flight ? 'The helicopter is out on a flight' : `Fly by helicopter to ${dest(p).name}` });
+    const p = { name, x, z, y, r, roof, owner, choice: 0, sock, heli: h, group: g };
+    p.fly = { pos: new THREE.Vector3(x, y + 0.2, z), r: r + 1, label: '', action: () => { if (p.stolen) { toast('The helicopter has been stolen. A replacement is on its way.'); return; } if (flight) { toast('The helicopter is already flying.'); return; } if (request && !request(p)) return; flyFrom(p); } };
+    Object.defineProperty(p.fly, 'label', { get: () => p.stolen ? 'No helicopter here (stolen)' : flight ? 'The helicopter is out on a flight' : owner === 'government' ? `Request a government flight to ${dest(p).name}` : `Request a SkyLink charter flight to ${dest(p).name}` });
+    if (h) interactables.push({ pos: new THREE.Vector3(x - r * .6, y + 0.2, z), r: 1.8, get label() { return p.stolen || flight ? '' : 'Steal the helicopter (crime)'; }, action: () => { if (p.stolen || flight || !steal) return; if (steal(p)) { p.stolen = Date.now(); h.visible = false; } } });
     p.pick = { pos: new THREE.Vector3(x + r + 1.2, y + 0.2, z + 1.5), r: 1.4, label: 'Pick another destination', action: () => { p.choice++; toast(`Destination: ${dest(p).name}`); } };
     interactables.push(p.fly, p.pick);
     if (roof) {
@@ -104,7 +108,7 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
     addPad({ name: `${t.name} roof`, x: t.x, z: t.z - t.face * 1.5, y: t.h, r: Math.min(5.5, t.d / 2 - 2.5),
       roof: { minX: t.x - t.w / 2, maxX: t.x + t.w / 2, minZ: t.z - t.d / 2, maxZ: t.z + t.d / 2, liftX: t.x + t.w / 2 - 2, liftZ: t.z + t.face * (t.d / 2 - 2.5), streetX: t.x + 4, streetZ: fz + t.face * 4 } });
   }
-  for (const gp of ground) addPad({ ...gp, y: 0.05 });
+  for (const gp of ground) addPad({ ...gp, y: 0.05 });   // only the government's own helipad is on the ground
 
   // Roofs are solid to stand on, and a low invisible rail stops you walking off the edge.
   function groundAt(x, z, bodyY) {
@@ -112,6 +116,7 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
     return null;
   }
   function update(dt, playerPos) {
+    for (const p of pads) if (p.stolen && Date.now() - p.stolen > 600e3) { p.stolen = 0; if (p.heli) p.heli.visible = true; }   // a replacement arrives after ten minutes
     if (flight) stepFlight(dt);
     for (const p of pads) if (p.heli && p.heli !== flight?.h) { p.heli.userData.rotor.rotation.y += dt * 0.4; }   // idle: blades turn slowly in the wind
     for (const p of pads) p.sock.rotation.x = Math.sin(performance.now() / 700 + p.x) * 0.2;
