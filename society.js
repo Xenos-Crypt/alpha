@@ -24,14 +24,22 @@
 // You can hire a resident as a housekeeper to do your chores for you.
 import * as THREE from 'three';
 import { PROJECTS, projectById } from './innovations.js';
+import { PARTIES, CITIES, COUNTRY, TERM, YEAR, SECTORS, sectorOfJob, ATLAS_LEVELS, atlasLevel, DIG_STAGES } from './nation.js';
+import { createGovernment, INVITE } from './government.js';
+import { createNationSim } from './nation-sim.js';
 
-const KEY = 'aw.society.v1', TICK = 60e3, MEETING = 20, ELECTION = 360, POP = 400;
+const KEY = 'aw.society.v1', TICK = 60e3, POP = 500;
 const FIRST = ['Amara','Ben','Chloe','Dev','Ella','Femi','Grace','Hassan','Isla','Jamal','Kemi','Liam','Maya','Noah','Olu','Priya','Quinn','Ravi','Sara','Tom','Uma','Victor','Wen','Yusuf','Zara','Aidan','Bisi','Cara','Dami','Ethan','Fatima','George','Hana','Ibrahim','Jade','Kofi','Lena','Marcus','Nia','Oscar','Pearl','Rhys','Sofia','Tunde','Vera','Will','Ada','Bola','Leo','Mia','Omar','Ruth','Sam','Tara','Joel','Kira','Luca','Nora','Ola','Seun'];
 const LAST = ['Adeyemi','Bennett','Clarke','Davies','Evans','Fischer','Green','Hughes','Ibe','Jones','Khan','Lewis','Martin','Nwosu','Owens','Patel','Quarshie','Reid','Singh','Taylor','Usman','Vance','Walker','Young','Zhou','Okafor','Brown','Carter','Diallo','Ellis','Foster','Grant','Hall','Iyer','Kaur','Lopez','Mensah','Novak','Obi','Price'];
 // [job, wage per city hour, paid by the city?, workplace type]
 const JOBS = [['Street cleaner',8,1,null,7],['Shop worker',8,0,'supermarket',12],['Office worker',10,0,'office',12],['Teacher',10,1,'school',6],['Nurse',11,1,'clinic',5],['Doctor',18,1,'hospital',2],
   ['Police officer',12,1,'police',6],['Builder',11,0,null,6],['Bus driver',9,1,null,3],['Chef',9,0,null,5],['Mechanic',10,0,null,4],['Engineer',14,0,'office',3],['Journalist',10,0,'office',3],
-  ['Shop owner',15,0,'market',3],['Student',0,0,'school',8],['Retired',0,1,null,7],['Unemployed',0,0,null,6]];
+  ['Shop owner',15,0,'market',3],['Student',0,0,'school',8],['Retired',0,1,null,7],['Unemployed',0,0,null,5],
+  // every sector of the economy
+  ['Farmer',8,0,null,4],['Miner',12,0,null,2],['Forester',9,0,null,1],['Power plant operator',13,0,null,2],['Electrician',12,0,null,3],['Plumber',11,0,null,3],
+  ['Factory worker',9,0,null,6],['Car engineer',15,0,'office',2],['Architect',14,0,'office',1],['Software developer',16,0,'office',4],['AI researcher',20,0,'office',2],
+  ['Scientist',16,0,'office',3],['Chemist',15,0,'office',2],['Archaeologist',12,0,null,2],['Banker',20,0,'office',2],['Lawyer',19,0,'office',2],['Tour guide',8,0,null,2],
+  ['Zookeeper',8,0,null,1],['Ranger',9,1,null,1],['Pilot',18,0,null,1],['Soldier',11,1,null,3],['Artist',7,0,null,2]];
 const JOB = Object.fromEntries(JOBS.map(j => [j[0], { wage: j[1], pub: !!j[2], place: j[3] }]));
 const POLICIES = [
   { id: 'taxUp', name: 'Raise taxes by 2%', econ: 1, order: 0, ok: s => s.tax < 30 && s.treasury < 4000 },
@@ -62,29 +70,29 @@ function makeCitizen(i, role) {
   const t = { honesty: r(), kindness: r(), aggression: r() * r(), ambition: r(), sociability: r(), diligence: .3 + r() * .7 };
   const crook = t.honesty < .16 ? pickR(r, ['Pickpocket', 'Pickpocket', 'Vandal', 'Fraudster']) : null;
   return { id: i, name: pickR(r, FIRST) + ' ' + pickR(r, LAST), age, job, traits: t, crook, econ: r() * 2 - 1, order: r() * 2 - 1, charisma: r(),
-    wealth: 80 + Math.floor(r() * 400), mood: 55 + r() * 25, hunger: 70, energy: 80, social: 60, opinion: 0, memory: [], jail: 0, knowsCrook: false };
+    city: CITIES[[0, 0, 0, 0, 1, 1, 2, 2, 2, 3][Math.floor(r() * 10)]], wealth: 80 + Math.floor(r() * 400), mood: 55 + r() * 25, hunger: 70, energy: 80, social: 60, opinion: 0, memory: [], jail: 0, knowsCrook: false };
 }
 
 export function createSociety(ctx) {
   const peds = () => ctx.peds();
   const S = { tick: 0, last: Date.now(), treasury: 2500, tax: 15, crime: 30, clean: 70, health: 70, roads: 70, edu: 70, laws: { curfew: false, cctv: false, watch: false },
-    budget: { police: .22, clean: .14, health: .2, roads: .14, schools: .18, welfare: .12 }, mayor: -1, council: [], candidates: [], research: {}, projects: {}, playerVote: null, news: [], staff: [], rep: 0, approval: 55, lastElection: 0 };
+    budget: { police: .22, clean: .14, health: .2, roads: .14, schools: .18, welfare: .12 }, research: {}, projects: {}, news: [], staff: [], approval: 55, fame: 0, fameAcc: 0 };
   const citizens = [];
   let live = false;
   // ---- load or found the city ---------------------------------------------------------------------------
   let saved = null; try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { }
   const roles = peds().map(e => e.profession && JOB[e.profession] ? e.profession : null);
   for (let i = 0; i < Math.max(POP, roles.length); i++) citizens.push(makeCitizen(i, roles[i]));
+  peds().forEach((e, i) => { const at = ctx.cityAt?.(e.home || e.root.position); if (at && citizens[i]) citizens[i].city = at; });
   if (saved?.v === 1) {
     Object.assign(S, saved.S); S.research ||= {}; S.projects ||= {};
-    for (const [i, w, m, o, j, job, mem] of saved.c || []) { const c = citizens[i]; if (!c) continue; Object.assign(c, { wealth: w, mood: m, opinion: o, jail: j, job: job || c.job, memory: mem || [] }); }
+    for (const [i, w, m, o, j, job, mem, met, crook] of saved.c || []) { const c = citizens[i]; if (!c) continue; Object.assign(c, { wealth: w, mood: m, opinion: o, jail: j, job: job || c.job, memory: mem || [], metPlayer: !!met, knowsCrook: !!crook }); }
   }
   const unemployedPct = () => 100 * citizens.filter(c => c.job === 'Unemployed').length / citizens.length;
   const stats = () => ({ ...S, unemployed: unemployedPct() });
   function news(text, important) { S.news.unshift({ t: S.tick, text }); S.news.length = Math.min(S.news.length, 40); if (important && live) ctx.toast('📰 ' + text); }
   function remember(c, text) { c.memory.unshift(text); c.memory.length = Math.min(c.memory.length, 5); }
   const nameOf = i => citizens[i]?.name || 'nobody';
-  const officials = () => [S.mayor, ...S.council].filter(i => i >= 0).map(i => citizens[i]);
 
   function runFor(n, pool) {   // ambitious people stand; their views differ
     const r = rng(S.tick * 31 + n), out = new Set();
@@ -92,12 +100,6 @@ export function createSociety(ctx) {
     while (out.size < n && keen.length) out.add(keen.splice(Math.floor(r() * keen.length), 1)[0].id);
     return [...out];
   }
-  function foundGovernment() {
-    const cs = runFor(6, []); S.mayor = cs[0]; S.council = cs.slice(1);
-    news(`${nameOf(S.mayor)} is Mayor. The council: ${S.council.map(nameOf).join(', ')}.`);
-    S.candidates = [S.mayor, ...runFor(2, [S.mayor])]; S.lastElection = 0;
-  }
-
   // ---- one city hour: every citizen decides what to do ---------------------------------------------
   function tick() {
     S.tick++;
@@ -156,43 +158,21 @@ export function createSociety(ctx) {
       for (const c of out) if (Math.random() < (boom ? .08 : .03)) { c.job = pickR(Math.random, ['Shop worker', 'Builder', 'Office worker', 'Chef', 'Street cleaner']); remember(c, 'Found a job as a ' + c.job.toLowerCase()); c.mood += 10; }
       if (S.treasury < 0) for (const c of citizens) if (JOB[c.job]?.pub && c.job !== 'Retired' && Math.random() < .02) { remember(c, 'Lost my job in the council cuts'); c.job = 'Unemployed'; c.mood -= 12; }
     }
-    // corrupt officials skim; journalists and audits catch them
-    for (const o of officials()) if (o.traits.honesty < .3) { const skim = Math.min(S.treasury * .004 * (1 - o.traits.honesty), 40); if (skim > 0) { S.treasury -= skim; o.wealth += skim; o.skimmed = (o.skimmed || 0) + skim; } }
-    if (S.tick % 6 === 0) for (const o of officials()) if ((o.skimmed || 0) > 150 && Math.random() < .08 + citizens.filter(c => c.job === 'Journalist').length * .002) scandal(o);
     S.approval = clamp(citizens.reduce((n, c) => n + c.mood, 0) / citizens.length * .75 + (S.clean - 50) * .15 - (S.crime - 30) * .35 - (S.treasury < 0 ? 10 : 0), 0, 100);
-    if (S.tick % MEETING === 0) councilMeeting();
+    nation.tick();
+    gov.tick(allPolicies, score, apply);
     if (live && S.tick % 30 === 15) goOnline();
-    if (S.tick - S.lastElection >= ELECTION) election();
     payStaff();
+    // fame: how many people have heard of you (deeds, money, office); fades slowly if you do nothing
+    S.fameAcc = Math.max(0, (S.fameAcc || 0) * .999);
+    const worth = (ctx.gold?.() || 0) + (ctx.assets?.() || 0), off = gov.P.office === 'President' ? 40 : gov.P.office ? 15 : 0;
+    S.fame = clamp(S.fameAcc + Math.log10(1 + worth) * 4 + off + (ctx.level?.() || 0) * .4 + (gov.P.party != null ? (PARTIES[gov.P.party].major ? 10 : 3) : 0), 0, 100);
   }
   function gossip(c) {   // people compare notes; opinions (of you, too) drift towards their friends'
     const f = citizens[Math.floor(Math.random() * citizens.length)];
     if (f === c || f.jail) return;
-    const avg = (c.opinion + f.opinion) / 2; c.opinion += (avg - c.opinion) * .3; f.opinion += (avg - f.opinion) * .3;
+    if (S.fame >= 20) { const avg = (c.opinion + f.opinion) / 2; c.opinion += (avg - c.opinion) * .3; f.opinion += (avg - f.opinion) * .3; }   // nobody gossips about a nobody
     if (f.memory[0] && Math.random() < .2) remember(c, `Heard from ${f.name.split(' ')[0]}: "${f.memory[0]}"`);
-  }
-  function scandal(o) {
-    const role = o.id === S.mayor ? 'Mayor' : 'Councillor';
-    news(`SCANDAL: ${role} ${o.name} caught taking ${Math.round(o.skimmed)} gold from the city. Arrested.`, true);
-    S.treasury += o.skimmed * .7; o.skimmed = 0; o.jail = 120; o.knowsCrook = true;
-    for (const c of citizens) c.mood -= 3;
-    const pick = runFor(1, [S.mayor, ...S.council])[0];
-    if (o.id === S.mayor) { const next = S.council.shift(); S.mayor = next; S.council.push(pick); news(`${nameOf(next)} becomes acting Mayor.`); }
-    else S.council[S.council.indexOf(o.id)] = pick;
-  }
-  function councilMeeting() {
-    const st = stats(), live = allPolicies().filter(p => p.ok(st));
-    if (!live.length) return;
-    const members = [S.mayor, ...S.council].map(i => citizens[i]).filter(Boolean);
-    // each member puts forward what they care about most; the most popular proposal is voted on
-    const pairs = members.map(m => [m, live.filter(p => !p.corrupt || m.traits.honesty < .3).sort((a, b) => score(m, b) - score(m, a))[0]]).filter(x => x[1]);
-    if (!pairs.length) return;
-    const count = p => pairs.filter(x => x[1] === p).length;
-    const [proposer, p] = pairs.sort((a, b) => count(b[1]) - count(a[1]))[0];
-    const yes = members.filter(m => score(m, p) > 0 || m === proposer).length;
-    const passed = yes > members.length / 2;
-    news(`Council: "${p.name}" ${passed ? 'PASSED' : 'rejected'} ${yes}–${members.length - yes} (proposed by ${proposer.name}).`, passed);
-    if (passed) apply(p, proposer);
   }
   function allPolicies() {   // + building whatever residents found online that beats what we have
     return [...POLICIES, ...Object.entries(S.research).filter(([id, r]) => r.advanced && !S.projects[id]).map(([id]) => { const P = projectById(id); return P && { id: 'build:' + id, name: 'Build ' + P.name.toLowerCase() + ` (${P.cost} gold)`, econ: .5, order: .1, ok: s => s.treasury > P.cost * 1.3 }; }).filter(Boolean)];
@@ -213,38 +193,9 @@ export function createSociety(ctx) {
       case 'curfewOn': S.laws.curfew = true; break; case 'curfewOff': S.laws.curfew = false; break;
       case 'cctvOn': S.laws.cctv = true; S.treasury -= 900; break; case 'watchOn': S.laws.watch = true; break;
       default: if (p.id.startsWith('build:')) { const id = p.id.slice(6), P = projectById(id); S.treasury -= P.cost; S.projects[id] = { start: Date.now(), end: Date.now() + P.hours * 3600e3, done: false }; news(`The residents start building ${P.name.toLowerCase()} together. Ready in about ${P.hours} hours.`, true); } break;
-      case 'contract': { const take = Math.min(400, S.treasury * .15); S.treasury -= take; proposer.skimmed = (proposer.skimmed || 0) + take; proposer.wealth += take; break; }
+      case 'contract': { if (!proposer) break; const take = Math.min(400, S.treasury * .15); S.treasury -= take; proposer.skimmed = (proposer.skimmed || 0) + take; proposer.wealth += take; break; }
     }
   }
-  function election() {
-    S.lastElection = S.tick;
-    const cands = S.candidates.filter(i => citizens[i] && !citizens[i].jail);
-    while (cands.length < 3) { const more = runFor(3 - cands.length, cands); if (!more.length) break; cands.push(...more); }
-    const votes = new Map(cands.map(i => [i, 0])), player = S.playerVote != null && votes.has(S.playerVote) ? S.playerVote : null;
-    for (const c of citizens) {
-      if (c.jail || c.age < 18) continue;
-      if (player != null && c.opinion > 30 && Math.random() < c.opinion / 150) { votes.set(player, votes.get(player) + 1); continue; }   // people who like you follow your lead
-      let best = null, bs = -1e9;
-      for (const i of cands) {
-        const k = citizens[i];
-        let u = -Math.abs(k.econ - c.econ) - Math.abs(k.order - c.order) + k.charisma * .8 + (Math.random() - .5) * .8;
-        if (i === S.mayor) u += (c.mood - 50) / 25;
-        if (k.knowsCrook) u -= 2;
-        if (u > bs) { bs = u; best = i; }
-      }
-      votes.set(best, votes.get(best) + 1);
-    }
-    if (player != null) votes.set(player, votes.get(player) + 1);
-    const ranked = [...votes.entries()].sort((a, b) => b[1] - a[1]), winner = ranked[0][0], old = S.mayor;
-    S.lastResult = ranked.map(([i, v]) => [nameOf(i), v]);
-    S.mayor = winner;
-    // councillors: the runners-up plus the most ambitious people left
-    S.council = [...ranked.slice(1).map(x => x[0]), ...runFor(5, [winner, ...ranked.map(x => x[0])])].filter(i => i !== winner).slice(0, 5);
-    news(`ELECTION: ${nameOf(winner)} ${winner === old ? 're-elected' : 'elected'} Mayor with ${ranked[0][1]} votes (${ranked.slice(1).map(([i, v]) => nameOf(i) + ' ' + v).join(', ')}).`, true);
-    if (player != null) news(player === winner ? 'Your candidate won.' : 'Your candidate lost.', true);
-    S.playerVote = null; S.candidates = [winner, ...runFor(2, [winner])];
-  }
-
   // ---- residents go online and learn about better ways of doing things --------------------------------
   let researching = false; const shown = new Set();
   async function goOnline() {
@@ -280,12 +231,16 @@ export function createSociety(ctx) {
   }
   const housekeeper = () => S.staff.find(s => s.role === 'housekeeper');
 
-  if (saved?.v !== 1) foundGovernment();
+  const gov = createGovernment({ citizens, S, news, remember, nameOf, ctx, stats });
+  const nation = createNationSim({ citizens, S, news, remember, nameOf });
+  if (S.gov.president == null) gov.found();
+  const presName = () => S.gov.president === 'player' ? 'you' : nameOf(S.gov.president);
+  const presSurname = () => S.gov.president === 'player' ? 'the newcomer' : nameOf(S.gov.president).split(' ')[1];
   // ---- catch up on the time you were away ---------------------------------------------------------------
   {
     const missed = Math.min(720, Math.floor((Date.now() - S.last) / TICK));
     if (missed > 0) {
-      const before = { tick: S.tick, news: S.news.length ? S.news[0] : null, mayor: S.mayor };
+      const before = { tick: S.tick };
       for (let i = 0; i < missed; i++) tick();
       S.last += missed * TICK;
       const fresh = S.news.filter(n => n.t > before.tick).slice(0, 3).map(n => n.text);
@@ -294,7 +249,7 @@ export function createSociety(ctx) {
     live = true;
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory]) })); } catch { }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]) })); } catch { }
   }
   addEventListener('beforeunload', save);
 
@@ -320,13 +275,14 @@ export function createSociety(ctx) {
   function kill(b) { scene.remove(b.sp); b.sp.material.map.dispose(); b.sp.material.dispose(); bubbles.splice(bubbles.indexOf(b), 1); }
   function opinionWord(v) { return v > 65 ? 'doing a great job' : v > 50 ? 'alright, I suppose' : v > 35 ? 'not doing much for us' : 'useless'; }
   function chatLine(c) {
-    const r = Math.random(), m = citizens[S.mayor];
+    const r = Math.random();
     if (r < .2 && S.news[0]) return 'Did you hear? ' + S.news[0].text.replace(/^[A-Z]+: /, '').slice(0, 60);
-    if (r < .35) return `Mayor ${m?.name.split(' ')[1] || ''}? ${opinionWord(c.mood)}.`;
+    if (r < .35) return `President ${presSurname()}? ${opinionWord(c.mood)}.`;
     if (r < .48) return `Taxes are ${S.tax}% now. ${(S.tax > 17) === (c.econ < 0) ? 'Too much!' : 'Fair enough.'}`;
     if (r < .6 && c.memory[0]) return c.memory[0].slice(0, 60) + '.';
     if (r < .7) return S.crime > 45 ? "It's not safe round here any more." : 'Streets feel safe lately.';
-    if (r < .8 && Math.abs(c.opinion) > 25) return c.opinion > 0 ? 'That newcomer is all right, you know.' : 'Watch out for that newcomer. Trouble.';
+    if (r < .8 && Math.abs(c.opinion) > 25 && S.fame >= 20) return c.opinion > 0 ? 'That newcomer is all right, you know.' : 'Watch out for that newcomer. Trouble.';
+    if (r < .85) return pickR(Math.random, [`My chip says ATLAS is at level ${S.atlas.level}.`, 'The Unity Network was buzzing all morning.', S.dig.finds.length ? `They found ${S.dig.finds.at(-1).relic} at the temple dig!` : 'They say there is a temple under the hills.', S.sci.list[0] ? `Have you heard about ${S.sci.list[0].name}?` : 'The labs are working on something big.']);
     if (r < .9) return pickR(Math.random, ['Long day at work.', 'Going to the market later?', 'How is the family?', 'Lovely weather.', `Work as a ${c.job.toLowerCase()} is tiring.`]);
     return S.clean < 50 ? 'The streets are filthy.' : 'Nice to see the streets clean.';
   }
@@ -345,10 +301,12 @@ export function createSociety(ctx) {
     if (e.placard) e.placard.visible = on;
   }
   const govt = () => ctx.civicBuildings.find(b => /government/i.test(b.type) || /Government/.test(b.name)) || { x: 300, z: 900, minZ: 891 };
+  const leaks = [], leakGeo = new THREE.ConeGeometry(.35, 1.2, 10, 1, true), leakMat = new THREE.MeshBasicMaterial({ color: 0x6fc7ff, transparent: true, opacity: .55 }), lampClaims = new Set();
+  let leakT = 60;
   let visT = 0, chatT = 2, crimeT = 40, protest = null, catchupT = 0;
   const free = e => e.alive && !e.hidden && e.ped?.state === 'wander' && !e.socLock;
   function own(e, job) { e.ped.state = 'soc'; e.soc = job; }
-  function release(e) { e.soc = null; if (e.placard) placard(e, false); ctx.resumeWander(e); }
+  function release(e) { if (e.h?.rig) e.h.rig.rotation.x = 0; if (e.soc?.kind === 'lamp') lampClaims.delete(e.soc.b.i); if (e.soc?.kind === 'leak' && e.soc.L) e.soc.L.claimed = null; e.soc = null; if (e.placard) placard(e, false); ctx.resumeWander(e); }
 
   function update(dt) {
     if (Date.now() - S.last >= TICK) { S.last += TICK; tick(); if (S.tick % 5 === 0) save(); }
@@ -377,6 +335,16 @@ export function createSociety(ctx) {
       const m = litter.filter(m => !m.claimed).sort((a, b) => a.position.distanceTo(e.root.position) - b.position.distanceTo(e.root.position))[0];
       if (m && m.position.distanceTo(e.root.position) < 35) { m.claimed = e; own(e, { kind: 'sweep', m, t: 0 }); }
     }
+    // electricians fix broken street lamps; plumbers fix burst water pipes
+    const broken = ctx.brokenLamps?.() || [];
+    leakT -= dt;
+    if (leakT <= 0) { leakT = 120 + Math.random() * 120; const host = near[Math.floor(Math.random() * near.length)]; if (host && leaks.length < 2) { const m = new THREE.Mesh(leakGeo, leakMat); m.position.copy(host.root.position).add(new THREE.Vector3(1.2, .6, 0)); scene.add(m); leaks.push({ m, t: 0 }); } }
+    for (const L of [...leaks]) { L.t += dt; L.m.scale.set(1, .8 + Math.sin(L.t * 9) * .2, 1); if (L.t > 110 && L.m.position.distanceTo(pp) > 40 && !L.claimed) { scene.remove(L.m); leaks.splice(leaks.indexOf(L), 1); } }
+    for (const e of near) {
+      const c = cit(e); if (!c || !free(e)) continue;
+      if (c.job === 'Electrician') { const b = broken.filter(b => !lampClaims.has(b.i) && b.p.distanceTo(e.root.position) < 60).sort((a, b) => a.p.distanceTo(e.root.position) - b.p.distanceTo(e.root.position))[0]; if (b) { lampClaims.add(b.i); own(e, { kind: 'lamp', b, t: 0 }); say(e, 'Lamp down. On it.'); } }
+      if (c.job === 'Plumber') { const L = leaks.find(L => !L.claimed && L.m.position.distanceTo(e.root.position) < 60); if (L) { L.claimed = e; own(e, { kind: 'leak', L, t: 0 }); say(e, 'Burst pipe! Plumber coming through.'); } }
+    }
     // a couple of people stop for a chat
     chatT -= dt;
     if (chatT <= 0) {
@@ -400,12 +368,12 @@ export function createSociety(ctx) {
     if (S.approval < 38 && !protest && Math.hypot(pp.x - g.x, pp.z - g.z) < 130) {
       protest = []; const crowd = near.filter(e => free(e) && cit(e) && cit(e).mood < 50).slice(0, 8);
       crowd.forEach((e, i) => { own(e, { kind: 'protest', spot: new THREE.Vector3(g.x - 7 + i * 2, 0, (g.minZ ?? g.z - 9) - 3.5 - (i % 2) * 1.4), t: 0 }); placard(e, true); protest.push(e); });
-      if (crowd.length) ctx.toast(`📣 Protest outside the Government Offices: approval of Mayor ${citizens[S.mayor]?.name} is ${Math.round(S.approval)}%.`);
+      if (crowd.length) ctx.toast(`📣 Protest outside the Government Offices: approval of President ${presName()} is ${Math.round(S.approval)}%.`);
     } else if (protest && (S.approval >= 42 || Math.hypot(pp.x - g.x, pp.z - g.z) > 180)) { for (const e of protest) if (e.soc?.kind === 'protest') release(e); protest = null; }
     for (const e of near) if (e.soc && e.ped.state === 'soc') run(e, dt);
     for (const e of peds()) {
       if (!e.soc) continue;
-      if (e.ped.state !== 'soc') { if (e.soc.m) e.soc.m.claimed = null; e.soc = null; e.socLock = false; if (e.placard) placard(e, false); }
+      if (e.ped.state !== 'soc') { if (e.soc.m) e.soc.m.claimed = null; if (e.soc.kind === 'lamp') lampClaims.delete(e.soc.b.i); if (e.soc.L) e.soc.L.claimed = null; if (e.h?.rig) e.h.rig.rotation.x = 0; e.soc = null; e.socLock = false; if (e.placard) placard(e, false); }
       else if (!e.socLock && !e.hidden && e.root.position.distanceTo(pp) > 90) { if (e.soc.m) e.soc.m.claimed = null; release(e); }   // out of sight: carry on as normal
     }   // something else (a punch, a panic) took over
   }
@@ -456,6 +424,19 @@ export function createSociety(ctx) {
         if (j.t > 7) release(e);
         break;
       }
+      case 'lamp': {
+        if (p.distanceTo(j.b.p) > 1.4 && j.t < 40) { j.t += dt; ctx.animate(e, null, ctx.walk(e, j.b.p, 1.8, dt), false, dt); break; }
+        j.w = (j.w || 0) + dt; ctx.animate(e, null, false, false, dt); e.h.armR.pivot.rotation.x = -2.4 + Math.sin(j.w * 10) * .2;
+        if (j.w > 5) { ctx.fixLamp?.(j.b.i); lampClaims.delete(j.b.i); remember(c, 'Fixed a broken street lamp'); say(e, 'Light is back on.'); S.roads = clamp(S.roads + .2, 0, 100); release(e); }
+        break;
+      }
+      case 'leak': {
+        const L = j.L; if (!leaks.includes(L)) { release(e); break; }
+        if (p.distanceTo(L.m.position) > 1.3 && j.t < 40) { j.t += dt; ctx.animate(e, null, ctx.walk(e, L.m.position, 1.8, dt), false, dt); break; }
+        j.w = (j.w || 0) + dt; ctx.animate(e, null, false, false, dt); e.h.rig.rotation.x = .5; e.h.armR.pivot.rotation.x = -1.2 + Math.sin(j.w * 8) * .4;
+        if (j.w > 6) { e.h.rig.rotation.x = 0; scene.remove(L.m); leaks.splice(leaks.indexOf(L), 1); remember(c, 'Fixed a burst water pipe'); say(e, 'Sorted. Water is back on.'); release(e); }
+        break;
+      }
       case 'victim': { j.t -= dt; ctx.animate(e, 'phone', false, false, dt); if (j.t <= 0) release(e); break; }
       case 'chase': {
         const t = j.thief; j.t += dt;
@@ -472,7 +453,7 @@ export function createSociety(ctx) {
         if (p.distanceTo(j.spot) > .5 && j.t < 25) { j.t += dt; ctx.animate(e, null, ctx.walk(e, j.spot, 1.5, dt), false, dt); break; }
         const g = govt(); e.root.rotation.y = Math.atan2(g.x - p.x, g.z - p.z);
         ctx.animate(e, null, false, false, dt); e.h.armR.pivot.rotation.x = -2.6 + Math.sin(performance.now() / 250 + c.id) * .25;
-        if (Math.random() < dt / 6) say(e, pickR(Math.random, [S.crime > 45 ? 'Make our streets safe!' : 'Jobs, not promises!', `${S.tax}% tax is robbery!`, `Out, ${citizens[S.mayor]?.name.split(' ')[1]}!`, 'We want change!', S.clean < 50 ? 'Clean up our city!' : 'Listen to us!']));
+        if (Math.random() < dt / 6) say(e, pickR(Math.random, [S.crime > 45 ? 'Make our streets safe!' : 'Jobs, not promises!', `${S.tax}% tax is robbery!`, `Out, ${presSurname()}!`, 'We want change!', S.clean < 50 ? 'Clean up our city!' : 'Listen to us!']));
         break;
       }
     }
@@ -483,17 +464,20 @@ export function createSociety(ctx) {
     const c = cit(e); if (!c) return null;
     const now = Date.now();
     if (!c.metAt || now - c.metAt > 60e3) { c.opinion = clamp(c.opinion + 3, -100, 100); c.metAt = now; }
-    const m = citizens[S.mayor], hostile = c.opinion < -30;
-    const greet = hostile ? pickR(Math.random, ['What do YOU want?', "Stay away from me. I've heard about you.", "I've got nothing to say to you."])
-      : c.mood < 35 ? 'Hi. Not having a great day, honestly.' : c.opinion > 40 ? `Oh, hello again! Good to see you.` : pickR(Math.random, ['Hello there.', 'Hi! Can I help you?', 'Afternoon.']);
+    const hostile = c.opinion < -30, P = gov.P, pa = PARTIES[gov.party(c)], known = S.fame >= 15 || c.metPlayer;
+    c.metPlayer = true; S.fameAcc += .05;
+    const greet = !known ? pickR(Math.random, ['Sorry, do I know you?', 'Hm? Can I help you?', "Hello. You're not from round here, are you?"])
+      : hostile ? pickR(Math.random, ['What do YOU want?', "Stay away from me. I've heard about you.", "I've got nothing to say to you."])
+      : P.office === 'President' ? 'President! It is an honour.' : c.mood < 35 ? 'Hi. Not having a great day, honestly.' : c.opinion > 40 ? `Oh, hello again! Good to see you.` : pickR(Math.random, ['Hello there.', 'Hi! Can I help you?', 'Afternoon.']);
     const choices = [
-      ['Who are you?', `I'm ${c.name}, ${c.age}. ${c.job === 'Unemployed' ? "I'm out of work at the moment." : c.job === 'Retired' ? "I'm retired." : c.job === 'Student' ? "I'm a student." : `I work as a ${c.job.toLowerCase()}.`} ${c.mood > 65 ? 'Life is good.' : c.mood > 40 ? 'Getting by.' : 'Things are hard right now.'}`],
+      ['Who are you?', `I'm ${c.name}, ${c.age}, from ${c.city}. ${c.job === 'Unemployed' ? "I'm out of work at the moment." : c.job === 'Retired' ? "I'm retired." : c.job === 'Student' ? "I'm a student." : `I work as ${/^[AEIOU]/.test(c.job) ? 'an' : 'a'} ${c.job.toLowerCase()}.`} ${pa ? `I vote ${pa.short}: ${pa.motto}` : "I don't belong to any party."} ${c.mood > 65 ? 'Life is good.' : c.mood > 40 ? 'Getting by.' : 'Things are hard right now.'}`],
       ['What have you been up to?', c.memory.length ? c.memory.slice(0, 3).join('. ') + '.' : 'Nothing much. Work, home, the usual.'],
-      ['What do you think of the mayor?', `Mayor ${m?.name}? ${opinionWord(c.mood)}. ${Math.abs(m?.econ - c.econ) < .5 ? 'I voted for them.' : "Didn't vote for them."} Taxes are ${S.tax}%, ${(S.tax > 17) === (c.econ < 0) ? 'which is too high' : 'which is fine by me'}.`],
+      ['What do you think of the government?', `President ${presName()}? ${opinionWord(c.mood)}. ${S.gov.president !== 'player' && Math.abs((citizens[S.gov.president]?.econ ?? 0) - c.econ) < .5 ? 'I voted for them, if you must know.' : 'Who I voted for is my business. The ballot is secret.'} Taxes are ${S.tax}%, ${(S.tax > 17) === (c.econ < 0) ? 'which is too high' : 'which is fine by me'}.`],
       ["What's the news?", S.news.slice(0, 2).map(n => n.text).join(' ') || 'Quiet lately.'],
+      ['What is the chip?', 'Everyone in A.T. has a Unity chip. It links us to the Unity Network, so news and what we know is shared between all of us. ATLAS, the national AI in the Capital, runs every machine in the country. It is not wired into people. It only reaches us through the chips.'],
       ['Who made this world?', pickR(Math.random, ['The Lawgiver wrote the laws of this world: the roads, the rules, even how the rain falls. And above the Lawgiver, they say, is a Supreme Being. Nobody knows anything about the Supreme Being. Only that it is there.', "The Lawgiver made it, and keeps rewriting the laws to make it better. When something here doesn't make sense, we petition the Lawgiver. As for the Supreme Being above the Lawgiver… no one knows. We just know it exists."])],
       ['Seen anything strange lately?', (() => { const mine = (ctx.petitions?.() || []).find(p => p.who.includes(c.name.split(' ')[0]) || p.who.includes(c.name)); return mine ? `Yes! ${mine.words} I reported it. ${mine.fixed ? 'The Rule Keepers put it right.' : 'It is with the Lawgiver now.'}` : 'Not lately. If I see something that breaks the laws of the world, I will report it to the Lawgiver.'; })()],
-      ['What do people say about me?', c.opinion > 40 ? 'People like you. Word is you help folks out.' : c.opinion > 5 ? "You seem all right." : c.opinion > -30 ? "Folks don't know what to make of you." : 'People say you hurt folks round here. Everyone knows.'],
+      ['What do people say about me?', S.fame < 15 ? "Honestly? Nobody really knows who you are. It's a big country." : c.opinion > 40 ? 'People like you. Word is you help folks out.' : c.opinion > 5 ? "You seem all right." : c.opinion > -30 ? "Folks don't know what to make of you." : 'People say you hurt folks round here. Everyone knows.'],
     ];
     if (c.crook && c.opinion > 20) choices.push(['Anything else?', pickR(Math.random, ["Between us? I don't always earn my money honestly.", 'Keep your wallet close in this town. Trust me.'])]);
     const hk = housekeeper();
@@ -514,42 +498,84 @@ export function createSociety(ctx) {
   document.head.append(st);
   const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const bar = v => `<span class="bar"><i style="width:${clamp(v, 0, 100)}%"></i></span> ${Math.round(v)}`;
+  let tab = 'overview';
+  const fmt = n => Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(1) + 'bn' : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(1) + 'm' : Math.round(n).toLocaleString();
   function render() {
-    const m = citizens[S.mayor], left = ELECTION - (S.tick - S.lastElection), ppl = citizens.filter(c => !c.jail);
-    const B = S.budget, hk = housekeeper();
-    panel.innerHTML = `<button class="x" type="button" data-close>Close</button><h2>🏛 City Hall</h2>
-      <div>Mayor <b>${esc(m?.name)}</b> · approval ${bar(S.approval)}%</div>
-      <div>Council: ${S.council.map(i => esc(nameOf(i))).join(', ')}</div>
-      <h3>The city</h3><div class="row"><div>Safety ${bar(100 - S.crime)}</div><div>Cleanliness ${bar(S.clean)}</div><div>Health ${bar(S.health)}</div><div>Roads ${bar(S.roads)}</div><div>Schools ${bar(S.edu)}</div></div>
-      <div>${ppl.length} residents · unemployment ${unemployedPct().toFixed(1)}% · ${citizens.filter(c => c.jail).length} in jail · what people think of you: <b>${(() => { const o = citizens.reduce((n, c) => n + c.opinion, 0) / citizens.length; return o > 25 ? 'well liked' : o > 5 ? 'liked' : o > -10 ? 'unknown' : o > -30 ? 'distrusted' : 'feared'; })()}</b></div>
-      <h3>Money</h3><div>Treasury <b>${Math.round(S.treasury)}</b> gold · income tax <b>${S.tax}%</b></div>
-      <div class="row">${Object.entries(B).map(([k, v]) => `<div>${k} ${Math.round(v * 100)}%</div>`).join('')}</div>
+    const G = S.gov, P = gov.P, left = (G.snapAt != null ? G.snapAt : G.lastElection + TERM) - S.tick, ppl = citizens.filter(c => !c.jail), hk = housekeeper();
+    const year = Math.floor(S.tick / YEAR) + 1, avgOp = citizens.reduce((n, c) => n + c.opinion, 0) / citizens.length;
+    const tabs = [['overview', 'Overview'], ['politics', 'Politics'], ['economy', 'Economy'], ['atlas', 'ATLAS & science'], ['lawgiver', 'The Lawgiver'], ['news', 'News']];
+    const head = `<button class="x" type="button" data-close>Close</button><h2>🏛 Government of ${COUNTRY}</h2><div style="opacity:.8">City year ${year} · Development level ${S.dev.toFixed(1)} (it only goes up)</div>
+      <div class="row" style="margin:8px 0">${tabs.map(([k, n]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+    let body = '';
+    if (tab === 'overview') body = `
+      <div>President <b>${esc(gov.candName({ id: G.president }))}</b>${G.president !== 'player' ? ` (${PARTIES[gov.party(citizens[G.president])]?.short || 'Ind.'})` : ''} · approval ${bar(S.approval)}%</div>
+      <div>Cabinet: ${G.cabinet.map(i => esc(nameOf(i))).join(', ')}</div>
+      <div>Mayors: ${CITIES.map(c => `${c}: ${esc(G.mayors[c] === 'player' ? 'you' : nameOf(G.mayors[c]))}`).join(' · ')}</div>
+      <h3>The country</h3><div class="row"><div>Safety ${bar(100 - S.crime)}</div><div>Cleanliness ${bar(S.clean)}</div><div>Health ${bar(S.health)}</div><div>Roads ${bar(S.roads)}</div><div>Schools ${bar(S.edu)}</div></div>
+      <div>${ppl.length} residents across ${CITIES.length} cities · unemployment ${unemployedPct().toFixed(1)}% · ${citizens.filter(c => c.jail).length} in jail</div>
+      <h3>You</h3><div>Fame ${bar(S.fame)} · reputation: <b>${S.fame < 15 ? 'nobody knows you yet' : avgOp > 25 ? 'well liked' : avgOp > 5 ? 'liked' : avgOp > -10 ? 'mixed' : avgOp > -30 ? 'distrusted' : 'feared'}</b>${P.office ? ' · <b>' + esc(P.office) + '</b>' : ''}${P.party != null ? ' · member of the ' + esc(PARTIES[P.party].name) : ''}</div>
+      <div style="opacity:.75">Fame grows with what you do, what you own and the offices you hold. Until people know you, they don't much care what you do.</div>
+      <h3>Money</h3><div>Treasury <b>${fmt(S.treasury)}</b> gold · income tax <b>${S.tax}%</b> · ${Object.entries(S.budget).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · ')}</div>
       <h3>Laws in force</h3><div>${[S.laws.curfew && 'Night curfew (10pm–6am)', S.laws.cctv && 'CCTV on every street', S.laws.watch && 'Neighbourhood watch'].filter(Boolean).join(' · ') || 'No special laws.'}</div>
-      <h3>Election in ${left >= 60 ? Math.floor(left / 60) + 'h ' : ''}${left % 60}m (real time)</h3>
-      <div>${S.candidates.filter(i => citizens[i]).map(i => { const k = citizens[i]; return `<button type="button" data-vote="${i}" class="${S.playerVote === i ? 'on' : ''}">${esc(k.name)}${i === S.mayor ? ' (Mayor)' : ''}: ${k.econ > .3 ? 'more public spending' : k.econ < -.3 ? 'lower taxes' : 'balanced budget'}, ${k.order > .3 ? 'tough on crime' : k.order < -.3 ? 'personal freedom' : 'steady policing'}</button>`; }).join('')}</div>
-      <div style="opacity:.75">Your vote counts, and residents who like you tend to follow your choice.${S.lastResult ? ' Last result: ' + S.lastResult.map(([n, v]) => esc(n) + ' ' + v).join(', ') : ''}</div>
-      <h3>Your staff</h3><div>${hk ? `${esc(citizens[hk.id].name)}, housekeeper (${WAGE.housekeeper} gold a day). They do your laundry, dishes and handwashing reminders for you.` : 'Nobody yet. Talk to a resident to offer them a job as your housekeeper.'}</div>
+      <h3>Your staff</h3><div>${hk ? `${esc(citizens[hk.id].name)}, housekeeper (${WAGE.housekeeper} gold a day). They do your laundry and dishes for you.` : 'Nobody yet. Talk to a resident to offer them a job as your housekeeper.'}</div>`;
+    else if (tab === 'politics') {
+      const field = gov.field, assets = ctx.assets?.() || 0;
+      body = `<h3>${G.snapAt != null ? 'Snap election' : 'Next election'} in ${left >= 60 ? Math.floor(left / 60) + 'h ' : ''}${left % 60}m (real time) · a term is two city years</h3>
+      <div>${field.map((k, i) => `<button type="button" data-ballot="${i}" class="${G.ballot === i ? 'on' : ''}">${esc(gov.candName(k))} · ${k.party != null ? esc(PARTIES[k.party].short) : 'Ind.'}</button>`).join('')}</div>
+      <div style="opacity:.75">The ballot is secret. Nobody, not even ATLAS, knows who you voted for.${G.lastResult ? ' Last result: ' + G.lastResult.map(([n, p, v]) => `${esc(n)} (${p}) ${v}`).join(', ') : ''}</div>
+      <h3>National Assembly (60 seats)</h3><div class="row">${PARTIES.map(p => `<div title="${esc(p.motto)}"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${p.colour}"></span> ${esc(p.short)} ${G.seats[p.id] || 0}</div>`).join('')}</div>
+      <h3>The twelve parties</h3><ul>${PARTIES.map(p => `<li><b style="color:${p.colour}">${esc(p.name)}</b>${p.major ? ' ★ major (invitation only)' : ''}: "${esc(p.motto)}" ${P.party === p.id ? '<b>(your party)</b>' : p.major && !P.invites.includes(p.id) ? '' : `<button type="button" data-join="${p.id}">Join</button>`}</li>`).join('')}</ul>
+      <div style="opacity:.8">To be invited into a major party you need: ${INVITE.connections}+ connections in it (members or officials who like you and know you), ${gov.fmt(INVITE.assets)} in assets (you have ${fmt(assets)}), ${gov.fmt(INVITE.gold)} in cash (you have ${fmt(ctx.gold())}), and a reputation, good or bad (fame ${INVITE.fame}+; you have ${Math.round(S.fame)}).${P.invites.length ? ' <b>Invitations: ' + P.invites.map(i => esc(PARTIES[i].name)).join(', ') + '</b>' : ''}</div>
+      ${P.party != null ? '<button type="button" data-leave>Leave your party</button>' : ''}
+      <h3>Stand for office</h3><div>${P.running ? 'You are on the ballot for ' + esc(P.running.replace('Mayor:', 'Mayor of ')) + '.' : `<button type="button" data-run="President">Run for President (50,000 deposit, fame 30+)</button>${CITIES.map(c => `<button type="button" data-run="Mayor" data-city="${c}">Run for Mayor of ${c} (5,000)</button>`).join('')}`}</div>
+      ${G.president === 'player' ? `<h3>Propose a law to the Assembly</h3><div>${allPolicies().filter(p => !p.corrupt && p.ok(stats())).map(p => `<button type="button" data-propose="${p.id}" class="${G.proposal === p.id ? 'on' : ''}">${esc(p.name)}</button>`).join('') || 'Nothing needs doing right now.'}</div>` : ''}`;
+    } else if (tab === 'economy') {
+      const out = S.eco.out || {}, gdp = S.eco.gdp || 1;
+      body = `<h3>Output by sector · GDP ${fmt(gdp * 1000)} a year</h3><ul>${Object.entries(SECTORS).sort((a, b) => (out[b[0]] || 0) - (out[a[0]] || 0)).map(([k, v]) => `<li>${esc(v.name)} ${bar(100 * (out[k] || 0) / gdp * 4)} · ${v.jobs.join(', ')}${S.eco.boost[k] ? ` · +${Math.round(S.eco.boost[k] * 100)}% from new tech` : ''}</li>`).join('')}</ul>
+      <h3>Companies</h3><ul>${S.companies.map(co => `<li><b>${esc(co.name)}</b> (${esc(SECTORS[co.sector].name)}) · worth ${fmt(co.value)} · founder ${esc(nameOf(co.founder))} · researching ${esc(co.focus)} ${bar(co.rd)}%${co.gen ? ' · generation ' + co.gen : ''}</li>`).join('')}</ul>
+      <div>Self-driving share of traffic: <b>${Math.round(S.selfDriving * 100)}%</b></div>
       <h3>Ideas residents found online</h3><ul>${PROJECTS.filter(p => S.research[p.id]).map(p => { const r = S.research[p.id], pr = S.projects[p.id];
-        const status = pr?.done ? '✅ built' : pr ? `🏗 being built: ${Math.round(100 * clamp((Date.now() - pr.start) / (pr.end - pr.start), 0, 1))}%` : r.advanced ? 'proposed to the council' : 'not needed';
-        return `<li><b>${esc(p.name)}</b> (${status}). ${esc(nameOf(r.by))}: "${esc(r.summary)}"${r.sources.length ? ' Sources: ' + r.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:#9fd3ff">${esc(s.title || 'link')}</a>`).join(', ') : ''}</li>`; }).join('') || '<li>Nobody has gone looking yet. Residents read up on new ideas about every half hour.</li>'}</ul>
-      <h3>Petitions to the Lawgiver</h3><div style="opacity:.75">The Lawgiver wrote the laws of this world; above the Lawgiver, residents say, is a Supreme Being they know nothing about. When something breaks the laws, the Rule Keepers put it right and the report goes to the Lawgiver.</div>
-      <ul>${(ctx.petitions?.() || []).slice(0, 10).map(p => `<li><b>${esc(p.title)}</b> near (${p.x}, ${p.z}), seen ${p.count}×. ${esc(p.who.join(', '))}: "${esc(p.words)}" <i>${esc(p.status)}</i></li>`).join('') || '<li>No reports yet.</li>'}</ul>
-      <div><textarea data-note rows="2" maxlength="500" placeholder="Leave a note for the Lawgiver: something that looks wrong or could be better" style="width:100%;box-sizing:border-box;border-radius:8px;padding:8px;font:inherit"></textarea><button type="button" data-send>Send to the Lawgiver</button></div>
-      <h3>News</h3><ul>${S.news.slice(0, 12).map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>`;
+        const status = pr?.done ? '✅ built' : pr ? `🏗 being built: ${Math.round(100 * clamp((Date.now() - pr.start) / (pr.end - pr.start), 0, 1))}%` : r.advanced ? 'proposed to the Assembly' : 'not needed';
+        return `<li><b>${esc(p.name)}</b> (${status}). ${esc(nameOf(r.by))}: "${esc(r.summary)}"${r.sources.length ? ' Sources: ' + r.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:#9fd3ff">${esc(s.title || 'link')}</a>`).join(', ') : ''}</li>`; }).join('') || '<li>Nobody has gone looking yet. Residents read up on new ideas about every half hour.</li>'}</ul>`;
+    } else if (tab === 'atlas') {
+      const L = atlasLevel(S.atlas.data), next = ATLAS_LEVELS[L + 1];
+      body = `<h3>ATLAS, the national AI (Capital)</h3><div>Level ${L}: <b>${ATLAS_LEVELS[L].name}</b>. ${ATLAS_LEVELS[L].does}</div>
+      <div>Knowledge ${fmt(S.atlas.data)}${next ? ` / ${fmt(next.at)} for "${next.name}"` : ''} · robot workers ${S.atlas.robots} · robot soldiers ${S.atlas.soldiers}</div>
+      <div style="opacity:.75">ATLAS is wired into every machine in A.T.: traffic, the grid, the robots. People are not machines: it reaches them only through the Unity chip every resident carries. Residents feed it what they learn; scientists, discoveries, the dig and petitions all make it smarter.</div>
+      <div><input data-ask maxlength="200" placeholder="Ask ATLAS a question" style="width:70%;border-radius:8px;padding:8px;font:inherit"><button type="button" data-askgo>Ask</button></div><div data-answer style="margin-top:6px"></div>
+      <h3>Discoveries</h3><ul>${S.sci.list.slice(0, 10).map(d => `<li><b>${esc(d.name)}</b> (${esc(d.kind)}): ${esc(d.about)}${d.by != null ? ' · ' + esc(nameOf(d.by)) : ''}</li>`).join('') || '<li>The labs are working on it.</li>'}</ul>
+      <h3>The temple dig</h3><div>${esc(DIG_STAGES[Math.min(5, Math.floor(S.dig.progress / 20))])} · ${bar(S.dig.progress)}%</div><ul>${S.dig.finds.map(f => `<li>${esc(f.relic)}${f.by != null ? ' (found by ' + esc(nameOf(f.by)) + ')' : ''}</li>`).join('')}</ul>`;
+    } else if (tab === 'lawgiver') body = `<div style="opacity:.8">The Lawgiver wrote the laws of this world; above the Lawgiver, residents say, is a Supreme Being they know nothing about. When something breaks the laws, the Rule Keepers put it right and the report goes to the Lawgiver.</div>
+      <ul>${(ctx.petitions?.() || []).slice(0, 14).map(p => `<li><b>${esc(p.title)}</b> near (${p.x}, ${p.z}), seen ${p.count}×. ${esc(p.who.join(', '))}: "${esc(p.words)}" <i>${esc(p.status)}</i></li>`).join('') || '<li>No reports yet.</li>'}</ul>
+      <div><textarea data-note rows="2" maxlength="500" placeholder="Leave a note for the Lawgiver: something that looks wrong or could be better" style="width:100%;box-sizing:border-box;border-radius:8px;padding:8px;font:inherit"></textarea><button type="button" data-send>Send to the Lawgiver</button></div>`;
+    else body = `<ul>${S.news.slice(0, 30).map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>`;
+    panel.innerHTML = head + body;
   }
   panel.addEventListener('click', ev => {
-    const v = ev.target.closest('[data-vote]'); if (v) { S.playerVote = +v.dataset.vote; save(); render(); ctx.toast('🗳 Vote cast for ' + nameOf(S.playerVote) + '. Counted at the next election.'); return; }
-    if (ev.target.closest('[data-send]')) { const t = panel.querySelector('[data-note]').value.trim(); if (t) { ctx.note?.(t); ctx.toast('📜 Your note is on its way to the Lawgiver.'); render(); } return; }
-    if (ev.target.closest('[data-close]')) close();
+    const t = ev.target.closest('button'); if (!t) return;
+    const d = t.dataset, say2 = m => { ctx.toast(m); save(); render(); };
+    if (d.tab) { tab = d.tab; render(); return; }
+    if (d.ballot != null) return say2('🗳 ' + gov.actions.ballot(+d.ballot));
+    if (d.join != null) return say2(gov.actions.join(+d.join));
+    if (d.leave != null) return say2(gov.actions.leave());
+    if (d.run) return say2(gov.actions.run(d.run, d.city));
+    if (d.propose) return say2(gov.actions.propose(d.propose));
+    if (d.askgo != null) { const q = panel.querySelector('[data-ask]').value.trim(), out = panel.querySelector('[data-answer]'); if (!q) return; out.textContent = 'ATLAS is thinking…';
+      ctx.askAtlas?.(q, { year: Math.floor(S.tick / YEAR) + 1, president: gov.candName({ id: S.gov.president }), approval: Math.round(S.approval), crime: Math.round(S.crime), treasury: Math.round(S.treasury), tax: S.tax, atlasLevel: S.atlas.level, dev: Math.round(S.dev), discoveries: S.sci.list.slice(0, 3).map(x => x.name), finds: S.dig.finds.slice(-3).map(x => x.relic) })
+        .then(a => { out.textContent = a || 'ATLAS is offline right now.'; nation.feedAtlas(2); }).catch(() => { out.textContent = 'ATLAS is offline right now.'; }); return; }
+    if (d.send != null) { const t2 = panel.querySelector('[data-note]').value.trim(); if (t2) { ctx.note?.(t2); ctx.toast('📜 Your note is on its way to the Lawgiver.'); render(); } return; }
+    if (d.close != null) close();
   });
   function openHall() { render(); panel.hidden = false; ctx.pause(); }
+  function openTab(t) { tab = t; openHall(); }
   function close() { panel.hidden = true; ctx.resume(); }
   addEventListener('keydown', e => { if (e.code === 'Escape' && !panel.hidden) close(); });
   panel.addEventListener('keydown', e => { if (e.code === 'Escape') close(); e.stopPropagation(); });   // typing a note mustn't move you
   setTimeout(() => checkProjects(true), 0);
 
   return {
-    update, converse, openHall, close, save, citizens, state: S, tick, election, councilMeeting, goOnline, say, news,
+    update, converse, openHall, openTab, close, save, citizens, state: S, tick, goOnline, say, news, gov, nation,
+    election: () => gov.election(false), session: () => gov.tick(allPolicies, score, apply),
     petitionFiled(r, name) { const c = citizens.find(c => c.name.startsWith(name)); if (c) remember(c, 'Reported to the Lawgiver: ' + r.title.toLowerCase()); if (r.cat !== 'note') news(`${name} petitioned the Lawgiver: ${r.title.toLowerCase()} near (${r.x}, ${r.z}).`); },
     get open() { return !panel.hidden; },
     citizenOf: cit,
@@ -563,8 +589,9 @@ export function createSociety(ctx) {
     },
     onHit(e, byPlayer) {
       const c = cit(e); if (!c || !byPlayer) return;
+      S.fameAcc += .4; c.metPlayer = true;
       c.opinion = clamp(c.opinion - 45, -100, 100); remember(c, 'The newcomer attacked me in the street'); c.mood -= 15;
-      for (const o of peds()) if (o !== e && o.alive && !o.hidden && o.root.position.distanceTo(e.root.position) < 25) { const k = cit(o); if (k) { k.opinion = clamp(k.opinion - 12, -100, 100); remember(k, 'Saw the newcomer beat someone up'); } }
+      for (const o of peds()) if (o !== e && o.alive && !o.hidden && o.root.position.distanceTo(e.root.position) < 25) { const k = cit(o); if (k) { k.metPlayer = true; k.opinion = clamp(k.opinion - 12, -100, 100); remember(k, 'Saw the newcomer beat someone up'); } }
     },
     choreByStaff(kind) {   // your housekeeper does it (once per chore per city day)
       const hk = housekeeper(); if (!hk) return null;
