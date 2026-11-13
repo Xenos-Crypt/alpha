@@ -27,7 +27,7 @@ export const HILLY = [
   { r: [954, 966, 120, 565], flats: [300] },          // the airfield road (level where The Reserve turns off)
   { r: [116, 344, -634, -626], flats: [170.5] },      // north housing grid <-> the fair road
   { r: [535, 546, 25, 240], flats: [] },              // east industrial grid <-> the town's east road
-  { r: [940, 952, -85, 125], flats: [] },             // far-east grid <-> airfield road
+  { r: [940, 952, -85, 125], flats: [60] },           // far-east grid <-> airfield road (level where Eastfield Lane joins)
   { r: [-667, -324, 252, 262], flats: [] },           // airport road
   { r: [-334, -324, 115, 505], flats: [257] },        // the west road
   { r: [-466, -288, -449, -439], flats: [] },         // driving-test track <-> north road
