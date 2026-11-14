@@ -161,7 +161,7 @@ export function createGovernment(api) {
   function scandal(o, what) {
     const role = office(o.id) || 'Official';
     news(`SCANDAL: ${role} ${o.name} ${what || `was caught taking ${Math.round(o.skimmed || 0)} gold from the treasury`}. Arrested.`, true);
-    S.treasury += (o.skimmed || 0) * .7; o.skimmed = 0; o.jail = 120; o.knowsCrook = true;
+    S.treasury += (o.skimmed || 0) * .7; o.skimmed = 0; o.knowsCrook = true; api.justice ? api.justice().charge(o, 'corruption', { culprit: o.id, cctv: true }) : (o.jail = 120);
     for (const c of citizens) c.mood -= 2;
     if (o.id === G.president) { const next = G.cabinet.shift(); G.president = next; news(`${nameOf(next)} becomes acting President.`, true); }
     else if (G.cabinet.includes(o.id)) G.cabinet[G.cabinet.indexOf(o.id)] = keen(c => party(c) === presidentParty(), 1, [G.president, ...G.cabinet])[0];
