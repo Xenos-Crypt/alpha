@@ -71,7 +71,7 @@ export function createLives({ citizens, S, news, remember, ctx, JOB }) {
     chase(c);
   }
   function chase(c) {   // try to move towards their dream; it can fail
-    const r = Math.random(), go = (job, chance, success, fail) => { if (r > chance) return; if (Math.random() < .55 + c.traits.diligence * .3) { remember(c, success); change(c, job); achieve(c, success); } else { c.failures++; remember(c, fail); c.mood -= 6; if (c.failures >= 3) giveUp(c); } };
+    const r = Math.random(), go = (job, chance, success, fail) => { if (r > chance) return; if (ctx?.gateJob && !ctx.gateJob(c, job)) return;   /* not qualified: they apply to train first (education.js) */ if (Math.random() < .55 + c.traits.diligence * .3) { remember(c, success); change(c, job); achieve(c, success); } else { c.failures++; remember(c, fail); c.mood -= 6; if (c.failures >= 3) giveUp(c); } };
     switch (c.ambition) {
       case 'doctor': if (c.job !== 'Doctor') go(c.job === 'Nurse' && skill(c, 'Nurse') > 50 ? 'Doctor' : c.job === 'Student' ? 'Nurse' : 'Student', .004, c.job === 'Nurse' ? 'Qualified as a doctor' : 'Started training in medicine', 'Failed my medical exams'); else done(c); break;
       case 'business': if (c.job !== 'Shop owner') { if (c.wealth > 1500) go('Shop owner', .01, 'Opened my own business', 'My business plan was turned down by the bank'); } else done(c); break;
