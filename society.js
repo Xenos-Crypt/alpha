@@ -644,6 +644,7 @@ export function createSociety(ctx) {
       <h3>Offices held</h3><div>${L.offices.map(esc).join(' · ') || 'None yet.'}</div><h3>Laws you passed</h3><div>${L.laws.map(esc).join(' · ') || 'None yet.'}</div>
       <h3>What you own</h3><div>${fmt(ctx.assets?.() || 0)} gold in property and vehicles.</div><h3>Charity</h3><div>${fmt(L.donations)} gold given.</div>
       <h3>Family</h3><div>${S.playerPartner != null ? 'Married to ' + esc(citizens[S.playerPartner]?.name) + '. ' : ''}${L.family.map(i => esc(citizens[i]?.name || '')).join(', ') || 'No children yet.'}</div>
+      <h3>Your notebook</h3><ul>${(ctx.notebook?.() || []).map(n => `<li>${esc(n)}</li>`).join('') || '<li>Nothing written down yet.</li>'}${ctx.lead?.() ? `<li><i>Something to look into at ${esc(ctx.lead().name)}.</i></li>` : ''}</ul>
       <h3>Controversies</h3><div>${L.controversies.map(esc).join(' · ') || 'None. Yet.'}</div>
       <h3>In the history books</h3><ul>${history.Hs.filter(h => h.player).slice(0, 10).map(h => `<li>${esc(h.when)}: ${esc(h.what)}</li>`).join('') || '<li>Not yet.</li>'}</ul>`;
     } else if (tab === 'people') {
