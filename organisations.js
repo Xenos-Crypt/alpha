@@ -49,6 +49,9 @@ export const ORGS = [
   // quinary
   ['Government of A.T.', 'public', 'quinary', 'public', 'the President, cabinet and Assembly'], ['Supreme Court of A.T.', 'public', 'quinary', 'public', 'the highest court'],
   ['National Heritage Board', 'public', 'quinary', 'tourism', 'decides what is protected, including the temple dig'],
+  // (added later, at the end so every older organisation keeps its ID code)
+  ['Rootstock Nurseries', 'private', 'primary', 'agriculture', 'grows the trees, shrubs, bulbs and bedding plants for the parks and gardens'],
+  ['Westhaven Parks & Gardens', 'public', 'tertiary', 'public', 'plants and looks after the parks, employs the gardeners and keeps the park birds'],
 ].map(([name, type, stage, sector, does]) => ({ name, type, stage, sector, does }));
 export const STAGES = ['primary', 'secondary', 'tertiary', 'quaternary', 'quinary'];
 export const TYPES = ['public', 'private', 'charity', 'social enterprise', 'co-operative', 'NGO'];

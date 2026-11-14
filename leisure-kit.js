@@ -40,7 +40,9 @@ export function makeKit(ctx) {
   const SKIN = [0x8d5a3b, 0x6b4430, 0xd9a07a, 0xffdcc0, 0x5a3a28, 0xf0c8a0, 0x7a4a30];
   const HAIR = [0x111111, 0x2b1d14, 0x1a1a1a, 0x5a3b22, 0xc9a26a];
   let pid = 0;
-  const person = (x, z, yaw = 0, o = {}) => { if (!ctx.makePerson) return null; const i = pid++; const h = ctx.makePerson({ child: !!o.child, outfit: o.outfit ?? (o.child ? KID : OUT)[i % (o.child ? KID.length : OUT.length)], hair: HAIR[(i * 3) % HAIR.length], skin: SKIN[(i * 5) % SKIN.length], pants: o.pants ?? [0x2d3142, 0x1f3a5a, 0x4a3a2a, 0x222222][i % 4] }); h.root.position.set(x, o.y ?? 0.05, z); h.root.rotation.y = yaw; return h; };
+  const people = [];   // every person the kit makes (so each can be given an ID)
+  const person0 = (x, z, yaw = 0, o = {}) => { if (!ctx.makePerson) return null; const i = pid++; const h = ctx.makePerson({ child: !!o.child, outfit: o.outfit ?? (o.child ? KID : OUT)[i % (o.child ? KID.length : OUT.length)], hair: HAIR[(i * 3) % HAIR.length], skin: SKIN[(i * 5) % SKIN.length], pants: o.pants ?? [0x2d3142, 0x1f3a5a, 0x4a3a2a, 0x222222][i % 4] }); h.root.position.set(x, o.y ?? 0.05, z); h.root.rotation.y = yaw; return h; };
+  const person = (x, z, yaw, o = {}) => { const h = person0(x, z, yaw, o); if (h) { h.kitChild = !!o.child; people.push(h); } return h; };
   const actors = [];   // { h, kind, ... } animated by update()
   const stander = (x, z, yaw, o = {}) => { const h = person(x, z, yaw, o); if (h) actors.push({ h, kind: o.task || 'idle', ph: Math.random() * 6, x, z, y: o.y ?? 0.05 }); return h; };
   const sitter = (x, z, yaw, seatY, o = {}) => { const h = person(x, z, yaw, { ...o, y: seatY - 0.5 }); if (h) actors.push({ h, kind: 'sit', ph: Math.random() * 6, task: o.task }); return h; };
@@ -75,7 +77,7 @@ export function makeKit(ctx) {
     else if (kind === 'tortoise') { body(0.9, 0.5, 1.1, 0.3, mat(0x6b5a3a, { rough: 0.95 })); head = new THREE.Group(); head.position.set(0, 0.25, 0.6); g.add(head); S(head, 0.12, 0, 0, 0, 0x8a8a5a, 8); speed = 0.12; }
     else if (kind === 'duck' || kind === 'swan') { const sw = kind === 'swan'; const c = mat(sw ? 0xffffff : 0x8a6a4a); body(sw ? 0.5 : 0.3, sw ? 0.35 : 0.22, sw ? 0.8 : 0.45, 0.12, c); head = new THREE.Group(); head.position.set(0, sw ? 0.6 : 0.3, sw ? 0.35 : 0.2); g.add(head); if (sw) C(g, 0.04, 0.05, 0.55, 0, 0.35, 0.3, c, 6); S(head, sw ? 0.09 : 0.09, 0, 0, 0, sw ? c : 0x1e6b3a, 8); B(head, 0.05, 0.04, 0.12, 0, -0.02, 0.1, 0xf2a03a); speed = 0.4; }
     g.scale.setScalar(s);
-    const a = { g, legs, head, kind, area, speed: speed * (o.speedMul ?? 1), tx: x, tz: z, wait: Math.random() * 4, ph: Math.random() * 6, swim: o.swim };
+    const a = { g, legs, head, kind, area, speed: speed * (o.speedMul ?? 1), tx: x, tz: z, wait: Math.random() * 4, ph: Math.random() * 6, swim: o.swim, swimY: o.swimY ?? 0 };
     animals.push(a); return a;
   }
   // ---------------- update ----------------
@@ -108,8 +110,8 @@ export function makeKit(ctx) {
       if (moving) { const st = Math.min(d, a.speed * dt); g.position.x += dx / d * st; g.position.z += dz / d * st; const want = Math.atan2(dx, dz); let dr = want - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); g.rotation.y += dr * Math.min(1, dt * 3); }
       a.ph += dt * (moving ? a.speed * 4 : 0.6); a.legs.forEach((l, i) => { l.rotation.x = moving ? Math.sin(a.ph + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI / 2 : 0)) * 0.45 : 0; });
       if (a.head) a.head.rotation.x = moving ? Math.sin(a.ph * 0.5) * 0.08 : Math.sin(clock * 0.8 + a.ph) * 0.15 + (a.kind === 'giraffe' || a.kind === 'zebra' ? 0.25 : 0);
-      if (a.swim) g.position.y = Math.sin(clock * 2 + a.ph) * 0.03;
+      if (a.swim) g.position.y = a.swimY + Math.sin(clock * 2 + a.ph) * 0.03;   // floating on the water's surface
     }
   }
-  return { mat, B, C, S, solid, circle, sign, place, spot, hall, person, stander, sitter, walker, family, animal, actors, animals, update, boxGeo };
+  return { mat, B, C, S, solid, circle, sign, place, spot, hall, person, people, stander, sitter, walker, family, animal, actors, animals, update, boxGeo };
 }

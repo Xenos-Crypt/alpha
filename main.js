@@ -69,6 +69,8 @@ import {createMarketPanel} from './market-panel.js';
 import {createProperty} from './property.js';
 import {buildDrivingSchool} from './driving-school.js';
 import {createForest, pickKind} from './trees.js';
+import {digPond, holeMaterial} from './ponds.js';
+import {makeBotany, LIFE, PLANTS, ANIMALS, TREE_SHAPE, plantId} from './botany.js';
 import {createGrass} from './grass.js';
 import {marketItems, applyStats, CAR_CATS, BIKE_CATS, AIR_CATS} from './vehicle-catalogue.js';
 import {styleCar, randomCarStyle} from './car-styles.js';
@@ -598,7 +600,8 @@ ground.castShadow = false;
 // covered x -900..900, z -1050..1050). It sits just below the main ground.
 { const tex = grassTex.clone(); tex.repeat.set(230, 230); tex.needsUpdate = true;
   const outer = mesh(new THREE.CircleGeometry(DOME.r + 2, 160), new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }));
-  outer.rotation.x = -Math.PI / 2; outer.position.set(DOME.x, -0.03, DOME.z); outer.castShadow = false; outer.userData.noCull = true; }
+  outer.rotation.x = -Math.PI / 2; outer.position.set(DOME.x, -0.03, DOME.z); outer.castShadow = false; outer.userData.noCull = true; holeMaterial(outer.material); }
+holeMaterial(ground.material);   // the ground has the ponds cut out of it (ponds.js)
 
 roadTex.repeat.set(330 / 40, 330 / 40);
 roadTex.offset.set(0.375, 0.375);   // puts an intersection exactly at the origin
@@ -638,10 +641,10 @@ const forest = createForest(scene, {
   onFall: t => { const i = colliders.indexOf(t.collider); if (i >= 0) colliders.splice(i, 1); },
   onRegrow: t => { colliders.push(t.collider); },
 });
-function addTree(x, z, s = 1, trafficIsland=false) {
+function addTree(x, z, s = 1, trafficIsland=false, species=null) {
   if(!trafficIsland){const safe=roadsidePosition(x,z,13);x=safe.x;z=safe.z;}
-  const y0 = groundY(x, z);
-  forest.add(x, y0, z, { kind: pickKind(x, z), scale: s * 0.9 });   // real trees: trunk, branches, layered canopy (see trees.js); the forest adds the trunk collider
+  const y0 = groundY(x, z), kind = species ? TREE_SHAPE[species] : pickKind(x, z);
+  return forest.add(x, y0, z, { kind, species: species || kind, owner: 'GOV', scale: s * 0.9 });   // street and park trees are planted by the council   // real trees: trunk, branches, layered canopy (see trees.js); the forest adds the trunk collider
 }
 
 // =====================================================================
@@ -998,13 +1001,21 @@ for (const rot of [0, Math.PI / 2]) {
   path.position.set(PARK.x, CURB + 0.02, PARK.z);
   path.castShadow = false;
 }
-const pond = mesh(new THREE.CircleGeometry(4, 32), new THREE.MeshStandardMaterial({ color: 0x3d8fc4, roughness: 0.15, metalness: 0.2 }));
-pond.rotation.x = -Math.PI / 2;
-pond.position.set(PARK.x + 6.5, CURB + 0.03, PARK.z + 6.5);
+const pond = mesh(new THREE.CircleGeometry(4, 32), new THREE.MeshStandardMaterial({ color: 0x2f6f86, roughness: 0.1, metalness: 0.25 }));
 pond.castShadow = false;
-for (const [ox, oz] of [[-9, -9], [-5, -11], [-11, -4], [9, -9], [11, -4], [-9, 9], [-4, 11], [10, -3.5]]) addTree(PARK.x + ox, PARK.z + oz, 1 + rand() * 0.4);
-addBench(PARK.x + 2.5, PARK.z - 4, -Math.PI / 2);
-addBench(PARK.x - 2.5, PARK.z + 4, Math.PI / 2);
+// the duck pond lies in a hollow: dug below the lawn, banks sloping down to a muddy bed, water filling it to
+// below the top of the bank (ponds.js). Wade in and you are swimming (see isSeaWater / waterZones).
+const PONDY = -0.3;
+digPond(scene, { x: PARK.x + 6.5, z: PARK.z + 6.5, rx: 4, rim: CURB + 0.012, level: PONDY, bed: -1.5, water: pond, materials: [lawnMat, paveMat, roads.material] });
+// every tree and flower bed in Ashford Park is a named species with a label (botany.js); the city's random
+// numbers are drawn exactly as before, so nothing else in the city moves
+const ashBot = makeBotany({ interactables, toast: t => toast(t) }, 'Ashford Park');
+{ const ASH_TREES = ['oak', 'cherry', 'beech', 'oak', 'maple', 'cherry', 'birch', 'maple'];
+  [[-9, -9], [-5, -11], [-11, -4], [9, -9], [11, -4], [-9, 9], [-4, 11], [10, -3.5]].forEach(([ox, oz], i) => { const key = ASH_TREES[i], t = addTree(PARK.x + ox, PARK.z + oz, 1 + rand() * 0.4, false, key), s = PLANTS[key];
+    ashBot.label(t.x, t.z, 2.6, `${s.common} — ${s.botanical}`, `${s.common} (${s.botanical}). Family ${s.family}; ${s.origin}. Grown by Rootstock Nurseries, planted here by Westhaven Parks & Gardens.`); }); }
+addBench(PARK.x + 2.5, PARK.z - 4, -Math.PI / 2); ashBot.fixture('PRD', 'BEN', 'WOD.STL', 'Northwood Sawmills', 'Park bench', PARK.x + 2.5, PARK.z - 4);
+addBench(PARK.x - 2.5, PARK.z + 4, Math.PI / 2); ashBot.fixture('PRD', 'BEN', 'WOD.STL', 'Northwood Sawmills', 'Park bench', PARK.x - 2.5, PARK.z + 4);
+ashBot.fixture('LND', 'PND', 'WAT.MUD', 'Westhaven Builders (lined with Riverbank clay)', 'The duck pond', PARK.x + 6.5, PARK.z + 6.5);
 
 // =====================================================================
 // PARK LIFE: flower beds, a duck pond, wandering pets and butterflies, and
@@ -1013,14 +1024,16 @@ addBench(PARK.x - 2.5, PARK.z + 4, Math.PI / 2);
 const poolZones = [];   // rectangular swimming pools (see venues.js)
 const waterZones = [{ x: PARK.x + 6.5, z: PARK.z + 6.5, r: 4 }]; // ponds — walking in without Water risks drowning
 const flowerColors = [0xff6b81, 0xffd166, 0xff9f43, 0xeaff8f, 0xa29bfe];
-function addFlowerPatch(x, z, n = 6) {
+function addFlowerPatch(x, z, n = 6, key = null) {   // a patch of one named flower (its colour); the random draws are unchanged
+  const pl = [];
   for (let i = 0; i < n; i++) {
     const fx = x + (rand() - 0.5) * 2.2, fz = z + (rand() - 0.5) * 2.2, fy = groundY(fx, fz);
     box(0.05, 0.3, 0.05, fx, fy + 0.15, fz, 0x3f8f3a, false);
-    mesh(new THREE.ConeGeometry(0.12, 0.18, 6), pick(flowerColors)).position.set(fx, fy + 0.34, fz);
+    const c = pick(flowerColors); mesh(new THREE.ConeGeometry(0.12, 0.18, 6), key ? PLANTS[key].colour : c).position.set(fx, fy + 0.34, fz); pl.push([fx, fz]);
   }
+  if (key) ashBot.bed(key, x - 1.1, x + 1.1, z - 1.1, z + 1.1, 'Ashford Park', { plants: pl, every: 99 });
 }
-for (const [ox, oz] of [[-7, -2], [7, 2], [-2, 8], [3, -8], [-10, 1]]) addFlowerPatch(PARK.x + ox, PARK.z + oz);
+[[-7, -2], [7, 2], [-2, 8], [3, -8], [-10, 1]].forEach(([ox, oz], i) => addFlowerPatch(PARK.x + ox, PARK.z + oz, 6, ['geranium', 'marigold', 'nasturtium', 'cosmos', 'petunia'][i]));
 
 const ducks = [];
 function addDuck(cx, cz, r) {
@@ -1030,7 +1043,7 @@ function addDuck(cx, cz, r) {
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), bodyMat); head.position.set(0.22, 0.18, 0); g.add(head);
   const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 6), new THREE.MeshStandardMaterial({ color: 0xff9f1a }));
   beak.rotation.z = Math.PI / 2; beak.position.set(0.32, 0.16, 0); g.add(beak);
-  g.position.set(cx, CURB + 0.07, cz);
+  g.position.set(cx, PONDY + 0.05, cz);
   scene.add(g);
   ducks.push({ g, cx, cz, r: r * 0.55, phase: rand() * Math.PI * 2, speed: 0.4 + rand() * 0.3 });
 }
@@ -1039,7 +1052,7 @@ function updateDucks(dt) {
   for (const d of ducks) {
     d.phase += d.speed * dt;
     const x = d.cx + Math.cos(d.phase) * d.r, z = d.cz + Math.sin(d.phase) * d.r;
-    d.g.position.set(x, CURB + 0.07 + Math.sin(performance.now() / 300 + d.phase) * 0.02, z);
+    d.g.position.set(x, PONDY + 0.05 + Math.sin(performance.now() / 300 + d.phase) * 0.02, z);
     d.g.rotation.y = -d.phase - Math.PI / 2;
   }
 }
@@ -7799,13 +7812,18 @@ atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,
 // Every building, house, road tile, block, resident, vehicle and the player gets a unique ID (world-ids.js).
 const idBlocks=[];for(const [city,b] of [['Ashford',MAIN_BOUNDS],['Riverside',RIVERSIDE_BOUNDS],['Capital',CAPITAL_BOUNDS]])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)idBlocks.push({city,bx,bz});
 let idNewRoads=null;
+// the town's own creatures (outside the parks' lists): each gets an ID the first time the registry looks
+const townWildlife=()=>{const out=[];const one=(o,key,owner,pos,where)=>{const s=ANIMALS[key];if(!s)return;o.idInfo??={cls:'CRE',kind:s.kind,mat:s.code,owner,seed:`town:${key}:${out.length}`,maker:owner==='WLD'?'wild':'a resident\'s pet',name:`${s.common} (${s.scientific})${where?', '+where:''}`,get pos(){return pos();}};out.push(o.idInfo);};
+  ducks.forEach(d=>one(d,'duck','WLD',()=>d.g.position,'the Ashford Park pond'));squirrels.forEach(q=>one(q,'squirrel','WLD',()=>q.g.position));bees.forEach(b=>one(b,'bee','WLD',()=>b.m.position));
+  butterflies.forEach(b=>one(b,{0xffe66d:'brimstone',0x74b9ff:'commonblue',0xffffff:'smallwhite'}[b.m.material.color.getHex()]||'peacockfly','WLD',()=>b.m.position));parkPets.forEach(a=>one(a,a.kind,'RES',()=>a.g.position));
+  for(const b of birdLife.birds)one(b,b.kind,'WLD',()=>b.g.position);return out;};
 const idExtra=[{cls:'BLD',kind:'AIB',mat:'GLS.STL',owner:'GOV',seed:'atlas-base',maker:'Westhaven Builders',name:'ATLAS national AI base',pos:{x:80,z:922}},{cls:'BLD',kind:'TMP',mat:'STN',owner:'GOV',seed:'temple-dig',maker:'the First Kings (ancient)',name:'Ancient temple dig',pos:{x:-147,z:-357}},{cls:'BLD',kind:'GEN',mat:'STL.CON',owner:'GOV',seed:'waste-centre',maker:'Westhaven Builders',name:'Waste & Recycling Centre',pos:{x:283,z:-411}}];
 // The IDs are for the AI and the back end, not for players: only the owner (open the game once with ?owner) gets the hidden registry view.
 const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setItem('aw.owner','1');return localStorage.getItem('aw.owner')==='1';}catch{return false;}};
-worldIds=createWorldIds({isOwner,THREE,scene,belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
+worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
-  extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
+  extra:()=>[...idExtra,...LIFE.things,...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // every purchase, uniform, worn-out shirt and pram goes on the thing's record (belongings.js → world IDs)
@@ -7875,8 +7893,9 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // Head-to-head sports (vs the people you meet, or an online player in your room)
   sportsGames=createSports({stats,toast,gainXp:n=>gainXp(n),pause:()=>{locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl(),
     send:p=>roomChat.sendGame(p),myId:()=>roomChat.self,online:()=>!!roomChat.connected&&onlinePlayReady,players:()=>onlinePlayers?.list?.()||[]});
-  const leisureCtx={...rideCtx,camBlockers,planeBlocks,sitSpots,floorMaterial,sports:sportsGames,
-    tree:(x,z,kind,sc=1)=>forest.add(x,groundY(x,z),z,{kind:kind||pickKind(x,z),scale:sc*0.9}),
+  const leisureCtx={...rideCtx,camBlockers,planeBlocks,sitSpots,floorMaterial,sports:sportsGames,digPond,groundMats:[ground.material],
+    tree:(x,z,kind,sc=1)=>forest.add(x,groundY(x,z),z,{kind:kind||pickKind(x,z),scale:sc*0.9,owner:'GOV'}),
+    plantTree:(x,z,shape,sc=1,species,owner='GOV')=>forest.add(x,groundY(x,z),z,{kind:shape,species,owner,scale:sc*0.9}),
     pose:(h,p,dt)=>animateHumanoid(h,p,false,false,true,dt),
     input:()=>locked?{forward:keys.KeyW||keys.ArrowUp?1:0,back:keys.KeyS||keys.ArrowDown?1:0,left:keys.KeyA||keys.ArrowLeft?1:0,right:keys.KeyD||keys.ArrowRight?1:0}:{forward:0,back:0,left:0,right:0}};
   // The leisure strip north of the boulevard: Ventura (fun centre, Fountain Park, karting), the Recreation Centre, and the Grand Park with its lake and zoo

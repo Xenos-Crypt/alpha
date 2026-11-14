@@ -4,6 +4,11 @@
 //   pine   – trunk with four stacked tiers, lighter tips
 //   birch  – slim pale trunk with dark marks, small airy leaf clusters
 //   palm   – curved trunk in segments, drooping fronds, coconuts
+//   cherry – a short dark trunk, spreading branches, a wide canopy of pink blossom
+//   maple  – a small tree with a low layered canopy of deep red leaves
+//   willow – a crown with long strands of leaves hanging down to the ground
+//   cypress – a tall dark green column
+//   beech  – a big rounded canopy of copper-purple leaves on a smooth grey trunk
 // Each species has three shape variants, and every tree gets its own size, turn and leaf tint.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -52,12 +57,47 @@ function palm(v) {
   for (let i = 0; i < 3; i++) parts.push(paint(place(new THREE.SphereGeometry(0.16, 6, 5), x + Math.cos(i * 2.1) * 0.25, y - 0.25, Math.sin(i * 2.1) * 0.25), 0x5a3a1a));
   return mergeGeometries(parts);
 }
-const BUILD = { oak, pine, birch, palm };
+function cherry(v) {
+  const parts = [], bark = 0x4a3328;
+  parts.push(paint(new THREE.CylinderGeometry(0.15, 0.26, 1.7, 7).translate(0, 0.85, 0), bark, 0.3, 0, 1.7));
+  for (let i = 0; i < 4; i++) { const a = i * 1.6 + v; parts.push(paint(place(new THREE.CylinderGeometry(0.05, 0.11, 1.9, 5).translate(0, 0.95, 0), 0, 1.5, 0, Math.cos(a) * 1.0, 0, -Math.sin(a) * 1.0), bark, 0.2, 1.5, 3)); }
+  const pink = [0xf4a6c6, 0xf7b8d2, 0xee9cbf][v % 3], blob = new THREE.DodecahedronGeometry(1, 0);
+  for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2 + v, r = i === 8 ? 0 : 1.7 + rnd() * 0.4; parts.push(paint(place(blob, Math.cos(a) * r, i === 8 ? 3.4 : 2.7 + rnd() * 0.5, Math.sin(a) * r, rnd() * 3, rnd() * 3, 0, 0.9 + rnd() * 0.35), pink, 0.3, 2, 4.4)); }
+  return mergeGeometries(parts);
+}
+function maple(v) {
+  const parts = [paint(new THREE.CylinderGeometry(0.1, 0.18, 1.6, 6).translate(0, 0.8, 0), 0x5a3d2e, 0.3, 0, 1.6)];
+  const red = [0x9b2226, 0xae2012, 0x8c1c13][v % 3], blob = new THREE.IcosahedronGeometry(1, 0);
+  for (let t = 0; t < 3; t++) for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2 + t * 0.6 + v, r = (1.5 - t * 0.45) * (0.9 + rnd() * 0.2); parts.push(paint(place(blob, Math.cos(a) * r, 1.7 + t * 0.6, Math.sin(a) * r, rnd() * 3, rnd() * 3, 0, 0.7 - t * 0.1), red, 0.35, 1.2, 3.4)); }
+  return mergeGeometries(parts);
+}
+function willow(v) {
+  const parts = [paint(new THREE.CylinderGeometry(0.22, 0.38, 3, 7).translate(0, 1.5, 0), 0x5e4a36, 0.3, 0, 3)];
+  const leaf = [0x8fae4a, 0x9bb85a, 0x84a242][v % 3];
+  parts.push(paint(place(new THREE.DodecahedronGeometry(1, 0), 0, 4, 0, 0, v, 0, 2.2), leaf, 0.4, 2.5, 6));
+  const strand = new THREE.ConeGeometry(0.28, 3.6, 4).translate(0, -1.8, 0);   // hanging, the point at the bottom
+  for (let i = 0; i < 22; i++) { const a = i / 22 * Math.PI * 2 + v * 0.3, r = 1.8 + (i % 3) * 0.25; parts.push(paint(place(strand, Math.cos(a) * r, 4.6 - (i % 2) * 0.3, Math.sin(a) * r, 0, a, 0, 1), leaf, 0.45, 0.8, 4.6)); }
+  return mergeGeometries(parts);
+}
+function cypress(v) {
+  const parts = [paint(new THREE.CylinderGeometry(0.12, 0.18, 1.2, 6).translate(0, 0.6, 0), 0x4a3426, 0.3, 0, 1.2)];
+  const col = [0x2e4a2a, 0x2a4426, 0x33502e][v % 3], h = 6.5 + v * 0.6;
+  const body = new THREE.SphereGeometry(1, 10, 10); body.scale(0.75, h / 2, 0.75); body.translate(0, 0.9 + h / 2, 0);
+  parts.push(paint(body, col, 0.4, 0.9, 0.9 + h));
+  return mergeGeometries(parts);
+}
+function beech(v) {
+  const parts = [paint(new THREE.CylinderGeometry(0.2, 0.36, 2.8, 8).translate(0, 1.4, 0), 0x8a8a84, 0.25, 0, 2.8)];
+  const leaf = [0x5a2a35, 0x6b2f3f, 0x7a3a44][v % 3], blob = new THREE.DodecahedronGeometry(1, 0);
+  for (let i = 0; i < 11; i++) { const a = i / 10 * Math.PI * 2 + v, top = i === 10, r = top ? 0 : 1.6 + rnd() * 0.5; parts.push(paint(place(blob, Math.cos(a) * r, top ? 5.2 : 3.4 + rnd() * 1.2, Math.sin(a) * r, rnd() * 3, rnd() * 3, 0, top ? 1.5 : 1.1 + rnd() * 0.4), leaf, 0.4, 2.6, 6.4)); }
+  return mergeGeometries(parts);
+}
+const BUILD = { oak, pine, birch, palm, cherry, maple, willow, cypress, beech };
 
 // Every tree also has a condition (100% when healthy). Driving into one knocks it down a bit —
 // sturdy oaks and big trees take more, slim birches less — and at 0% it falls over, away from
 // whatever hit it. A fallen tree no longer blocks the way and grows back after a while.
-const STURDY = { oak: 1.25, pine: 1, birch: 0.7, palm: 0.85 };
+const STURDY = { oak: 1.25, pine: 1, birch: 0.7, palm: 0.85, cherry: 0.8, maple: 0.7, willow: 1.1, cypress: 0.9, beech: 1.3 };
 const REGROW = 240;   // seconds until a fallen tree stands again
 
 export function createForest(scene, { onAdd, onFall, onRegrow } = {}) {
@@ -66,12 +106,12 @@ export function createForest(scene, { onAdd, onFall, onRegrow } = {}) {
   const moving = new Set();
   let dirty = false;
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
-  function add(x, y, z, { kind = 'oak', scale = 1, variant } = {}) {
+  function add(x, y, z, { kind = 'oak', scale = 1, variant, species, owner } = {}) {
     if (!BUILD[kind]) kind = 'oak';
     const v = variant ?? Math.floor(rnd() * 3), key = kind + ':' + v;
     if (!lists.has(key)) lists.set(key, []);
     const g = 0.85 + rnd() * 0.3, s = scale * (0.85 + rnd() * 0.3);
-    const t = { x, y, z, s, r: rnd() * Math.PI * 2, tint: new THREE.Color(g, 0.9 + rnd() * 0.2, g), kind, hp: 100, tilt: 0, fallDir: 0, down: 0, mesh: null, i: -1 };
+    const t = { x, y, z, s, r: rnd() * Math.PI * 2, tint: new THREE.Color(g, 0.9 + rnd() * 0.2, g), kind, species: species || kind, owner: owner || 'WLD', hp: 100, tilt: 0, fallDir: 0, down: 0, mesh: null, i: -1 };
     lists.get(key).push(t); all.push(t);
     const k = cellKey(x, z); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(t);
     onAdd?.(t);
