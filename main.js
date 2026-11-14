@@ -17,6 +17,7 @@ import {buildAtlasWorld} from './atlas-world.js';
 import {createWorldIds} from './world-ids.js';
 import {createWorldRegistry} from './world-registry.js';
 import {createInfoMarkets} from './info-markets.js';
+import {createStory} from './story.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -127,7 +128,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -507,6 +508,7 @@ function collide(p, r) {
   }
   // The world ends at the rim of the Aegis Shield dome, where the border fence is.
   // (Dungeons, interiors, the subway and sewers live far outside it and aren't affected.)
+  if (p === player.position && story?.clampOutside(p)) return hit;   // outside the dome: between the dome and the river
   { const dx = p.x - DOME.x, dz = p.z - DOME.z, d = Math.hypot(dx, dz);
     if (d > PLAY_R && d < PLAY_R + 60) { p.x = DOME.x + dx / d * PLAY_R; p.z = DOME.z + dz / d * PLAY_R; } }
   return hit;
@@ -5451,6 +5453,11 @@ function applyTheme(theme) {
 // DUNGEON MONSTERS (demons, angels, and their bosses)
 // =====================================================================
 const MONSTERS = {
+ // beasts beyond the dome (story.js): stronger the further out you go
+ frostWolf:{name:'Frost Wolf',look:{outfit:0xd9e2ea,hair:0xf2f6f8,skin:0xc9d3dc,pants:0xa9b5bf,shoes:0x8a96a0},scale:.9,hp:70,dmg:8,speed:5,ai:'melee',xp:25},
+ iceBear:{name:'Ice Bear',look:{outfit:0xf1f4f6,hair:0xffffff,skin:0xe6ecef,pants:0xd5dde2,shoes:0x9aa6ae},scale:1.6,hp:220,dmg:14,speed:3.6,ai:'melee',xp:60},
+ snowStalker:{name:'Snow Stalker',look:{outfit:0x9fb3c4,hair:0x6d8394,skin:0xb7c8d6,pants:0x7f93a3,shoes:0x51626f},scale:1.3,hp:180,dmg:15,speed:4.6,ai:'melee',xp:80,horns:true},
+ glacierWyrm:{name:'Glacier Wyrm',look:{outfit:0x7fd0f0,hair:0xbfefff,skin:0x9ad8ef,pants:0x5fb0d0,shoes:0x3f8fb0},scale:2.6,hp:900,dmg:20,speed:3.4,ai:'boss',xp:400,horns:true},
  toxicCrawler:{name:'Toxic Crawler',look:{outfit:0x466620,hair:0x141c0a,skin:0x8fb848,pants:0x293b13,shoes:0x17240d},scale:.8,hp:60,dmg:7,speed:3.5,ai:'melee',xp:20,shot:0x95de27,poison:true},
  venomStalker:{name:'Venom Stalker',look:{outfit:0x11201a,hair:0x050907,skin:0x344d27,pants:0x142019,shoes:0x0b100c},scale:1.4,hp:120,dmg:10,speed:4,ai:'ranged',xp:35,shot:0x92ed2a,poison:true},
  venomSovereign:{name:'Great Venom Sovereign',look:{outfit:0x111d14,hair:0x080d08,skin:0x578437,pants:0x13221a,shoes:0x08120a},scale:3,hp:1200,dmg:18,speed:3.4,ai:'boss',xp:500,shot:0x8fff21,poison:true,horns:true},
@@ -6644,7 +6651,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||story?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -7633,7 +7640,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !story?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -7736,7 +7743,7 @@ regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareS
 society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPosition:()=>player.position,dayTime:()=>dayTime,
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},walk:(e,t,sp,dt)=>walkTowards(e,t,sp,dt),animate:(e,pose,moving,run,dt)=>animateHumanoid(e.h,pose,moving,run,e.onGround,dt),
   resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
-  arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),companyReports:()=>infoMarkets?.companyReports(),archive:()=>infoMarkets?.archive(),
+  arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),notebook:()=>story?.notebook()||[],lead:()=>story?.lead(),playerSurname:()=>playerUsername||'Newcomer',companyReports:()=>infoMarkets?.companyReports(),archive:()=>infoMarkets?.archive(),
   petitions:()=>worldWatch?.list||[],note:t=>worldWatch?.note(t),
   cityAt:p=>p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
   assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,level:()=>prog.level,
@@ -7764,11 +7771,23 @@ worldIds=createWorldIds({isOwner,THREE,scene,grass:()=>grass?.tufts?.()||[],isRo
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // Information is bought: the Info Market (legal) in Ashford Central Market and the dark web terminal in the Narrows (info-markets.js).
-infoMarkets=createInfoMarkets({scene,colliders,interactables,makePerson:o=>makeHumanoid(o),groundY,narrows:NARROWS,player:()=>player,peds:()=>peds,citizenOf:e=>society?.citizenOf(e),remember:(c,t)=>society?.remember(c,t),
+infoMarkets=createInfoMarkets({controversy:t=>society?.history?.L.controversies.push(t),scene,colliders,interactables,makePerson:o=>makeHumanoid(o),groundY,narrows:NARROWS,player:()=>player,peds:()=>peds,citizenOf:e=>society?.citizenOf(e),remember:(c,t)=>society?.remember(c,t),
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},raiseWanted,fame:()=>society?.state?.fame||0,news:(t,i)=>society?.news(t,i),setWaypoint,
   secretPlaces:()=>[{name:'the ancient temple dig',x:-147,z:-382},{name:'the ATLAS base',x:80,z:897},{name:'the hidden peak',x:-345,z:1015},{name:'the Narrows black market',x:NARROWS.x,z:NARROWS.z},{name:'the north border checkpoint',x:170,z:-1180}],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 function openMap(){if(!infoMarkets||infoMarkets.hasMap())return worldMap?.show();toast("🗺️ You don't have a map. Buy one at the Info Market in Ashford Central Market, or use a travel board.");}
+// The story nobody tells you (story.js): the truth beyond the mountains, the ways to it, and the ways out.
+const storyPause=()=>{locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';};
+story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,teleport:teleportPlayer,raiseWanted,toast,setWaypoint,makeMonster:(t,l,p)=>makeMonster(t,l,p),
+  achieve:t=>society.lives.achieve(null,t),history:(what,why)=>society.history.record('story',what,why,{player:true}),controversy:t=>society.history.L.controversies.push(t),controversies:()=>society.history.L.controversies.length,
+  office:()=>society.gov.P.office,inParty:()=>society.gov.P.party!=null,isHunter:()=>!!hunterGuilds?.licensed,wanted:()=>wanted,isNight:()=>dayTime>0.55&&dayTime<0.95,
+  friendWith:jobs=>society.citizens.some(c=>!c.dead&&(c.bond||0)>=55&&jobs.includes(c.job)),
+  addItem:(name,icon)=>{inventory.push({name,icon});renderInventory?.();},countItem:name=>inventory.filter(i=>i.name===name).length,
+  takeItem:name=>{const i=inventory.findIndex(x=>x.name===name);if(i<0)return false;inventory.splice(i,1);renderInventory?.();return true;},
+  eat:n=>{stats.hunger=Math.min(100,stats.hunger+n);},hurt:(n,why)=>{stats.hp-=n;},
+  flying:()=>inCar&&driving&&driving.kind==='plane'?driving:null,crash:v=>crashPlane(v),
+  director:async q=>{if(!navigator.onLine)return null;const r=await fetch('/api/story-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;},
+  pause:storyPause,resume:requestGameControl});
 const worldRegistry=createWorldRegistry({client:supabase,ids:worldIds,userId:()=>registryUserId});
 worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
@@ -7879,7 +7898,7 @@ helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlaye
     stats.gold-=300;toast('🚁 SkyLink Charter: request accepted (300 gold). Your pilot is ready.');return true;},
   steal:p=>{if(inCar||!p.heli)return false;const pos=new THREE.Vector3();p.heli.getWorldPosition(pos);const gov=p.owner==='government';
     const v=makeHelicopter({name:gov?'Government helicopter':'SkyLink charter helicopter',color:gov?0x1a1a1a:0x2f6f8f,x:pos.x,z:pos.z,yaw:p.heli.rotation.y});v.group.position.y=pos.y;v.alt=pos.y;v.stolen=true;
-    raiseWanted(gov?240:150);enterVehicle(v);society?.lives?.achieve(null,gov?'Grand theft: a government helicopter':'Grand theft: a helicopter');toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
+    raiseWanted(gov?240:150);enterVehicle(v);society?.lives?.achieve(null,gov?'Grand theft: a government helicopter':'Grand theft: a helicopter');society?.history?.L.controversies.push(gov?'Stole a government helicopter':'Stole a charter helicopter');toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
     society?.news?.(gov?'The newcomer stole a government helicopter from the Capital helipad!':'A charter helicopter was stolen from '+p.name+'.',true);if(society?.state)society.state.fameAcc+=gov?6:3;return true;}});
 drones=buildDrones({scene,dome:DOME});
 lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,
@@ -8078,7 +8097,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);

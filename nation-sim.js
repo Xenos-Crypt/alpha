@@ -9,7 +9,7 @@ import { SECTORS, sectorOfJob, COMPANIES, ATLAS_LEVELS, atlasLevel, makeDiscover
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export function createNationSim(api) {
-  const { citizens, S, news, remember, nameOf } = api;
+  const { citizens, S, news, remember, nameOf, history } = api;
   S.eco ||= { boost: {}, out: {}, gdp: 0 };
   S.atlas ||= { data: 0, robots: 0, soldiers: 0, level: 0 };
   S.sci ||= { points: 0, n: 0, list: [] };
@@ -71,7 +71,7 @@ export function createNationSim(api) {
       S.sci.list.unshift(d); S.sci.list.length = Math.min(S.sci.list.length, 30);
       E.boost[d.sector] = (E.boost[d.sector] || 0) + .05;
       if (who) remember(who, 'Discovered ' + d.name);
-      news(`🔬 DISCOVERY: ${who ? who.name : 'A lab team'} found ${d.name}, ${d.about}.`, true);
+      news(`🔬 DISCOVERY: ${who ? who.name : 'A lab team'} found ${d.name}, ${d.about}.`, true); history?.record('science', `${d.name} was discovered`, `${who ? who.name + '\'s' : 'a'} team's research in ${d.sector}`, { who: who?.name, watch: 'dev' });
       feedAtlas(40);
     }
     // the temple dig
@@ -82,7 +82,7 @@ export function createNationSim(api) {
       while (S.dig.finds.length < Math.min(findsDue, RELICS.length)) {
         const relic = RELICS[S.dig.finds.length], who = byJob('Archaeologist')[Math.floor(Math.random() * team)];
         S.dig.finds.push({ relic, by: who?.id }); if (who) remember(who, 'Unearthed ' + relic);
-        news(`🏺 At the temple dig, ${who ? who.name : 'the team'} unearthed ${relic}.`, true); feedAtlas(15);
+        news(`🏺 At the temple dig, ${who ? who.name : 'the team'} unearthed ${relic}.`, true); history?.record('archaeology', `${relic[0].toUpperCase() + relic.slice(1)} was unearthed`, 'the archaeologists dug deeper into the temple mound', { who: who?.name }); feedAtlas(15);
         E.boost.tourism = (E.boost.tourism || 0) + .02;
       }
       const after = Math.floor(S.dig.progress / 20);
@@ -90,7 +90,7 @@ export function createNationSim(api) {
     }
     // development only ever rises, and lifts the floor under everything else
     const target = clamp(gdp / citizens.length * 30 + lvl * 6 + S.sci.n * 1.5 + S.dig.finds.length + Object.values(S.projects || {}).filter(p => p.done).length * 4 + S.companies.reduce((n, c) => n + c.gen, 0) * 2, 0, 100);
-    if (target > S.dev) S.dev = Math.min(target, S.dev + .05);
+    S.dev = Math.max(0, S.dev + Math.max(-.03, Math.min(.05, target - S.dev)));   // the country can decline as well as grow (only the floor below holds)
     const floor = 15 + S.dev * .55;
     S.clean = Math.max(S.clean, floor); S.health = Math.max(S.health, floor); S.roads = Math.max(S.roads, floor); S.edu = Math.max(S.edu, floor);
     S.crime = Math.min(S.crime, 100 - S.dev * .6);
