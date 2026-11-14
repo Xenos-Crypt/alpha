@@ -58,6 +58,6 @@ async function clips(file, name, keep) {
   await doc.transform(resample({ tolerance: 2e-4 }), prune({ keepLeaves: true }), quantize(), squeeze);
   await io.write(path.join(out, name + '.glb'), doc);
 }
-await clips(ual1, 'moves-1', ['Idle_Loop', 'Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Sitting_Idle_Loop', 'Sitting_Talking_Loop', 'Idle_Talking_Loop', 'Interact', 'Driving_Loop', 'Swim_Fwd_Loop']);
+await clips(ual1, 'moves-1', ['Idle_Loop', 'Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Sitting_Idle_Loop', 'Sitting_Talking_Loop', 'Idle_Talking_Loop', 'Interact', 'Driving_Loop', 'Swim_Fwd_Loop', 'Push_Loop']);
 await clips(ual2, 'moves-2', ['Consume', 'Idle_FoldArms_Loop', 'Idle_TalkingPhone_Loop', 'Walk_Carry_Loop']);
 for (const f of await fs.readdir(out)) console.log(f, (await fs.stat(path.join(out, f))).size);

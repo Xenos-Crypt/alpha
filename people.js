@@ -35,6 +35,11 @@ export function loadPeopleKit() {
     const hairs = Object.fromEntries(hairNames.map((n, i) => [n, rest[i]]));
     const [mL, mD, fL, fD, h1, h2, eye, nM, nF] = rest.slice(hairNames.length);
     const clips = new Map([...moves1.animations, ...moves2.animations].map(c => [c.name, c]));
+    // pushing a pram: the legs and body walk (or stand) normally, the arms hold the handle out in front
+    const ARMS = /^(clavicle|upperarm|lowerarm|hand|thumb|index|middle|ring|pinky)/;
+    const layer = (name, base, arms) => new THREE.AnimationClip(name, base.duration, [...base.tracks.filter(t => !ARMS.test(t.name)), ...arms.tracks.filter(t => ARMS.test(t.name))]);
+    clips.set('Walk_Pram', layer('Walk_Pram', clips.get('Walk_Loop'), clips.get('Walk_Carry_Loop')));
+    clips.set('Idle_Pram', layer('Idle_Pram', clips.get('Idle_Loop'), clips.get('Walk_Carry_Loop')));
     const kit = { bodies: { m: prepBody(m.scene), f: prepBody(f.scene) }, hairs, clips, tex: { m: [mL, mD, nM], f: [fL, fD, nF], hair: { MI_Hair_1: h1, MI_Hair_2: h2 }, eye } };
     return kit;
   })();
@@ -56,11 +61,36 @@ function prepBody(scene) {
     if (p >= 0 && p < 4) cover[v * 4 + p] += w; else if (p === 4) shoe[v] += w;
   }
   g.setAttribute('cover', new THREE.BufferAttribute(cover, 4)); g.setAttribute('shoe', new THREE.BufferAttribute(shoe, 1));
+  g.setAttribute('axisPos', new THREE.BufferAttribute(boneAxes(body), 3));
   const [sp, sn] = smoothShape(g);
   g.setAttribute('smoothPos', new THREE.BufferAttribute(sp, 3)); g.setAttribute('smoothNormal', new THREE.BufferAttribute(sn, 3));
   scene.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(scene);
   return { scene, height: box.max.y - box.min.y, foot: box.min.y };
+}
+
+// The packs' bodies are superheroes. To give people ordinary builds, every vertex of the trunk and limbs
+// knows the nearest point on the bone it hangs from (the line from that joint to the next); the shader then
+// draws the flesh nearer to or further from that line, per person: slim, average or heavy.
+const SLIM = /^(pelvis|spine_0[123]|clavicle_[lr]|upperarm_[lr]|lowerarm_[lr]|thigh_[lr]|calf_[lr])$/;
+function boneAxes(body) {
+  const g = body.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = pos.count;
+  const bones = body.skeleton.bones, inv = new THREE.Matrix4().copy(body.bindMatrix).invert();
+  const head = bones.map((b, i) => new THREE.Vector3().applyMatrix4(new THREE.Matrix4().copy(body.skeleton.boneInverses[i]).invert()).applyMatrix4(inv));
+  const next = bones.map(b => { const c = b.children.find(c => c.isBone && !/twist|ik|leaf/i.test(c.name) && (b.name !== 'spine_03' || /neck/.test(c.name))); return c ? bones.indexOf(c) : -1; });
+  const seg = bones.map((b, i) => SLIM.test(b.name) && next[i] >= 0 ? [head[i], head[next[i]]] : null);
+  const out = new Float32Array(n * 3), v = new THREE.Vector3(), q = new THREE.Vector3(), acc = new THREE.Vector3(), line = new THREE.Line3();
+  for (let i = 0; i < n; i++) {
+    v.set(pos.getX(i), pos.getY(i), pos.getZ(i)); acc.set(0, 0, 0);
+    for (let k = 0; k < 4; k++) {
+      const w = sw.getComponent(i, k); if (!w) continue;
+      const sg = seg[si.getComponent(i, k)];
+      if (sg) { line.set(sg[0], sg[1]); line.closestPointToPoint(v, true, q); } else q.copy(v);   // hands, feet, head, neck: unchanged
+      acc.addScaledVector(q, w);
+    }
+    acc.toArray(out, i * 3);
+  }
+  return out;
 }
 
 // A smoothed copy of the body's shape (Taubin smoothing: it softens without shrinking). Under clothes the
@@ -110,14 +140,14 @@ function personMaterial(kit, sex) {
   const [light, dark, normal] = kit.tex[sex];
   const m = new THREE.MeshStandardMaterial({ map: light, normalMap: normal, roughness: .62 });
   const u = m.userData.u = { darkMap: { value: dark }, tone: { value: 0 }, shirt: { value: new THREE.Color() }, trousers: { value: new THREE.Color() }, shoes: { value: new THREE.Color() }, sleeves: { value: 1 }, longLegs: { value: 1 } };
-  u.inflate = { value: 0 }; u.smoothing = { value: .55 };
+  u.inflate = { value: 0 }; u.smoothing = { value: .55 }; u.girth = { value: 1 };
   m.onBeforeCompile = s => {
     Object.assign(s.uniforms, u);
     // clothes sit a little off the skin, so they hide the body's muscle lines
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 cover; attribute float shoe; attribute vec3 smoothPos, smoothNormal; uniform float inflate, sleeves, longLegs, smoothing; varying vec4 vCover; varying float vShoe;')
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 cover; attribute float shoe; attribute vec3 smoothPos, smoothNormal, axisPos; uniform float inflate, sleeves, longLegs, smoothing, girth; varying vec4 vCover; varying float vShoe;')
       .replace('#include <uv_vertex>', '#include <uv_vertex>\nvCover = cover; vShoe = shoe;')
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = normalize(mix(objectNormal, smoothNormal, smoothing * clamp(cover.x + cover.y + cover.z + cover.w, 0., 1.)));')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed = mix(transformed, smoothPos, smoothing * clamp(cover.x + cover.y + cover.z + cover.w, 0., 1.));\ntransformed += objectNormal * inflate * clamp(cover.x + cover.y * sleeves + cover.z + cover.w * longLegs, 0., 1.);');
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed = mix(transformed, smoothPos, smoothing * clamp(cover.x + cover.y + cover.z + cover.w, 0., 1.));\ntransformed = axisPos + (transformed - axisPos) * girth;\ntransformed += objectNormal * inflate * clamp(cover.x + cover.y * sleeves + cover.z + cover.w * longLegs, 0., 1.);');
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D darkMap; uniform float tone, sleeves, longLegs; uniform vec3 shirt, trousers, shoes; varying vec4 vCover; varying float vShoe; float clothAmt;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         vec3 skin = mix(diffuseColor.rgb, texture2D(darkMap, vMapUv).rgb, tone);
@@ -149,6 +179,8 @@ export function buildBody(kit, look, dress) {
   root.traverse(o => { if (o.isBone) bones[o.name] = o; });
   const mat = personMaterial(kit, shape);
   if (look.child) mat.userData.u.smoothing.value = 1;
+  // ordinary builds: men lose the superhero bulk, women keep most of their shape; build sets slim or heavy
+  else { mat.userData.u.smoothing.value = shape === 'm' ? .75 : .55; mat.userData.u.girth.value = (shape === 'm' ? .84 : .95) + (look.build - 1) * 1.1; }
   root.traverse(o => {
     if (!o.isMesh) return;
     o.castShadow = true; o.frustumCulled = false;
@@ -184,15 +216,38 @@ export function buildBody(kit, look, dress) {
   dressBody(p, dress);
   return p;
 }
-// a baby in arms: a wrapped blanket and a little head, in the baby's own skin tone
-export function babyBundle(kit, look, blanket = 0xf1e6d6) {
+// a baby goes out in a pram: a bassinet with its hood up on four wheels, the baby tucked in under a blanket.
+// The handle sits where the parent's hands are (about 1 m up, 0.3 m ahead).
+const PRAM_COLOURS = [0x2b3a55, 0x6b2f3a, 0x2f4f3a, 0x3a3a3a, 0x8a7a63, 0x4a5f7a];
+export function babyPram(look, seed = 0) {
   const g = new THREE.Group();
+  const body = new THREE.MeshStandardMaterial({ color: PRAM_COLOURS[seed % PRAM_COLOURS.length], roughness: .75, side: THREE.DoubleSide });
+  const frame = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: .4, metalness: .6 });
+  const tyre = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: .9 });
+  const add = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  const rod = (a, b, r = .012) => { const m = add(new THREE.CylinderGeometry(r, r, a.distanceTo(b), 6), frame, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  // the bassinet: an open tub with rounded ends
+  const L = .62, W = .36, H = .24, y0 = .5, z0 = .58;
+  add(new THREE.BoxGeometry(W, .02, L), body, 0, y0, z0 + L / 2);                                        // floor
+  for (const x of [-W / 2, W / 2]) add(new THREE.BoxGeometry(.02, H, L), body, x, y0 + H / 2, z0 + L / 2);   // sides
+  add(new THREE.BoxGeometry(W, H, .02), body, 0, y0 + H / 2, z0 + L);                                    // foot end
+  add(new THREE.BoxGeometry(W, H, .02), body, 0, y0 + H / 2, z0);                                        // head end
+  // the hood, up over the baby's head at the parent's end
+  const hood = add(new THREE.SphereGeometry(W / 2, 16, 8, 0, Math.PI, 0, Math.PI / 2), body, 0, y0 + H, z0 + .02);
+  hood.rotation.y = Math.PI; hood.scale.set(1, 1.15, 1.3);
+  // the baby, in their own skin tone, and the blanket over them
   const skin = new THREE.Color().lerpColors(new THREE.Color(0xe9c3a4), new THREE.Color(0x5a3a28), look.tone);
-  const wrap = new THREE.Mesh(new THREE.CapsuleGeometry(.1, .26, 4, 10), new THREE.MeshStandardMaterial({ color: blanket, roughness: .95 }));
-  wrap.rotation.z = Math.PI / 2; g.add(wrap);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(.075, 16, 12), new THREE.MeshStandardMaterial({ color: skin, roughness: .6 }));
-  head.position.set(.2, .05, .02); g.add(head);
-  for (const o of [wrap, head]) o.castShadow = true;
+  add(new THREE.SphereGeometry(.07, 14, 10), new THREE.MeshStandardMaterial({ color: skin, roughness: .6 }), 0, y0 + H - .04, z0 + .14);
+  add(new THREE.BoxGeometry(W - .04, .05, L * .6), new THREE.MeshStandardMaterial({ color: 0xf1e6d6, roughness: .95 }), 0, y0 + H - .07, z0 + L * .62);
+  // the frame: handle across the top, side bars down to the bassinet and the axles
+  rod(V(-.24, 1.03, .3), V(.24, 1.03, .3), .016);
+  for (const x of [-.2, .2]) {
+    rod(V(x, 1.03, .3), V(x, y0 + .05, z0 + .05));
+    rod(V(x, y0 - .01, z0 + .05), V(x * 1.15, .13, z0 + .02));
+    rod(V(x, y0 - .01, z0 + L - .05), V(x * 1.15, .11, z0 + L + .02));
+  }
+  for (const x of [-.25, .25]) for (const [z, r] of [[z0 + .02, .13], [z0 + L + .02, .11]]) { const w = add(new THREE.CylinderGeometry(r, r, .035, 18), tyre, x, r, z); w.rotation.z = Math.PI / 2; }
   return g;
 }
 export function dressBody(p, { outfit = 0x55606e, pants = 0x2d3142, shoes = 0x1b1b2f, sleeves = 1, longLegs = 1 } = {}) {
@@ -216,7 +271,7 @@ export function clipFor(pose, moving, sprinting, grounded, swimming, h) {
   if (pose === 'sit') return h?.activity === 'talk' || h?.activity === 'type' || h?.activity === 'eat' ? 'Sitting_Talking_Loop' : 'Sitting_Idle_Loop';
   if (pose === 'phone' || h?.usingPhone) return 'Idle_TalkingPhone_Loop';
   if (pose === 'cpr') return 'Interact';
-  if (h?.carrying) return 'Walk_Carry_Loop';
+  if (h?.pushing) return moving ? 'Walk_Pram' : 'Idle_Pram';
   if (!grounded) return 'Jog_Fwd_Loop';
   if (moving) return sprinting ? 'Sprint_Loop' : h?.hurry ? 'Jog_Fwd_Loop' : 'Walk_Loop';
   return h?.activity === 'talk' ? 'Idle_Talking_Loop' : h?.activity === 'wait' ? 'Idle_FoldArms_Loop' : 'Idle_Loop';
@@ -251,9 +306,9 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
     // a resident is their own size; anyone else keeps the old figure's size (crowds of different heights)
     p.hs = c?.look ? 1 : h.rig.scale.y / (o.child ? .56 : .9);
     p.holder.scale.setScalar(p.hs);
-    // a newborn's parent carries the baby
+    // a newborn's parent takes the baby out in a pram
     const baby = c && !look.child ? babyOf(c) : null;
-    if (baby?.look) { p.bundle = babyBundle(kit, atAge(baby.look, baby.age)); p.holder.add(p.bundle); }
+    if (baby?.look) { p.pram = babyPram(atAge(baby.look, baby.age), baby.id); h.root.add(p.pram); }
     h.root.add(p.holder); h.rig.visible = false; h.real = p; p.current = null;
     pose(h, p);
     play(kit, p, clipFor(h.realPose, h.realMoving, h.realSprint, h.realGrounded !== false, h.realSwim, h), 0);
@@ -261,8 +316,8 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
   }
   function detach(h) {
     const p = h.real; if (!p) return;
-    h.root.remove(p.holder); h.rig.visible = true; h.real = null; h.carrying = false;
-    if (p.bundle) { p.holder.remove(p.bundle); p.bundle.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); }); p.bundle = null; }
+    h.root.remove(p.holder); h.rig.visible = true; h.real = null; h.pushing = false;
+    if (p.pram) { p.pram.removeFromParent(); p.pram.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); }); p.pram = null; }
     p.mixer.stopAllAction(); p.actions.clear(); p.current = null;
     const bin = pool[p.look.sex]; bin.push(p); if (bin.length > 12) { const old = bin.shift(); old.mat.dispose(); }
   }
@@ -271,8 +326,9 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
   function pose(h, p) {
     const sz = p.look.size * p.hs, sit = h.realPose === 'sit';
     if (sit) p.holder.position.set(0, (.98 - .44 * sz) / 1, .3 * sz); else p.holder.position.set(0, 0, 0);
-    h.carrying = !!p.bundle && !sit;
-    if (p.bundle) { if (sit) p.bundle.position.set(0, .56 * p.look.size, .3 * p.look.size); else p.bundle.position.set(0, 1.12 * p.look.size, .28 * p.look.size); }
+    h.pushing = !!p.pram && !sit;
+    // the pram goes ahead of the parent, its handle at their hands; parked beside them when they sit
+    if (p.pram) { const k = p.look.size * p.hs; if (sit) { p.pram.position.set(.75, .53, .2); p.pram.rotation.y = 0; } else { p.pram.position.set(0, 0, 0); p.pram.rotation.y = 0; } p.pram.scale.setScalar(sit ? 1 : Math.min(1.05, Math.max(.9, k))); }
   }
   const tmp = new THREE.Vector3(), camPos = new THREE.Vector3();
   let t = 0;
