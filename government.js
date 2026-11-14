@@ -100,6 +100,8 @@ export function createGovernment(api) {
     news(`${snap ? 'SNAP ' : ''}ELECTION: ${candName(win)} (${win.party != null ? PARTIES[win.party].short : 'independent'}) ${win.id === old ? 're-elected' : 'elected'} President with ${win.votes} votes. ${res.slice(1).map(r => candName(r) + ' ' + r.votes).join(', ')}.`, true);
     // winners and losers: lost elections count against an ambition to hold office
     for (const x of res) { if (x.id === 'player') { if (x === win) api.lives?.achieve(null, 'Elected President'); continue; } const o = citizens[x.id]; if (!o) continue; if (x === win) api.lives?.achieve(o, 'Elected President', true); else if (o.ambition === 'office') { o.failures = (o.failures || 0) + 1; remember(o, 'Lost the election for President'); if (o.failures >= 3) api.lives?.giveUp(o); } }
+    api.history?.().record('election', `${candName(win)} ${win.id === old ? 're-elected' : 'elected'} President`, `${snap ? 'a vote of no confidence forced an early election; ' : ''}approval of the outgoing government was ${Math.round(S.approval)}%`, { who: candName(win), watch: 'approval', player: win.id === 'player' });
+    if (win.id === 'player') api.history?.().L.offices.push('President (year ' + (Math.floor(S.tick / YEAR) + 1) + ')');
     G.president = win.id;
     if (old === 'player' && win.id !== 'player') { P.office = null; news('You are no longer President.', true); }
     if (win.id === 'player') { P.office = 'President'; news('🎉 You are the President of A.T.! Propose laws to the Assembly from the Politics tab.', true); }
@@ -113,7 +115,7 @@ export function createGovernment(api) {
       const r = runRace(cands, local, city), w = r[0];
       if (G.mayors[city] === 'player' && w.id !== 'player') P.office = P.office === 'Mayor of ' + city ? null : P.office;
       G.mayors[city] = w.id;
-      if (w.id === 'player') { P.office = 'Mayor of ' + city; news(`🎉 You are now Mayor of ${city}.`, true); api.lives?.achieve(null, 'Elected Mayor of ' + city); }
+      if (w.id === 'player') { api.history?.().L.offices.push('Mayor of ' + city); P.office = 'Mayor of ' + city; news(`🎉 You are now Mayor of ${city}.`, true); api.lives?.achieve(null, 'Elected Mayor of ' + city); }
       else if (citizens[w.id]) api.lives?.achieve(citizens[w.id], 'Elected Mayor of ' + city, false);
     }
     // deposits back if you got a tenth of the vote
@@ -160,6 +162,7 @@ export function createGovernment(api) {
   }
   function scandal(o, what) {
     const role = office(o.id) || 'Official';
+    api.history?.().record('scandal', `${role} ${o.name} was exposed`, what || `caught taking ${Math.round(o.skimmed || 0)} gold`, { who: o.name });
     news(`SCANDAL: ${role} ${o.name} ${what || `was caught taking ${Math.round(o.skimmed || 0)} gold from the treasury`}. Arrested.`, true);
     S.treasury += (o.skimmed || 0) * .7; o.skimmed = 0; o.knowsCrook = true; api.justice ? api.justice().charge(o, 'corruption', { culprit: o.id, cctv: true }) : (o.jail = 120);
     for (const c of citizens) c.mood -= 2;

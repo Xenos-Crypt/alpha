@@ -7735,7 +7735,7 @@ regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareS
 society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPosition:()=>player.position,dayTime:()=>dayTime,
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},walk:(e,t,sp,dt)=>walkTowards(e,t,sp,dt),animate:(e,pose,moving,run,dt)=>animateHumanoid(e.h,pose,moving,run,e.onGround,dt),
   resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
-  arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),companyReports:()=>infoMarkets?.companyReports(),archive:()=>infoMarkets?.archive(),
+  arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),playerSurname:()=>playerUsername||'Newcomer',companyReports:()=>infoMarkets?.companyReports(),archive:()=>infoMarkets?.archive(),
   petitions:()=>worldWatch?.list||[],note:t=>worldWatch?.note(t),
   cityAt:p=>p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
   assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,level:()=>prog.level,
@@ -7763,7 +7763,7 @@ worldIds=createWorldIds({isOwner,THREE,scene,grass:()=>grass?.tufts?.()||[],isRo
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // Information is bought: the Info Market (legal) in Ashford Central Market and the dark web terminal in the Narrows (info-markets.js).
-infoMarkets=createInfoMarkets({scene,colliders,interactables,makePerson:o=>makeHumanoid(o),groundY,narrows:NARROWS,player:()=>player,peds:()=>peds,citizenOf:e=>society?.citizenOf(e),remember:(c,t)=>society?.remember(c,t),
+infoMarkets=createInfoMarkets({controversy:t=>society?.history?.L.controversies.push(t),scene,colliders,interactables,makePerson:o=>makeHumanoid(o),groundY,narrows:NARROWS,player:()=>player,peds:()=>peds,citizenOf:e=>society?.citizenOf(e),remember:(c,t)=>society?.remember(c,t),
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},raiseWanted,fame:()=>society?.state?.fame||0,news:(t,i)=>society?.news(t,i),setWaypoint,
   secretPlaces:()=>[{name:'the ancient temple dig',x:-147,z:-382},{name:'the ATLAS base',x:80,z:897},{name:'the hidden peak',x:-345,z:1015},{name:'the Narrows black market',x:NARROWS.x,z:NARROWS.z},{name:'the north border checkpoint',x:170,z:-1180}],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
@@ -7878,7 +7878,7 @@ helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlaye
     stats.gold-=300;toast('🚁 SkyLink Charter: request accepted (300 gold). Your pilot is ready.');return true;},
   steal:p=>{if(inCar||!p.heli)return false;const pos=new THREE.Vector3();p.heli.getWorldPosition(pos);const gov=p.owner==='government';
     const v=makeHelicopter({name:gov?'Government helicopter':'SkyLink charter helicopter',color:gov?0x1a1a1a:0x2f6f8f,x:pos.x,z:pos.z,yaw:p.heli.rotation.y});v.group.position.y=pos.y;v.alt=pos.y;v.stolen=true;
-    raiseWanted(gov?240:150);enterVehicle(v);society?.lives?.achieve(null,gov?'Grand theft: a government helicopter':'Grand theft: a helicopter');toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
+    raiseWanted(gov?240:150);enterVehicle(v);society?.lives?.achieve(null,gov?'Grand theft: a government helicopter':'Grand theft: a helicopter');society?.history?.L.controversies.push(gov?'Stole a government helicopter':'Stole a charter helicopter');toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
     society?.news?.(gov?'The newcomer stole a government helicopter from the Capital helipad!':'A charter helicopter was stolen from '+p.name+'.',true);if(society?.state)society.state.fameAcc+=gov?6:3;return true;}});
 drones=buildDrones({scene,dome:DOME});
 lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,

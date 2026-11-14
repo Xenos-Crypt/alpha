@@ -48,7 +48,7 @@ export function createInfoMarkets(ctx) {
         const wrong = Math.random() < .15, caught = Math.random() < .2;
         c.file = { at: Date.now(), wrong, fake: wrong ? { health: Math.round(30 + Math.random() * 70), vote: Math.floor(Math.random() * 12), illness: ['a weak heart', 'nothing at all', 'an old back injury'][Math.floor(Math.random() * 3)] } : null };
         if (caught) {
-          ctx.raiseWanted(80); c.opinion = -80; c.bond = 0; ctx.remember(c, 'Found out the newcomer bought my private file on the dark web');
+          ctx.raiseWanted(80); ctx.controversy?.('Caught buying a private file on the dark web'); c.opinion = -80; c.bond = 0; ctx.remember(c, 'Found out the newcomer bought my private file on the dark web');
           if (ctx.fame() >= 20) ctx.news(`Privacy scandal: the newcomer was caught buying a resident's private file on the dark web.`, true);
           return '🚨 The seller was a police sting. The file is yours, but the police know, and so does the person. They will never trust you again.';
         }
