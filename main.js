@@ -3547,7 +3547,7 @@ function makeEnemy(o) {
   }, o);
   e.hp = e.maxHp;
   if(e.kind==='npc'&&!e.home)e.home=e.root.position.clone();
-  if (o.labelName) e.label = makeLabel(o.labelName, o.kind === 'defence');
+  if (o.labelName && o.kind !== 'npc') e.label = makeLabel(o.labelName, o.kind === 'defence');   // no names or jobs floating over people: you learn who they are by meeting them
   enemies.push(e);
   return e;
 }
@@ -4350,7 +4350,7 @@ function updatePed(e, dt) {
   // at any given moment anyway. Anything mid-reaction (panic, down, boarding,
   // etc.) still updates normally regardless of distance.
   if (s.state === 'wander' && distXZ(p, player.position) > 120) return;
-  let moving = false, speed = s.speed;
+  let moving = false, speed = s.speed * (society?.speedOf(e) || 1);   // everyone walks at their own pace (society.js)
   // Everyone has a phone: now and then they take it out and scroll as they walk (or stand and text).
   s.phoneT ??= 4 + Math.random() * 30;
   s.phoneT -= dt;
@@ -4416,10 +4416,12 @@ function updatePed(e, dt) {
     }
     case 'wander':
     case 'toStop':
+      if (s.idleT > 0) { s.idleT -= dt; animateHumanoid(e.h, null, false, false, e.onGround, dt); break; }   // stopped for a moment: looking around, checking the way
       if(!junctionControl.pedestrianMayCross(p,s.target)){animateHumanoid(e.h,null,false,false,true,dt);break;}
       moving = walkTowards(e, s.target, speed, dt);
       if (distXZ(p, s.target) < 0.5) {
         if (s.state === 'toStop') { s.state = 'waiting'; s.waitT = 0; break; }
+        if (s.state === 'wander' && Math.random() < 0.1) s.idleT = 1.5 + Math.random() * 3;
         const stop = busStops.find(b => distXZ(b.wait, p) < 25 && b.waiting.length < 4);
         if (stop && Math.random() < 0.35) {   // decide to catch the bus
           s.state = 'toStop'; s.stop = stop;
@@ -7743,7 +7745,7 @@ society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPo
     corners:()=>{const out=[];for(const b of [MAIN_BOUNDS,CAPITAL_BOUNDS])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)for(const sx of [-1,1])for(const sz of [-1,1]){const p=cornerPos({bx,bz,sx,sz});if(!blockedAt(p.x+sx*1.3,p.z+sz*1.3,.5))out.push({x:p.x,z:p.z,ox:sx,oz:sz});}return out;},
     openLand:n=>{const out=[];for(let a=0;a<Math.PI*2&&out.length<n;a+=.11)for(const R of [360,420,480]){const x=Math.cos(a)*R,z=Math.sin(a)*R;if(Math.hypot(x-170,z-150)>1300||isSeaWater(x,z)||isRoadAt(x,z)||blockedAt(x,z,9)||out.some(o=>Math.hypot(o.x-x,o.z-z)<60))continue;out.push({x,z});break;}return out;}})),
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
-npcConversations=createNpcConversations({converse:e=>society?.converse(e),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+npcConversations=createNpcConversations({converse:e=>society?.converse(e),nameOf:e=>society?.knownName(e),people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // Residents report what breaks the laws of the world: Rule Keepers fix it, the Lawgiver hears of it (world-watch.js).
 // What the nation's progress looks like: the ATLAS base, its robots, the temple dig, self-driving cars (atlas-world.js).
 atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,interactables,vehicles:()=>vehicles,openTab:t=>society.openTab(t),makePerson:o=>makeHumanoid(o),animate:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt)});
@@ -7869,7 +7871,7 @@ helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlaye
     stats.gold-=300;toast('🚁 SkyLink Charter: request accepted (300 gold). Your pilot is ready.');return true;},
   steal:p=>{if(inCar||!p.heli)return false;const pos=new THREE.Vector3();p.heli.getWorldPosition(pos);const gov=p.owner==='government';
     const v=makeHelicopter({name:gov?'Government helicopter':'SkyLink charter helicopter',color:gov?0x1a1a1a:0x2f6f8f,x:pos.x,z:pos.z,yaw:p.heli.rotation.y});v.group.position.y=pos.y;v.alt=pos.y;v.stolen=true;
-    raiseWanted(gov?240:150);enterVehicle(v);toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
+    raiseWanted(gov?240:150);enterVehicle(v);society?.lives?.achieve(null,gov?'Grand theft: a government helicopter':'Grand theft: a helicopter');toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
     society?.news?.(gov?'The newcomer stole a government helicopter from the Capital helipad!':'A charter helicopter was stolen from '+p.name+'.',true);if(society?.state)society.state.fameAcc+=gov?6:3;return true;}});
 drones=buildDrones({scene,dome:DOME});
 lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,

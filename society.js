@@ -27,6 +27,7 @@ import { PROJECTS, projectById } from './innovations.js';
 import { PARTIES, CITIES, COUNTRY, TERM, YEAR, SECTORS, sectorOfJob, ATLAS_LEVELS, atlasLevel, DIG_STAGES } from './nation.js';
 import { createGovernment, INVITE } from './government.js';
 import { createNationSim } from './nation-sim.js';
+import { seedLife, createLives, STAGES as BOND_STAGES } from './lives.js';
 import { RAW, MADE, SERVICES, ALL, consume } from './supply-chain.js';
 import { ORGS, STAGES, TYPES, STAGE_OF_SECTOR } from './organisations.js';
 
@@ -87,11 +88,12 @@ export function createSociety(ctx) {
   // ---- load or found the city ---------------------------------------------------------------------------
   let saved = null; try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { }
   const roles = peds().map(e => e.profession && JOB[e.profession] ? e.profession : null);
-  for (let i = 0; i < Math.max(POP, roles.length); i++) citizens.push(makeCitizen(i, roles[i]));
+  for (let i = 0; i < Math.max(POP, roles.length); i++) { const c = makeCitizen(i, roles[i]); seedLife(c); citizens.push(c); }
   peds().forEach((e, i) => { const at = ctx.cityAt?.(e.home || e.root.position); if (at && citizens[i]) citizens[i].city = at; });
   if (saved?.v === 1) {
     Object.assign(S, saved.S); S.research ||= {}; S.projects ||= {};
     for (const [i, w, m, o, j, job, mem, met, crook] of saved.c || []) { const c = citizens[i]; if (!c) continue; Object.assign(c, { wealth: w, mood: m, opinion: o, jail: j, job: job || c.job, memory: mem || [], metPlayer: !!met, knowsCrook: !!crook }); }
+    for (const [i, x] of Object.entries(saved.x || {})) { const c = citizens[i]; if (!c || !x) continue; Object.assign(c, { skills: x.sk || c.skills, tenure: x.t ?? c.tenure, ambition: x.a || c.ambition, ambitionDone: x.ad, failures: x.f || 0, health: x.h ?? c.health, illnesses: x.il || [], achievements: x.ach || c.achievements, bond: x.b || 0, story: x.st || c.story, visited: x.v || c.visited, title: x.ti || null, helped: x.hp || 0, age: x.ag || c.age }); if (x.n) { c.name = x.n; c.uniqueName = true; } }
   }
   const unemployedPct = () => 100 * citizens.filter(c => c.job === 'Unemployed').length / citizens.length;
   const stats = () => ({ ...S, unemployed: unemployedPct() });
@@ -126,9 +128,9 @@ export function createSociety(ctx) {
       const act = Object.entries(want).sort((a, b) => b[1] - a[1])[0][0];
       if (act === 'sleep') c.energy = clamp(c.energy + 12, 0, 100);
       else if (act === 'eat') { c.hunger = clamp(c.hunger + 45, 0, 100); c.wealth -= 6; }
-      else if (act === 'work') { const pay = J.wage * (.6 + c.traits.diligence * .5); const t = pay * S.tax / 100; c.wealth += pay - t; taxIn += t; c.energy -= 2; }
+      else if (act === 'work') { const pay = J.wage * (.6 + c.traits.diligence * .5) * (1 + (c.skills?.[c.job] || 0) / 200 + (c.wealthBonus || 0)); const t = pay * S.tax / 100; c.wealth += pay - t; taxIn += t; c.energy -= 2; }
       else if (act === 'friends') { c.social = clamp(c.social + 30, 0, 100); c.mood += 1.5; gossip(c); }
-      else if (act === 'help') { helps++; c.mood += 1; }
+      else if (act === 'help') { helps++; c.mood += 1; c.helped = (c.helped || 0) + 1; }
       else if (act === 'crime') {
         if (c.crook === 'Vandal') { vandals++; }
         else {
@@ -143,6 +145,7 @@ export function createSociety(ctx) {
       const taxFit = -(S.tax - 15) / 15 * -c.econ;
       c.mood = clamp(c.mood * .97 + .03 * (50 + (c.wealth > 200 ? 8 : -8) - (S.crime - 30) * .4 + (S.clean - 60) * .2 + taxFit * 6 + (c.hunger < 20 ? -15 : 0)), 0, 100);
       c.wealth = Math.max(0, c.wealth);
+      lives.hourly(c, act); if (S.tick % 24 === 0) lives.daily(c);
     }
     if (thefts > 6 && S.tick % 6 === 0) news(`${thefts} thefts reported in the last hour.`);
     // the city's books: taxes in, services out
@@ -240,7 +243,8 @@ export function createSociety(ctx) {
   }
   const housekeeper = () => S.staff.find(s => s.role === 'housekeeper');
 
-  const gov = createGovernment({ citizens, S, news, remember, nameOf, ctx, stats });
+  const lives = createLives({ citizens, S, news, remember, ctx, JOB });
+  const gov = createGovernment({ citizens, S, news, remember, nameOf, ctx, stats, lives });
   const nation = createNationSim({ citizens, S, news, remember, nameOf });
   if (S.gov.president == null) gov.found();
   const presName = () => S.gov.president === 'player' ? 'you' : nameOf(S.gov.president);
@@ -258,7 +262,7 @@ export function createSociety(ctx) {
     live = true;
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]) })); } catch { }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined }])) })); } catch { }
   }
   addEventListener('beforeunload', save);
 
@@ -471,33 +475,52 @@ export function createSociety(ctx) {
   // ---- talking to people -----------------------------------------------------------------------------
   function converse(e) {
     const c = cit(e); if (!c) return null;
-    const now = Date.now();
-    if (!c.metAt || now - c.metAt > 60e3) { c.opinion = clamp(c.opinion + 3, -100, 100); c.metAt = now; }
-    const hostile = c.opinion < -30, P = gov.P, pa = PARTIES[gov.party(c)], known = S.fame >= 15 || c.metPlayer;
+    const now = Date.now(), fresh = !c.metAt || now - c.metAt > 60e3;
+    if (fresh) { c.opinion = clamp(c.opinion + 2, -100, 100); c.metAt = now; lives.bondUp(c, 2); lives.playerCount('talks', 1, [[1, 'First conversation'], [50, 'Knows everyone on the street']]); }
+    const hostile = c.opinion < -30, P = gov.P, pa = PARTIES[gov.party(c)], famous = S.fame >= 15;
     c.metPlayer = true; S.fameAcc += .05;
-    const greet = !known ? pickR(Math.random, ['Sorry, do I know you?', 'Hm? Can I help you?', "Hello. You're not from round here, are you?"])
-      : hostile ? pickR(Math.random, ['What do YOU want?', "Stay away from me. I've heard about you.", "I've got nothing to say to you."])
-      : P.office === 'President' ? 'President! It is an honour.' : c.mood < 35 ? 'Hi. Not having a great day, honestly.' : c.opinion > 40 ? `Oh, hello again! Good to see you.` : pickR(Math.random, ['Hello there.', 'Hi! Can I help you?', 'Afternoon.']);
-    const choices = [
-      ['Who are you?', `I'm ${c.name}, ${c.age}, from ${c.city}. ${c.job === 'Unemployed' ? "I'm out of work at the moment." : c.job === 'Retired' ? "I'm retired." : c.job === 'Student' ? "I'm a student." : `I work as ${/^[AEIOU]/.test(c.job) ? 'an' : 'a'} ${c.job.toLowerCase()}.`} ${pa ? `I vote ${pa.short}: ${pa.motto}` : "I don't belong to any party."} ${c.mood > 65 ? 'Life is good.' : c.mood > 40 ? 'Getting by.' : 'Things are hard right now.'}`],
-      ['What have you been up to?', c.memory.length ? c.memory.slice(0, 3).join('. ') + '.' : 'Nothing much. Work, home, the usual.'],
-      ['What do you think of the government?', `President ${presName()}? ${opinionWord(c.mood)}. ${S.gov.president !== 'player' && Math.abs((citizens[S.gov.president]?.econ ?? 0) - c.econ) < .5 ? 'I voted for them, if you must know.' : 'Who I voted for is my business. The ballot is secret.'} Taxes are ${S.tax}%, ${(S.tax > 17) === (c.econ < 0) ? 'which is too high' : 'which is fine by me'}.`],
-      ["What's the news?", S.news.slice(0, 2).map(n => n.text).join(' ') || 'Quiet lately.'],
-      ['What is the chip?', 'Everyone in A.T. has a Unity chip. It links us to the Unity Network, so news and what we know is shared between all of us. ATLAS, the national AI in the Capital, runs every machine in the country. It is not wired into people. It only reaches us through the chips.'],
-      ['Who made this world?', pickR(Math.random, ['The Lawgiver wrote the laws of this world: the roads, the rules, even how the rain falls. And above the Lawgiver, they say, is a Supreme Being. Nobody knows anything about the Supreme Being. Only that it is there.', "The Lawgiver made it, and keeps rewriting the laws to make it better. When something here doesn't make sense, we petition the Lawgiver. As for the Supreme Being above the Lawgiver… no one knows. We just know it exists."])],
-      ['Seen anything strange lately?', (() => { const mine = (ctx.petitions?.() || []).find(p => p.who.includes(c.name.split(' ')[0]) || p.who.includes(c.name)); return mine ? `Yes! ${mine.words} I reported it. ${mine.fixed ? 'The Rule Keepers put it right.' : 'It is with the Lawgiver now.'}` : 'Not lately. If I see something that breaks the laws of the world, I will report it to the Lawgiver.'; })()],
-      ['What do people say about me?', S.fame < 15 ? "Honestly? Nobody really knows who you are. It's a big country." : c.opinion > 40 ? 'People like you. Word is you help folks out.' : c.opinion > 5 ? "You seem all right." : c.opinion > -30 ? "Folks don't know what to make of you." : 'People say you hurt folks round here. Everyone knows.'],
-    ];
-    if (c.crook && c.opinion > 20) choices.push(['Anything else?', pickR(Math.random, ["Between us? I don't always earn my money honestly.", 'Keep your wallet close in this town. Trust me.'])]);
+    const stage = lives.stageOf(c.bond || 0), first = c.name.split(' ')[0], title = lives.titleHere(c, e);
+    const known = lives.knownName(c), heading = known ? (title ? `${title} ${known}` : known) : title ? `The ${title.toLowerCase()}` : 'A stranger';
+    const greet = hostile ? pickR(Math.random, ['What do YOU want?', "Stay away from me. I've heard about you.", "I've got nothing to say to you."])
+      : stage === 0 ? (famous ? pickR(Math.random, ["You're the newcomer everyone's talking about, aren't you?", 'Oh! I know your face from the news.']) : pickR(Math.random, ['Sorry, do I know you?', 'Hm? Can I help you?', "Hello. You're not from round here, are you?"]))
+      : P.office === 'President' ? 'President! It is an honour.' : c.mood < 35 ? 'Hi. Not having a great day, honestly.' : stage >= 3 ? `There you are! I was hoping I'd see you.` : stage >= 2 ? 'Good to see you again.' : pickR(Math.random, ['Hello again.', 'Oh, hi.', 'Afternoon.']);
+    const skillWord = v => v >= 90 ? 'a master' : v >= 70 ? 'very good' : v >= 45 ? 'decent' : v >= 20 ? 'still learning' : 'a beginner';
+    const jobLine = () => `${c.job === 'Unemployed' ? "I'm out of work at the moment." : c.job === 'Retired' ? "I'm retired." : c.job === 'Student' ? "I'm a student." : `I work as ${/^[AEIOU]/.test(c.job) ? 'an' : 'a'} ${c.job.toLowerCase()}${c.tenure >= 1 ? `, ${Math.round(c.tenure)} years now` : ', just started'}.`}${c.title ? ` (${c.title}.)` : ''}`;
+    const choices = [];
+    // stage 0: a stranger only gives what anyone would
+    if (stage === 0) choices.push(['Hello. Who are you?', () => { lives.bondUp(c, 3); if (c.traits.sociability > .55 || c.opinion > 15) { c.bond = Math.max(c.bond, 10); return `I'm ${first}. ${title ? `I'm the ${title.toLowerCase()} here.` : ''}`; } return pickR(Math.random, ["Just someone on my way somewhere.", "Does it matter?", "I'd rather not say, if that's all right."]); }]);
+    else choices.push(['What do you do?', jobLine()]);
+    choices.push(['How is your day going?', () => { lives.bondUp(c, 2); return c.mood > 65 ? 'Honestly? Pretty good.' : c.mood > 40 ? 'Getting by.' : 'Not great, if I am honest.'; }]);
+    choices.push(['Chat for a while', () => { if (c.chatAt && now - c.chatAt < 60e3) return 'We only just talked! Maybe later.'; c.chatAt = now; lives.bondUp(c, 5); c.social = 100; return chatLine(c); }]);
+    choices.push(['Buy them a coffee (5 gold)', () => { if (ctx.gold() < 5) return "You haven't got the money, but thanks for the thought."; if (c.coffeeAt && now - c.coffeeAt < 300e3) return "I've only just had one, thanks!"; ctx.addGold(-5); c.coffeeAt = now; c.opinion = clamp(c.opinion + 4, -100, 100); lives.bondUp(c, 6); return 'Oh, that is kind of you. Thank you.'; }]);
+    if (stage >= 1) choices.push(['What have you been up to?', c.memory.length ? c.memory.slice(0, 3).join('. ') + '.' : 'Nothing much. Work, home, the usual.']);
+    if (stage >= 2) {
+      const top = Object.entries(c.skills || {}).sort((a, b) => b[1] - a[1]).slice(0, 2);
+      choices.push(['Tell me about yourself', `I'm ${c.name}, ${c.age}, from ${c.city}${c.uniqueName ? " (and no, there isn't anyone else with my name)" : ''}. ${jobLine()} ${top.length ? 'At ' + top.map(([k, v]) => `${k.toLowerCase()} I'm ${skillWord(v)}`).join(', and at ') + '.' : "I haven't got good at anything yet. Working on it."} ${c.achievements.length ? 'Proudest of: ' + c.achievements.slice(-3).join('; ') + '.' : ''} One day I want to ${lives.AMBITIONS[c.ambition]}.`]);
+      choices.push(['What do you think of the government?', `President ${presName()}? ${opinionWord(c.mood)}. Taxes are ${S.tax}%, ${(S.tax > 17) === (c.econ < 0) ? 'which is too high' : 'which is fine by me'}. Who I voted for is my business. The ballot is secret.`]);
+    }
+    if (stage >= 3) {
+      choices.push(['Is anything worrying you?', `${c.wealth < 60 ? "Money. I'm nearly broke. " : c.wealth < 200 ? "Money's tight. " : ''}${c.mood < 40 ? "I've been low for a while. " : ''}${c.failures ? `I keep failing at what I want. ${c.memory.find(m => /Failed|turned down|fired/i.test(m)) || ''} ` : ''}${c.crook ? "And… between us, I don't always earn my money honestly. " : ''}`.trim() || "Honestly, not much. Thanks for asking."]);
+      choices.push(['Who did you really vote for?', pa ? `Between you and me? ${pa.name}. ${pa.motto}` : "Nobody. I didn't vote. Don't tell anyone."]);
+    }
+    if (stage >= 4) {
+      choices.push(['How is your health?', `${c.health > 80 ? "I'm healthy, touch wood." : c.health > 55 ? "Not bad, a few aches." : c.health > 30 ? "Not good. The doctors keep an eye on me." : "I'm very unwell, if I'm honest."} ${c.illnesses?.length ? 'I have ' + c.illnesses.join(', ') + '.' : ''} (${Math.round(c.health)}/100)`]);
+      choices.push(['Tell me your life story', c.story.join(' ') + (c.achievements.length ? ' Achievements: ' + c.achievements.join('; ') + '.' : '')]);
+    }
+    choices.push(["What's the news?", S.news.slice(0, 2).map(n => n.text).join(' ') || 'Quiet lately.']);
+    choices.push(['What is the chip?', 'Everyone in A.T. has a Unity chip. It links us to the Unity Network, so news and what we know is shared between all of us. ATLAS, the national AI in the Capital, runs every machine in the country. It is not wired into people. It only reaches us through the chips.']);
+    choices.push(['Who made this world?', pickR(Math.random, ['The Lawgiver wrote the laws of this world: the roads, the rules, even how the rain falls. And above the Lawgiver, they say, is a Supreme Being. Nobody knows anything about the Supreme Being. Only that it is there.', "The Lawgiver made it, and keeps rewriting the laws to make it better. When something here doesn't make sense, we petition the Lawgiver. As for the Supreme Being above the Lawgiver… no one knows. We just know it exists."])]);
+    if (stage >= 1) choices.push(['Seen anything strange lately?', (() => { const mine = (ctx.petitions?.() || []).find(p => p.who.includes(first) || p.who.includes(c.name)); return mine ? `Yes! ${mine.words} I reported it. ${mine.fixed ? 'The Rule Keepers put it right.' : 'It is with the Lawgiver now.'}` : 'Not lately. If I see something that breaks the laws of the world, I will report it to the Lawgiver.'; })()]);
+    choices.push(['What do people say about me?', S.fame < 15 ? "Honestly? Nobody really knows who you are. It's a big country." : c.opinion > 40 ? 'People like you. Word is you help folks out.' : c.opinion > 5 ? "You seem all right." : c.opinion > -30 ? "Folks don't know what to make of you." : 'People say you hurt folks round here. Everyone knows.']);
     const hk = housekeeper();
-    if (!hk && !hostile && c.age >= 18 && c.age < 70 && !c.crook) choices.push([`Offer a job: housekeeper (${WAGE.housekeeper} gold a day)`, () => {
+    if (stage >= 1 && !hk && !hostile && c.age >= 18 && c.age < 70 && !c.crook) choices.push([`Offer a job: housekeeper (${WAGE.housekeeper} gold a day)`, () => {
       if (c.opinion < 0 && Math.random() < .5) return "No thanks. I don't want to work for you.";
-      S.staff.push({ id: c.id, role: 'housekeeper', since: S.tick, chores: 0 }); if (c.job === 'Unemployed') c.job = 'Housekeeper';
-      remember(c, 'Started working as a housekeeper for the newcomer'); c.opinion += 15; save();
+      S.staff.push({ id: c.id, role: 'housekeeper', since: S.tick, chores: 0 }); if (c.job === 'Unemployed') lives.change(c, 'Housekeeper');
+      remember(c, 'Started working as a housekeeper for the newcomer'); c.opinion += 15; lives.bondUp(c, 5); save();
       return `Deal! I'll do your laundry, dishes and the rest. ${WAGE.housekeeper} gold a day, paid each city day.`;
     }]);
     if (hk && hk.id === c.id) choices.push(['Let them go', () => { S.staff = S.staff.filter(s => s !== hk); c.opinion -= 10; remember(c, 'Was let go as a housekeeper'); save(); return 'Oh. Right. Well, good luck.'; }]);
-    return { title: `${c.name} · ${c.job}`, text: greet, choices };
+    return { title: heading + (stage >= 1 ? ` · ${BOND_STAGES[stage][0]}` : ''), text: greet, choices };
   }
 
   // ---- the City Hall panel -----------------------------------------------------------------------------
@@ -524,6 +547,7 @@ export function createSociety(ctx) {
       <div>${ppl.length} residents across ${CITIES.length} cities · unemployment ${unemployedPct().toFixed(1)}% · ${citizens.filter(c => c.jail).length} in jail</div>
       <h3>You</h3><div>Fame ${bar(S.fame)} · reputation: <b>${S.fame < 15 ? 'nobody knows you yet' : avgOp > 25 ? 'well liked' : avgOp > 5 ? 'liked' : avgOp > -10 ? 'mixed' : avgOp > -30 ? 'distrusted' : 'feared'}</b>${P.office ? ' · <b>' + esc(P.office) + '</b>' : ''}${P.party != null ? ' · member of the ' + esc(PARTIES[P.party].name) : ''}</div>
       <div style="opacity:.75">Fame grows with what you do, what you own and the offices you hold. Until people know you, they don't much care what you do.</div>
+      <div>🏅 Achievements: ${lives.P.list.length ? lives.P.list.map(esc).join(' · ') : 'none yet'}</div>
       <h3>Money</h3><div>Treasury <b>${fmt(S.treasury)}</b> gold · income tax <b>${S.tax}%</b> · ${Object.entries(S.budget).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · ')}</div>
       <h3>Laws in force</h3><div>${[S.laws.curfew && 'Night curfew (10pm–6am)', S.laws.cctv && 'CCTV on every street', S.laws.watch && 'Neighbourhood watch', S.laws.plasticBan && 'Single-use plastic banned'].filter(Boolean).join(' · ') || 'No special laws.'}</div>
       <h3>Your staff</h3><div>${hk ? `${esc(citizens[hk.id].name)}, housekeeper (${WAGE.housekeeper} gold a day). They do your laundry and dishes for you.` : 'Nobody yet. Talk to a resident to offer them a job as your housekeeper.'}</div>`;
@@ -582,7 +606,7 @@ export function createSociety(ctx) {
     if (d.leave != null) return say2(gov.actions.leave());
     if (d.run) return say2(gov.actions.run(d.run, d.city));
     if (d.propose) return say2(gov.actions.propose(d.propose));
-    if (d.donate) { const n = +d.amt; if (ctx.gold() < n) return say2(`You need ${n} gold to give that.`); ctx.addGold(-n); const O = S.orgs ||= { funds: {}, helped: {} }; O.funds[d.donate] = (O.funds[d.donate] || 0) + n; S.fameAcc += n / 400; if (S.fame >= 20) for (const c of citizens) c.opinion = clamp(c.opinion + n / 2000, -100, 100); news(`The newcomer gave ${n} gold to ${d.donate}.`, false); return say2(`💛 Thank you. ${d.donate} received ${n} gold.`); }
+    if (d.donate) { const n = +d.amt; if (ctx.gold() >= n) lives.playerCount('donated', n, [[100, 'First donation'], [5000, 'Philanthropist']]); if (ctx.gold() < n) return say2(`You need ${n} gold to give that.`); ctx.addGold(-n); const O = S.orgs ||= { funds: {}, helped: {} }; O.funds[d.donate] = (O.funds[d.donate] || 0) + n; S.fameAcc += n / 400; if (S.fame >= 20) for (const c of citizens) c.opinion = clamp(c.opinion + n / 2000, -100, 100); news(`The newcomer gave ${n} gold to ${d.donate}.`, false); return say2(`💛 Thank you. ${d.donate} received ${n} gold.`); }
     if (d.askgo != null) { const q = panel.querySelector('[data-ask]').value.trim(), out = panel.querySelector('[data-answer]'); if (!q) return; out.textContent = 'ATLAS is thinking…';
       ctx.askAtlas?.(q, { year: Math.floor(S.tick / YEAR) + 1, president: gov.candName({ id: S.gov.president }), approval: Math.round(S.approval), crime: Math.round(S.crime), treasury: Math.round(S.treasury), tax: S.tax, atlasLevel: S.atlas.level, dev: Math.round(S.dev), discoveries: S.sci.list.slice(0, 3).map(x => x.name), finds: S.dig.finds.slice(-3).map(x => x.relic) })
         .then(a => { out.textContent = a || 'ATLAS is offline right now.'; nation.feedAtlas(2); }).catch(() => { out.textContent = 'ATLAS is offline right now.'; }); return; }
@@ -597,7 +621,12 @@ export function createSociety(ctx) {
   setTimeout(() => checkProjects(true), 0);
 
   return {
-    update, converse, openHall, openTab, close, save, citizens, state: S, tick, goOnline, say, news, gov, nation,
+    lives, update, converse, openHall, openTab, close,
+    knownName(e) { const c = cit(e); return c ? lives.knownName(c) : null; },
+    speedOf(e) {   // how this person walks: the old slower, the young quicker, the tired dragging, the late hurrying
+      const c = cit(e); if (!c) return 1; const h = hour();
+      return (c.age > 70 ? .7 : c.age > 60 ? .82 : c.age < 25 ? 1.1 : 1) * (c.energy < 30 ? .8 : 1) * (h >= 7.5 && h < 9 && JOB[c.job]?.wage ? 1.25 : 1) * (c.health < 40 ? .8 : 1);
+    }, save, citizens, state: S, tick, goOnline, say, news, gov, nation,
     election: () => gov.election(false), session: () => gov.tick(allPolicies, score, apply),
     petitionFiled(r, name) { const c = citizens.find(c => c.name.startsWith(name)); if (c) remember(c, 'Reported to the Lawgiver: ' + r.title.toLowerCase()); if (r.cat !== 'note') news(`${name} petitioned the Lawgiver: ${r.title.toLowerCase()} near (${r.x}, ${r.z}).`); },
     get open() { return !panel.hidden; },
