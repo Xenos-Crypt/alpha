@@ -104,6 +104,8 @@ import { createSports } from './leisure-sports.js';
 import { buildVentura, VENTURA, FOUNTAIN, KARTS } from './ventura.js';
 import { buildRecCentre, REC } from './rec-centre.js';
 import { buildGrandPark, PARK_NO_GRASS } from './grand-park.js';
+import { buildFlowerPark, FLOWER_NO_GRASS } from './flower-park.js';
+import { buildHomePark } from './home-park.js';
 import { buildBeach } from './beach.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
@@ -815,6 +817,14 @@ function addBench(x, z, rotY) {
   streetSeats.push({ x, z, yaw: rotY, seatY: CURB + .49, label: 'Sit on street bench', model: g, collider, health: 60, broken: false, impactTimes: new WeakMap() });
 }
 
+// run fn (which builds something) and then remove every trace of it: what it added to the scene and to
+// the city's lists. Used to keep the city's random sequence the same when a block is left empty.
+function withoutTrace(fn) {
+  const lists = [colliders, planeBlocks, camBlockers, civicBuildings, stairRamps, cctvSpots, buildings], lens = lists.map(l => l.length), first = scene.children.length;
+  fn();
+  for (const o of scene.children.slice(first)) scene.remove(o);   // (geometry may be shared, so it is left to the garbage collector)
+  lists.forEach((l, i) => { l.length = lens[i]; });
+}
 // Fill the city. Cell (0,0) is home, (-1,0) is the park, (1,0) is the training ground,
 // (0,-1) and (-1,-1) are houses you can walk into.
 const residentialCells = [];
@@ -828,6 +838,10 @@ for (let cx = -4; cx < 4; cx++) for (let cz = -4; cz < 4; cz++) {
   pavement(x0, z0, isHome || isPark || isResidential ? lawnMat : isTraining ? sandMat : null);
   if (isResidential) residentialCells.push([x0, z0]);
   if (isHome || isPark || isTraining || isResidential || isPoliceCell || isSchoolCell) continue;
+  // the block south of the park is the park's second half now (skate park and bike track, home-park.js);
+  // its buildings are still "drawn" so the city's random layout everywhere else stays exactly as it was,
+  // and then taken away again before anything sees them
+  if (cx === -1 && cz === 1) { pavement(x0, z0, lawnMat); for (const [ox, oz] of [[-5.5, -5.5], [5.5, -5.5], [-5.5, 5.5], [5.5, 5.5]]) { if (rand() < 0.12) continue; withoutTrace(() => addBuilding(x0 + ox, z0 + oz, Math.sign(ox), Math.sign(oz))); } continue; }
   for (const [ox, oz] of [[-5.5, -5.5], [5.5, -5.5], [-5.5, 5.5], [5.5, 5.5]]) {
     if (rand() < 0.12) {   // small plaza instead of a building
       addTree(x0 + ox, z0 + oz, 1.1);
@@ -6688,7 +6702,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let venueFences = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -7866,7 +7880,7 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
     pose:(h,p,dt)=>animateHumanoid(h,p,false,false,true,dt),
     input:()=>locked?{forward:keys.KeyW||keys.ArrowUp?1:0,back:keys.KeyS||keys.ArrowDown?1:0,left:keys.KeyA||keys.ArrowLeft?1:0,right:keys.KeyD||keys.ArrowRight?1:0}:{forward:0,back:0,left:0,right:0}};
   // The leisure strip north of the boulevard: Ventura (fun centre, Fountain Park, karting), the Recreation Centre, and the Grand Park with its lake and zoo
-  ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx);
+  ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx); flowerPark=buildFlowerPark(leisureCtx); homePark=buildHomePark({...leisureCtx,makeVehicle,curb:CURB});
   // Ashford Beach: rippling sea, surf, parasols, sunbathers, lifeguard, volleyball, a beach bar
   beachLife=buildBeach(leisureCtx,{sea,seaZ:SEA_Z});
   // St Mary's, the port and the naval base, brought up to date
@@ -8012,7 +8026,7 @@ recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTe
     interactables.push({ pos: new THREE.Vector3(x, 0, z), r: 1.9, get label() { return careers.kioskLabel(place); }, action: () => careers.work(place) }); } }
 
 // floors that aren't roads or buildings but still shouldn't sprout grass
-const noGrass = [...FAIR_NO_GRASS, ...PARK_NO_GRASS, { minX: VENTURA.x0, maxX: VENTURA.x1, minZ: VENTURA.z0, maxZ: VENTURA.z1 }, { minX: REC.x0, maxX: REC.x1, minZ: REC.z0, maxZ: REC.z1 }, { minX: FOUNTAIN.plaza[0], maxX: FOUNTAIN.plaza[1], minZ: FOUNTAIN.plaza[2], maxZ: FOUNTAIN.plaza[3] }, { minX: KARTS.box[0], maxX: KARTS.box[1], minZ: KARTS.box[2], maxZ: KARTS.box[3] }, { cx: 242, cz: -704, r: 21 }, { minX: 194, maxX: 210, minZ: -682, maxZ: -664 }, { minX: 313, maxX: 331, minZ: -661, maxZ: -649 }, { cx: 330, cz: -690, r: 8 }, { cx: 378, cz: -655, r: 3.6 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
+const noGrass = [...FAIR_NO_GRASS, ...PARK_NO_GRASS, ...FLOWER_NO_GRASS, { minX: VENTURA.x0, maxX: VENTURA.x1, minZ: VENTURA.z0, maxZ: VENTURA.z1 }, { minX: REC.x0, maxX: REC.x1, minZ: REC.z0, maxZ: REC.z1 }, { minX: FOUNTAIN.plaza[0], maxX: FOUNTAIN.plaza[1], minZ: FOUNTAIN.plaza[2], maxZ: FOUNTAIN.plaza[3] }, { minX: KARTS.box[0], maxX: KARTS.box[1], minZ: KARTS.box[2], maxZ: KARTS.box[3] }, { cx: 242, cz: -704, r: 21 }, { minX: 194, maxX: 210, minZ: -682, maxZ: -664 }, { minX: 313, maxX: 331, minZ: -661, maxZ: -649 }, { cx: 330, cz: -690, r: 8 }, { cx: 378, cz: -655, r: 3.6 }, { minX: 36, maxX: 72, minZ: -242, maxZ: -198 }, { minX: 620, maxX: 660, minZ: -127, maxZ: -97 }, { minX: 924.5, maxX: 936, minZ: 578, maxZ: 1022 }];
 // Building footprints, indexed in 20 m cells: no grass ever grows inside a building, whatever its floor is made of.
 const footprintIndex = { key: '', cells: new Map() };
 function insideFootprint(x, z) {
@@ -8143,7 +8157,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate

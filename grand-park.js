@@ -1,4 +1,6 @@
-// Westhaven Grand Park: the biggest park in the city (about 350 m by 190 m), north of the leisure strip.
+// Westhaven Grand Park: the biggest park in the city, north of the leisure strip: two parks inside one
+// railing with gates on all four sides — the Grand Park itself (about 350 m by 190 m) and, to the west through
+// a gap in the hedge, the Westhaven Flower Park (flower-park.js), about 210 m by 185 m more.
 //   - a big boating lake with an island gazebo, a jetty and swan pedalos you can hire, ducks, swans and flamingos
 //   - formal flower gardens: rows of beds in every colour, a rose arch walk and a sundial
 //   - Westhaven Mini Zoo: giraffes, elephants, zebras, ostriches, lions, monkeys, tortoises and free-roaming peacocks
@@ -9,11 +11,15 @@ import * as THREE from 'three';
 import { makeKit } from './leisure-kit.js';
 
 export const PARK = { x0: 240, x1: 595, z0: -1105, z1: -912, gates: [300, 420, 540] };
+// the railing round both parks, and its gates: south (three), north, east and west
+export const OUTER = { x0: 30, x1: 595, z0: -1105, z1: -912, annexZ1: -920, split: 240,
+  gates: { south: [300, 420, 540], north: [420], east: [-1097], west: [-1013] }, inner: -1013 };
 export const LAKE = { x: 420, z: -1015, rx: 80, rz: 42, island: { x: 440, z: -1018, r: 9 } };
 const GARDEN = { x0: 250, x1: 330, z0: -1095, z1: -935 }, ZOO = { x0: 510, x1: 590, z0: -1095, z1: -935 }, PLAY = { x0: 270, x1: 330, z0: -932, z1: -916 };
 const inLake = (x, z, pad = 0) => ((x - LAKE.x) / (LAKE.rx + pad)) ** 2 + ((z - LAKE.z) / (LAKE.rz + pad)) ** 2 < 1;
 // grass mustn't grow on the paths, in the lake or through the playground and zoo yards
-export const PARK_NO_GRASS = [{ cx: LAKE.x - 40, cz: LAKE.z, r: 40 }, { cx: LAKE.x, cz: LAKE.z, r: 41 }, { cx: LAKE.x + 40, cz: LAKE.z, r: 40 }, { minX: 416, maxX: 424, minZ: -973, maxZ: -912 }, { minX: PLAY.x0, maxX: PLAY.x1, minZ: PLAY.z0, maxZ: PLAY.z1 }];
+export const PARK_NO_GRASS = [{ cx: LAKE.x - 40, cz: LAKE.z, r: 40 }, { cx: LAKE.x, cz: LAKE.z, r: 41 }, { cx: LAKE.x + 40, cz: LAKE.z, r: 40 }, { minX: 416, maxX: 424, minZ: -973, maxZ: -912 }, { minX: PLAY.x0, maxX: PLAY.x1, minZ: PLAY.z0, maxZ: PLAY.z1 },
+  { minX: 416, maxX: 424, minZ: -1112, maxZ: -1055 }, { minX: 330, maxX: 602, minZ: -1101, maxZ: -1095 }];
 
 export function buildGrandPark(ctx) {
   const K = makeKit(ctx), { B, C, S, mat, solid, circle, sign, place, spot, stander, sitter, walker, family, animal } = K;
@@ -26,17 +32,55 @@ export function buildGrandPark(ctx) {
   const lamps = [];
   const lamp = (x, z) => { C(root, 0.06, 0.08, 3.6, x, 1.8, z, 0x1f2326, 6); const head = S(root, 0.22, x, 3.7, z, mat(0xfff4dc, { emissive: 0xffe2a0, ei: 0.2 }), 10); head.material = head.material.clone(); lamps.push(head); };
 
-  // ================= boundary: a clipped hedge with three gates =================
-  { const hedge = mat(0x2f6b2a, { rough: 1 }), h = 1.4;
-    const run = (x0, z0, x1, z1) => { B(root, Math.max(0.9, Math.abs(x1 - x0)), h, Math.max(0.9, Math.abs(z1 - z0)), (x0 + x1) / 2, h / 2, (z0 + z1) / 2, hedge); solid(Math.min(x0, x1) - 0.45, Math.max(x0, x1) + 0.45, Math.min(z0, z1) - 0.45, Math.max(z0, z1) + 0.45); };
-    let x = P.x0; for (const g of P.gates) { run(x, P.z1, g - 4, P.z1); x = g + 4; } run(x, P.z1, P.x1, P.z1);
-    run(P.x0, P.z0, P.x1, P.z0); run(P.x0, P.z0, P.x0, P.z1); run(P.x1, P.z0, P.x1, P.z1);
-    for (const g of P.gates) { for (const s of [-1, 1]) { B(root, 1.2, 4.2, 1.2, g + s * 4.6, 2.1, P.z1, 0xd9cfbf); S(root, 0.5, g + s * 4.6, 4.7, P.z1, 0xd9cfbf, 10); }
-      const arch = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.18, 6, 24, Math.PI), mat(0x1f2326, { metal: 0.6, rough: 0.4 })); arch.position.set(g, 4.2, P.z1); root.add(arch);
-      const s = sign('WESTHAVEN GRAND PARK', g === 420 ? 'lake · gardens · mini zoo · playground' : '', 7, '#123a2a', '#f2e6c8'); place(s, g, 6.1, P.z1 + 0.05, 0);
-      path(g - 3, g + 3, P.z1 - 6, P.z1 + 8); }
+  // ================= boundary: iron railings round both parks, a gate on every side =================
+  // (the railings are instanced: thousands of bars cost a handful of draw calls)
+  { const O = OUTER, bars = [], posts = [], rails = [], G = 4;   // a gate is 8 m wide
+    const run = (x0, z0, x1, z1, gaps = []) => {   // a straight run of railing with openings at the gaps
+      const len = Math.hypot(x1 - x0, z1 - z0), ux = (x1 - x0) / len, uz = (z1 - z0) / len, along = v => (ux ? (v - x0) * Math.sign(ux) : (v - z0) * Math.sign(uz));
+      const open = gaps.map(g => along(g)).map(a => [a - G, a + G]);
+      let from = 0;
+      const piece = (a0, a1) => { if (a1 - a0 < .3) return;
+        const ax = x0 + ux * a0, az = z0 + uz * a0, bx = x0 + ux * a1, bz = z0 + uz * a1;
+        for (let a = a0; a <= a1; a += .22) bars.push([x0 + ux * a, z0 + uz * a]);
+        for (let a = a0; a <= a1 + .01; a += Math.min(10, Math.max(.5, a1 - a0))) posts.push([x0 + ux * Math.min(a, a1), z0 + uz * Math.min(a, a1)]);
+        rails.push([(ax + bx) / 2, (az + bz) / 2, a1 - a0, ux ? 0 : Math.PI / 2]);
+        solid(Math.min(ax, bx) - .15, Math.max(ax, bx) + .15, Math.min(az, bz) - .15, Math.max(az, bz) + .15); };
+      for (const [g0, g1] of open.sort((a, b) => a[0] - b[0])) { piece(from, g0); from = g1; }
+      piece(from, len);
+    };
+    run(O.x0, O.z0, O.x1, O.z0, O.gates.north);                       // north
+    run(O.x1, O.z0, O.x1, O.z1, O.gates.east);                        // east
+    run(O.x1, O.z1, O.split, O.z1, O.gates.south);                    // south, along the Grand Park
+    run(O.split, O.z1, O.split, O.annexZ1);                           // a step round the venue next door
+    run(O.split, O.annexZ1, O.x0, O.annexZ1);                         // south, along the Flower Park
+    run(O.x0, O.annexZ1, O.x0, O.z0, O.gates.west);                   // west
+    const iron = mat(0x1d2124, { metal: .6, rough: .45 }), stone = mat(0xd9cfbf, { rough: .9 });
+    const inst = (geo, m, list, put) => { const im = new THREE.InstancedMesh(geo, m, list.length), o = new THREE.Object3D(); list.forEach((v, i) => { put(o, v); o.updateMatrix(); im.setMatrixAt(i, o.matrix); }); im.castShadow = true; im.receiveShadow = true; root.add(im); return im; };
+    inst(new THREE.CylinderGeometry(.018, .018, 1.9, 5), iron, bars, (o, [x, z]) => { o.position.set(x, .95, z); o.rotation.set(0, 0, 0); o.scale.set(1, 1, 1); });
+    inst(new THREE.ConeGeometry(.04, .14, 5), iron, bars, (o, [x, z]) => { o.position.set(x, 1.97, z); });   // spear tips
+    inst(new THREE.BoxGeometry(.6, 2.3, .6), stone, posts, (o, [x, z]) => { o.position.set(x, 1.15, z); });
+    inst(new THREE.BoxGeometry(1, .06, .05), iron, rails.flatMap(r => [[...r, .25], [...r, 1.75]]), (o, [x, z, len, ry, y]) => { o.position.set(x, y, z); o.rotation.set(0, ry, 0); o.scale.set(len, 1, 1); });
+    // the gates: stone piers, an iron arch and the park's name, facing out
+    const gate = (x, z, ry, title, sub) => {
+      const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; root.add(g);
+      for (const s of [-1, 1]) { B(g, 1.2, 4.2, 1.2, s * 4.6, 2.1, 0, 0xd9cfbf); S(g, .5, s * 4.6, 4.7, 0, 0xd9cfbf, 10); }
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(4.6, .18, 6, 24, Math.PI), mat(0x1f2326, { metal: .6, rough: .4 })); arch.position.set(0, 4.2, 0); g.add(arch);
+      const sg = sign(title, sub, 7, '#123a2a', '#f2e6c8'); sg.position.set(0, 6.1, .05); g.add(sg);
+    };
+    for (const x of O.gates.south) { gate(x, O.z1, 0, 'WESTHAVEN GRAND PARK', x === 420 ? 'lake · gardens · mini zoo · playground' : ''); path(x - 3, x + 3, O.z1 - 6, O.z1 + 8); }
+    for (const x of O.gates.north) gate(x, O.z0, Math.PI, 'WESTHAVEN GRAND PARK', 'north gate');
+    for (const z of O.gates.east) gate(O.x1, z, Math.PI / 2, 'WESTHAVEN GRAND PARK', 'east gate · mini zoo');
+    for (const z of O.gates.west) gate(O.x0, z, -Math.PI / 2, 'WESTHAVEN FLOWER PARK', 'tulips · roses · sunflowers · glasshouse');
+    // inside, a clipped hedge divides the two parks, with an opening between them
+    const hedge = mat(0x2f6b2a, { rough: 1 }), h = 1.4;
+    const hedgeRun = (z0, z1) => { B(root, .9, h, z1 - z0, O.split, h / 2, (z0 + z1) / 2, hedge); solid(O.split - .45, O.split + .45, z0, z1); };
+    hedgeRun(O.z0 + 1, O.inner - 5); hedgeRun(O.inner + 5, O.annexZ1 - 1);
+    for (const s of [-1, 1]) { B(root, 1, 2.6, 1, O.split, 1.3, O.inner + s * 5.5, 0xd9cfbf); S(root, .4, O.split, 2.9, O.inner + s * 5.5, 0xd9cfbf, 10); }
+    path(O.split - 6, O.split + 12, O.inner - 3, O.inner + 3);
+    // and paths in from the new gates: north gate to the lake, east gate along the north edge
+    path(417, 423, O.z0 - 6, -1055); path(330, O.x1 + 6, -1100, -1096);
   }
-  ctx.destinations?.push({ name: 'Westhaven Grand Park', x: 420, z: P.z1 + 6 }, { name: 'Grand Park boating lake', x: 420, z: -968 }, { name: 'Westhaven Mini Zoo', x: 550, z: -930 });
+  ctx.destinations?.push({ name: 'Westhaven Grand Park', x: 420, z: P.z1 + 6 }, { name: 'Grand Park north gate', x: 420, z: OUTER.z0 - 6 }, { name: 'Grand Park east gate', x: OUTER.x1 + 6, z: OUTER.gates.east[0] }, { name: 'Grand Park boating lake', x: 420, z: -968 }, { name: 'Westhaven Mini Zoo', x: 550, z: -930 });
 
   // ================= paths =================
   path(416, 424, -973, -912);                                   // the avenue from the main gate to the lake
@@ -212,7 +256,8 @@ export function buildGrandPark(ctx) {
     for (let i = 0; i < 170; i++) { const x = P.x0 + 6 + r() * (P.x1 - P.x0 - 12), z = P.z0 + 6 + r() * (P.z1 - P.z0 - 12);
       if (inLake(x, z, 14) || (x > GARDEN.x0 - 3 && x < GARDEN.x1 + 3 && z > GARDEN.z0 - 3 && z < GARDEN.z1 + 3) || (x > ZOO.x0 - 3 && x < ZOO.x1 + 3 && z > ZOO.z0 - 3 && z < ZOO.z1 + 3) || (z > -936) || (Math.abs(x - 420) < 8) || Math.hypot(x - 380, z + 952) < 14) continue;
       tree(x, z, r() < 0.5 ? 'oak' : r() < 0.7 ? 'pine' : 'birch', 0.9 + r() * 0.6); }
-    for (let x = P.x0 + 8; x < P.x1 - 4; x += 16) tree(x, P.z0 + 4, 'pine', 1.2);
+    for (let x = P.x0 + 8; x < 330; x += 16) tree(x, P.z0 + 4, 'pine', 1.2);   // (east of the gardens the north edge has a path to the east gate)
+    for (let x = 336; x < ZOO.x0 - 4; x += 16) if (Math.abs(x - 420) > 8) tree(x, P.z0 + 12, 'pine', 1.1);
   }
   // more visitors along the promenade
   family([[P.x0 + 10, -923], [P.x1 - 10, -923]], { kids: 2, speed: 1.0 });

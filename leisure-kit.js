@@ -45,7 +45,7 @@ export function makeKit(ctx) {
   const stander = (x, z, yaw, o = {}) => { const h = person(x, z, yaw, o); if (h) actors.push({ h, kind: o.task || 'idle', ph: Math.random() * 6, x, z, y: o.y ?? 0.05 }); return h; };
   const sitter = (x, z, yaw, seatY, o = {}) => { const h = person(x, z, yaw, { ...o, y: seatY - 0.5 }); if (h) actors.push({ h, kind: 'sit', ph: Math.random() * 6, task: o.task }); return h; };
   // walk a closed loop of points at a speed, optionally with a child following
-  const walker = (pts, o = {}) => { const h = person(pts[0][0], pts[0][1], 0, o); if (!h) return null; const segs = pts.map((a, i) => { const b = pts[(i + 1) % pts.length]; return Math.hypot(b[0] - a[0], b[1] - a[1]); }); const a = { h, kind: 'walk', pts, segs, total: segs.reduce((x, y) => x + y, 0), t: o.t ?? Math.random() * 100, speed: o.speed ?? 1.2, off: o.off ?? 0 }; actors.push(a); return a; };
+  const walker = (pts, o = {}) => { const h = person(pts[0][0], pts[0][1], 0, o); if (!h) return null; const segs = pts.map((a, i) => { const b = pts[(i + 1) % pts.length]; return Math.hypot(b[0] - a[0], b[1] - a[1]); }); const a = { h, kind: 'walk', pts, segs, total: segs.reduce((x, y) => x + y, 0), t: o.t ?? Math.random() * 100, speed: o.speed ?? 1.2, off: o.off ?? 0, y: o.y ?? 0.05 }; actors.push(a); return a; };
   const family = (pts, o = {}) => { const t = o.t ?? Math.random() * 200; walker(pts, { t, speed: o.speed ?? 1.1, off: 0.4 }); if (o.partner !== false) walker(pts, { t: t - 0.2, speed: o.speed ?? 1.1, off: -0.5 }); const n = o.kids ?? 1; for (let k = 0; k < n; k++) walker(pts, { child: true, t: t - 1.2 - k * 0.8, speed: o.speed ?? 1.1, off: 0.9 - k * 0.6 }); };
   // ---------------- animals ----------------
   const animals = [];
@@ -86,7 +86,7 @@ export function makeKit(ctx) {
       const h = a.h, near = Math.abs(h.root.position.x - p.x) < range && Math.abs(h.root.position.z - p.z) < range;
       if (a.kind === 'walk') { a.t += dt * a.speed; if (!near) continue; let d = ((a.t % a.total) + a.total) % a.total, i = 0; while (d > a.segs[i]) { d -= a.segs[i]; i++; }
         const A = a.pts[i], Bp = a.pts[(i + 1) % a.pts.length], u = d / a.segs[i], dx = (Bp[0] - A[0]) / a.segs[i], dz = (Bp[1] - A[1]) / a.segs[i];
-        h.root.position.set(A[0] + (Bp[0] - A[0]) * u - dz * a.off, 0.05, A[1] + (Bp[1] - A[1]) * u + dx * a.off); h.root.rotation.y = Math.atan2(dx, dz); ctx.animatePerson?.(h, true, dt); continue; }
+        h.root.position.set(A[0] + (Bp[0] - A[0]) * u - dz * a.off, a.y ?? 0.05, A[1] + (Bp[1] - A[1]) * u + dx * a.off); h.root.rotation.y = Math.atan2(dx, dz); ctx.animatePerson?.(h, true, dt); continue; }
       if (!near) continue;
       const t = clock + a.ph, { armL, armR } = h;
       if (a.kind === 'sit') { ctx.pose?.(h, 'sit', dt); if (a.task === 'eat' && armR) armR.pivot.rotation.x = -1.2 + Math.sin(t * 2) * 0.35; if (a.task === 'talk' && armR) armR.pivot.rotation.x = -0.6 + Math.sin(t * 2.4) * 0.3; }
