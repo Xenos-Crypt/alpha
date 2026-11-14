@@ -23,7 +23,7 @@ export const KINDS = {
   PER: { PLR: 'the player', RES: 'resident', POL: 'police officer' },
   BLD: { GEN: 'city building', HSE: 'house', SCH: 'school', HSP: 'hospital', CLN: 'clinic', POL: 'police station', SUP: 'supermarket', OFF: 'office', APT: 'apartments', SHP: 'shop', MAN: 'mansion', GOV: 'government building', MKT: 'market', COM: 'community centre', FIR: 'fire station', AIB: 'AI base', TMP: 'temple' },
   VEH: { CAR: 'car', POL: 'police car', AMB: 'ambulance', BUS: 'bus', TNK: 'tank', BIK: 'bicycle', MOT: 'motorbike', BOT: 'boat', SUB: 'submarine', PLN: 'plane', HEL: 'helicopter', TRK: 'truck', FIR: 'fire engine', HOV: 'hover vehicle', TRN: 'train' },
-  PRD: { GRC: 'grocery', DSH: 'dish', SNK: 'snack', INS: 'instrument', TOP: 'top (shirt, blouse, jumper)', BTM: 'trousers or skirt', SHO: 'shoes', PRM: 'pram' },
+  PRD: { GRC: 'grocery', DSH: 'dish', SNK: 'snack', INS: 'instrument', TOP: 'top (shirt, blouse, jumper)', BTM: 'trousers or skirt', SHO: 'shoes', PRM: 'pram', PHN: 'phone' },
   MAT: { RAW: 'raw material (primary)', MAD: 'made material (secondary)' },
   ORG: { PUB: 'public body', PRV: 'private limited company', PLC: 'public limited company', STR: 'sole trader', PSH: 'partnership', CHR: 'charity', SOC: 'social enterprise', COP: 'co-operative', NGO: 'NGO' },
   LND: { ROD: 'road tile', BLK: 'city block', GRS: 'grass tuft', FLR: 'floor tile', SRF: 'other surface' },

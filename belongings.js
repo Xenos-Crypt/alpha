@@ -15,15 +15,20 @@ export const GOODS = {
   top: { kind: 'TOP', name: 'top', stock: 'clo', mat: 'FAB', materials: ['fab'], maker: 'Loomhouse Textiles', shop: 'MarketWay Retail', price: 18, life: [70, 140] },
   bottom: { kind: 'BTM', name: 'trousers', stock: 'clo', mat: 'FAB', materials: ['fab'], maker: 'Loomhouse Textiles', shop: 'MarketWay Retail', price: 22, life: [90, 170] },
   shoes: { kind: 'SHO', name: 'shoes', stock: 'sho', mat: 'RUB.FAB', materials: ['rub', 'fab'], maker: 'Elastica Rubber', shop: 'MarketWay Retail', price: 30, life: [120, 220] },
+  // phones: Atlas Dynamics makes them from plastic, glass, tech tile (circuitry) and alloy; three models
+  phone: { kind: 'PHN', name: 'phone', stock: 'phn', mat: 'TCH.GLS.PLS', materials: ['tch', 'gls', 'pls', 'aly'], maker: 'Atlas Dynamics', shop: 'MarketWay Retail', price: 120, life: [400, 800] },
   pram: { kind: 'PRM', name: 'pram', stock: 'prm', mat: 'STL.FAB.RUB', materials: ['stl', 'fab', 'rub', 'pls'], maker: 'Velo Motors', shop: 'Velo Motors', price: 140, life: [2000, 4000] },
 };
 export const WEAR = ['top', 'bottom', 'shoes'];
+// the phone models in the shops: [name, price, how long it lasts (×), screen]
+export const PHONES = { lite: ['Atlas Lite', 120, 1, 'small'], one: ['Atlas One', 350, 1.3, 'bright'], pro: ['Atlas Pro', 900, 1.6, 'large'] };
 // what the shops have on the rails (people pick to their taste)
 const RAILS = {
   top: [0x2f5d8a, 0x8a3b3b, 0xe8e2d4, 0x3a6b35, 0x2a2a2a, 0xc98a2a, 0x6b4f8a, 0x4f7f8a, 0xb5651d, 0x7a8a99, 0xd9c27a, 0x9a4f6b],
   bottom: [0x2d3142, 0x1a1a1a, 0x4a4a6a, 0x5a4a3a, 0x3b3b3b, 0x6b5a45, 0x24364f, 0x7a2f35],
   shoes: [0x1b1b1f, 0x3a2a1e, 0xe6e6e6, 0x5a3a24, 0x26324a],
   pram: [0x2b3a55, 0x6b2f3a, 0x2f4f3a, 0x3a3a3a, 0x8a7a63, 0x4a5f7a],
+  phone: [0x15171c, 0xe8e8e8, 0x3a5f8a, 0x8a3b5a, 0x2f4f3a],
 };
 // uniforms are issued by the employer: [job pattern, top, trousers, who issues them]
 const UNIFORMS = [[/Police/, 0x243c58, 0x1c2f43, 'GOV'], [/Soldier/, 0x4a5a3a, 0x3a4630, 'GOV'], [/Doctor|Nurse|Scientist/, 0xe2e7e9, 0xc9d3d8, 'GOV'], [/Firefighter/, 0x3a3a3a, 0x2a2a2a, 'GOV']];
@@ -47,15 +52,18 @@ export function createBelongings({ S, citizens, news = () => { }, remember = () 
   }
   // buy (or be issued) one thing; returns the item or null (no money, or none in the shops)
   function get(c, slot, why = 'bought') {
-    const g = GOODS[slot], uni = slot !== 'pram' && slot !== 'shoes' && uniformFor(c);
+    const g = GOODS[slot], uni = !['pram', 'shoes', 'phone'].includes(slot) && uniformFor(c);
     const colour = uni ? (slot === 'top' ? uni[1] : uni[2]) : RAILS[slot][(c.id * 7 + (G.next * 3) + Math.floor(rand() * 3)) % RAILS[slot].length];
-    const cost = Math.round(g.price * (S.econ2 ? S.econ2.cpi / 100 : 1));
     // children's things are bought by a parent
     const payer = c.age < 16 ? citizens[c.family?.parents?.find(i => citizens[i] && !citizens[i].dead)] || c : c;
+    // a phone: the best model they can comfortably afford
+    const model = slot === 'phone' ? (payer.wealth > 3000 && c.age >= 16 ? 'pro' : payer.wealth > 900 ? 'one' : 'lite') : null;
+    const cost = Math.round((model ? PHONES[model][1] : g.price) * (S.econ2 ? S.econ2.cpi / 100 : 1));
     if (!uni && why !== 'founding' && payer.wealth < cost) return null;
     const item = make(c, slot, colour, uni ? uni[3] : 'RES', why === 'founding' ? 'founding' : uni ? 'issued' : 'bought');
     if (!item) return null;
     item.uniform = !!uni;
+    if (model) { item.model = model; item.wornAt = item.at + (item.wornAt - item.at) * PHONES[model][2]; }
     if (uni) { G.issued++; if (why !== 'founding') S.treasury = (S.treasury || 0) - cost * .5; }   // the employer pays for uniforms
     else if (why !== 'founding') {
       payer.wealth -= cost; item.price = cost;
@@ -76,6 +84,8 @@ export function createBelongings({ S, citizens, news = () => { }, remember = () 
   // everyone the records begin with already owns what they wear
   function seed() {
     for (const c of citizens) if (!c.dead && !c.wear) { c.wear = {}; for (const s of WEAR) c.wear[s] = get(c, s, 'founding'); c.wearV = 1; }
+    // most people old enough already had a phone when the records began
+    for (const c of citizens) if (!c.dead && c.phone === undefined) c.phone = c.age >= 12 && c.wealth > 60 && (c.id * 13) % 100 < 85 ? get(c, 'phone', 'founding') : null;
   }
   // each hour, a share of people check their things: worn out, outgrown, a new baby needs a pram
   let cursor = 0;
@@ -92,6 +102,11 @@ export function createBelongings({ S, citizens, news = () => { }, remember = () 
         if (fresh) { if (it) throwAway(c, it, outgrown ? 'outgrown' : worn ? 'worn' : 'changed jobs'); c.wear[s] = fresh; c.wearV = (c.wearV || 0) + 1; }
         else if (it && worn) it.tatty = true;   // can't afford new ones: they keep wearing the old
       }
+      // a phone: bought when they're old enough and can afford one, replaced when it gives up
+      if (c.age >= 12 && (!c.phone || (S.tick || 0) >= c.phone.wornAt) && rand() < .25) {
+        const ph = get(c, 'phone', c.phone ? 'replace' : 'bought');
+        if (ph) { if (c.phone) throwAway(c, c.phone, 'worn'); c.phone = ph; if (!c.phoneEver) { c.phoneEver = true; remember(c, `Bought my first phone, an ${PHONES[ph.model][0]}`); } }
+      }
       // a newborn in the family and no pram: a parent buys one (the one who can afford it)
       const baby = (c.family?.children || []).map(i => citizens[i]).find(b => b && !b.dead && b.age < 2);
       const partner = citizens[c.family?.partner];
@@ -105,6 +120,6 @@ export function createBelongings({ S, citizens, news = () => { }, remember = () 
     seed, hourly, get, G, stock: () => (S.stock ||= {}),
     onChange(f) { listeners.push(f); },
     // every item that exists right now (for the world registry)
-    items() { const out = []; for (const c of citizens) { if (c.dead) continue; for (const s of WEAR) if (c.wear?.[s]) out.push([c, c.wear[s]]); if (c.pram) out.push([c, c.pram]); } return out; },
+    items() { const out = []; for (const c of citizens) { if (c.dead) continue; for (const s of WEAR) if (c.wear?.[s]) out.push([c, c.wear[s]]); if (c.pram) out.push([c, c.pram]); if (c.phone) out.push([c, c.phone]); } return out; },
   };
 }

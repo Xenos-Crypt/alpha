@@ -41,6 +41,7 @@ export const MADE = [
   // things people buy and wear or use (belongings.js); finished goods, so the shops only hold so many
   ['clo', 'clothes', 'Loomhouse Textiles', 'manufacturing', { fab: .6 }, 900], ['sho', 'shoes', 'Elastica Rubber', 'manufacturing', { rub: .4, fab: .2 }, 400],
   ['prm', 'pram', 'Velo Motors', 'automotive', { stl: 2, fab: 1, rub: 1, pls: 1 }, 30],
+  ['phn', 'phone', 'Atlas Dynamics', 'tech', { pls: .3, gls: .2, tch: .4, aly: .1 }, 300],
 ].map(([code, name, company, sector, inputs, max = 3000]) => ({ code, name, company, sector, inputs, max, stage: 'secondary' }));
 
 // who builds, sells, moves and services the finished things (tertiary)
@@ -59,7 +60,7 @@ export const GROCERY_FROM = { eggs: 'egg', bread: 'brd', butter: 'dry', milk: 'd
 // finished things -> who makes them (and who sells them)
 export const MAKER = { car: 'Velo Motors', police: 'Velo Motors', ambulance: 'Velo Motors', bus: 'Velo Motors', truck: 'Velo Motors', motorcycle: 'Velo Motors', bicycle: 'Velo Motors',
   tank: 'Ironforge Steel', plane: 'Kestrel Air', heli: 'Kestrel Air', helicopter: 'Kestrel Air', boat: 'Harbour Shipyards', submarine: 'Harbour Shipyards',
-  building: 'Westhaven Builders', house: 'Westhaven Builders', monster: 'ATLAS Foundry', robot: 'ATLAS Foundry', instrument: 'Northwood Sawmills', grocery: 'MarketWay Retail', clothes: 'Loomhouse Textiles', shoes: 'Elastica Rubber', pram: 'Velo Motors' };
+  building: 'Westhaven Builders', house: 'Westhaven Builders', monster: 'ATLAS Foundry', robot: 'ATLAS Foundry', instrument: 'Northwood Sawmills', grocery: 'MarketWay Retail', clothes: 'Loomhouse Textiles', shoes: 'Elastica Rubber', pram: 'Velo Motors', phone: 'Atlas Dynamics' };
 
 // the chain behind a material, as text: steel ← iron ore (Deepstone Mining) + coal (Deepstone Mining)
 export function chainText(code, depth = 0) {

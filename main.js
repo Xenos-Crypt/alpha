@@ -4285,6 +4285,8 @@ function dispatchAnimalControl(animal) {
 // Bystanders react to nearby violence/explosions like real people would instead
 // of only the directly-hit ped panicking: close by, people flee; a bit further
 // out, some pull out a phone to film it and some call it in to the police.
+// residents only use a phone they own (belongings.js); anyone who isn't a resident is assumed to have one
+const hasPhone = e => { const c = society?.citizenOf(e); return !c || !!c.phone; };
 function reactBystanders(center, criminal) {
   for (const o of peds) {
     if (!o.alive || o.hidden) continue;
@@ -4292,7 +4294,8 @@ function reactBystanders(center, criminal) {
     const d = distXZ(o.root.position, center);
     if (d < 15) { o.ped.state = 'panic'; o.ped.panicT = 5 + Math.random() * 2; }
     else if (d < 45 && o.ped.state !== 'panic') {
-      const r = Math.random();
+      // no phone, no call and no video: they just watch (a resident has one only if they bought one)
+      const r = hasPhone(o) ? Math.random() : 1;
       // Remember whether this was the player's crime: a witness phoning in a car
       // crash or someone else's fight must not put the player on the wanted list.
       if (r < 0.3) { o.ped.state = 'call'; o.ped.reportsPlayer = !!criminal; o.ped.reactT = 4 + Math.random() * 3; o.ped.lookAt = center.clone(); }
@@ -4372,10 +4375,10 @@ function updatePed(e, dt) {
   // etc.) still updates normally regardless of distance.
   if (s.state === 'wander' && distXZ(p, player.position) > 120) return;
   let moving = false, speed = s.speed * (society?.speedOf(e) || 1);   // everyone walks at their own pace (society.js)
-  // Everyone has a phone: now and then they take it out and scroll as they walk (or stand and text).
+  // People with a phone now and then take it out and scroll as they walk (or stand and text).
   s.phoneT ??= 4 + Math.random() * 30;
   s.phoneT -= dt;
-  if (s.phoneT <= 0) { e.h.usingPhone = !e.h.usingPhone; s.phoneT = e.h.usingPhone ? 4 + Math.random() * 10 : 12 + Math.random() * 35; }
+  if (s.phoneT <= 0) { e.h.usingPhone = !e.h.usingPhone && hasPhone(e); s.phoneT = e.h.usingPhone ? 4 + Math.random() * 10 : 12 + Math.random() * 35; }
   if (s.state !== 'wander' && s.state !== 'chat') e.h.usingPhone = false;
   if (e.h.usingPhone) speed *= 0.7;
   if (e.stun > 0 || !e.onGround) { animateHumanoid(e.h, e.stun > 0 ? 'stunned' : null, false, false, e.onGround, dt); return; }
@@ -7799,7 +7802,7 @@ infoMarkets=createInfoMarkets({controversy:t=>society?.history?.L.controversies.
   secretPlaces:()=>[{name:'the ancient temple dig',x:-147,z:-382},{name:'the ATLAS base',x:80,z:897},{name:'the hidden peak',x:-345,z:1015},{name:'the Narrows black market',x:NARROWS.x,z:NARROWS.z},{name:'the north border checkpoint',x:170,z:-1180}],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // the bank: savings, loans and shares for the player (bank-panel.js, money.js)
-bankPanel=createBankPanel({scene,colliders,interactables,makePerson:o=>makeHumanoid(o),money:()=>society?.money,gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,save:()=>society?.save?.(),
+bankPanel=createBankPanel({scene,colliders,interactables,makePerson:o=>makeHumanoid(o),money:()=>society?.money,canOpen:()=>locked&&!society?.open&&!worldMap?.open&&!infoMarkets?.open,stock:()=>society?.goods?.stock().phn||0,takeStock:()=>{const st=society?.goods?.stock();if(st)st.phn-=1;},cpi:()=>(society?.state?.econ2?.cpi||100)/100,news:()=>society?.state?.news||[],record:(id,what,item)=>worldIds?.note(id,what,{id:-1,name:'The player'},{...item,slot:'phone',maker:'Atlas Dynamics'}),gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,save:()=>society?.save?.(),
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 function openMap(){if(!infoMarkets||infoMarkets.hasMap())return worldMap?.show();toast("🗺️ You don't have a map. Buy one at the Info Market in Ashford Central Market, or use a travel board.");}
 // The story nobody tells you (story.js): the truth beyond the mountains, the ways to it, and the ways out.

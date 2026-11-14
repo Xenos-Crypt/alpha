@@ -18,8 +18,10 @@ test('everyone starts in clothes that were made, each with its own ID', () => {
   const { S, citizens } = town(), b = createBelongings({ S, citizens, rand: () => .5 });
   b.seed();
   const ids = b.items().map(([, it]) => it.id);
-  assert.equal(ids.length, 9);
-  assert.equal(new Set(ids).size, 9, 'every ID is unique');
+  assert.equal(b.items().filter(([, it]) => it.slot !== 'phone').length, 9, 'three things to wear each');
+  assert.equal(new Set(ids).size, ids.length, 'every ID is unique');
+  assert.ok(citizens[0].phone && /^PRD-PHN-TCH\.GLS\.PLS-RES-/.test(citizens[0].phone.id), 'an adult already had a phone');
+  assert.equal(citizens[2].phone, null, 'a baby has no phone');
   for (const id of ids) assert.match(id, ID_PATTERN);
   assert.ok(citizens.every(c => WEAR(c)));
   assert.match(citizens[1].wear.top.id, /^PRD-TOP-FAB-GOV-/, 'a police officer wears an issued uniform');
