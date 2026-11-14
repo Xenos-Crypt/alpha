@@ -98,6 +98,8 @@ export function createGovernment(api) {
     const res = runRace(field, citizens, 'President'), win = res[0], old = G.president;
     G.lastResult = res.map(r => [candName(r), r.party != null ? PARTIES[r.party].short : 'Ind.', r.votes]);
     news(`${snap ? 'SNAP ' : ''}ELECTION: ${candName(win)} (${win.party != null ? PARTIES[win.party].short : 'independent'}) ${win.id === old ? 're-elected' : 'elected'} President with ${win.votes} votes. ${res.slice(1).map(r => candName(r) + ' ' + r.votes).join(', ')}.`, true);
+    // winners and losers: lost elections count against an ambition to hold office
+    for (const x of res) { if (x.id === 'player') { if (x === win) api.lives?.achieve(null, 'Elected President'); continue; } const o = citizens[x.id]; if (!o) continue; if (x === win) api.lives?.achieve(o, 'Elected President', true); else if (o.ambition === 'office') { o.failures = (o.failures || 0) + 1; remember(o, 'Lost the election for President'); if (o.failures >= 3) api.lives?.giveUp(o); } }
     G.president = win.id;
     if (old === 'player' && win.id !== 'player') { P.office = null; news('You are no longer President.', true); }
     if (win.id === 'player') { P.office = 'President'; news('🎉 You are the President of A.T.! Propose laws to the Assembly from the Politics tab.', true); }
@@ -111,7 +113,8 @@ export function createGovernment(api) {
       const r = runRace(cands, local, city), w = r[0];
       if (G.mayors[city] === 'player' && w.id !== 'player') P.office = P.office === 'Mayor of ' + city ? null : P.office;
       G.mayors[city] = w.id;
-      if (w.id === 'player') { P.office = 'Mayor of ' + city; news(`🎉 You are now Mayor of ${city}.`, true); }
+      if (w.id === 'player') { P.office = 'Mayor of ' + city; news(`🎉 You are now Mayor of ${city}.`, true); api.lives?.achieve(null, 'Elected Mayor of ' + city); }
+      else if (citizens[w.id]) api.lives?.achieve(citizens[w.id], 'Elected Mayor of ' + city, false);
     }
     // deposits back if you got a tenth of the vote
     if (P.running) { const me = res.find(r => r.id === 'player'); const kind = P.running.startsWith('Mayor') ? 'Mayor' : 'President'; if (kind === 'President' && me && me.votes / res.reduce((a, r) => a + r.votes, 0) >= .1) { ctx.addGold(DEPOSIT.President); news('Your election deposit was returned.'); } if (kind === 'Mayor' && P.office) ctx.addGold(DEPOSIT.Mayor); }
@@ -121,7 +124,8 @@ export function createGovernment(api) {
 
   // ---- the Assembly sits every 20 city hours ------------------------------------------------------------
   function session(policies, score, apply) {
-    const st = api.stats(), live = policies().filter(p => p.ok(st));
+    G.rejected ||= {};
+    const st = api.stats(), live = policies().filter(p => p.ok(st) && S.tick - (G.rejected[p.id] ?? -1e9) > MEETING * 4);   // a defeated bill isn't brought straight back
     if (!live.length) return;
     let p, by;
     if (G.president === 'player') { p = live.find(x => x.id === G.proposal); by = 'President (you)'; G.proposal = null; if (!p) return; }
@@ -144,6 +148,7 @@ export function createGovernment(api) {
     }
     const passed = yes > SEATS / 2;
     news(`Assembly: "${p.name}" ${passed ? 'PASSED' : 'rejected'} ${yes}–${SEATS - yes} (proposed by ${by}).`, passed || G.president === 'player');
+    if (!passed) G.rejected[p.id] = S.tick;
     if (passed) apply(p, G.president === 'player' ? null : citizens[G.president]);
     else if (p.corrupt && Math.random() < .5) { const o = officials().find(o => corruptible(o) > .75); if (o) scandal(o, 'was caught trying to push a crooked contract through the Assembly'); }
   }
@@ -191,7 +196,7 @@ export function createGovernment(api) {
     join(pid) {
       const p = PARTIES[pid]; if (!p) return 'No such party.';
       if (p.major && !P.invites.includes(pid)) return `The ${p.name} only takes members by invitation. You need ${INVITE.connections}+ connections in the party, ${fmt(INVITE.assets)} in assets, ${fmt(INVITE.gold)} in cash, and a reputation (good or bad).`;
-      P.party = pid; news(`The newcomer joined the ${p.name}.`); S.fameAcc = (S.fameAcc || 0) + (p.major ? 10 : 2); return `You joined the ${p.name}.`;
+      P.party = pid; news(`The newcomer joined the ${p.name}.`); api.lives?.achieve(null, p.major ? 'Inner circle: joined a major party' : 'Joined a party'); S.fameAcc = (S.fameAcc || 0) + (p.major ? 10 : 2); return `You joined the ${p.name}.`;
     },
     leave() { if (P.party == null) return 'You are not in a party.'; const n = PARTIES[P.party].name; P.party = null; return 'You left the ' + n + '.'; },
     run(kind, city) {
