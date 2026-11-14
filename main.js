@@ -1,3 +1,5 @@
+import { createPeople } from './people.js';
+import { createSeatedResidents } from './seated-residents.js';
 import {buildWorldExpansion,insideExclusionZone} from './world-expansion.js';
 import {duplicateEmailMessage,verificationEmailMessage} from './auth-feedback.js';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -1728,7 +1730,21 @@ function drawSpeedLines(dt) {
 // HUMANOID MODEL + ANIMATION (shared by the player and the dummies)
 // =====================================================================
 const stdMat = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 });
-function makeHumanoid({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes = 0x1b1b2f, handScale = 1, child = false }) {
+// Real human bodies for everyone near the camera (people.js); the figures below stay as the far-away
+// stand-ins and for heroes and monsters. Residents bring their own look (looks.js).
+let seatedResidents = null;
+const people = createPeople({
+  camera: () => camera,
+  lookOf: h => { if (h.citizen) return h.citizen; if (!society) return null; if (!h.pedE) h.pedE = peds.find(e => e.h === h); return h.pedE ? society.citizenOf(h.pedE) : null; },
+  babyOf: c => seatedResidents?.babyOf(c) || null,
+  budget: () => Math.round(({ low: 8, medium: 14, high: 22, ultra: 30 }[gfxQuality] ?? 14) * (matchMedia('(pointer: coarse)').matches ? .7 : 1)),
+});
+function makeHumanoid(opts) {
+  const h = makeHumanoidFigure(opts);
+  if (opts.real !== false) people.adopt(h, opts);
+  return h;
+}
+function makeHumanoidFigure({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes = 0x1b1b2f, handScale = 1, child = false }) {
   const root = new THREE.Group();
   scene.add(root);
   const rig = new THREE.Group();
@@ -1784,6 +1800,7 @@ const POSES = {
   cpr:      { aL: [-1.1, 0.05], aR: [-1.1, -0.05], lL: -1.0, lR: -0.15 }, // kneeling over an injured bystander
 };
 function animateHumanoid(h, pose, moving, sprinting, grounded, dt) {
+  if (h.realOpts) people.want(h, pose, moving, sprinting, grounded);
   const k = 1 - Math.exp(-22 * dt);
   h.phase += (moving ? (sprinting ? 14 : 9) : 0) * dt;
   const sw = moving && grounded && !pose ? Math.sin(h.phase) * (sprinting ? 0.9 : 0.6) : 0;
@@ -1869,7 +1886,7 @@ let unlockedCharIndices = [0, 1]; // the primary/secondary pair chosen at class 
 // =====================================================================
 // PLAYER
 // =====================================================================
-const P = makeHumanoid({ outfit: characters[0].color, hair: characters[0].hair });
+const P = makeHumanoid({ outfit: characters[0].color, hair: characters[0].hair, real: false });   // the hero keeps the hero figure
 const player = P.root;
 const swordGrip = new THREE.Group();
 swordGrip.position.copy(P.armR.end.position);
@@ -3932,7 +3949,7 @@ for (let i = 0; i < 10; i++) addWildlife('snake', -320 - rand() * 170, 590 + ran
 
 // ---- Training dummies ----
 function makeDummy(kind, name, spot, look, maxHp) {
-  const h = makeHumanoid(look);
+  const h = makeHumanoid({ ...look, real: false });   // sparring partners keep the fighting figure
   h.root.position.copy(spot);
   h.root.rotation.y = -Math.PI / 2;    // face the arena entrance (west)
   return makeEnemy({ kind, labelName: name, h, root: h.root, radius: 0.45, height: 2.0, maxHp, spot: spot.clone(),
@@ -5471,7 +5488,7 @@ const WAVE_TYPES = { poison:['toxicCrawler','venomStalker','toxicCrawler'], demo
 
 function makeMonster(type, level, pos) {
   const m = MONSTERS[type];
-  const h = makeHumanoid({ ...m.look, handScale: m.ai === 'ranged' ? 1 : 1.5 });
+  const h = makeHumanoid({ ...m.look, handScale: m.ai === 'ranged' ? 1 : 1.5, real: false });   // monsters aren't people
   h.rig.scale.setScalar(0.9 * m.scale);
   const wings = [];
   if (m.horns) for (const s of [-1, 1]) {
@@ -7753,6 +7770,9 @@ society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPo
     corners:()=>{const out=[];for(const b of [MAIN_BOUNDS,CAPITAL_BOUNDS])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)for(const sx of [-1,1])for(const sz of [-1,1]){const p=cornerPos({bx,bz,sx,sz});if(!blockedAt(p.x+sx*1.3,p.z+sz*1.3,.5))out.push({x:p.x,z:p.z,ox:sx,oz:sz});}return out;},
     openLand:n=>{const out=[];for(let a=0;a<Math.PI*2&&out.length<n;a+=.11)for(const R of [360,420,480]){const x=Math.cos(a)*R,z=Math.sin(a)*R;if(Math.hypot(x-170,z-150)>1300||isSeaWater(x,z)||isRoadAt(x,z)||blockedAt(x,z,9)||out.some(o=>Math.hypot(o.x-x,o.z-z)<60))continue;out.push({x,z});break;}return out;}})),
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+// residents at their desks, dinner tables and benches (seated-residents.js), drawn from the residents not walking the streets
+seatedResidents=createSeatedResidents({sitSpots,makePerson:o=>makeHumanoid(o),animate:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),citizens:()=>society.citizens,citizenOf:e=>society.citizenOf(e),peds:()=>peds,hour:()=>(6+dayTime*24)%24,
+  playerSeat:()=>sitting?activeSitSpot:null,playerPos:()=>player.position,groundY,skip:s=>s.x>=HOME.minX&&s.x<=HOME.maxX&&s.z>=HOME.minZ&&s.z<=HOME.maxZ});
 npcConversations=createNpcConversations({converse:e=>society?.converse(e),nameOf:e=>society?.knownName(e),people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // Residents report what breaks the laws of the world: Rule Keepers fix it, the Lawgiver hears of it (world-watch.js).
 // What the nation's progress looks like: the ATLAS base, its robots, the temple dig, self-driving cars (atlas-world.js).
@@ -8135,6 +8155,7 @@ function frame() {
   perfBudget.update(rawDt, frameMs, running);
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
+  seatedResidents?.update(rawDt); people.update(hitStop > 0 ? 0 : rawDt);
   if(!coveredByOverlay()){if(++shadowFrame%2===0)renderer.shadowMap.needsUpdate=true;renderer.render(scene, camera);}
   requestAnimationFrame(frame);
 }

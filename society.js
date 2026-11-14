@@ -28,6 +28,7 @@ import { PARTIES, CITIES, COUNTRY, TERM, YEAR, SECTORS, sectorOfJob, ATLAS_LEVEL
 import { createGovernment, INVITE } from './government.js';
 import { createNationSim } from './nation-sim.js';
 import { seedLife, createLives, STAGES as BOND_STAGES } from './lives.js';
+import { inheritLook, sexOfName } from './looks.js';
 import { createCommunity } from './community.js';
 import { createJustice } from './justice.js';
 import { createHistory, sourceFor, garble, SOURCES } from './history.js';
@@ -280,6 +281,9 @@ export function createSociety(ctx) {
     const c = makeCitizen(citizens.length, 'Child'); const sur = a.name.split(' ').slice(1).join(' ') || b.name.split(' ')[1];
     Object.assign(c, { name: c.name.split(' ')[0] + ' ' + sur, age: 0, city: a.city, wealth: 0, job: 'Child', econ: (a.econ + b.econ) / 2, order: (a.order + b.order) / 2 });
     for (const k in c.traits) c.traits[k] = (a.traits[k] + b.traits[k]) / 2 * .7 + c.traits[k] * .3;
+    // the baby takes after both parents, and is named to suit
+    c.look = inheritLook(a.look, b.look, Math.random);
+    if (sexOfName(c.name) && sexOfName(c.name) !== c.look.sex) { const names = FIRST.filter(n => sexOfName(n) === c.look.sex); c.name = names[Math.floor(Math.random() * names.length)] + ' ' + sur; }
     seedLife(c); c.tenure = 0; c.skills = {}; c.story = [`Born in ${a.city} to ${a.name} and ${b.name}.`]; c.crook = null; c.born = S.tick;
     citizens.push(c); return c;
   }
@@ -303,7 +307,7 @@ export function createSociety(ctx) {
     live = true;
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, kids: citizens.filter(c => c.born != null).map(c => ({ id: c.id, name: c.name, age: c.age, city: c.city, traits: c.traits, econ: c.econ, order: c.order, born: c.born })), c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined, fm: c.family, hm: c.home, ll: c.landlord, dd: c.dead ? 1 : 0, si: c.sick, cv: c.convictions, rc: c.record ? 1 : 0, fl: c.file }])) })); } catch { }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, kids: citizens.filter(c => c.born != null).map(c => ({ id: c.id, name: c.name, age: c.age, city: c.city, traits: c.traits, econ: c.econ, order: c.order, born: c.born, look: c.look })), c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined, fm: c.family, hm: c.home, ll: c.landlord, dd: c.dead ? 1 : 0, si: c.sick, cv: c.convictions, rc: c.record ? 1 : 0, fl: c.file }])) })); } catch { }
   }
   addEventListener('beforeunload', save);
 
