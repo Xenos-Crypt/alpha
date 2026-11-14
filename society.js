@@ -97,7 +97,7 @@ export function createSociety(ctx) {
   }
   const unemployedPct = () => 100 * citizens.filter(c => c.job === 'Unemployed').length / citizens.length;
   const stats = () => ({ ...S, unemployed: unemployedPct() });
-  function news(text, important) { S.news.unshift({ t: S.tick, text }); S.news.length = Math.min(S.news.length, 40); if (important && live) ctx.toast('📰 ' + text); }
+  function news(text, important) { S.news.unshift({ t: S.tick, text }); S.news.length = Math.min(S.news.length, 200); if (important && live) ctx.toast('📰 ' + text); }
   function remember(c, text) { c.memory.unshift(text); c.memory.length = Math.min(c.memory.length, 5); }
   const nameOf = i => citizens[i]?.name || 'nobody';
 
@@ -480,7 +480,7 @@ export function createSociety(ctx) {
     const hostile = c.opinion < -30, P = gov.P, pa = PARTIES[gov.party(c)], famous = S.fame >= 15;
     c.metPlayer = true; S.fameAcc += .05;
     const stage = lives.stageOf(c.bond || 0), first = c.name.split(' ')[0], title = lives.titleHere(c, e);
-    const known = lives.knownName(c), heading = known ? (title ? `${title} ${known}` : known) : title ? `The ${title.toLowerCase()}` : 'A stranger';
+    const known = lives.knownName(c) || (c.record ? c.name : null), heading = known ? (title ? `${title} ${known}` : known) : title ? `The ${title.toLowerCase()}` : 'A stranger';
     const greet = hostile ? pickR(Math.random, ['What do YOU want?', "Stay away from me. I've heard about you.", "I've got nothing to say to you."])
       : stage === 0 ? (famous ? pickR(Math.random, ["You're the newcomer everyone's talking about, aren't you?", 'Oh! I know your face from the news.']) : pickR(Math.random, ['Sorry, do I know you?', 'Hm? Can I help you?', "Hello. You're not from round here, are you?"]))
       : P.office === 'President' ? 'President! It is an honour.' : c.mood < 35 ? 'Hi. Not having a great day, honestly.' : stage >= 3 ? `There you are! I was hoping I'd see you.` : stage >= 2 ? 'Good to see you again.' : pickR(Math.random, ['Hello again.', 'Oh, hi.', 'Afternoon.']);
@@ -493,6 +493,7 @@ export function createSociety(ctx) {
     choices.push(['How is your day going?', () => { lives.bondUp(c, 2); return c.mood > 65 ? 'Honestly? Pretty good.' : c.mood > 40 ? 'Getting by.' : 'Not great, if I am honest.'; }]);
     choices.push(['Chat for a while', () => { if (c.chatAt && now - c.chatAt < 60e3) return 'We only just talked! Maybe later.'; c.chatAt = now; lives.bondUp(c, 5); c.social = 100; return chatLine(c); }]);
     choices.push(['Buy them a coffee (5 gold)', () => { if (ctx.gold() < 5) return "You haven't got the money, but thanks for the thought."; if (c.coffeeAt && now - c.coffeeAt < 300e3) return "I've only just had one, thanks!"; ctx.addGold(-5); c.coffeeAt = now; c.opinion = clamp(c.opinion + 4, -100, 100); lives.bondUp(c, 6); return 'Oh, that is kind of you. Thank you.'; }]);
+    if (c.file) choices.push(['(Read the file you bought)', (() => { const f = c.file.fake, pa2 = PARTIES[f ? f.vote : gov.party(c)]; return `PRIVATE FILE · ${c.name}, ${c.age}, ${c.city}. Work: ${c.job}${c.tenure ? ` (${Math.round(c.tenure)} yrs)` : ''}. Money: ${Math.round(c.wealth)} gold. Health: ${f ? f.health : Math.round(c.health)}/100${f ? '; ' + f.illness : c.illnesses?.length ? '; ' + c.illnesses.join(', ') : ''}. Votes: ${pa2 ? pa2.name.replace(/\.$/, '') : 'nobody'}. ${c.crook ? 'Known to the underworld as a ' + c.crook.toLowerCase() + '. ' : ''}Wants to ${lives.AMBITIONS[c.ambition]}. History: ${c.story.join(' ')}`; })()]);
     if (stage >= 1) choices.push(['What have you been up to?', c.memory.length ? c.memory.slice(0, 3).join('. ') + '.' : 'Nothing much. Work, home, the usual.']);
     if (stage >= 2) {
       const top = Object.entries(c.skills || {}).sort((a, b) => b[1] - a[1]).slice(0, 2);
@@ -570,7 +571,7 @@ export function createSociety(ctx) {
       <h3>Waste (nothing just disappears)</h3><div>Recycled ${Math.round(100 * Math.min(.7, W.rate + (S.projects?.recycling?.done ? .15 : 0) + (S.orgs?.slBonus || 0)))}% of sorted rubbish · landfill ${bar(100 * W.landfill / W.cap)}% full · pollution ${bar(W.pollution)} · ${Math.round(W.backlog)} tonnes waiting to be collected</div>
       <div style="opacity:.75">So far: ${fmt(W.totals.generated || 0)} t thrown away → ${fmt(W.totals.recycled || 0)} recycled back into steel, glass, plastic and fabric · ${fmt(W.totals.composted || 0)} composted into biomass · ${fmt(W.totals.burned || 0)} burned for power · ${fmt(W.totals.landfilled || 0)} buried.</div>
       <h3>Output by sector · GDP ${fmt(gdp * 1000)} a year</h3><ul>${Object.entries(SECTORS).sort((a, b) => (out[b[0]] || 0) - (out[a[0]] || 0)).map(([k, v]) => `<li>${esc(v.name)} ${bar(100 * (out[k] || 0) / gdp * 4)} · ${v.jobs.join(', ')}${S.eco.boost[k] ? ` · +${Math.round(S.eco.boost[k] * 100)}% from new tech` : ''}</li>`).join('')}</ul>
-      <h3>Companies</h3><ul>${S.companies.map(co => `<li><b>${esc(co.name)}</b> (${esc(SECTORS[co.sector].name)}) · worth ${fmt(co.value)} · founder ${esc(nameOf(co.founder))} · researching ${esc(co.focus)} ${bar(co.rd)}%${co.gen ? ' · generation ' + co.gen : ''}</li>`).join('')}</ul>
+      <h3>Companies</h3><ul>${S.companies.map(co => `<li><b>${esc(co.name)}</b> (${esc(SECTORS[co.sector].name)}) · worth ${fmt(co.value)} · founder ${esc(nameOf(co.founder))} · ${ctx.companyReports?.() ? `researching ${esc(co.focus)} ${bar(co.rd)}%${co.gen ? ' · generation ' + co.gen : ''}` : '(research: buy the company reports at the Info Market)'}</li>`).join('')}</ul>
       <h3>Supply chain: raw material → product → service</h3><div style="opacity:.75">Nothing appears from nowhere: everything is made from something that already existed. Stock on hand in brackets.</div>
       <div><b>Primary</b> (farmed, mined, quarried, drilled): ${RAW.map(r => `${esc(r.name)} · ${esc(r.company)} (${fmt(S.stock?.[r.code] || 0)})`).join(' · ')}</div>
       <div style="margin-top:6px"><b>Secondary</b> (made in factories): ${MADE.map(m => `${esc(m.name)} ← ${Object.keys(m.inputs).map(k => esc(ALL[k]?.name || k)).join(' + ')} · ${esc(m.company)} (${fmt(S.stock?.[m.code] || 0)})`).join(' · ')}</div>
@@ -594,7 +595,7 @@ export function createSociety(ctx) {
     } else if (tab === 'lawgiver') body = `<div style="opacity:.8">The Lawgiver wrote the laws of this world; above the Lawgiver, residents say, is a Supreme Being they know nothing about. When something breaks the laws, the Rule Keepers put it right and the report goes to the Lawgiver.</div>
       <ul>${(ctx.petitions?.() || []).slice(0, 14).map(p => `<li><b>${esc(p.title)}</b> near (${p.x}, ${p.z}), seen ${p.count}×. ${esc(p.who.join(', '))}: "${esc(p.words)}" <i>${esc(p.status)}</i></li>`).join('') || '<li>No reports yet.</li>'}</ul>
       <div><textarea data-note rows="2" maxlength="500" placeholder="Leave a note for the Lawgiver: something that looks wrong or could be better" style="width:100%;box-sizing:border-box;border-radius:8px;padding:8px;font:inherit"></textarea><button type="button" data-send>Send to the Lawgiver</button></div>`;
-    else body = `<ul>${S.news.slice(0, 30).map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>`;
+    else body = `${ctx.archive?.() ? '' : '<div style="opacity:.75">The last ten stories. The full archive is sold at the Info Market.</div>'}<ul>${S.news.slice(0, ctx.archive?.() ? 200 : 10).map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>`;
     panel.innerHTML = head + body;
   }
   panel.addEventListener('click', ev => {
@@ -622,7 +623,8 @@ export function createSociety(ctx) {
 
   return {
     lives, update, converse, openHall, openTab, close,
-    knownName(e) { const c = cit(e); return c ? lives.knownName(c) : null; },
+    knownName(e) { const c = cit(e); return c ? lives.knownName(c) || (c.record ? c.name : null) : null; },
+    remember,
     speedOf(e) {   // how this person walks: the old slower, the young quicker, the tired dragging, the late hurrying
       const c = cit(e); if (!c) return 1; const h = hour();
       return (c.age > 70 ? .7 : c.age > 60 ? .82 : c.age < 25 ? 1.1 : 1) * (c.energy < 30 ? .8 : 1) * (h >= 7.5 && h < 9 && JOB[c.job]?.wage ? 1.25 : 1) * (c.health < 40 ? .8 : 1);

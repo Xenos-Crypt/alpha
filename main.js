@@ -16,6 +16,7 @@ import {buildProject} from './innovations.js';
 import {buildAtlasWorld} from './atlas-world.js';
 import {createWorldIds} from './world-ids.js';
 import {createWorldRegistry} from './world-registry.js';
+import {createInfoMarkets} from './info-markets.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -126,7 +127,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -5857,6 +5858,7 @@ function checkVehicleLicences() {
   toast(need === 'pilot' ? '📡 Air traffic control: unlicensed flight reported to the police. (Get a pilot licence at the Licensing Office.)' : need === 'boat' ? '⚓ Harbour master: unlicensed skipper reported. (Get a boat licence at the Licensing Office.)' : '🏍️ Riding without a motorbike licence: police alerted.');
 }
 function raiseWanted(t = 45) {
+  if (infoMarkets?.patrolsKnown()) t *= 0.7;   // you bought the patrol schedules on the dark web
   if (wanted <= 0) toast('Police alert: stop and surrender to avoid a pursuit.');
   wanted = Math.max(wanted, t);
   policeLastSeen.copy(inCar && driving ? driving.group.position : player.position);
@@ -6589,7 +6591,7 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   if (e.code === 'KeyC' && (locked || boardOpen)) { toggleBoard(!boardOpen); return; }
   if (e.code === 'KeyL' && locked && !boardOpen) { setFreeMouse(!freeMouse); return; }
-  if(e.code==='KeyM'&&(locked||worldMap?.open)){if(!worldMap?.open)worldMap?.show();e.preventDefault();return;}
+  if(e.code==='KeyM'&&(locked||worldMap?.open)){if(!worldMap?.open)openMap();e.preventDefault();return;}
   if (!locked) return;
   if (inCar && isRoadVehicle(driving) && carControls.keydown(e.code)) return;   // gears, lights, indicators, horn
   if (e.code === 'KeyV') toggleFlashlight();
@@ -6641,7 +6643,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -7630,7 +7632,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -7733,7 +7735,7 @@ regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareS
 society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPosition:()=>player.position,dayTime:()=>dayTime,
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},walk:(e,t,sp,dt)=>walkTowards(e,t,sp,dt),animate:(e,pose,moving,run,dt)=>animateHumanoid(e.h,pose,moving,run,e.onGround,dt),
   resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
-  arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),
+  arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),companyReports:()=>infoMarkets?.companyReports(),archive:()=>infoMarkets?.archive(),
   petitions:()=>worldWatch?.list||[],note:t=>worldWatch?.note(t),
   cityAt:p=>p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
   assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,level:()=>prog.level,
@@ -7760,6 +7762,12 @@ worldIds=createWorldIds({isOwner,THREE,scene,grass:()=>grass?.tufts?.()||[],isRo
   extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+// Information is bought: the Info Market (legal) in Ashford Central Market and the dark web terminal in the Narrows (info-markets.js).
+infoMarkets=createInfoMarkets({scene,colliders,interactables,makePerson:o=>makeHumanoid(o),groundY,narrows:NARROWS,player:()=>player,peds:()=>peds,citizenOf:e=>society?.citizenOf(e),remember:(c,t)=>society?.remember(c,t),
+  gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},raiseWanted,fame:()=>society?.state?.fame||0,news:(t,i)=>society?.news(t,i),setWaypoint,
+  secretPlaces:()=>[{name:'the ancient temple dig',x:-147,z:-382},{name:'the ATLAS base',x:80,z:897},{name:'the hidden peak',x:-345,z:1015},{name:'the Narrows black market',x:NARROWS.x,z:NARROWS.z},{name:'the north border checkpoint',x:170,z:-1180}],
+  pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+function openMap(){if(!infoMarkets||infoMarkets.hasMap())return worldMap?.show();toast("🗺️ You don't have a map. Buy one at the Info Market in Ashford Central Market, or use a travel board.");}
 const worldRegistry=createWorldRegistry({client:supabase,ids:worldIds,userId:()=>registryUserId});
 worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
@@ -7987,7 +7995,7 @@ const grass = createGrass({ scene, count: touchDevice ? 3000 : 6000, radius: tou
 const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
 worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosition:()=>player.position});worldAdvertising.update(0);adBalloon.visible=false;
-const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>worldMap.show();document.body.append(mapButton);
+const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>openMap();document.body.append(mapButton);
 for(const it of interactables)if(it.label==='Open town travel board')it.action=()=>worldMap.show();
 movieTv=createMovieTv({interactables,position:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});movieTv.register(civicTvScreen,new THREE.Vector3(CIVIC_OFFSET.x,.3,CIVIC_OFFSET.z-7));
 if(interiors.layouts.cinema_screen)movieTv.register(interiors.layouts.cinema_screen,new THREE.Vector3(-7000,.3,-1.5),()=>interiors.active===interiors.layouts.cinema);   // Starlight Cinema's big screen
