@@ -29,9 +29,20 @@ export function createCommunity({ citizens, S, news, remember, lives, makeChild,
       if (a.city !== b.city || ((a.id * 31 + b.id) % 10) > 4) continue;
       a.family ||= { children: [] }; b.family ||= { children: [] }; a.family.partner = b.id; b.family.partner = a.id;
     }
+    // some of those couples already have children (born to them, so they take after them)
+    for (const a of citizens.filter(c => c.family?.partner != null && c.id < c.family.partner && c.age >= 26 && c.age < 52)) {
+      const b = citizens[a.family.partner]; if (!b || (a.id * 13 + b.id) % 20 > 8) continue;
+      const n = 1 + ((a.id + b.id) % 3 === 0 ? 1 : 0);
+      for (let i = 0; i < n; i++) {
+        const k = makeChild(a, b); k.age = Math.min(a.age, b.age) - 22 > 0 ? (a.id * 7 + i * 5) % Math.min(15, Math.min(a.age, b.age) - 21) : 0;
+        k.family = { children: [], parents: [a.id, b.id] }; k.home = 'family';
+        a.family.children = [...(a.family.children || []), k.id]; b.family.children = [...(b.family.children || []), k.id];
+      }
+    }
     for (const c of citizens) {
       c.family ||= { children: [] };
       // homes: the well-off own (some own more than one and let them), most rent
+      if (c.born != null) continue;   // children live with their family
       c.home = c.wealth > 380 ? 'owner' : 'tenant';
     }
     const landlords = citizens.filter(c => c.home === 'owner' && c.wealth > 420);

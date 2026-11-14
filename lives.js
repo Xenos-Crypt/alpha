@@ -13,6 +13,7 @@
 //      → Close friend (worries, money, secrets, how they really voted) → Bonded (health, illnesses, their
 //      whole life story).
 //  • ACHIEVEMENTS for residents and for you.
+import { makeLook, sexOfName } from './looks.js';
 export const STAGES = [['Stranger', 0], ['Acquaintance', 10], ['Friend', 30], ['Close friend', 55], ['Bonded', 85]];
 export const stageOf = bond => STAGES.reduce((s, [n, at], i) => bond >= at ? i : s, 0);
 const AMBITIONS = { doctor: 'become a doctor', business: 'own a business', office: 'get elected', wealth: 'become wealthy', family: 'raise a family', discovery: 'discover something important', respect: 'be respected by everyone', travel: 'see every city in A.T.' };
@@ -33,6 +34,8 @@ export function seedLife(c) {
   c.achievements = []; if (c.tenure >= 10) c.achievements.push(`${c.tenure} years as ${an(c.job)}`);
   c.bond = 0; c.failures = 0; c.visited = [c.city];
   c.story = [`Born in ${c.city}${c.age > 60 ? ', long before the Unity chips' : ''}.`, c.tenure ? `Has worked as ${an(c.job)} for ${c.tenure} years.` : `Hasn't found their way yet.`, `Dreams of a chance to ${AMBITIONS[c.ambition]}.`];
+  // what they look like (its own random stream, so nothing else about them changes)
+  c.look ||= makeLook(rand(c.id * 7907 + 101), sexOfName(c.name));
 }
 
 export function createLives({ citizens, S, news, remember, ctx, JOB }) {
