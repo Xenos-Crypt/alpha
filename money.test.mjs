@@ -43,3 +43,26 @@ test('shares pay dividends from real profits', () => {
   assert.ok(P.P.savings > 0, 'dividends paid into savings');
   assert.match(P.sell(f, 10000, gold), /Sold/);
 });
+
+test('private companies invite investors; a big one floats and stakes become shares', () => {
+  const { S, money, firms } = world(), P = money.player, gold = { v: 1e6, get() { return this.v; }, add(n) { this.v += n; } };
+  const f = firms.list().find(f => f.type === 'ltd'); f.cash = 100;
+  for (let d = 0; d < 400 && !P.invites().length; d++) money.daily({ fame: () => 30 });
+  const i = P.invites()[0];
+  assert.ok(i, 'an invitation came');
+  assert.match(P.accept(i, gold), /You own/);
+  const mine = firms.firm(i.firm);
+  assert.ok(mine.stakes.player > 0);
+  assert.equal(money.listed().includes(mine), false, 'not on the exchange');
+  mine.value = 2e6; money.float(mine);
+  assert.ok(money.listed().includes(mine) && money.quote(mine).holders.player > 0, 'floated: the stake is now shares');
+});
+
+test('a pension gets tax relief and stays locked for four city years', () => {
+  const { S, money } = world(), P = money.player, gold = { v: 1000, get() { return this.v; }, add(n) { this.v += n; } };
+  P.pensionIn(400, gold);
+  assert.equal(P.P.pension.pot, 500, '25% tax relief');
+  assert.match(P.pensionOut(gold), /locked/);
+  S.tick += 24 * 7.5 * 4;
+  assert.match(P.pensionOut(gold), /You took your pension/);
+});

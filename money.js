@@ -22,8 +22,9 @@ export const LOAN_KINDS = {
 };
 
 export function createMoney({ S, citizens, firms, news = () => { }, remember = () => { }, history = null, rand = Math.random, jobInfo = () => null }) {
-  const M = S.money ||= { exchange: {}, lent: 0, repaid: 0, defaults: 0, bankruptcies: 0, dividends: 0, interestPaid: 0, mortgages: 0, player: { savings: 0, loans: [], shares: {}, credit: 650 } };
+  const M = S.money ||= { invites: [], exchange: {}, lent: 0, repaid: 0, defaults: 0, bankruptcies: 0, dividends: 0, interestPaid: 0, mortgages: 0, player: { savings: 0, loans: [], shares: {}, credit: 650 } };
   M.player ||= { savings: 0, loans: [], shares: {}, credit: 650 };
+  M.invites ||= []; M.player.cost ||= {}; M.player.pension ||= { pot: 0, since: null, paidIn: 0 };
   const rate = () => S.econ2?.rate ?? 3;                       // the central rate, % a year
   const perDay = annual => annual / 100 / DAYS_A_YEAR;
   const banks = () => firms.list().filter(f => f.sector === 'finance' && ['plc', 'ltd', 'co-operative'].includes(f.type) && f.licence !== 'suspended');
@@ -39,6 +40,14 @@ export function createMoney({ S, citizens, firms, news = () => { }, remember = (
       const q = quote(f), fair = Math.max(.05, f.value / SHARES), sentiment = 1 + (rand() - .5) * .06 + clamp((f.lastProfit || 0) / 2e4, -.05, .05);
       q.price = +Math.max(.05, q.price + (fair * sentiment - q.price) * .3).toFixed(3);
       q.hist.push(q.price); if (q.hist.length > 30) q.hist.shift();
+    }
+  }
+  // trading hours: prices move every city hour around what each company is worth (news, mood, big orders)
+  function hourly() {
+    for (const f of listed()) {
+      const q = quote(f), fair = Math.max(.05, f.value / SHARES);
+      q.price = +Math.max(.05, q.price * (1 + (rand() - .5) * .024) + (fair - q.price) * .02).toFixed(3);
+      (q.intra ||= []).push(q.price); if (q.intra.length > 48) q.intra.shift();
     }
   }
   const holdingsOf = who => Object.entries(M.exchange).flatMap(([id, q]) => q.holders[who] ? [[+id, q.holders[who]]] : []);
@@ -98,7 +107,7 @@ export function createMoney({ S, citizens, firms, news = () => { }, remember = (
     else if (c.wealth < 20 && (c.savings || 0) > 0) { const take = Math.min(c.savings, buffer); c.savings -= take; c.wealth += take; }
     if (c.savings) { const i = c.savings * perDay(Math.max(0, rate() - .5)); c.savings += i; const b = bankOf(c); if (b) b.cash -= i; }
     // workplace pension: a share of wages into the pot; retired people draw on it and get the state pension
-    if (wage) c.pensionPot = (c.pensionPot || 0) + wage * 24 * .05;
+    if (wage) c.pensionPot = (c.pensionPot || 0) + wage * 24 * (.05 + .03);   // 5% from the worker, 3% from the employer
     if (c.job === 'Retired') { const draw = (c.pensionPot || 0) * .01; c.pensionPot = (c.pensionPot || 0) - draw; const state = 30 * (S.treasury > 0 ? 1 : .5); c.wealth += draw + state; S.treasury -= state; }
     // investing: people with savings to spare buy shares (the more market-minded more often); sell when it pays
     if ((c.savings || 0) > 800 && rand() < .02 + Math.max(0, -(c.econ || 0)) * .03) {
@@ -128,14 +137,50 @@ export function createMoney({ S, citizens, firms, news = () => { }, remember = (
         const q = quote(f), pot = Math.min(f.cash * .2, p * .33); f.cash -= pot; M.dividends += pot;
         const per = pot / SHARES;
         for (const [who, n] of Object.entries(q.holders)) { const v = per * n; if (who === 'player') M.player.dividends = (M.player.dividends || 0) + v; else { const c = citizens[+who.slice(1)]; if (c) c.savings = (c.savings || 0) + v; } }
-      } else if (f.owner != null && ['sole trader', 'partnership', 'ltd'].includes(f.type)) {   // the owners draw their profits
-        const c = citizens[f.owner]; if (!c || c.dead) continue;
-        const draw = Math.min(f.cash * .25, p * (f.type === 'ltd' ? .3 : .6)); f.cash -= draw; c.wealth += draw;
+      } else if (['sole trader', 'partnership', 'ltd'].includes(f.type)) {   // the owners draw their profits
+        const draw = Math.min(f.cash * .25, p * (f.type === 'ltd' ? .3 : .6)); f.cash -= draw;
+        // a private company's outside investors get their share; the founder keeps the rest
+        let left = draw;
+        for (const [who, pct] of Object.entries(f.stakes || {})) { const v = draw * pct; left -= v; if (who === 'player') M.player.dividends = (M.player.dividends || 0) + v; else { const c = citizens[+who.slice(1)]; if (c) c.savings = (c.savings || 0) + v; } }
+        const c = f.owner != null ? citizens[f.owner] : null; if (c && !c.dead) c.wealth += left;
       }
     }
   }
-  function daily() {
+  // PRIVATE companies don't sell shares to just anyone: a founder invites investors when the company needs
+  // money to grow (or to get through a bad patch) — the people they know and trust, or someone with a name.
+  // Their stake can only be sold back to the company. A private company that grows big enough FLOATS on the
+  // Stock Exchange and becomes a plc; its private stakes become shares anyone can trade.
+  function privateDay(fame, likes) {
+    for (const f of firms.list()) {
+      if (f.type !== 'ltd') continue;
+      const sold = Object.values(f.stakes || {}).reduce((a, b) => a + b, 0);
+      if (sold < .4 && rand() < (f.cash < 300 ? .03 : .006)) {
+        const pct = +(.02 + rand() * .08).toFixed(3), price = Math.round(f.value * pct * (.9 + rand() * .2) / 40);   // a private valuation, in the city's money
+        const owner = f.owner != null ? citizens[f.owner] : null;
+        // the player is invited if they're known (fame) or the founder likes them
+        if ((fame() >= 15 || (owner && likes(owner))) && !M.invites.some(i => i.firm === f.id) && M.invites.length < 6) {
+          M.invites.push({ firm: f.id, name: f.name, pct, price, from: owner?.name || f.name, why: f.cash < 300 ? 'to get through a hard patch' : 'to open more branches', until: (S.tick || 0) + 24 * 3 });
+          news(`📩 ${owner ? owner.name + ' of ' : ''}${f.name} has invited you to invest privately.`);
+        } else {   // otherwise a well-off resident (an angel investor) may take it
+          const angel = citizens.find(c => !c.dead && !c.jail && (c.savings || 0) > price * 1.5 && c.id !== f.owner && !(f.stakes || {})['c' + c.id] && rand() < .05);
+          if (angel) { angel.savings -= price; f.cash += price; (f.stakes ||= {})['c' + angel.id] = pct; remember(angel, `Bought a ${Math.round(pct * 100)}% stake in ${f.name}`); }
+        }
+      }
+      if (f.value > 1.4e6 && firms.branchesOf(f) >= 3 && f.cash > 0 && rand() < .01) float(f);
+    }
+    M.invites = M.invites.filter(i => (S.tick || 0) < i.until && firms.firm(i.firm) && !firms.firm(i.firm).closed);
+  }
+  function float(f) {
+    f.type = 'plc'; const q = quote(f);
+    for (const [who, pct] of Object.entries(f.stakes || {})) q.holders[who] = Math.round(pct * SHARES);
+    if (f.stakes?.player) M.player.cost[f.id] = q.price * .8;
+    f.stakes = {}; M.floats = (M.floats || 0) + 1;
+    news(`🔔 ${f.name} has floated on the A.T. Stock Exchange at ${q.price.toFixed(2)} gold a share.`, true);
+    history?.record('business', `${f.name} floated on the A.T. Stock Exchange`, 'it had grown big enough to sell shares to the public', { who: f.name, where: f.home });
+  }
+  function daily(opts = {}) {
     reprice();
+    privateDay(opts.fame || (() => 0), opts.likes || (() => false));
     businessDay();
     for (const c of citizens) personDay(c);
     playerDay();
@@ -144,6 +189,7 @@ export function createMoney({ S, citizens, firms, news = () => { }, remember = (
   const P = M.player;
   function playerDay() {
     if (P.savings) P.savings += P.savings * perDay(Math.max(0, rate() - .5));
+    if (P.pension.pot) P.pension.pot += P.pension.pot * perDay(rate() + 2);   // a pension fund is invested, so it grows faster than savings
     for (const l of P.loans) { const interest = l.balance * perDay(l.rate); l.balance += interest; l.dueNow = (l.dueNow || 0) + l.daily; }
     P.loans = P.loans.filter(l => l.balance > .5);
   }
@@ -184,9 +230,20 @@ export function createMoney({ S, citizens, firms, news = () => { }, remember = (
       return msg;
     },
     repay(n, gold) { const l = P.loans[0]; if (!l) return 'You have no loans.'; n = Math.min(n, l.balance, gold.get()); if (n <= 0) return 'Not enough gold.'; gold.add(-n); l.balance -= n; P.loans = P.loans.filter(l => l.balance > .5); P.credit = Math.min(900, P.credit + 5); return `Repaid ${Math.round(n)} gold.`; },
-    buy(f, n, gold) { return trade('player', f, n, cost => { if (gold.get() < cost) return false; gold.add(-cost); return true; }) ? `Bought ${n} shares in ${f.name}.` : 'Not enough gold.'; },
+    buy(f, n, gold) { const q = quote(f), had = q.holders.player || 0; if (!trade('player', f, n, cost => { if (gold.get() < cost) return false; gold.add(-cost); return true; })) return 'Not enough gold.'; P.cost[f.id] = ((P.cost[f.id] || q.price) * had + q.price * n) / (had + n); return `Bought ${n.toLocaleString()} shares in ${f.name} at ${q.price.toFixed(2)}.`; },
+    // a pension: what you pay in gets 25% tax relief from the state, is invested, and is locked away until it
+    // has been building for four city years; then a quarter comes out tax-free and the rest is taxed at 20%
+    pensionIn(n, gold) { if (n <= 0 || gold.get() < n) return 'Not enough gold.'; gold.add(-n); const relief = n * .25; S.treasury = (S.treasury || 0) - relief; P.pension.pot += n + relief; P.pension.paidIn += n; P.pension.since ??= S.tick || 0; return `Paid ${n} gold into your pension; the state added ${Math.round(relief)} in tax relief.`; },
+    pensionReady: () => P.pension.since != null && (S.tick || 0) - P.pension.since >= 24 * DAYS_A_YEAR * 4,
+    pensionOut(gold) { if (!player.pensionReady()) return 'Your pension is locked until it has been building for four city years.'; const pot = P.pension.pot, tax = pot * .75 * .2; P.pension.pot = 0; S.treasury = (S.treasury || 0) + tax; gold.add(pot - tax); return `You took your pension: ${Math.round(pot - tax)} gold (a quarter tax-free, ${Math.round(tax)} paid in tax).`; },
+    invites: () => M.invites,
+    accept(i, gold) { const f = firms.firm(i.firm); if (!f || f.closed) return 'That offer has gone.'; if (gold.get() < i.price) return 'Not enough gold.'; gold.add(-i.price); f.cash += i.price; (f.stakes ||= {}).player = ((f.stakes.player || 0) + i.pct); M.invites = M.invites.filter(x => x !== i); return `You own ${Math.round(f.stakes.player * 1000) / 10}% of ${f.name}. Your share of its profits comes to you as dividends.`; },
+    decline(i) { M.invites = M.invites.filter(x => x !== i); return 'Offer declined.'; },
+    stakes: () => firms.list().filter(f => f.stakes?.player).map(f => [f, f.stakes.player]),
+    // a private stake can only be sold back to the company, at a discount, and only if it has the cash
+    sellStake(f, gold) { const pct = f.stakes?.player; if (!pct) return 'You have no stake.'; const v = Math.round(f.value * pct * .85 / 40); if (f.cash < v) return `${f.name} can't afford to buy your stake back right now.`; f.cash -= v; delete f.stakes.player; gold.add(v); return `${f.name} bought back your stake for ${v} gold.`; },
     sell(f, n, gold) { return trade('player', f, -n, null, v => gold.add(v)) ? `Sold ${n} shares in ${f.name}.` : "You don't have that many shares."; },
     holdings: () => holdingsOf('player'),
   };
-  return { M, daily, lend, creditScore, quote, listed, holdingsOf, player, rate };
+  return { M, daily, hourly, lend, creditScore, quote, listed, holdingsOf, player, rate, float };
 }
