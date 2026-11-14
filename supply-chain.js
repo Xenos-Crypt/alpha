@@ -22,6 +22,8 @@ export const RAW = [
   ['egg', 'eggs', 'Greenfield Farms', 'agriculture', 'the hen houses'], ['lvs', 'livestock', 'Greenfield Farms', 'agriculture', 'the cattle and pig farms'],
   ['veg', 'vegetables', 'Greenfield Farms', 'agriculture', 'the market gardens'], ['frt', 'fruit', 'Greenfield Farms', 'agriculture', 'the orchards'],
   ['fsh', 'fish', 'Harbour Fisheries', 'agriculture', 'the sea'],
+  // the parks' flowers, shrubs and trees are grown from seed, bulbs and cuttings at the nurseries (botany.js)
+  ['nur', 'young plants, bulbs and seed', 'Rootstock Nurseries', 'agriculture', 'the nursery fields and glasshouses'],
 ].map(([code, name, company, sector, from]) => ({ code, name, company, sector, from, stage: 'primary' }));
 
 // [code, name, company, sector, inputs {raw or other material: amount per unit}]
@@ -60,7 +62,7 @@ export const GROCERY_FROM = { eggs: 'egg', bread: 'brd', butter: 'dry', milk: 'd
 // finished things -> who makes them (and who sells them)
 export const MAKER = { car: 'Velo Motors', police: 'Velo Motors', ambulance: 'Velo Motors', bus: 'Velo Motors', truck: 'Velo Motors', motorcycle: 'Velo Motors', bicycle: 'Velo Motors',
   tank: 'Ironforge Steel', plane: 'Kestrel Air', heli: 'Kestrel Air', helicopter: 'Kestrel Air', boat: 'Harbour Shipyards', submarine: 'Harbour Shipyards',
-  building: 'Westhaven Builders', house: 'Westhaven Builders', monster: 'ATLAS Foundry', robot: 'ATLAS Foundry', instrument: 'Northwood Sawmills', grocery: 'MarketWay Retail', clothes: 'Loomhouse Textiles', shoes: 'Elastica Rubber', pram: 'Velo Motors', phone: 'Atlas Dynamics' };
+  building: 'Westhaven Builders', house: 'Westhaven Builders', monster: 'ATLAS Foundry', robot: 'ATLAS Foundry', instrument: 'Northwood Sawmills', plant: 'Rootstock Nurseries', bench: 'Northwood Sawmills', railing: 'Ironforge Steel', skateboard: 'Northwood Sawmills', grocery: 'MarketWay Retail', clothes: 'Loomhouse Textiles', shoes: 'Elastica Rubber', pram: 'Velo Motors', phone: 'Atlas Dynamics' };
 
 // the chain behind a material, as text: steel ← iron ore (Deepstone Mining) + coal (Deepstone Mining)
 export function chainText(code, depth = 0) {

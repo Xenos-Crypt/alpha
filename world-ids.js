@@ -12,22 +12,25 @@
 //     PRD-GRC-BRD-GCB-2M5X0P       bread, made by Golden Crust Bakery
 //     ORG-CHR-TER-AFB-9K3D1A       the A.T. Food Bank: a charity in the tertiary stage
 //     LND-GRS-LNG-WLD-3K9P2X       a long tuft of wild grass
+//     PLT-FLW-TUL-GOV-8H2C4Q       a tulip in a council park (a plant's MADE OF is its genus, botany.js)
+//     CRE-BRD-PAV-GOV-1Z7W3N       a peacock kept by the parks
 // Search by any prefix: "VEH-HEL" finds every helicopter, "BLD-" every building.
 import { INGREDIENTS, AISLES, RECIPES } from './kitchen.js';
 import { SNACKS } from './snack-shop.js';
 import { ALL as SUPPLY, GROCERY_FROM, MAKER, chainText } from './supply-chain.js';
 import { ORGS } from './organisations.js';
 
-export const CLASSES = { PER: 'person', BLD: 'building', VEH: 'vehicle', PRD: 'product', MAT: 'material', ORG: 'organisation', LND: 'land (roads, blocks, grass, floors)', CRE: 'creature', MCH: 'machine' };
+export const CLASSES = { PER: 'person', BLD: 'building', VEH: 'vehicle', PRD: 'product', MAT: 'material', ORG: 'organisation', LND: 'land (roads, blocks, grass, floors)', CRE: 'creature', MCH: 'machine', PLT: 'plant (flowers, shrubs, trees)' };
 export const KINDS = {
   PER: { PLR: 'the player', RES: 'resident', POL: 'police officer' },
-  BLD: { GEN: 'city building', HSE: 'house', SCH: 'school', HSP: 'hospital', CLN: 'clinic', POL: 'police station', SUP: 'supermarket', OFF: 'office', APT: 'apartments', SHP: 'shop', MAN: 'mansion', GOV: 'government building', MKT: 'market', COM: 'community centre', FIR: 'fire station', AIB: 'AI base', TMP: 'temple' },
+  BLD: { GEN: 'city building', HSE: 'house', SCH: 'school', HSP: 'hospital', CLN: 'clinic', POL: 'police station', SUP: 'supermarket', OFF: 'office', APT: 'apartments', SHP: 'shop', MAN: 'mansion', GOV: 'government building', MKT: 'market', COM: 'community centre', FIR: 'fire station', AIB: 'AI base', TMP: 'temple', GLH: 'glasshouse', GZB: 'gazebo or bandstand', WML: 'windmill', FNT: 'fountain' },
   VEH: { CAR: 'car', POL: 'police car', AMB: 'ambulance', BUS: 'bus', TNK: 'tank', BIK: 'bicycle', MOT: 'motorbike', BOT: 'boat', SUB: 'submarine', PLN: 'plane', HEL: 'helicopter', TRK: 'truck', FIR: 'fire engine', HOV: 'hover vehicle', TRN: 'train' },
-  PRD: { GRC: 'grocery', DSH: 'dish', SNK: 'snack', INS: 'instrument', TOP: 'top (shirt, blouse, jumper)', BTM: 'trousers or skirt', SHO: 'shoes', PRM: 'pram', PHN: 'phone' },
+  PRD: { GRC: 'grocery', DSH: 'dish', SNK: 'snack', INS: 'instrument', TOP: 'top (shirt, blouse, jumper)', BTM: 'trousers or skirt', SHO: 'shoes', PRM: 'pram', PHN: 'phone', BEN: 'park bench', PIC: 'picnic table', LMP: 'lamp post', SGN: 'sign', ARC: 'garden arch', SUN: 'sundial', PLY: 'playground equipment', RCK: 'bike rack', SKB: 'skateboard' },
   MAT: { RAW: 'raw material (primary)', MAD: 'made material (secondary)' },
   ORG: { PUB: 'public body', PRV: 'private limited company', PLC: 'public limited company', STR: 'sole trader', PSH: 'partnership', CHR: 'charity', SOC: 'social enterprise', COP: 'co-operative', NGO: 'NGO' },
-  LND: { ROD: 'road tile', BLK: 'city block', GRS: 'grass tuft', FLR: 'floor tile', SRF: 'other surface' },
-  CRE: { MON: 'dungeon monster' }, MCH: { ROB: 'ATLAS robot' },
+  LND: { ROD: 'road tile', BLK: 'city block', GRS: 'grass tuft', FLR: 'floor tile', SRF: 'other surface', BED: 'flower bed or planting', LWN: 'lawn', PTH: 'path', FEN: 'railing or fence', GAT: 'gate', PND: 'lake or pond', JTY: 'jetty', SKT: 'skate ramp or floor', TRK: 'track (cycle loop, pump track)', XNG: 'road crossing' },
+  CRE: { MON: 'dungeon monster', BRD: 'bird', MAM: 'mammal', REP: 'reptile', INS: 'insect' }, MCH: { ROB: 'ATLAS robot' },
+  PLT: { FLW: 'flower', SHR: 'shrub (rose, lavender, hedge…)', TRE: 'tree', PLM: 'palm' },
 };
 export const OWNERS = { PLR: 'the player', RES: 'a resident', GOV: 'the government', REQ: "made at the owner's request", BOT: 'built by the bots', WLD: 'wild (nobody)', STO: 'stolen', ILL: 'got illegally', HOM: 'home-made', ASH: 'Ashford', RIV: 'Riverside', CAP: 'the Capital', POI: 'Poison Land' };
 const CITY3 = { Ashford: 'ASH', Riverside: 'RIV', Capital: 'CAP', 'Poison Land': 'POI' };
@@ -147,7 +150,7 @@ export function createWorldIds(ctx) {
     }
     for (const it of ctx.interactables?.() || []) if (!byObj.has(it) && /piano|guitar|drum|jukebox|violin|organ|harp|trumpet|saxophone|instrument/i.test(it.label || '')) add('PRD', 'INS', 'WOD.STL', org3(MAKER.instrument), `i:${Math.round(it.pos.x)},${Math.round(it.pos.z)}:${it.label}`, it, { materials: ['wd', 'stl'], maker: MAKER.instrument, name: it.label.replace(/^Play (the )?/i, ''), pos: () => it.pos });
   }
-  const vowner = v => v.stolen ? 'STO' : v.stolenGoods ? 'ILL' : v.owned ? 'PLR' : ['police', 'ambulance', 'bus', 'tank', 'fire', 'army'].includes(v.kind) ? 'GOV' : 'RES';
+  const vowner = v => v.stolen ? 'STO' : v.stolenGoods ? 'ILL' : v.owned ? 'PLR' : v.owner === 'GOV' ? 'GOV' : ['police', 'ambulance', 'bus', 'tank', 'fire', 'army'].includes(v.kind) ? 'GOV' : 'RES';
   let vSeq = 0, goods = null;
   // a thing someone owns (belongings.js) arrives with its ID already made; where its owner is, it is
   function trackItem(c, it) {
@@ -204,6 +207,15 @@ export function createWorldIds(ctx) {
   function grassNear(r = 15, max = 60) {
     const pp = ctx.player().position, out = [];
     for (const p of ctx.grass?.() || []) { if (!p.ok) continue; const d = Math.hypot(p.x - pp.x, p.z - pp.z); if (d < r) out.push({ id: grassId(p), cls: 'LND', kind: 'GRS', code: 'LND-GRS', name: { SHT: 'Short', MED: 'Medium', LNG: 'Long' }[grassLen(p)] + ' grass tuft', pos: () => p, history: [] }); }
+    return out.sort((a, b) => dist(a) - dist(b)).slice(0, max);
+  }
+  // ---- plants and trees: like grass, each one's ID is worked out from what it is and where it grows ---------
+  const TREE_SP = { oak: 'QUE', birch: 'BET', pine: 'PIN', palm: 'PHO', cherry: 'PRU', maple: 'ACE', willow: 'SAL', cypress: 'CUP', beech: 'FAG' };
+  const treeId = t => makeId('PLT', t.species === 'palm' ? 'PLM' : 'TRE', TREE_SP[t.species] || ctx.species?.(t.species)?.code || 'QUE', t.owner || 'WLD', `tr:${t.x.toFixed(1)},${t.z.toFixed(1)}`);
+  function plantsNear(r = 15, max = 60, kind) {
+    const pp = ctx.player().position, out = [], d = p => Math.hypot(p.x - pp.x, p.z - pp.z);
+    if (kind !== 'tree') for (const p of ctx.plants?.() || []) if (d(p) < r) { const s = ctx.species?.(p.key); out.push({ id: ctx.plantId(p), cls: 'PLT', kind: s?.kind, code: 'PLT-' + s?.kind, name: `${s?.common} (${s?.botanical})`, maker: 'Rootstock Nurseries; planted by Westhaven Parks & Gardens', pos: () => p, history: [] }); }
+    if (kind !== 'plant') for (const t of ctx.trees?.() || []) if (d(t) < r) { const s = ctx.species?.(t.species); out.push({ id: treeId(t), cls: 'PLT', kind: 'TRE', code: 'PLT-TRE', name: s ? `${s.common} (${s.botanical})` : t.species, maker: t.owner === 'GOV' ? 'Rootstock Nurseries; planted by Westhaven Parks & Gardens' : 'wild (self-seeded)', detail: `condition ${Math.round(t.hp)}%`, pos: () => t, history: [] }); }
     return out.sort((a, b) => dist(a) - dist(b)).slice(0, max);
   }
   function nearestId(pos, prefixes, r = 30) { let best = null, bd = r; for (const e of reg.values()) { if (prefixes && !prefixes.some(x => e.id.startsWith(x))) continue; const p = e.pos?.(); if (!p) continue; const d = Math.hypot(p.x - pos.x, p.z - pos.z); if (d < bd) { bd = d; best = e; } } return best?.id || null; }
@@ -280,15 +292,15 @@ export function createWorldIds(ctx) {
   function heading(e) { const o = e.obj; const t = o?.ped?.target || o?.soc?.spot || o?.ai?.target; return t ? ' → heading to ' + at(t) : ''; }
   function find(q) {
     q = q.trim(); const Q = q.toUpperCase(), id = alias.get(Q) || Q;
-    return reg.get(id) || (id.startsWith('LND-GRS') ? grassNear(60, 5000).find(g => g.id === id) : null) || [...reg.values()].find(e => e.name?.toLowerCase() === q.toLowerCase());
+    return reg.get(id) || (id.startsWith('LND-GRS') ? grassNear(60, 5000).find(g => g.id === id) : null) || (id.startsWith('PLT-') ? plantsNear(250, 1e6).find(g => g.id === id) : null) || [...reg.values()].find(e => e.name?.toLowerCase() === q.toLowerCase());
   }
   const describe = e => [CLASSES[e.cls], KINDS[e.cls]?.[e.kind], OWNERS[e.owner]].filter(Boolean).join(' · ');
   function render() {
     const counts = {}; for (const e of reg.values()) counts[e.cls] = (counts[e.cls] || 0) + 1;
     const Q = query.trim().toUpperCase(), hit = Q && !Q.endsWith('-') && Q.split('-').length >= 5 ? find(query) : query && !/^[A-Z]{3}(-|$)/.test(Q) ? find(query) : null;
     const prefix = !hit && /^[A-Z]{3}(-[A-Z.]*)*$/.test(Q) ? Q : null;
-    const matches = prefix ? (prefix.startsWith('LND-GRS') ? grassNear(40, 200) : [...reg.values()].filter(e => e.id.startsWith(prefix))).slice(0, 60) : [];
-    const near = filter === 'LND-GRS' ? grassNear() : [...reg.values()].filter(e => (filter ? e.id.startsWith(filter) : !['MAT', 'PRD', 'ORG'].includes(e.cls)) && dist(e) < 120).sort((a, b) => dist(a) - dist(b)).slice(0, 40);
+    const matches = prefix ? (prefix.startsWith('LND-GRS') ? grassNear(40, 200) : prefix.startsWith('PLT') ? plantsNear(60, 2000).filter(e => e.id.startsWith(prefix)) : [...reg.values()].filter(e => e.id.startsWith(prefix))).slice(0, 60) : [];
+    const near = filter === 'LND-GRS' ? grassNear() : filter === 'PLT' ? plantsNear(20, 40) : [...reg.values()].filter(e => (filter ? e.id.startsWith(filter) : !['MAT', 'PRD', 'ORG'].includes(e.cls)) && dist(e) < 120).sort((a, b) => dist(a) - dist(b)).slice(0, 40);
     panel.innerHTML = `<button class="x" type="button" data-close>Close</button><h2>🆔 World registry (owner only)</h2>
       <div>The player: <b>${playerId}</b> · ${reg.size} things registered · format CLASS-KIND-MADEOF-OWNER-SERIAL</div>
       <div style="margin-top:8px"><input data-q placeholder="An ID, a prefix (VEH-HEL, BLD-HSE…) or a name" value="${esc(query)}"><button type="button" data-find>Find</button><button type="button" data-tags class="${tagsOn ? 'on' : ''}">${tagsOn ? 'Hide' : 'Show'} ID tags</button></div>
@@ -331,7 +343,7 @@ export function createWorldIds(ctx) {
   setTimeout(() => { registerStatic(); registerMoving(); }, 4000);
   setTimeout(() => { if (!scan) startScan(); }, 15000);   // one full audit a little after the world has loaded
   return {
-    playerId, find, open, close, get isOpen() { return !panel.hidden; },
+    playerId, find, open, close, plantsNear, get isOpen() { return !panel.hidden; },
     idOf(obj) { return byObj.get(obj)?.id || null; },
     entryOf(obj) { return byObj.get(obj) || null; },
     record(obj, what, pos) { const e = byObj.get(obj); if (e) event(e, what, pos); },
