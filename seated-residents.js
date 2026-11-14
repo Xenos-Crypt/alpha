@@ -1,7 +1,7 @@
 // RESIDENTS IN THEIR PLACES — the city's people where real people would be: at their desks during working
 // hours, families round their dining tables in the evening (the children standing by), friends sharing a
 // bench by day, and children out with a parent. Every one of them is a real resident with their own name,
-// look and age, and a newborn's parent keeps the baby in their arms (people.js).
+// look and age, and a newborn goes out in a pram pushed by a parent (people.js).
 //
 // Nobody is in two places: a resident shown at a desk or a table is one whose walking figure is far away
 // across the city, out of sight; and children walk beside the parent they're out with.
@@ -49,7 +49,7 @@ export function createSeatedResidents({ sitSpots, makePerson, animate, citizens,
       if (a) add(s, a, 'talk', 10, 19, -.42); if (b) add(s, b, 'talk', 10, 19, .42);
     });
   }
-  // a parent of a newborn has the baby in their arms (one parent: they take turns)
+  // a parent of a newborn takes the baby out in the pram (one parent: they take turns)
   function babyOf(c) {
     for (const i of c?.family?.children || []) { const k = citizens()[i]; if (k && !k.dead && k.age < 2 && (k.id + c.id) % 2 === 0) return k; }
     return null;
