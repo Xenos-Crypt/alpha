@@ -25,7 +25,7 @@ export const KINDS = {
   VEH: { CAR: 'car', POL: 'police car', AMB: 'ambulance', BUS: 'bus', TNK: 'tank', BIK: 'bicycle', MOT: 'motorbike', BOT: 'boat', SUB: 'submarine', PLN: 'plane', HEL: 'helicopter', TRK: 'truck', FIR: 'fire engine', HOV: 'hover vehicle', TRN: 'train' },
   PRD: { GRC: 'grocery', DSH: 'dish', SNK: 'snack', INS: 'instrument', TOP: 'top (shirt, blouse, jumper)', BTM: 'trousers or skirt', SHO: 'shoes', PRM: 'pram' },
   MAT: { RAW: 'raw material (primary)', MAD: 'made material (secondary)' },
-  ORG: { PUB: 'public body', PRV: 'private company', CHR: 'charity', SOC: 'social enterprise', COP: 'co-operative', NGO: 'NGO' },
+  ORG: { PUB: 'public body', PRV: 'private limited company', PLC: 'public limited company', STR: 'sole trader', PSH: 'partnership', CHR: 'charity', SOC: 'social enterprise', COP: 'co-operative', NGO: 'NGO' },
   LND: { ROD: 'road tile', BLK: 'city block', GRS: 'grass tuft', FLR: 'floor tile', SRF: 'other surface' },
   CRE: { MON: 'dungeon monster' }, MCH: { ROB: 'ATLAS robot' },
 };
@@ -159,6 +159,14 @@ export function createWorldIds(ctx) {
     ctx.peds().forEach((e, i) => { if (!byObj.has(e)) { const c = ctx.citizenOf?.(e); add('PER', 'RES', 'HUM', CITY3[c?.city] || 'ASH', `p:${i}`, e, { name: c?.name || e.labelName || 'Resident', pos: () => e.hidden ? (e.socHome || null) : e.root.position }); } });
     // what people wear and use (belongings.js): each item already has its ID; the person is its place
     for (const [c, it] of ctx.belongings?.() || []) if (!reg.has(it.id)) trackItem(c, it);
+    // every registered business and body (firms.js); one already known by name keeps its ID
+    for (const f of ctx.firms?.() || []) if (!byObj.has(f)) {
+      const known = [...reg.values()].find(e => e.cls === 'ORG' && e.name === f.name && e.obj !== f);
+      if (known) { f.wid = known.id; byObj.set(f, known); continue; }
+      const [cls, kind, mat, owner] = f.wid.split('-');
+      const e = { id: f.wid, cls, kind, mat, owner, code: cls + '-' + kind, obj: f, name: f.name, maker: `${f.type}, ${f.sector}`, detail: `reg. ${f.reg} · ${Object.values(f.branches).reduce((a, b) => a + b, 0)} branches`, pos: () => null, history: [], dirty: true };
+      reg.set(f.wid, e); byObj.set(f, e);
+    }
     for (const e of ctx.cops?.() || []) if (!byObj.has(e)) add('PER', 'POL', 'HUM', 'GOV', `cop:${vSeq++}`, e, { name: 'Police officer', pos: () => e.root.position });
     for (const h of ctx.robots?.() || []) if (!byObj.has(h)) add('MCH', 'ROB', 'ALY.TCH', org3(MAKER.robot), `rb:${vSeq++}`, h, { materials: ['aly', 'tch'], maker: MAKER.robot, name: 'Robot', pos: () => h.root.position });
     // the dungeon monsters are not born: ATLAS's Foundry fabricates them from bio-gel and alloy

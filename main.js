@@ -1,5 +1,6 @@
 import { createPeople } from './people.js';
 import { createSeatedResidents } from './seated-residents.js';
+import { createBankPanel } from './bank-panel.js';
 import {buildWorldExpansion,insideExclusionZone} from './world-expansion.js';
 import {duplicateEmailMessage,verificationEmailMessage} from './auth-feedback.js';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -130,7 +131,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null,bankPanel=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -6668,7 +6669,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||story?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -7657,7 +7658,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !story?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !bankPanel?.open && !story?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -7784,7 +7785,7 @@ let idNewRoads=null;
 const idExtra=[{cls:'BLD',kind:'AIB',mat:'GLS.STL',owner:'GOV',seed:'atlas-base',maker:'Westhaven Builders',name:'ATLAS national AI base',pos:{x:80,z:922}},{cls:'BLD',kind:'TMP',mat:'STN',owner:'GOV',seed:'temple-dig',maker:'the First Kings (ancient)',name:'Ancient temple dig',pos:{x:-147,z:-357}},{cls:'BLD',kind:'GEN',mat:'STL.CON',owner:'GOV',seed:'waste-centre',maker:'Westhaven Builders',name:'Waste & Recycling Centre',pos:{x:283,z:-411}}];
 // The IDs are for the AI and the back end, not for players: only the owner (open the game once with ?owner) gets the hidden registry view.
 const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setItem('aw.owner','1');return localStorage.getItem('aw.owner')==='1';}catch{return false;}};
-worldIds=createWorldIds({isOwner,THREE,scene,belongings:()=>society?.goods?.items()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
+worldIds=createWorldIds({isOwner,THREE,scene,belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
   extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
@@ -7796,6 +7797,9 @@ society?.goods?.onChange((it,what,c)=>worldIds?.note(it.id,what,c,it));
 infoMarkets=createInfoMarkets({controversy:t=>society?.history?.L.controversies.push(t),scene,colliders,interactables,makePerson:o=>makeHumanoid(o),groundY,narrows:NARROWS,player:()=>player,peds:()=>peds,citizenOf:e=>society?.citizenOf(e),remember:(c,t)=>society?.remember(c,t),
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},raiseWanted,fame:()=>society?.state?.fame||0,news:(t,i)=>society?.news(t,i),setWaypoint,
   secretPlaces:()=>[{name:'the ancient temple dig',x:-147,z:-382},{name:'the ATLAS base',x:80,z:897},{name:'the hidden peak',x:-345,z:1015},{name:'the Narrows black market',x:NARROWS.x,z:NARROWS.z},{name:'the north border checkpoint',x:170,z:-1180}],
+  pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+// the bank: savings, loans and shares for the player (bank-panel.js, money.js)
+bankPanel=createBankPanel({scene,colliders,interactables,makePerson:o=>makeHumanoid(o),money:()=>society?.money,gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,save:()=>society?.save?.(),
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 function openMap(){if(!infoMarkets||infoMarkets.hasMap())return worldMap?.show();toast("🗺️ You don't have a map. Buy one at the Info Market in Ashford Central Market, or use a travel board.");}
 // The story nobody tells you (story.js): the truth beyond the mountains, the ways to it, and the ways out.

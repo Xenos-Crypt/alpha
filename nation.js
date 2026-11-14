@@ -56,7 +56,7 @@ export const SECTORS = {
   transport: { name: 'Transport', jobs: ['Bus driver', 'Pilot'], k: 1.2 },
   defence: { name: 'Defence & police', jobs: ['Police officer', 'Soldier'], k: 1 },
   media: { name: 'Media & arts', jobs: ['Journalist', 'Artist'], k: 1 },
-  public: { name: 'Public services', jobs: ['Street cleaner', 'Office worker'], k: .9 },
+  public: { name: 'Public services', jobs: ['Street cleaner', 'Office worker', 'Inspector'], k: .9 },
 };
 export const sectorOfJob = job => Object.keys(SECTORS).find(k => SECTORS[k].jobs.includes(job)) || null;
 

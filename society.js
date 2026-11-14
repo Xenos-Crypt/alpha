@@ -30,6 +30,10 @@ import { createNationSim } from './nation-sim.js';
 import { seedLife, createLives, STAGES as BOND_STAGES } from './lives.js';
 import { inheritLook, sexOfName } from './looks.js';
 import { createBelongings } from './belongings.js';
+import { createFirms, FIRM_TYPES } from './firms.js';
+import { createEducation, INSTITUTIONS, COURSES, RANKS } from './education.js';
+import { createBusinessLaw, REGULATORS, RULES } from './business-law.js';
+import { createMoney } from './money.js';
 import { createCommunity } from './community.js';
 import { createJustice } from './justice.js';
 import { createHistory, sourceFor, garble, SOURCES } from './history.js';
@@ -48,7 +52,7 @@ const JOBS = [['Street cleaner',8,1,null,7],['Shop worker',8,0,'supermarket',12]
   ['Farmer',8,0,null,4],['Miner',12,0,null,2],['Forester',9,0,null,1],['Power plant operator',13,0,null,2],['Electrician',12,0,null,3],['Plumber',11,0,null,3],
   ['Factory worker',9,0,null,6],['Car engineer',15,0,'office',2],['Architect',14,0,'office',1],['Software developer',16,0,'office',4],['AI researcher',20,0,'office',2],
   ['Scientist',16,0,'office',3],['Chemist',15,0,'office',2],['Archaeologist',12,0,null,2],['Banker',20,0,'office',2],['Lawyer',19,0,'office',2],['Tour guide',8,0,null,2],
-  ['Zookeeper',8,0,null,1],['Judge',22,1,'government',1],['Child',0,0,'school',0],['Bin collector',9,1,null,2],['Recycling worker',8,0,null,0],['Ranger',9,1,null,1],['Pilot',18,0,null,1],['Soldier',11,1,null,3],['Artist',7,0,null,2]];
+  ['Zookeeper',8,0,null,1],['Judge',22,1,'government',1],['Child',0,0,'school',0],['Bin collector',9,1,null,2],['Recycling worker',8,0,null,0],['Ranger',9,1,null,1],['Pilot',18,0,null,1],['Soldier',11,1,null,3],['Artist',7,0,null,2],['Inspector',12,1,'government',3]];
 const JOB = Object.fromEntries(JOBS.map(j => [j[0], { wage: j[1], pub: !!j[2], place: j[3] }]));
 const POLICIES = [
   { id: 'taxUp', name: 'Raise taxes by 2%', econ: 1, order: 0, ok: s => s.tax < 30 && s.treasury < 4000 },
@@ -107,7 +111,7 @@ export function createSociety(ctx) {
     Object.assign(S, saved.S); S.research ||= {}; S.projects ||= {};
     for (const k of saved.kids || []) { if (citizens[k.id]) continue; while (citizens.length < k.id) { const f = makeCitizen(citizens.length, 'Child'); seedLife(f); f.dead = true; f.jail = Infinity; citizens.push(f); } const c = makeCitizen(k.id, 'Child'); seedLife(c); Object.assign(c, k); citizens.push(c); }
     for (const [i, w, m, o, j, job, mem, met, crook] of saved.c || []) { const c = citizens[i]; if (!c) continue; Object.assign(c, { wealth: w, mood: m, opinion: o, jail: j, job: job || c.job, memory: mem || [], metPlayer: !!met, knowsCrook: !!crook }); }
-    for (const [i, x] of Object.entries(saved.x || {})) { const c = citizens[i]; if (!c || !x) continue; if (x.fm) c.family = x.fm; if (x.wr) c.wear = x.wr; if (x.pr) c.pram = x.pr; if (x.hm) c.home = x.hm; if (x.ll != null) c.landlord = x.ll; if (x.dd) { c.dead = true; c.jail = Infinity; } if (x.si) c.sick = x.si; c.convictions = x.cv || 0; c.record = !!x.rc; if (x.fl) c.file = x.fl; Object.assign(c, { skills: x.sk || c.skills, tenure: x.t ?? c.tenure, ambition: x.a || c.ambition, ambitionDone: x.ad, failures: x.f || 0, health: x.h ?? c.health, illnesses: x.il || [], achievements: x.ach || c.achievements, bond: x.b || 0, story: x.st || c.story, visited: x.v || c.visited, title: x.ti || null, helped: x.hp || 0, age: x.ag || c.age }); if (x.n) { c.name = x.n; c.uniqueName = true; } }
+    for (const [i, x] of Object.entries(saved.x || {})) { const c = citizens[i]; if (!c || !x) continue; if (x.fm) c.family = x.fm; if (x.wr) c.wear = x.wr; if (x.pr) c.pram = x.pr; if (x.em != null) c.employer = x.em; if (x.q) c.quals = x.q; if (x.gr != null) c.grade = x.gr; if (x.sd) c.study = x.sd; if (x.rk) c.rank = x.rk; if (x.sc) c.school = x.sc; if (x.ly) c.lawYears = x.ly; Object.assign(c, { savings: x.sv || 0, loans: x.ln, pensionPot: x.pp || 0, bank: x.bk, bankrupt: x.br, bought: x.bo, missedEver: x.me }); if (x.hm) c.home = x.hm; if (x.ll != null) c.landlord = x.ll; if (x.dd) { c.dead = true; c.jail = Infinity; } if (x.si) c.sick = x.si; c.convictions = x.cv || 0; c.record = !!x.rc; if (x.fl) c.file = x.fl; Object.assign(c, { skills: x.sk || c.skills, tenure: x.t ?? c.tenure, ambition: x.a || c.ambition, ambitionDone: x.ad, failures: x.f || 0, health: x.h ?? c.health, illnesses: x.il || [], achievements: x.ach || c.achievements, bond: x.b || 0, story: x.st || c.story, visited: x.v || c.visited, title: x.ti || null, helped: x.hp || 0, age: x.ag || c.age }); if (x.n) { c.name = x.n; c.uniqueName = true; } }
   }
   const unemployedPct = () => 100 * citizens.filter(c => c.job === 'Unemployed').length / citizens.length;
   const stats = () => ({ ...S, unemployed: unemployedPct() });
@@ -185,12 +189,13 @@ export function createSociety(ctx) {
     // jobs come and go with the economy
     if (S.tick % 12 === 0) {
       const out = citizens.filter(c => c.job === 'Unemployed' && !c.jail), boom = S.treasury > 1500 && S.tax < 22;
-      for (const c of out) if (Math.random() < (boom ? .08 : .03)) { c.job = pickR(Math.random, Math.random() < .7 ? DISTRICTS[c.city]?.jobs || ['Shop worker'] : ['Shop worker', 'Builder', 'Office worker', 'Chef', 'Street cleaner']);   /* most work is found close to home, in the district's own trades */ remember(c, 'Found a job as a ' + c.job.toLowerCase()); c.mood += 10; }
+      for (const c of out) if (!c.study && Math.random() < (boom ? .08 : .03)) { const job = pickR(Math.random, Math.random() < .7 ? DISTRICTS[c.city]?.jobs || ['Shop worker'] : ['Shop worker', 'Builder', 'Office worker', 'Chef', 'Street cleaner']); if (!edu.gate(c, job)) continue; c.job = job; c.employer = null;   /* most work is found close to home, in the district's own trades */ remember(c, 'Found a job as a ' + c.job.toLowerCase()); c.mood += 10; }
       if (S.treasury < 0) for (const c of citizens) if (JOB[c.job]?.pub && c.job !== 'Retired' && Math.random() < .02) { remember(c, 'Lost my job in the council cuts'); c.job = 'Unemployed'; c.mood -= 12; }
     }
     S.approval = clamp(citizens.reduce((n, c) => n + c.mood, 0) / citizens.length * .75 + (S.clean - 50) * .15 - (S.crime - 30) * .35 - (S.treasury < 0 ? 10 : 0), 0, 100);
     nation.tick();
-    community.hourly(); justice.hourly(); systems.hourly(); history.hourly(); goods.hourly(); if (S.tick % 24 === 0) { community.daily(); systems.daily(); }
+    community.hourly(); justice.hourly(); systems.hourly(); history.hourly(); goods.hourly();
+    if (S.tick % 24 === 6) { edu.daily(); firms.daily({ demand: 1 + (S.dev || 0) / 250 - (S.econ2?.shortage ? .1 : 0), taxRate: S.laws?.corpTax ?? .2, onTax: t => { S.treasury += t; }, review: law.review }); law.daily(); money.daily(); const pm = money.player.collect({ get: () => ctx.gold?.() || 0, add: n => ctx.addGold?.(n) }); if (pm) ctx.toast?.(pm); } if (S.tick % 24 === 0) { community.daily(); systems.daily(); }
     gov.tick(allPolicies, score, apply);
     if (live && S.tick % 30 === 15) goOnline();
     payStaff();
@@ -295,6 +300,27 @@ export function createSociety(ctx) {
   // what people wear and use is bought, made from something, and has an ID (belongings.js)
   const goods = createBelongings({ S, citizens, news, remember });
   goods.seed();
+  // schools, colleges, universities and academies; what each job needs; police and military ranks (education.js)
+  const edu = createEducation({ S, citizens, news, remember, achieve: lives.achieve, change: lives.change });
+  edu.seed();
+  ctx.gateJob = (c, job) => edu.gate(c, job);
+  // the businesses and bodies people work for, across the country (firms.js), and business law (business-law.js)
+  const firms = createFirms({ S, citizens, news, remember, history, jobInfo: j => JOB[j], sectorOfJob, extraEmployers: [
+    ...INSTITUTIONS.map(i => ({ name: i.name, type: i.fee ? 'ltd' : 'public', sector: i.kind === 'police' || i.kind === 'military' ? 'defence' : i.kind === 'flight' ? 'transport' : 'education', scale: i.level === 'major' ? 'national' : 'city', home: i.city, branches: { Ashford: 0, Riverside: 0, Capital: 0, 'Poison Land': 0, [i.city]: 1 }, cash: 0, value: 0, institution: { kind: i.kind, level: i.level }, ethics: .9 })),
+    ...REGULATORS.map(name => ({ name, type: 'public', sector: 'public', scale: 'national', home: 'Capital', branches: { Ashford: 1, Riverside: 1, Capital: 1, 'Poison Land': 1 }, cash: 0, value: 0, regulator: true, ethics: .95 })),
+  ] });
+  firms.seed(); firms.assign();
+  const law = createBusinessLaw({ S, citizens, firms, news, remember, history, charge: (c, o, ev) => justice.charge(c, o, ev),
+    hire: reg => {   // a regulator takes on an inspector: someone certified, or sends someone to train
+      const c = citizens.find(c => !c.dead && !c.jail && ['Unemployed', 'Office worker'].includes(c.job) && edu.has(c, 'inspecting'));
+      if (c) { lives.change(c, 'Inspector'); c.employer = reg.id; remember(c, `Joined ${reg.name} as an inspector`); return c; }
+      const cand = citizens.find(c => !c.dead && !c.jail && !c.study && c.age >= 21 && c.age < 55 && ['Unemployed', 'Office worker'].includes(c.job) && edu.gradeOf(c) >= 50);
+      if (cand) edu.apply(cand, 'Inspector');
+      return null;
+    } });
+  // every way of making money: wages, profits, rent, savings, shares and dividends, loans, pensions (money.js)
+  const money = createMoney({ S, citizens, firms, news, remember, history, jobInfo: j => JOB[j] });
+  edu.ranks();
   if (S.gov.president == null) gov.found();
   const presName = () => S.gov.president === 'player' ? 'you' : nameOf(S.gov.president);
   const presSurname = () => S.gov.president === 'player' ? 'the newcomer' : nameOf(S.gov.president).split(' ')[1];
@@ -311,7 +337,7 @@ export function createSociety(ctx) {
     live = true;
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, kids: citizens.filter(c => c.born != null).map(c => ({ id: c.id, name: c.name, age: c.age, city: c.city, traits: c.traits, econ: c.econ, order: c.order, born: c.born, look: c.look })), c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { wr: c.wear, pr: c.pram, sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined, fm: c.family, hm: c.home, ll: c.landlord, dd: c.dead ? 1 : 0, si: c.sick, cv: c.convictions, rc: c.record ? 1 : 0, fl: c.file }])) })); } catch { }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, kids: citizens.filter(c => c.born != null).map(c => ({ id: c.id, name: c.name, age: c.age, city: c.city, traits: c.traits, econ: c.econ, order: c.order, born: c.born, look: c.look })), c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { wr: c.wear, pr: c.pram, em: c.employer, q: c.quals, gr: c.grade != null ? Math.round(c.grade) : undefined, sd: c.study, rk: c.rank, sc: c.school, ly: c.lawYears, sv: c.savings ? Math.round(c.savings) : undefined, ln: c.loans, pp: c.pensionPot ? Math.round(c.pensionPot) : undefined, bk: c.bank, br: c.bankrupt, bo: c.bought, me: c.missedEver, sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined, fm: c.family, hm: c.home, ll: c.landlord, dd: c.dead ? 1 : 0, si: c.sick, cv: c.convictions, rc: c.record ? 1 : 0, fl: c.file }])) })); } catch { }
   }
   addEventListener('beforeunload', save);
 
@@ -587,7 +613,7 @@ export function createSociety(ctx) {
   function render() {
     const G = S.gov, P = gov.P, left = (G.snapAt != null ? G.snapAt : G.lastElection + TERM) - S.tick, ppl = citizens.filter(c => !c.jail), hk = housekeeper();
     const year = Math.floor(S.tick / YEAR) + 1, avgOp = citizens.reduce((n, c) => n + c.opinion, 0) / citizens.length;
-    const tabs = [['overview', 'Overview'], ['politics', 'Politics'], ['economy', 'Economy'], ['orgs', 'Organisations'], ['justice', 'Courts'], ['people', 'People'], ['districts', 'Districts'], ['infra', 'Infrastructure'], ['history', 'History'], ['legacy', 'Your legacy'], ['atlas', 'ATLAS & science'], ['lawgiver', 'The Lawgiver'], ['news', 'News']];
+    const tabs = [['overview', 'Overview'], ['politics', 'Politics'], ['economy', 'Economy'], ['orgs', 'Organisations'], ['business', 'Business'], ['education', 'Education & ranks'], ['justice', 'Courts'], ['people', 'People'], ['districts', 'Districts'], ['infra', 'Infrastructure'], ['history', 'History'], ['legacy', 'Your legacy'], ['atlas', 'ATLAS & science'], ['lawgiver', 'The Lawgiver'], ['news', 'News']];
     const head = `<button class="x" type="button" data-close>Close</button><h2>🏛 Government of ${COUNTRY}</h2><div style="opacity:.8">City year ${year} · Development level ${S.dev.toFixed(1)} (it only goes up)</div>
       <div class="row" style="margin:8px 0">${tabs.map(([k, n]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
     let body = '';
@@ -664,6 +690,25 @@ export function createSociety(ctx) {
       const O = S.orgs || { funds: {}, helped: {} };
       body = `<div style="opacity:.8">Public bodies are paid for by taxes, private companies run for profit, charities live on donations, social enterprises trade but put their profits into a social purpose, co-operatives are owned by their members, and NGOs campaign and volunteer.</div>
       ${TYPES.map(t => { const list = ORGS.filter(o => o.type === t); return list.length ? `<h3>${esc(t)} (${list.length})</h3><ul>${list.map(o => `<li><b>${esc(o.name)}</b> · ${o.stage} · ${esc(o.does)}${O.funds[o.name] != null ? ` · funds ${fmt(O.funds[o.name])}` : ''}${O.helped[o.name] ? ` · helped ${fmt(O.helped[o.name])} times` : ''}${t === 'charity' || t === 'NGO' ? ` <button type="button" data-donate="${esc(o.name)}" data-amt="100">Donate 100</button><button type="button" data-donate="${esc(o.name)}" data-amt="1000">Donate 1,000</button>` : ''}</li>`).join('')}</ul>` : ''; }).join('')}`;
+    } else if (tab === 'business') {
+      const F = S.firms, B = S.bizlaw || {}, live = firms.list(), by = t => live.filter(f => f.type === t);
+      const typeLine = Object.entries(FIRM_TYPES).map(([k, t]) => `${esc(t.name)}: ${by(k).length}`).join(' · ');
+      const sectors = Object.keys(SECTORS).filter(k => live.some(f => f.sector === k && !f.institution && !f.regulator && f.type !== 'public'));
+      const row = f => `<li><b>${esc(f.name)}</b> <span style="opacity:.7">${esc(FIRM_TYPES[f.type]?.name || f.type)} · reg. ${f.reg}${S.owner ? '' : ''}</span> · ${firms.branchesOf(f)} branch${firms.branchesOf(f) > 1 ? 'es' : ''} (${Object.entries(f.branches).filter(([, n]) => n).map(([c, n]) => `${esc(c)} ${n}`).join(', ')}) · ${f.staff} staff${f.partners.length ? ` · partners: ${f.partners.map(id => esc(firms.firm(id)?.name || '')).join(', ')}` : ''}${f.licence !== 'good' ? ` · <b style="color:#c0392b">${f.licence}</b>` : ''}</li>`;
+      body = `<div style="opacity:.8">Every business is registered. The big national companies reach across the whole country with 10–20 branches; smaller companies have one to three; sole traders work for themselves and partnerships are owned by their partners. Firms team up, take each other over (if the regulator allows it), pay their taxes, and can go bust.</div>
+      <p>${typeLine}</p><p>Founded since the records began: ${fmt(F.founded)} · closed: ${fmt(F.closed)} · partnerships: ${fmt(F.partnerships)} · takeovers: ${fmt(F.takeovers)} (blocked: ${fmt(B.blocked || 0)}) · corporation tax paid: ${fmt(F.taxPaid)} gold</p>
+      <h3>Money</h3><p>The central rate is ${(S.econ2?.rate ?? 3).toFixed(1)}%. Banks have lent ${fmt(S.money?.lent || 0)} gold (${fmt(S.money?.mortgages || 0)} mortgages) and been repaid ${fmt(S.money?.repaid || 0)}; ${fmt(S.money?.defaults || 0)} loans went to court and ${fmt(S.money?.bankruptcies || 0)} people went bankrupt. Residents hold ${fmt(citizens.reduce((a, c) => a + (c.savings || 0), 0))} gold in savings and ${fmt(citizens.reduce((a, c) => a + (c.pensionPot || 0), 0))} in pensions; companies have paid ${fmt(S.money?.dividends || 0)} gold in dividends. You can save, borrow and buy shares at First Crown Bank in Ashford Central Market.</p>
+      <h3>Business law and its enforcers</h3><ul>${RULES.map(r => `<li><b>${esc(r.name)}</b> (${esc(r.like)}): ${esc(r.about)} <i>Enforced by ${esc(r.by)}</i> (${law.inspectorsOf(law.regulator(r.by) || { id: -1 }).length} inspectors)</li>`).join('')}</ul>
+      <p>Inspections: ${fmt(B.inspections || 0)} · breaches found: ${fmt(B.found || 0)} · warnings: ${fmt(B.warnings || 0)} · fines: ${fmt(B.fines || 0)} gold · licences suspended: ${fmt(B.suspensions || 0)} · prosecutions: ${fmt(B.prosecutions || 0)}</p>
+      <h3>Recent enforcement</h3><ul>${(B.cases || []).slice(0, 12).map(k => `<li>${esc(k.by)}: <b>${esc(k.firm)}</b> ${esc(k.outcome)} <span style="opacity:.7">(${esc(k.rule)}${k.inspector ? ', inspector ' + esc(k.inspector) : ''})</span></li>`).join('') || '<li>Nothing yet.</li>'}</ul>
+      ${sectors.map(k => `<details><summary><b>${esc(SECTORS[k].name)}</b> (${live.filter(f => f.sector === k && f.type !== 'public' && !f.institution).length} businesses)</summary><ul>${live.filter(f => f.sector === k && f.type !== 'public' && !f.institution).sort((a, b) => firms.branchesOf(b) - firms.branchesOf(a) || b.staff - a.staff).slice(0, 30).map(row).join('')}</ul></details>`).join('')}`;
+    } else if (tab === 'education') {
+      const E = S.learning || {}, studying = citizens.filter(c => c.study && !c.dead), pupils = citizens.filter(c => c.school && !c.dead);
+      const rankTable = Object.entries(RANKS).map(([job, ladder]) => `<h3>${job === 'Soldier' ? 'A.T. Armed Forces' : 'A.T. Police Service'}</h3><ul>${ladder.slice().reverse().map(([t, y, sk, course]) => { const holders = citizens.filter(c => !c.dead && c.job === job && c.rank === t); return `<li><b>${t}</b>: ${holders.length ? holders.slice(0, 4).map(c => esc(c.name)).join(', ') + (holders.length > 4 ? ` +${holders.length - 4}` : '') : '<i>vacant</i>'} <span style="opacity:.7">(needs ${y} years' service, skill ${sk}${course ? ', ' + esc(COURSES[course][0]) : ''})</span></li>`; }).join('')}</ul>`).join('');
+      body = `<div style="opacity:.8">Children go to school and leave with grades. Skilled jobs need the right qualification. The major institutions in the Capital ask for the best grades; the city colleges and training schools are easier to get into. The highest police and military ranks need the national college or the academy, years of service and real skill.</div>
+      <p>At school: ${pupils.length} · studying or training: ${studying.length} · enrolled since the records began: ${fmt(E.enrolled || 0)} · graduated: ${fmt(E.graduated || 0)} · failed: ${fmt(E.failed || 0)} · turned down: ${fmt(E.rejected || 0)} · promotions: ${fmt(E.promoted || 0)}</p>
+      <h3>Institutions</h3><ul>${INSTITUTIONS.map(i => `<li><b>${esc(i.name)}</b> <span style="opacity:.7">${i.level === 'major' ? 'major, national' : 'city'} ${i.kind} · ${esc(i.city)}${i.fee ? ' · fees ' + i.fee : ' · state-funded'}</span>${i.courses.length ? ': ' + i.courses.map(k => esc(COURSES[k][0]) + (COURSES[k][2] ? ` (grade ${COURSES[k][2] + (i.level === 'major' ? 10 : -5)}+)` : '')).join(', ') : ` · ${pupils.filter(c => c.school === i.name).length} pupils`} · ${studying.filter(c => c.study.inst === i.name).length} studying now</li>`).join('')}</ul>
+      ${rankTable}`;
     } else if (tab === 'atlas') {
       const L = atlasLevel(S.atlas.data), next = ATLAS_LEVELS[L + 1];
       body = `<h3>ATLAS, the national AI (Capital)</h3><div>Level ${L}: <b>${ATLAS_LEVELS[L].name}</b>. ${ATLAS_LEVELS[L].does}</div>
@@ -702,7 +747,7 @@ export function createSociety(ctx) {
   setTimeout(() => checkProjects(true), 0);
 
   return {
-    lives, community, justice, history, systems, goods, update, converse, openHall, openTab, close,
+    lives, community, justice, history, systems, goods, firms, edu, law, money, update, converse, openHall, openTab, close,
     knownName(e) { const c = cit(e); return c ? lives.knownName(c) || (c.record ? c.name : null) : null; },
     remember,
     speedOf(e) {   // how this person walks: the old slower, the young quicker, the tired dragging, the late hurrying
