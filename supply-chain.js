@@ -38,7 +38,10 @@ export const MADE = [
   // food processing
   ['flr', 'flour', 'Millstone Mills', 'manufacturing', { wht: 2 }], ['brd', 'bread', 'Golden Crust Bakery', 'manufacturing', { flr: 1 }],
   ['dry', 'dairy (milk, butter, cheese)', 'Meadow Dairy', 'manufacturing', { mlk: 2 }], ['mt', 'meat', 'Prime Cuts Butchers', 'manufacturing', { lvs: 1 }],
-].map(([code, name, company, sector, inputs]) => ({ code, name, company, sector, inputs, stage: 'secondary' }));
+  // things people buy and wear or use (belongings.js); finished goods, so the shops only hold so many
+  ['clo', 'clothes', 'Loomhouse Textiles', 'manufacturing', { fab: .6 }, 900], ['sho', 'shoes', 'Elastica Rubber', 'manufacturing', { rub: .4, fab: .2 }, 400],
+  ['prm', 'pram', 'Velo Motors', 'automotive', { stl: 2, fab: 1, rub: 1, pls: 1 }, 30],
+].map(([code, name, company, sector, inputs, max = 3000]) => ({ code, name, company, sector, inputs, max, stage: 'secondary' }));
 
 // who builds, sells, moves and services the finished things (tertiary)
 export const SERVICES = [
@@ -56,7 +59,7 @@ export const GROCERY_FROM = { eggs: 'egg', bread: 'brd', butter: 'dry', milk: 'd
 // finished things -> who makes them (and who sells them)
 export const MAKER = { car: 'Velo Motors', police: 'Velo Motors', ambulance: 'Velo Motors', bus: 'Velo Motors', truck: 'Velo Motors', motorcycle: 'Velo Motors', bicycle: 'Velo Motors',
   tank: 'Ironforge Steel', plane: 'Kestrel Air', heli: 'Kestrel Air', helicopter: 'Kestrel Air', boat: 'Harbour Shipyards', submarine: 'Harbour Shipyards',
-  building: 'Westhaven Builders', house: 'Westhaven Builders', monster: 'ATLAS Foundry', robot: 'ATLAS Foundry', instrument: 'Northwood Sawmills', grocery: 'MarketWay Retail' };
+  building: 'Westhaven Builders', house: 'Westhaven Builders', monster: 'ATLAS Foundry', robot: 'ATLAS Foundry', instrument: 'Northwood Sawmills', grocery: 'MarketWay Retail', clothes: 'Loomhouse Textiles', shoes: 'Elastica Rubber', pram: 'Velo Motors' };
 
 // the chain behind a material, as text: steel ← iron ore (Deepstone Mining) + coal (Deepstone Mining)
 export function chainText(code, depth = 0) {
@@ -75,7 +78,7 @@ export function stepSupply(S, workers, boost = {}) {
   for (let i = 0; i < MADE.length; i++) { const m = MADE[(start + i) % MADE.length];
     // each factory leaves a reserve of every input for the others (and for building sites) to use
     const can = Math.min(1 + workers(m.sector) * .04, ...Object.entries(m.inputs).map(([k, n]) => ((st[k] || 0) - (ALL[k]?.stage === 'secondary' ? 150 : 20)) / n));
-    if (can <= 0 || (st[m.code] || 0) > 3000) continue;
+    if (can <= 0 || (st[m.code] || 0) > m.max) continue;
     for (const [k, n] of Object.entries(m.inputs)) st[k] -= can * n;
     st[m.code] = (st[m.code] || 0) + can;
     made += can;

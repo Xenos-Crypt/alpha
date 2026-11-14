@@ -1735,7 +1735,7 @@ const stdMat = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 })
 let seatedResidents = null;
 const people = createPeople({
   camera: () => camera,
-  lookOf: h => { if (h.citizen) return h.citizen; if (!society) return null; if (!h.pedE) h.pedE = peds.find(e => e.h === h); return h.pedE ? society.citizenOf(h.pedE) : null; },
+  lookOf: h => { if (h.citizen) return h.citizen; if (!society) return null; if (h.pedE === undefined) h.pedE = peds.find(e => e.h === h) || null; return h.pedE ? society.citizenOf(h.pedE) : null; },
   babyOf: c => seatedResidents?.babyOf(c) || null,
   budget: () => Math.round(({ low: 8, medium: 14, high: 22, ultra: 30 }[gfxQuality] ?? 14) * (matchMedia('(pointer: coarse)').matches ? .7 : 1)),
 });
@@ -7784,12 +7784,14 @@ let idNewRoads=null;
 const idExtra=[{cls:'BLD',kind:'AIB',mat:'GLS.STL',owner:'GOV',seed:'atlas-base',maker:'Westhaven Builders',name:'ATLAS national AI base',pos:{x:80,z:922}},{cls:'BLD',kind:'TMP',mat:'STN',owner:'GOV',seed:'temple-dig',maker:'the First Kings (ancient)',name:'Ancient temple dig',pos:{x:-147,z:-357}},{cls:'BLD',kind:'GEN',mat:'STL.CON',owner:'GOV',seed:'waste-centre',maker:'Westhaven Builders',name:'Waste & Recycling Centre',pos:{x:283,z:-411}}];
 // The IDs are for the AI and the back end, not for players: only the owner (open the game once with ?owner) gets the hidden registry view.
 const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setItem('aw.owner','1');return localStorage.getItem('aw.owner')==='1';}catch{return false;}};
-worldIds=createWorldIds({isOwner,THREE,scene,grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
+worldIds=createWorldIds({isOwner,THREE,scene,belongings:()=>society?.goods?.items()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
   extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+// every purchase, uniform, worn-out shirt and pram goes on the thing's record (belongings.js → world IDs)
+society?.goods?.onChange((it,what,c)=>worldIds?.note(it.id,what,c,it));
 // Information is bought: the Info Market (legal) in Ashford Central Market and the dark web terminal in the Narrows (info-markets.js).
 infoMarkets=createInfoMarkets({controversy:t=>society?.history?.L.controversies.push(t),scene,colliders,interactables,makePerson:o=>makeHumanoid(o),groundY,narrows:NARROWS,player:()=>player,peds:()=>peds,citizenOf:e=>society?.citizenOf(e),remember:(c,t)=>society?.remember(c,t),
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},raiseWanted,fame:()=>society?.state?.fame||0,news:(t,i)=>society?.news(t,i),setWaypoint,
