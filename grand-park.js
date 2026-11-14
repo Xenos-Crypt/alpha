@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { makeKit } from './leisure-kit.js';
 import { makeBotany, PLANTS } from './botany.js';
+import { buildWaterfall } from './waterfalls.js';
 
 export const PARK = { x0: 240, x1: 595, z0: -1105, z1: -912, gates: [300, 420, 540] };
 // the railing round both parks, and its gates: south (three), north, east and west
@@ -26,6 +27,7 @@ export const PARK_NO_GRASS = [{ cx: LAKE.x - 40, cz: LAKE.z, r: 40 }, { cx: LAKE
 
 export function buildGrandPark(ctx) {
   const K = makeKit(ctx), { B, C, S, mat, solid, circle, sign, place, spot, stander, sitter, walker, family } = K;
+  let lakeFalls = null, lakeFallsAt = { x: 0, z: 0 };
   const NAME = 'Westhaven Grand Park', bot = makeBotany(ctx, NAME), fx = (cls, kind, m, maker, name, x, z) => bot.fixture(cls, kind, m, maker, name, x, z);
   const animal = (kind, x, z, area, o, key, where) => bot.animal(K.animal(kind, x, z, area, o), key, where);
   const { scene, makeTex, toast, stats, sports } = ctx, P = PARK, root = new THREE.Group(); scene.add(root);
@@ -109,6 +111,14 @@ export function buildGrandPark(ctx) {
     root.add(water); ctx.lakeWater = water;
     // the lake lies in a hollow dug out of the park: banks slope down to a bed 2.6 m down, the water a little below the grass
     ctx.digPond?.(root, { x: LAKE.x, z: LAKE.z, rx: LAKE.rx, rz: LAKE.rz, rim: 0.01, level: LAKE.level, bed: -2.8, water, materials: ctx.groundMats || [] });
+    // the Cascade: a rock waterfall on the north-west bank, 5.7 m from top to lake, in two drops with a rock
+    // basin between. A pump hidden in the rocks lifts lake water back up to the header pool at the top.
+    { const a = -2.0, ox = LAKE.x + Math.cos(a) * LAKE.rx * .9, oz = LAKE.z + Math.sin(a) * LAKE.rz * .9, yaw = Math.atan2(LAKE.x - ox, LAKE.z - oz);
+      lakeFalls = buildWaterfall(root, { x: ox, z: oz, yaw, width: 3.4, tiers: [{ lip: 5.2, z: 0, land: 2.4, v0: 1.1 }, { lip: 2.4, z: 2.6, land: LAKE.level, v0: 1.2 }], block: (bx, bz, br) => circle(bx, bz, br) });
+      fx('LND', 'WFL', 'STN.WAT', 'Westhaven Builders (rockwork in Deepstone Quarries stone)', 'The Cascade (waterfall)', ox, oz); fx('MCH', 'PMP', 'STL.PLS', 'Spark & Pipe Utilities (recirculating pump hidden in the rocks)', 'Cascade pump', ox - Math.sin(yaw) * 2, oz - Math.cos(yaw) * 2);
+      const lx = ox - Math.sin(yaw) * 4.5 + Math.cos(yaw) * 4.5, lz = oz - Math.cos(yaw) * 4.5 - Math.sin(yaw) * 4.5;
+      bot.label(lx, lz, 3.5, 'The Cascade — a waterfall', 'The Cascade falls 5.7 m into the lake in two drops, with a rock basin between them. A pump hidden in the rocks lifts lake water back to the pool at the top, so it never runs dry. Stand close and you feel the spray.');
+      lakeFallsAt = { x: ox, z: oz }; }
     fx('LND', 'PND', 'WAT.MUD', 'Westhaven Builders (dug and lined with Riverbank clay); filled by Spark & Pipe Utilities', 'The boating lake', LAKE.x, LAKE.z);
     const shore = new THREE.Mesh(new THREE.RingGeometry(1, 1.07, 64), mat(0xb9a57a, { rough: 1 })); shore.rotation.x = -Math.PI / 2; shore.scale.set(LAKE.rx, LAKE.rz, 1); shore.position.set(LAKE.x, 0.1, LAKE.z); root.add(shore);
     for (let i = 0; i < 90; i++) { const a = i / 90 * Math.PI * 2, r = 1.02 + Math.sin(i * 7.3) * 0.015; const st = S(root, 0.5 + (i % 3) * 0.2, LAKE.x + Math.cos(a) * LAKE.rx * r, 0.1, LAKE.z + Math.sin(a) * LAKE.rz * r, 0x8a8478, 6); st.scale.y = 0.45; st.castShadow = false; }
@@ -289,6 +299,7 @@ export function buildGrandPark(ctx) {
   // ================= update =================
   let t = 0;
   function update(dt, p, night) {
+    lakeFalls?.update(dt, Math.hypot(p.x - lakeFallsAt.x, p.z - lakeFallsAt.z) < 120);
     const near = p.x > P.x0 - 150 && p.x < P.x1 + 150 && p.z > P.z0 - 150 && p.z < P.z1 + 150;
     if (!near && !boatRide) return; t += dt;
     K.update(dt, p, 110);

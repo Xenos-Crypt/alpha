@@ -28,8 +28,8 @@ export const KINDS = {
   PRD: { GRC: 'grocery', DSH: 'dish', SNK: 'snack', INS: 'instrument', TOP: 'top (shirt, blouse, jumper)', BTM: 'trousers or skirt', SHO: 'shoes', PRM: 'pram', PHN: 'phone', BEN: 'park bench', PIC: 'picnic table', LMP: 'lamp post', SGN: 'sign', ARC: 'garden arch', SUN: 'sundial', PLY: 'playground equipment', RCK: 'bike rack', SKB: 'skateboard' },
   MAT: { RAW: 'raw material (primary)', MAD: 'made material (secondary)' },
   ORG: { PUB: 'public body', PRV: 'private limited company', PLC: 'public limited company', STR: 'sole trader', PSH: 'partnership', CHR: 'charity', SOC: 'social enterprise', COP: 'co-operative', NGO: 'NGO' },
-  LND: { ROD: 'road tile', BLK: 'city block', GRS: 'grass tuft', FLR: 'floor tile', SRF: 'other surface', BED: 'flower bed or planting', LWN: 'lawn', PTH: 'path', FEN: 'railing or fence', GAT: 'gate', PND: 'lake or pond', JTY: 'jetty', SKT: 'skate ramp or floor', TRK: 'track (cycle loop, pump track)', XNG: 'road crossing' },
-  CRE: { MON: 'dungeon monster', BRD: 'bird', MAM: 'mammal', REP: 'reptile', INS: 'insect' }, MCH: { ROB: 'ATLAS robot' },
+  LND: { ROD: 'road tile', BLK: 'city block', GRS: 'grass tuft', FLR: 'floor tile', SRF: 'other surface', BED: 'flower bed or planting', LWN: 'lawn', PTH: 'path', FEN: 'railing or fence', GAT: 'gate', PND: 'lake or pond', JTY: 'jetty', SKT: 'skate ramp or floor', WFL: 'waterfall', TRK: 'track (cycle loop, pump track)', XNG: 'road crossing' },
+  CRE: { MON: 'dungeon monster', BRD: 'bird', MAM: 'mammal', REP: 'reptile', INS: 'insect' }, MCH: { ROB: 'ATLAS robot', PMP: 'water pump' },
   PLT: { FLW: 'flower', SHR: 'shrub (rose, lavender, hedge…)', TRE: 'tree', PLM: 'palm' },
 };
 export const OWNERS = { PLR: 'the player', RES: 'a resident', GOV: 'the government', REQ: "made at the owner's request", BOT: 'built by the bots', WLD: 'wild (nobody)', STO: 'stolen', ILL: 'got illegally', HOM: 'home-made', ASH: 'Ashford', RIV: 'Riverside', CAP: 'the Capital', POI: 'Poison Land' };

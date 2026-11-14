@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { makeKit } from './leisure-kit.js';
 import { OUTER } from './grand-park.js';
 import { makeBotany, PLANTS } from './botany.js';
+import { buildWaterfall } from './waterfalls.js';
 
 export const FLOWER = { x0: OUTER.x0, x1: OUTER.split, z0: OUTER.z0, z1: OUTER.annexZ1 };
 const CX = 134, CZ = OUTER.inner;   // the fountain, where the two main paths cross
@@ -27,6 +28,7 @@ export const FLOWER_NO_GRASS = [
 
 export function buildFlowerPark(ctx) {
   const K = makeKit(ctx), { B, C, S, mat, solid, circle, sign, place, spot, stander, sitter, walker, family } = K;
+  let glassFalls = null;
   const PARK = 'Westhaven Flower Park', bot = makeBotany(ctx, PARK), animal = (kind, x, z, area, o, key, where) => bot.animal(K.animal(kind, x, z, area, o), key, where);
   const fx = (cls, kind, m, maker, name, x, z) => bot.fixture(cls, kind, m, maker, name, x, z), col = k => PLANTS[k].colour;
   const md = (n, m) => ((n % m) + m) % m;
@@ -134,10 +136,14 @@ export function buildFlowerPark(ctx) {
     // the pond is sunk into the floor: a little basin, its water below the tiles
     const pond = new THREE.Mesh(new THREE.CircleGeometry(3.2, 28), new THREE.MeshStandardMaterial({ color: 0x2f7f8f, roughness: .1 })); root.add(pond);
     ctx.digPond?.(root, { x, z, rx: 3.2, rim: .065, level: -.3, bed: -1, water: pond, materials: [floor.material, lawn.material, ...(ctx.groundMats || [])] }); circle(x, z, 3.2);
+    // a little two-step waterfall tumbling into the pond over mossy rocks; a pump in the rocks lifts pond water back to the top
+    glassFalls = buildWaterfall(root, { x, z: z - 3.6, yaw: 0, width: 1.4, scale: .5, tiers: [{ lip: 1.9, z: 0, land: .9, v0: .9 }, { lip: .9, z: 1.3, land: -.3, v0: .9 }], block: (bx, bz, br) => circle(bx, bz, br * .7) });
+    fx('LND', 'WFL', 'STN.WAT', 'Westhaven Builders (rockwork in Deepstone Quarries stone)', 'Glasshouse waterfall', x, z - 3.6); fx('MCH', 'PMP', 'STL.PLS', 'Spark & Pipe Utilities (recirculating pump hidden in the rocks)', 'Waterfall pump', x, z - 4.6);
+    bot.label(x, z - 2.2, 3, 'Waterfall', 'A little waterfall falls in two steps into the pond. The pond water is lifted back to the top by a pump hidden in the rocks, so it never runs dry.');
     for (const [dx, dz] of [[-14, -6], [-8, 6], [8, -6], [14, 6], [-16, 6], [16, -6]]) { bot.single('kentia', x + dx, z + dz, 'the Glasshouse', 2.2); C(root, .2, .3, 6, x + dx, 3.8, z + dz, 0x7a5a3a, 8); for (let k = 0; k < 7; k++) { const leaf = new THREE.Mesh(new THREE.ConeGeometry(.5, 3.4, 4), mat(0x2f7f3a)); leaf.position.set(x + dx + Math.cos(k) * 1.2, 6.6, z + dz + Math.sin(k) * 1.2); leaf.rotation.set(Math.sin(k) * 1.2, 0, Math.cos(k) * 1.2); root.add(leaf); } }
     // six tropical plants, each growing in its own part of the house
     const TROP = ['bougain', 'strelitzia', 'allamanda', 'orchid', 'hibiscus', 'gardenia'], tp = TROP.map(() => []);
-    for (let i = 0; i < 220; i++) { const a = r() * Math.PI * 2, d = 4 + r() * 9; const px = x + Math.cos(a) * d * 1.5, pz = z + Math.sin(a) * d * .8; if (Math.abs(pz - z) > D / 2 - 1.5 || Math.abs(px - x) > W / 2 - 1.5) continue; const k = Math.floor(a / (Math.PI * 2) * 6) % 6; tp[k].push([px, pz]); bushes.push([px, .45, pz, .5, 0x2f6b3a]); blooms.push([px + (r() - .5) * .4, pz + (r() - .5) * .4, .92, col(TROP[k]), .16, 'star']); }
+    for (let i = 0; i < 220; i++) { const a = r() * Math.PI * 2, d = 4 + r() * 9; const px = x + Math.cos(a) * d * 1.5, pz = z + Math.sin(a) * d * .8; if (Math.abs(pz - z) > D / 2 - 1.5 || Math.abs(px - x) > W / 2 - 1.5 || Math.hypot(px - x, pz - z + 4.2) < 2.8) continue; const k = Math.floor(a / (Math.PI * 2) * 6) % 6; tp[k].push([px, pz]); bushes.push([px, .45, pz, .5, 0x2f6b3a]); blooms.push([px + (r() - .5) * .4, pz + (r() - .5) * .4, .92, col(TROP[k]), .16, 'star']); }
     TROP.forEach((key, k) => bot.patch(key, tp[k], 'the Glasshouse', 3.5));
     stander(x - 6, z - 2, .4, { outfit: 0x3a6b35, task: 'talk' }); stander(x + 5, z + 3, 2.5, { outfit: 0x8a6a3d, task: 'idle' });
     // the cutting garden south of it: blocks of every colour
@@ -204,6 +210,7 @@ export function buildFlowerPark(ctx) {
   // ---- update ----
   let t = 0;
   function update(dt, p, night) {
+    glassFalls?.update(dt, Math.hypot(p.x - (Q.glass.x0 + Q.glass.x1) / 2, p.z - (Q.glass.z0 + 22)) < 60);
     if (p.x < FLOWER.x0 - 160 || p.x > FLOWER.x1 + 160 || p.z < FLOWER.z0 - 160 || p.z > FLOWER.z1 + 160) return;
     t += dt; K.update(dt, p, 110);
     if (ctx.windmill) ctx.windmill.rotation.z = t * .6;
