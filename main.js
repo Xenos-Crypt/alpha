@@ -10,6 +10,12 @@ import {buildStreetDesign} from './street-design.js';
 import {buildActiveRoadUsers} from './active-road-users.js';
 import {transitArrestTarget} from './transit-police.js';
 import {createNpcConversations} from './npc-conversations.js';
+import {createSociety} from './society.js';
+import {createWorldWatch} from './world-watch.js';
+import {buildProject} from './innovations.js';
+import {buildAtlasWorld} from './atlas-world.js';
+import {createWorldIds} from './world-ids.js';
+import {createWorldRegistry} from './world-registry.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -47,7 +53,7 @@ import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
 import {buildBlackMarket, NARROWS} from './black-market.js';
 import {buildMilitary, addNavyCrew} from './military.js';
-import {createConditions} from './condition.js';
+import {createConditions,conditionOf} from './condition.js';
 import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
 import {createRace} from './race.js';
@@ -120,7 +126,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null;
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -945,6 +951,8 @@ function breakLamp(i) {
   burst(at(p, 4), 14, [0xfff1c9, 0xffc66b, 0x444444], 8, 0.15, 0.4, 6);
   shake = Math.max(shake, 0.15);
 }
+// An electrician (society.js) puts a broken lamp back up.
+function fixLamp(i) { if (!lampBroken[i]) return; lampBroken[i] = false; placeLampInstance(i, lampSpots[i]); }
 function breakLampsNear(center, r) {
   for (let i = 0; i < lampSpots.length; i++) {
     if (!lampBroken[i] && distXZ(lampSpots[i], center) < r + 0.6) breakLamp(i);
@@ -1375,7 +1383,7 @@ doorPath.castShadow = false;
 // Furniture: proper rooms (hallway, living room, bedroom, kitchen, bathroom, storage) — see house-rooms.js
 const F_Y = CURB;
 let kitchen = null, chores = null;
-const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => chores?.open(k, o), kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
+const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
   { cx: HOME.x, front: HOME.minZ, dir: 1, W: HOME.maxX - HOME.minX, D: HOME.maxZ - HOME.minZ, y: CURB, sideWindows: [3, 7.5] });
 const houseRoomList = [homeRooms];
 
@@ -1462,7 +1470,7 @@ function buildHouse(x0, z0, face, cellZ, wallColor, roofColor) {
   scene.add(roof);
 
   // Rooms and furniture (face = direction from the back wall towards the door)
-  houseRoomList.push(furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => chores?.open(k, o), kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
+  houseRoomList.push(furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
     { cx: x0, front, dir: -face, W, D, y: CURB, sideWindows: [D / 4, D * 3 / 4] }));
 
   const lawnEdge = cellZ + face * 13;
@@ -2295,6 +2303,7 @@ async function boot() {
   if(navigator.onLine){try{const result=await Promise.race([supabase.auth.getSession(),new Promise(resolve=>setTimeout(()=>resolve(null),8000))]);session=result?.data?.session||null;}catch{}}
   window.gameLoading?.hide();
   const activeSession = navigator.onLine?(session||await showAuthScreen()):offlinePlayerSession();
+  registryUserId=activeSession.user.isGuest?null:activeSession.user.id;   // the world registry only takes signed-in players' reports
   alignmentUserId=activeSession.user.id;try{const role=JSON.parse(localStorage.getItem('alignment:'+alignmentUserId));if(role){heroDungeonKills=role.heroDungeonKills||0;villainKills=role.villainKills||0;isVillain=villainKills>0;}}catch{}
   playerUsername = activeSession.user.isGuest?(localStorage.getItem('lastPlayerName')||'Guest'):await requireUsername(supabase);
   if(!activeSession.user.isGuest)localStorage.setItem('lastPlayerName',playerUsername);
@@ -2570,7 +2579,7 @@ const _fwd = new THREE.Vector3();
 function updateFlashlight() {
   const xo = $('exoBtn'); if (xo) { const w = !!military?.wearing; if ((xo.style.display !== 'none') !== w) xo.style.display = w ? '' : 'none'; if (!xo.onclick) xo.onclick = () => military?.takeOff(); }
   for (const id of ['torchBtn', 'taxiBtn']) { const el = $(id); if (el && el.style.display !== 'none') el.style.visibility = inCar || !canAct() ? 'hidden' : 'visible'; }   // no torch or taxi call while you're in a vehicle
-  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } }
+  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } const hb = $('cityBtn'); if (hb) { hb.style.display = ''; hb.onclick = () => society?.openHall(); } const ib = $('idBtn'); if (ib && isOwner()) { ib.style.display = ''; ib.onclick = () => worldIds?.open(); } }
   flashlight.intensity = flashlightOn && !inCar ? 90 : 0;
   if (!flashlightOn) return;
   camera.getWorldDirection(_fwd);
@@ -3393,7 +3402,7 @@ function flyHelicopter(v, dt) {
   const up = mine ? (keys.Space ? 1 : 0) - (keys.ShiftLeft || keys.ShiftRight ? 1 : 0) : -1;
   const fwd = mine ? (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) : 0, turn = mine ? (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0) : 0;
   P.throttle = lerp(P.throttle, mine ? 1 : 0, 1 - Math.exp(-0.8 * dt));   // rotor spins up when you're in it
-  const ground = groundY(p.x, p.z), spun = P.throttle > 0.6;
+  const ground = groundY(p.x, p.z, v.alt), spun = P.throttle > 0.6;   // (with your height, so roofs and rooftop helipads count as ground)
   v.vy = lerp(v.vy || 0, spun ? up * 9 : -6, 1 - Math.exp(-2 * dt));
   v.alt = Math.min(260, Math.max(ground, v.alt + v.vy * dt));
   const airborne = v.alt > ground + 0.3;
@@ -3556,6 +3565,7 @@ function applyHit(e, h) {
   const byPlayer = h.fromPlayer !== false && !h.police;
   let dmg = h.dmg * dmgMul()*(byPlayer?(supportSkills?.damageMultiplier||1):1);
   e.lastHit = 0;
+  if (e.kind === 'npc' && !e.cop) society?.onHit(e, byPlayer);   // they remember, and so do the people who saw it
 
   // Blocking: only works against hits from the front
   if (e.blocking && e.stun <= 0 && fwdOf(e.root).dot(dir) < -0.3) {
@@ -4204,6 +4214,25 @@ function dispatchPoliceArrest(offender, reason) {
   });
   if (!ok) { offender.arrestPending = false; responseUnits.police = Math.max(0, responseUnits.police - 1); }
 }
+// A resident caught committing a crime (society.js): a patrol car comes and takes them away.
+function arrestPed(e, done) {
+  if (responseUnits.police >= 2) return false;
+  responseUnits.police++;
+  const ok = dispatchServiceUnit({
+    kind: 'police', color: 0xf5f6fa, label: 'police', getTarget: () => e.root.position,
+    onArrive(unit) {
+      const officer = makeHumanoid({ outfit: 0x243c58, hair: 0x382d24, pants: 0x1c2f43 });
+      officer.root.position.copy(e.root.position).add(new THREE.Vector3(1.1, 0, 0)); officer.root.position.y = groundY(officer.root.position.x, officer.root.position.z);
+      officer.root.lookAt(e.root.position.x, officer.root.position.y, e.root.position.z);
+      if (playerNear(e.root.position, 60)) callout('THIEF ARRESTED', 0x74b9ff);
+      return [officer];
+    },
+    onSceneDone() { responseUnits.police = Math.max(0, responseUnits.police - 1); done(); },
+    onCancel() { responseUnits.police = Math.max(0, responseUnits.police - 1); },
+  });
+  if (!ok) responseUnits.police = Math.max(0, responseUnits.police - 1);
+  return !!ok;
+}
 function dispatchAnimalControl(animal) {
   if (animal.controlPending || !animal.alive || responseUnits.animal >= 2) return;
   animal.controlPending = true; responseUnits.animal++;
@@ -4315,6 +4344,7 @@ function dispatchDeathAmbulance(e) {
 function updatePed(e, dt) {
   const s = e.ped, p = e.root.position;
   if (s.state === 'cop') return;   // officers on foot are run by policeOnFoot()
+  if (s.state === 'soc') return;   // chatting, sweeping, protesting, stealing...: society.js is driving them
   // Skip full pathing/animation work for ordinary wandering peds far from the
   // player — with 4 separate populated districts, most of them aren't visible
   // at any given moment anyway. Anything mid-reaction (panic, down, boarding,
@@ -4396,7 +4426,9 @@ function updatePed(e, dt) {
           stop.waiting.push(e);
           s.target = stop.wait.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 0, (Math.random() - 0.5) * 1.5));
         } else {
-          const n = nextCorner(s.node, s.prev, s.bounds);
+          let n = nextCorner(s.node, s.prev, s.bounds);
+          const goal = society?.goal(e);   // heading to work in the day, home in the evening: lean towards it
+          if (goal) for (let k = 0; k < 2; k++) { const m = nextCorner(s.node, s.prev, s.bounds); if (distXZ(cornerPos(m), goal) < distXZ(cornerPos(n), goal)) n = m; }
           s.prev = s.node; s.node = n; s.target = cornerPos(n);
         }
       }
@@ -6093,6 +6125,12 @@ chores = createChores({ toast: m => toast(m), pause: () => pauseForPanel(), resu
     else if (kind === 'laundry') { stats.energy = Math.max(0, stats.energy - 3); gainXp(3); toast(res.pink ? '👕 Laundry done and pegged out… but everything white is pink now.' : `👕 Laundry done and pegged out (${Math.round(score)}%). Fresh clothes.`); }
     else if (kind === 'dishes') kitchen?.washUp();
   } });
+// Chores: if you've hired a housekeeper (society.js), they've already done it today.
+function doChore(kind, o) {
+  const who = society?.choreByStaff(kind);
+  if (who) { const what = { laundry: 'the laundry', dishes: 'the dishes', handwash: 'the towels and soap' }[kind] || 'it'; toast(`🧹 ${who}, your housekeeper, has already done ${what} today.`); if (kind === 'laundry') gainXp(1); else if (kind === 'dishes') kitchen?.washUp(); return; }
+  return chores?.open(kind, o);
+}
 const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
   tvMaterial: new THREE.MeshBasicMaterial({ map: civicTvTexture }),
@@ -6100,7 +6138,7 @@ const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, make
     toast: m => toast(m),
     playerPos: () => player.position,
     kitchen: () => kitchen,
-    chore: (k, o) => chores?.open(k, o),
+    chore: (k, o) => doChore(k, o),
     careers: what => { if (!careers) return; if (what === 'university') careers.openUniversity(currentVenueName); else if (what === 'jobs') careers.openJobs(); else if (what === 'school') careers.openSchool(); else careers[what]?.(); },
     groceries: name => kitchen?.openGroceries(name),
     leave: () => leaveCivicBuilding(),
@@ -6555,6 +6593,8 @@ addEventListener('keydown', e => {
   if (inCar && isRoadVehicle(driving) && carControls.keydown(e.code)) return;   // gears, lights, indicators, horn
   if (e.code === 'KeyV') toggleFlashlight();
   if (e.code === 'KeyY' && !inCar) cityServices?.callTaxi(player.position.clone());
+  if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
+  if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
   if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
@@ -6600,7 +6640,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -7542,7 +7582,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
 // room() helper, so they never auto-registered on the travel map like everything else.
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
 townPlaces.destinations.push({ name: 'Ashford Capital', x: CAPITAL_CX, z: CAPITAL_Z0 + 10 });
-capitalServiceBuildings=buildCapitalServices({scene,box,makeTex,interactables,sitSpots,toast,buyFood,groceries:name=>kitchen?.openGroceries(name),makePerson:makeHumanoid,civicBuildings,destinations:townPlaces.destinations});
+capitalServiceBuildings=buildCapitalServices({cityHall:()=>society?.openHall(),scene,box,makeTex,interactables,sitSpots,toast,buyFood,groceries:name=>kitchen?.openGroceries(name),makePerson:makeHumanoid,civicBuildings,destinations:townPlaces.destinations});
 blackMarket = buildBlackMarket({ openVehicleShop: (t, cats, place, o) => openVehicleShop(t, cats, place, o), openPropertyShop: kind => property?.openShop(kind), forgeLicence: id => { if (id === 'driving') { roadLaw.licence.held = true; roadLaw.licence.theory = true; roadLaw.licence.forged = true; roadLaw.licence.banned = false; } else licences.forge(id); }, hasLicence: id => id === 'driving' ? !!roadLaw?.licence.held : licences.has(id), scene, colliders, interactables, sitSpots, makePerson: makeHumanoid, animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, groundY, toast, raiseWanted, stats, destinations: townPlaces.destinations, openMenu: (name, items) => snackShop.open(name, 'black', items) });
 statSources.push(blackMarket);
 addEventListener('aw-clear-wanted', () => { wanted = 0; pursuitBackupCooldown = 0; });
@@ -7589,7 +7629,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -7669,7 +7709,7 @@ tunnel = buildTunnel({ scene, colliders, camBlockers, makeTex, destinations: tow
 hills = buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position });
 estate = buildEstate({ scene, colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeVehicle: (k, c, st) => makeVehicle(k, c, st),
-  sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => chores?.open(k, o), sleep: () => sleep(),
+  sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), sleep: () => sleep(),
   eat: (n, cost, msg) => { stats.hunger = Math.min(100, stats.hunger + n); toast(msg); }, rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); },
   workout: () => { stats.energy = Math.max(0, stats.energy - 8); gainXp(3); toast('🏋️ A proper session on the treadmill and the weights. +3 XP'); } });
 conditions = createConditions({ buildings, collapse: b => collapseBuilding(b, false), toast, playerPos: () => player.position,
@@ -7688,7 +7728,42 @@ intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
 for(const v of cityServices.traffic)if(v.kind==='car'&&(v.group.position.z>640&&v.group.position.x<500))detailVehicle(v,'luxury');
 regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareSite(x,z,w,d){for(const b of buildings)if(b.alive&&Math.abs(b.x-x)<(b.w+w)/2&&Math.abs(b.z-z)<(b.d+d)/2){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[])m.visible=false;for(const [list,item]of [[colliders,b.collider],[planeBlocks,b.planeBlock]]){const i=list.indexOf(item);if(i>=0)list.splice(i,1);}for(const block of b.blocks||[]){const i=planeBlocks.indexOf(block);if(i>=0)planeBlocks.splice(i,1);}}},civicBuildings,fence:fenceRect,reception:()=>{if(wanted>0)arrestPlayer();else toast('Police reception: reporting desk, patrol office and custody suite.');},addPolice(x,z){const v=makeVehicle('police',0xf5f6fa);v.group.position.set(x,groundY(x,z),z);v.stationHome=v.group.position.clone();v.ai={parked:true,cruise:12,ramCd:0,stopTimer:0};}});
-npcConversations=createNpcConversations({people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+// Everyone in town gets a mind of their own, a shared city brain, and an elected government (society.js).
+society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPosition:()=>player.position,dayTime:()=>dayTime,
+  gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},walk:(e,t,sp,dt)=>walkTowards(e,t,sp,dt),animate:(e,pose,moving,run,dt)=>animateHumanoid(e.h,pose,moving,run,e.onGround,dt),
+  resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
+  arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),
+  petitions:()=>worldWatch?.list||[],note:t=>worldWatch?.note(t),
+  cityAt:p=>p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
+  assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,level:()=>prog.level,
+  brokenLamps:()=>{const out=[];for(let i=0;i<lampSpots.length;i++)if(lampBroken[i]&&distXZ(lampSpots[i],player.position)<80)out.push({i,p:lampSpots[i]});return out;},fixLamp,
+  askAtlas:async(question,state)=>{if(!navigator.onLine)return null;const r=await fetch('/api/atlas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,state})});return r.ok?(await r.json()).answer:null;},
+  research:async(topic,city,name)=>{if(!navigator.onLine)return null;const r=await fetch('/api/citizen-research',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({topic,city,name})});return r.ok?r.json():null;},
+  built:id=>innovationsBuilt.push(buildProject(id,{scene,groundY,lamps:()=>lampSpots,
+    corners:()=>{const out=[];for(const b of [MAIN_BOUNDS,CAPITAL_BOUNDS])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)for(const sx of [-1,1])for(const sz of [-1,1]){const p=cornerPos({bx,bz,sx,sz});if(!blockedAt(p.x+sx*1.3,p.z+sz*1.3,.5))out.push({x:p.x,z:p.z,ox:sx,oz:sz});}return out;},
+    openLand:n=>{const out=[];for(let a=0;a<Math.PI*2&&out.length<n;a+=.11)for(const R of [360,420,480]){const x=Math.cos(a)*R,z=Math.sin(a)*R;if(Math.hypot(x-170,z-150)>1300||isSeaWater(x,z)||isRoadAt(x,z)||blockedAt(x,z,9)||out.some(o=>Math.hypot(o.x-x,o.z-z)<60))continue;out.push({x,z});break;}return out;}})),
+  pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+npcConversations=createNpcConversations({converse:e=>society?.converse(e),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+// Residents report what breaks the laws of the world: Rule Keepers fix it, the Lawgiver hears of it (world-watch.js).
+// What the nation's progress looks like: the ATLAS base, its robots, the temple dig, self-driving cars (atlas-world.js).
+atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,interactables,vehicles:()=>vehicles,openTab:t=>society.openTab(t),makePerson:o=>makeHumanoid(o),animate:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt)});
+// Every building, house, road tile, block, resident, vehicle and the player gets a unique ID (world-ids.js).
+const idBlocks=[];for(const [city,b] of [['Ashford',MAIN_BOUNDS],['Riverside',RIVERSIDE_BOUNDS],['Capital',CAPITAL_BOUNDS]])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)idBlocks.push({city,bx,bz});
+let idNewRoads=null;
+const idExtra=[{cls:'BLD',kind:'AIB',mat:'GLS.STL',owner:'GOV',seed:'atlas-base',maker:'Westhaven Builders',name:'ATLAS national AI base',pos:{x:80,z:922}},{cls:'BLD',kind:'TMP',mat:'STN',owner:'GOV',seed:'temple-dig',maker:'the First Kings (ancient)',name:'Ancient temple dig',pos:{x:-147,z:-357}},{cls:'BLD',kind:'GEN',mat:'STL.CON',owner:'GOV',seed:'waste-centre',maker:'Westhaven Builders',name:'Waste & Recycling Centre',pos:{x:283,z:-411}}];
+// The IDs are for the AI and the back end, not for players: only the owner (open the game once with ?owner) gets the hidden registry view.
+const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setItem('aw.owner','1');return localStorage.getItem('aw.owner')==='1';}catch{return false;}};
+worldIds=createWorldIds({isOwner,THREE,scene,grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
+  reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
+  roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
+  extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
+  citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
+  pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+const worldRegistry=createWorldRegistry({client:supabase,ids:worldIds,userId:()=>registryUserId});
+worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
+  buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
+  unstick:e=>{const s=e.ped;s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;e.root.position.copy(cornerPos(s.node));e.root.position.y=groundY(e.root.position.x,e.root.position.z);s.target=cornerPos(nextCorner(s.node,null,s.bounds));s.state='wander';},
+  onNew:(r,name)=>society?.petitionFiled(r,name)});
 worldExpansion=buildWorldExpansion({...regionalTransportContext,civicBuildings,fence:fenceRect,talk:(name,text)=>npcConversations.show(name,text),playerPosition:()=>player.position,makeMonster,light:addTrafficLight,tree:addTree,seat:(x,z)=>addBench(x,z,Math.PI),heal(){stats.hp=maxHp();toast('Medical treatment complete.');},food:()=>buyFood(15,20),killPlayer(){stats.hp=-1;toast('Strategic security: lethal exclusion zone breached.');},civilians:()=>peds,killCivilian(e){e.alive=false;e.hp=0;e.respawn=30;e.ped.state='down';}});
 townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
@@ -7785,7 +7860,17 @@ border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,movin
 powerGrid=buildPowerGrid({scene,gates,interactables,toast,groundY,makeTex});
 // Helicopter carry points: helipads on top of the tallest towers and pickup pads on the ground.
 helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlayer,carry:p=>{player.position.copy(p);vy=0;pvel.set(0,0,0);},canBoard:()=>!inCar&&!sitting&&!action&&!navy?.rider&&!intercityRail?.rider&&!transport?.rider&&!metro?.rider,prepare(){action=null;vy=0;pvel.set(0,0,0);},land:p=>{player.position.copy(p);vy=0;pvel.set(0,0,0);},roofs:venues.towers.filter(t=>t.h>=27),ground:[
-  {name:'Ashford Beach helipad',x:150,z:176},{name:'Capital helipad',x:190,z:705},{name:'Leisure Park helipad',x:120,z:-735},{name:'Business District helipad',x:160,z:1068}]});
+  {name:'Government helipad (Capital)',x:190,z:705,owner:'government'}],
+  // a flight is something you ask for (and can be refused), or you steal the helicopter
+  request:p=>{
+    if(p.owner==='government'){const ok=society?.gov?.P?.office||(society?.state?.fame||0)>=70;if(!ok){toast('🏛 Request denied: government helicopters are for officials. Hold office, or be someone the whole country knows and trusts.');return false;}toast('🏛 Request approved. A government pilot will fly you.');return true;}
+    if(wanted>0){toast('🚁 SkyLink Charter: "We don\'t fly people the police are looking for."');return false;}
+    if(stats.gold<300){toast('🚁 SkyLink Charter: a flight costs 300 gold.');return false;}
+    stats.gold-=300;toast('🚁 SkyLink Charter: request accepted (300 gold). Your pilot is ready.');return true;},
+  steal:p=>{if(inCar||!p.heli)return false;const pos=new THREE.Vector3();p.heli.getWorldPosition(pos);const gov=p.owner==='government';
+    const v=makeHelicopter({name:gov?'Government helicopter':'SkyLink charter helicopter',color:gov?0x1a1a1a:0x2f6f8f,x:pos.x,z:pos.z,yaw:p.heli.rotation.y});v.group.position.y=pos.y;v.alt=pos.y;v.stolen=true;
+    raiseWanted(gov?240:150);enterVehicle(v);toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
+    society?.news?.(gov?'The newcomer stole a government helicopter from the Capital helipad!':'A charter helicopter was stolen from '+p.name+'.',true);if(society?.state)society.state.fameAcc+=gov?6:3;return true;}});
 drones=buildDrones({scene,dome:DOME});
 lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,
   announce:t=>callout(t,0xffd166,true),shake:v=>{shake=Math.max(shake,v);},reward(){stats.gold+=500;stats.hp=maxHp();stats.energy=100;stats.hunger=100;}});
@@ -7983,7 +8068,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);

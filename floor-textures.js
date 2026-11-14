@@ -51,5 +51,7 @@ export function floorTexture(makeTex, kind, _base, w = 4, d = 4) {
 }
 export function floorMaterial(makeTex, kind, base, w, d, rough = kind === 'marble' || kind === 'tiles' || kind === 'checker' ? 0.35 : 0.8) {
   const tint = kind === 'tech' ? new THREE.Color(0xc4cddc) : new THREE.Color(base).multiplyScalar(1.12);
-  return new THREE.MeshStandardMaterial({ map: floorTexture(makeTex, kind, base, w, d), color: tint, roughness: rough });
+  const m = new THREE.MeshStandardMaterial({ map: floorTexture(makeTex, kind, base, w, d), color: tint, roughness: rough });
+  m.userData.surface = { kind, colour: base };   // what the floor is made of, for world IDs (world-ids.js)
+  return m;
 }

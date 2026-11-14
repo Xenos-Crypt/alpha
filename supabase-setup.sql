@@ -241,3 +241,35 @@ begin
 end $$;
 revoke all on function public.get_online_player_account(),public.claim_online_class(integer),public.save_online_player_progress(jsonb,bigint) from public,anon;
 grant execute on function public.get_online_player_account(),public.claim_online_class(integer),public.save_online_player_progress(jsonb,bigint) to authenticated;
+
+-- WORLD REGISTRY (world-registry.js): the back-end record of every thing's ID, what happens to it, and the
+-- bugs the overlap audit finds. Signed-in players' games write to it; anyone may read it (it holds no
+-- personal data), so the daily Lawgiver run can query it with the public key. Run this section once.
+create table if not exists public.world_entities (
+  id text primary key check (id ~ '^[A-Z]{3}-[A-Z]{3}-[A-Z]{3}(\.[A-Z]{3}){0,2}-[A-Z]{3}-[0-9A-Z]{6}$'),
+  cls text not null, kind text not null, mat text, owner text, name text, maker text,
+  x int, z int, aliases text[], seen_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+create table if not exists public.world_events (
+  id bigint generated always as identity primary key,
+  entity_id text not null, what text not null, x int, z int,
+  happened_at timestamptz not null default now(), seen_by uuid references auth.users(id) on delete set null
+);
+create index if not exists world_events_entity on public.world_events (entity_id, happened_at desc);
+create table if not exists public.world_bugs (
+  key text primary key, cat text not null, ids text[] not null, x int, z int, words text, count int default 1,
+  fixed boolean not null default false, seen_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+alter table public.world_entities enable row level security;
+alter table public.world_events enable row level security;
+alter table public.world_bugs enable row level security;
+create policy "World registry is readable" on public.world_entities for select using (true);
+create policy "World events are readable" on public.world_events for select using (true);
+create policy "World bugs are readable" on public.world_bugs for select using (true);
+create policy "Players record entities" on public.world_entities for insert to authenticated with check (seen_by = auth.uid());
+create policy "Players update entities" on public.world_entities for update to authenticated using (true) with check (seen_by = auth.uid());
+create policy "Players record events" on public.world_events for insert to authenticated with check (seen_by = auth.uid());
+create policy "Players record bugs" on public.world_bugs for insert to authenticated with check (seen_by = auth.uid());
+create policy "Players update bugs" on public.world_bugs for update to authenticated using (true) with check (seen_by = auth.uid());
