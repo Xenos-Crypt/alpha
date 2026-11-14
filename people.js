@@ -219,9 +219,9 @@ export function buildBody(kit, look, dress) {
 // a baby goes out in a pram: a bassinet with its hood up on four wheels, the baby tucked in under a blanket.
 // The handle sits where the parent's hands are (about 1 m up, 0.3 m ahead).
 const PRAM_COLOURS = [0x2b3a55, 0x6b2f3a, 0x2f4f3a, 0x3a3a3a, 0x8a7a63, 0x4a5f7a];
-export function babyPram(look, seed = 0) {
+export function babyPram(look, colour = PRAM_COLOURS[0]) {
   const g = new THREE.Group();
-  const body = new THREE.MeshStandardMaterial({ color: PRAM_COLOURS[seed % PRAM_COLOURS.length], roughness: .75, side: THREE.DoubleSide });
+  const body = new THREE.MeshStandardMaterial({ color: colour, roughness: .75, side: THREE.DoubleSide });
   const frame = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: .4, metalness: .6 });
   const tyre = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: .9 });
   const add = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
@@ -308,7 +308,7 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
     p.holder.scale.setScalar(p.hs);
     // a newborn's parent takes the baby out in a pram
     const baby = c && !look.child ? babyOf(c) : null;
-    if (baby?.look) { p.pram = babyPram(atAge(baby.look, baby.age), baby.id); h.root.add(p.pram); }
+    if (baby?.look && c.pram) { p.pram = babyPram(atAge(baby.look, baby.age), c.pram.colour); p.pram.userData.id = c.pram.id; h.root.add(p.pram); }
     h.root.add(p.holder); h.rig.visible = false; h.real = p; p.current = null;
     pose(h, p);
     play(kit, p, clipFor(h.realPose, h.realMoving, h.realSprint, h.realGrounded !== false, h.realSwim, h), 0);
@@ -330,6 +330,14 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
     // the pram goes ahead of the parent, its handle at their hands; parked beside them when they sit
     if (p.pram) { const k = p.look.size * p.hs; if (sit) { p.pram.position.set(.75, .53, .2); p.pram.rotation.y = 0; } else { p.pram.position.set(0, 0, 0); p.pram.rotation.y = 0; } p.pram.scale.setScalar(sit ? 1 : Math.min(1.05, Math.max(.9, k))); }
   }
+  // residents wear what they own (belongings.js): when they buy something new, both figures change
+  function dressFromWardrobe(h) {
+    const c = lookOf(h), w = c?.wear; if (!w || h.wearV === c.wearV) return;
+    h.wearV = c.wearV; const o = h.realOpts;
+    if (w.top) o.outfit = w.top.colour; if (w.bottom) o.pants = w.bottom.colour; if (w.shoes) o.shoes = w.shoes.colour;
+    if (h.mats) { h.mats.outfit?.color.setHex(o.outfit); h.mats.pants?.color.setHex(o.pants); if (o.shoes != null) h.mats.dark?.color.setHex(o.shoes); }
+    if (h.real) dressBody(h.real, { outfit: o.outfit, pants: o.pants, shoes: o.shoes ?? 0x1b1b2f, sleeves: o.sleeves ?? 1, longLegs: o.longLegs ?? 1 });
+  }
   const tmp = new THREE.Vector3(), camPos = new THREE.Vector3();
   let t = 0;
   function update(dt) {
@@ -342,6 +350,7 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
       const live = [];
       for (const h of all) {
         if (!h.root.parent) { if (h.real) detach(h); continue; }
+        dressFromWardrobe(h);
         let vis = h.root.visible, o = h.root.parent; while (vis && o) { vis = o.visible; o = o.parent; }
         h.root.getWorldPosition(tmp); const d = tmp.distanceToSquared(camPos);
         if (vis && d < near * near) live.push([d, h]); else if (h.real) detach(h);

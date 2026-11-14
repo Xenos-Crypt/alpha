@@ -29,6 +29,7 @@ import { createGovernment, INVITE } from './government.js';
 import { createNationSim } from './nation-sim.js';
 import { seedLife, createLives, STAGES as BOND_STAGES } from './lives.js';
 import { inheritLook, sexOfName } from './looks.js';
+import { createBelongings } from './belongings.js';
 import { createCommunity } from './community.js';
 import { createJustice } from './justice.js';
 import { createHistory, sourceFor, garble, SOURCES } from './history.js';
@@ -106,7 +107,7 @@ export function createSociety(ctx) {
     Object.assign(S, saved.S); S.research ||= {}; S.projects ||= {};
     for (const k of saved.kids || []) { if (citizens[k.id]) continue; while (citizens.length < k.id) { const f = makeCitizen(citizens.length, 'Child'); seedLife(f); f.dead = true; f.jail = Infinity; citizens.push(f); } const c = makeCitizen(k.id, 'Child'); seedLife(c); Object.assign(c, k); citizens.push(c); }
     for (const [i, w, m, o, j, job, mem, met, crook] of saved.c || []) { const c = citizens[i]; if (!c) continue; Object.assign(c, { wealth: w, mood: m, opinion: o, jail: j, job: job || c.job, memory: mem || [], metPlayer: !!met, knowsCrook: !!crook }); }
-    for (const [i, x] of Object.entries(saved.x || {})) { const c = citizens[i]; if (!c || !x) continue; if (x.fm) c.family = x.fm; if (x.hm) c.home = x.hm; if (x.ll != null) c.landlord = x.ll; if (x.dd) { c.dead = true; c.jail = Infinity; } if (x.si) c.sick = x.si; c.convictions = x.cv || 0; c.record = !!x.rc; if (x.fl) c.file = x.fl; Object.assign(c, { skills: x.sk || c.skills, tenure: x.t ?? c.tenure, ambition: x.a || c.ambition, ambitionDone: x.ad, failures: x.f || 0, health: x.h ?? c.health, illnesses: x.il || [], achievements: x.ach || c.achievements, bond: x.b || 0, story: x.st || c.story, visited: x.v || c.visited, title: x.ti || null, helped: x.hp || 0, age: x.ag || c.age }); if (x.n) { c.name = x.n; c.uniqueName = true; } }
+    for (const [i, x] of Object.entries(saved.x || {})) { const c = citizens[i]; if (!c || !x) continue; if (x.fm) c.family = x.fm; if (x.wr) c.wear = x.wr; if (x.pr) c.pram = x.pr; if (x.hm) c.home = x.hm; if (x.ll != null) c.landlord = x.ll; if (x.dd) { c.dead = true; c.jail = Infinity; } if (x.si) c.sick = x.si; c.convictions = x.cv || 0; c.record = !!x.rc; if (x.fl) c.file = x.fl; Object.assign(c, { skills: x.sk || c.skills, tenure: x.t ?? c.tenure, ambition: x.a || c.ambition, ambitionDone: x.ad, failures: x.f || 0, health: x.h ?? c.health, illnesses: x.il || [], achievements: x.ach || c.achievements, bond: x.b || 0, story: x.st || c.story, visited: x.v || c.visited, title: x.ti || null, helped: x.hp || 0, age: x.ag || c.age }); if (x.n) { c.name = x.n; c.uniqueName = true; } }
   }
   const unemployedPct = () => 100 * citizens.filter(c => c.job === 'Unemployed').length / citizens.length;
   const stats = () => ({ ...S, unemployed: unemployedPct() });
@@ -189,7 +190,7 @@ export function createSociety(ctx) {
     }
     S.approval = clamp(citizens.reduce((n, c) => n + c.mood, 0) / citizens.length * .75 + (S.clean - 50) * .15 - (S.crime - 30) * .35 - (S.treasury < 0 ? 10 : 0), 0, 100);
     nation.tick();
-    community.hourly(); justice.hourly(); systems.hourly(); history.hourly(); if (S.tick % 24 === 0) { community.daily(); systems.daily(); }
+    community.hourly(); justice.hourly(); systems.hourly(); history.hourly(); goods.hourly(); if (S.tick % 24 === 0) { community.daily(); systems.daily(); }
     gov.tick(allPolicies, score, apply);
     if (live && S.tick % 30 === 15) goOnline();
     payStaff();
@@ -291,6 +292,9 @@ export function createSociety(ctx) {
   const gov = createGovernment({ citizens, S, news, remember, nameOf, ctx, stats, lives, justice: () => justice, history: () => history });
   const nation = createNationSim({ citizens, S, news, remember, nameOf, history });
   const systems = createCitySystems({ citizens, S, news, remember, lives, history, ctx: { sectorOfJob } });
+  // what people wear and use is bought, made from something, and has an ID (belongings.js)
+  const goods = createBelongings({ S, citizens, news, remember });
+  goods.seed();
   if (S.gov.president == null) gov.found();
   const presName = () => S.gov.president === 'player' ? 'you' : nameOf(S.gov.president);
   const presSurname = () => S.gov.president === 'player' ? 'the newcomer' : nameOf(S.gov.president).split(' ')[1];
@@ -307,7 +311,7 @@ export function createSociety(ctx) {
     live = true;
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, kids: citizens.filter(c => c.born != null).map(c => ({ id: c.id, name: c.name, age: c.age, city: c.city, traits: c.traits, econ: c.econ, order: c.order, born: c.born, look: c.look })), c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined, fm: c.family, hm: c.home, ll: c.landlord, dd: c.dead ? 1 : 0, si: c.sick, cv: c.convictions, rc: c.record ? 1 : 0, fl: c.file }])) })); } catch { }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, kids: citizens.filter(c => c.born != null).map(c => ({ id: c.id, name: c.name, age: c.age, city: c.city, traits: c.traits, econ: c.econ, order: c.order, born: c.born, look: c.look })), c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { wr: c.wear, pr: c.pram, sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined, fm: c.family, hm: c.home, ll: c.landlord, dd: c.dead ? 1 : 0, si: c.sick, cv: c.convictions, rc: c.record ? 1 : 0, fl: c.file }])) })); } catch { }
   }
   addEventListener('beforeunload', save);
 
@@ -698,7 +702,7 @@ export function createSociety(ctx) {
   setTimeout(() => checkProjects(true), 0);
 
   return {
-    lives, community, justice, history, systems, update, converse, openHall, openTab, close,
+    lives, community, justice, history, systems, goods, update, converse, openHall, openTab, close,
     knownName(e) { const c = cit(e); return c ? lives.knownName(c) || (c.record ? c.name : null) : null; },
     remember,
     speedOf(e) {   // how this person walks: the old slower, the young quicker, the tired dragging, the late hurrying

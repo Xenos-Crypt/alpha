@@ -9,7 +9,8 @@ const hourOk = (h, a, b) => h >= a && h < b;
 
 export function createSeatedResidents({ sitSpots, makePerson, animate, citizens, citizenOf, peds, hour, playerSeat, playerPos, skip = () => false, groundY }) {
   const seats = [], followers = [];
-  const dress = c => ({ outfit: outfitFor(c), hair: 0x2b1d14, pants: pantsFor(c), child: c.age < 16 });
+  // they wear the clothes they own (belongings.js)
+  const dress = c => ({ outfit: c.wear?.top?.colour ?? outfitFor(c), hair: 0x2b1d14, pants: c.wear?.bottom?.colour ?? pantsFor(c), shoes: c.wear?.shoes?.colour, child: c.age < 16 });
   const place = (h, spot, offset, standing) => {
     const side = { x: Math.cos(spot.yaw), z: -Math.sin(spot.yaw) }, fwd = { x: Math.sin(spot.yaw), z: Math.cos(spot.yaw) };
     if (standing) { const x = spot.x + side.x * offset - fwd.x * .2, z = spot.z + side.z * offset - fwd.z * .2; h.root.position.set(x, groundY(x, z), z); }
@@ -49,11 +50,13 @@ export function createSeatedResidents({ sitSpots, makePerson, animate, citizens,
       if (a) add(s, a, 'talk', 10, 19, -.42); if (b) add(s, b, 'talk', 10, 19, .42);
     });
   }
-  // a parent of a newborn takes the baby out in the pram (one parent: they take turns)
+  // the parent who bought the pram takes the newborn out in it
   function babyOf(c) {
-    for (const i of c?.family?.children || []) { const k = citizens()[i]; if (k && !k.dead && k.age < 2 && (k.id + c.id) % 2 === 0) return k; }
+    if (!c?.pram) return null;   // only if this parent bought a pram: no pram, the baby stays home
+    for (const i of c.family?.children || []) { const k = citizens()[i]; if (k && !k.dead && k.age < 2) return k; }
     return null;
   }
+
   // a child out with a parent walks beside them (the parent whose turn it is)
   function childOf(c) {
     for (const i of c?.family?.children || []) { const k = citizens()[i]; if (k && !k.dead && !k.jail && k.age >= 2 && k.age < 12 && (k.id + c.id) % 2 === 1 && k.born != null) return k; }

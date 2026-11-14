@@ -23,7 +23,7 @@ export const KINDS = {
   PER: { PLR: 'the player', RES: 'resident', POL: 'police officer' },
   BLD: { GEN: 'city building', HSE: 'house', SCH: 'school', HSP: 'hospital', CLN: 'clinic', POL: 'police station', SUP: 'supermarket', OFF: 'office', APT: 'apartments', SHP: 'shop', MAN: 'mansion', GOV: 'government building', MKT: 'market', COM: 'community centre', FIR: 'fire station', AIB: 'AI base', TMP: 'temple' },
   VEH: { CAR: 'car', POL: 'police car', AMB: 'ambulance', BUS: 'bus', TNK: 'tank', BIK: 'bicycle', MOT: 'motorbike', BOT: 'boat', SUB: 'submarine', PLN: 'plane', HEL: 'helicopter', TRK: 'truck', FIR: 'fire engine', HOV: 'hover vehicle', TRN: 'train' },
-  PRD: { GRC: 'grocery', DSH: 'dish', SNK: 'snack', INS: 'instrument' },
+  PRD: { GRC: 'grocery', DSH: 'dish', SNK: 'snack', INS: 'instrument', TOP: 'top (shirt, blouse, jumper)', BTM: 'trousers or skirt', SHO: 'shoes', PRM: 'pram' },
   MAT: { RAW: 'raw material (primary)', MAD: 'made material (secondary)' },
   ORG: { PUB: 'public body', PRV: 'private company', CHR: 'charity', SOC: 'social enterprise', COP: 'co-operative', NGO: 'NGO' },
   LND: { ROD: 'road tile', BLK: 'city block', GRS: 'grass tuft', FLR: 'floor tile', SRF: 'other surface' },
@@ -149,8 +149,16 @@ export function createWorldIds(ctx) {
   }
   const vowner = v => v.stolen ? 'STO' : v.stolenGoods ? 'ILL' : v.owned ? 'PLR' : ['police', 'ambulance', 'bus', 'tank', 'fire', 'army'].includes(v.kind) ? 'GOV' : 'RES';
   let vSeq = 0, goods = null;
+  // a thing someone owns (belongings.js) arrives with its ID already made; where its owner is, it is
+  function trackItem(c, it) {
+    const [cls, kind, mat, owner] = it.id.split('-');
+    const e = { id: it.id, cls, kind, mat, owner, code: cls + '-' + kind, obj: it, name: `${it.slot} of ${c.name}`, maker: it.maker, pos: () => ctx.whereIs?.(c) || null, history: [], dirty: true };
+    reg.set(it.id, e); byObj.set(it, e); return e;
+  }
   function registerMoving() {
     ctx.peds().forEach((e, i) => { if (!byObj.has(e)) { const c = ctx.citizenOf?.(e); add('PER', 'RES', 'HUM', CITY3[c?.city] || 'ASH', `p:${i}`, e, { name: c?.name || e.labelName || 'Resident', pos: () => e.hidden ? (e.socHome || null) : e.root.position }); } });
+    // what people wear and use (belongings.js): each item already has its ID; the person is its place
+    for (const [c, it] of ctx.belongings?.() || []) if (!reg.has(it.id)) trackItem(c, it);
     for (const e of ctx.cops?.() || []) if (!byObj.has(e)) add('PER', 'POL', 'HUM', 'GOV', `cop:${vSeq++}`, e, { name: 'Police officer', pos: () => e.root.position });
     for (const h of ctx.robots?.() || []) if (!byObj.has(h)) add('MCH', 'ROB', 'ALY.TCH', org3(MAKER.robot), `rb:${vSeq++}`, h, { materials: ['aly', 'tch'], maker: MAKER.robot, name: 'Robot', pos: () => h.root.position });
     // the dungeon monsters are not born: ATLAS's Foundry fabricates them from bio-gel and alloy
@@ -319,6 +327,8 @@ export function createWorldIds(ctx) {
     idOf(obj) { return byObj.get(obj)?.id || null; },
     entryOf(obj) { return byObj.get(obj) || null; },
     record(obj, what, pos) { const e = byObj.get(obj); if (e) event(e, what, pos); },
+    // an event for a thing known by its ID (bought, worn out, thrown away…)
+    note(id, what, owner, item) { const e = reg.get(id) || (owner && item ? trackItem(owner, item) : null); if (e) { e.dirty = true; event(e, what); } },
     nearest: nearestId, bugs: () => [...bugs.values()], scanNow() { startScan(); while (!scan.done) stepScan(5000); return bugs.size; },
     get size() { return reg.size; }, log: () => log,
     // for the back-end registry (world-registry.js): what has changed since it last asked
