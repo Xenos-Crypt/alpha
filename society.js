@@ -28,6 +28,8 @@ import { PARTIES, CITIES, COUNTRY, TERM, YEAR, SECTORS, sectorOfJob, ATLAS_LEVEL
 import { createGovernment, INVITE } from './government.js';
 import { createNationSim } from './nation-sim.js';
 import { seedLife, createLives, STAGES as BOND_STAGES } from './lives.js';
+import { createCommunity } from './community.js';
+import { createJustice } from './justice.js';
 import { RAW, MADE, SERVICES, ALL, consume } from './supply-chain.js';
 import { ORGS, STAGES, TYPES, STAGE_OF_SECTOR } from './organisations.js';
 
@@ -42,7 +44,7 @@ const JOBS = [['Street cleaner',8,1,null,7],['Shop worker',8,0,'supermarket',12]
   ['Farmer',8,0,null,4],['Miner',12,0,null,2],['Forester',9,0,null,1],['Power plant operator',13,0,null,2],['Electrician',12,0,null,3],['Plumber',11,0,null,3],
   ['Factory worker',9,0,null,6],['Car engineer',15,0,'office',2],['Architect',14,0,'office',1],['Software developer',16,0,'office',4],['AI researcher',20,0,'office',2],
   ['Scientist',16,0,'office',3],['Chemist',15,0,'office',2],['Archaeologist',12,0,null,2],['Banker',20,0,'office',2],['Lawyer',19,0,'office',2],['Tour guide',8,0,null,2],
-  ['Zookeeper',8,0,null,1],['Bin collector',9,1,null,2],['Recycling worker',8,0,null,0],['Ranger',9,1,null,1],['Pilot',18,0,null,1],['Soldier',11,1,null,3],['Artist',7,0,null,2]];
+  ['Zookeeper',8,0,null,1],['Judge',22,1,'government',1],['Child',0,0,'school',0],['Bin collector',9,1,null,2],['Recycling worker',8,0,null,0],['Ranger',9,1,null,1],['Pilot',18,0,null,1],['Soldier',11,1,null,3],['Artist',7,0,null,2]];
 const JOB = Object.fromEntries(JOBS.map(j => [j[0], { wage: j[1], pub: !!j[2], place: j[3] }]));
 const POLICIES = [
   { id: 'taxUp', name: 'Raise taxes by 2%', econ: 1, order: 0, ok: s => s.tax < 30 && s.treasury < 4000 },
@@ -61,6 +63,8 @@ const POLICIES = [
   { id: 'recycle', name: 'Recycling drive (sort more of the rubbish)', econ: .4, order: .2, ok: s => (s.waste?.rate || .15) < .45 && s.treasury > 500 },
   { id: 'landfill', name: 'Open a new landfill cell', econ: .2, order: .1, ok: s => s.waste && s.waste.landfill > s.waste.cap * .7 && s.treasury > 900 },
   { id: 'plasticBan', name: 'Ban single-use plastic', econ: .3, order: .4, ok: s => !s.laws.plasticBan && (s.waste?.pollution || 0) > 8 },
+  { id: 'vaccination', name: 'Free vaccination programme', econ: .7, order: .3, ok: s => !s.laws.vaccination && (s.disease?.cases || 0) > 15 && s.treasury > 800 },
+  { id: 'housing', name: 'Build affordable homes', econ: .8, order: .1, ok: s => (s.homes?.homeless || 0) > 5 && s.treasury > 1500 },
   { id: 'contract', name: 'Award a building contract to a friend', econ: 0, order: 0, corrupt: true, ok: s => s.treasury > 600 },
 ];
 
@@ -92,8 +96,9 @@ export function createSociety(ctx) {
   peds().forEach((e, i) => { const at = ctx.cityAt?.(e.home || e.root.position); if (at && citizens[i]) citizens[i].city = at; });
   if (saved?.v === 1) {
     Object.assign(S, saved.S); S.research ||= {}; S.projects ||= {};
+    for (const k of saved.kids || []) { if (citizens[k.id]) continue; while (citizens.length < k.id) { const f = makeCitizen(citizens.length, 'Child'); seedLife(f); f.dead = true; f.jail = Infinity; citizens.push(f); } const c = makeCitizen(k.id, 'Child'); seedLife(c); Object.assign(c, k); citizens.push(c); }
     for (const [i, w, m, o, j, job, mem, met, crook] of saved.c || []) { const c = citizens[i]; if (!c) continue; Object.assign(c, { wealth: w, mood: m, opinion: o, jail: j, job: job || c.job, memory: mem || [], metPlayer: !!met, knowsCrook: !!crook }); }
-    for (const [i, x] of Object.entries(saved.x || {})) { const c = citizens[i]; if (!c || !x) continue; Object.assign(c, { skills: x.sk || c.skills, tenure: x.t ?? c.tenure, ambition: x.a || c.ambition, ambitionDone: x.ad, failures: x.f || 0, health: x.h ?? c.health, illnesses: x.il || [], achievements: x.ach || c.achievements, bond: x.b || 0, story: x.st || c.story, visited: x.v || c.visited, title: x.ti || null, helped: x.hp || 0, age: x.ag || c.age }); if (x.n) { c.name = x.n; c.uniqueName = true; } }
+    for (const [i, x] of Object.entries(saved.x || {})) { const c = citizens[i]; if (!c || !x) continue; if (x.fm) c.family = x.fm; if (x.hm) c.home = x.hm; if (x.ll != null) c.landlord = x.ll; if (x.dd) { c.dead = true; c.jail = Infinity; } if (x.si) c.sick = x.si; c.convictions = x.cv || 0; c.record = !!x.rc; if (x.fl) c.file = x.fl; Object.assign(c, { skills: x.sk || c.skills, tenure: x.t ?? c.tenure, ambition: x.a || c.ambition, ambitionDone: x.ad, failures: x.f || 0, health: x.h ?? c.health, illnesses: x.il || [], achievements: x.ach || c.achievements, bond: x.b || 0, story: x.st || c.story, visited: x.v || c.visited, title: x.ti || null, helped: x.hp || 0, age: x.ag || c.age }); if (x.n) { c.name = x.n; c.uniqueName = true; } }
   }
   const unemployedPct = () => 100 * citizens.filter(c => c.job === 'Unemployed').length / citizens.length;
   const stats = () => ({ ...S, unemployed: unemployedPct() });
@@ -113,6 +118,7 @@ export function createSociety(ctx) {
     const hour = S.tick % 24, r = Math.random, policeStrength = S.budget.police * (S.laws.cctv ? 1.4 : 1) * (S.laws.watch ? 1.15 : 1);
     let taxIn = 0, thefts = 0, helps = 0, vandals = 0;
     for (const c of citizens) {
+      if (c.dead) continue;
       if (c.jail > 0) { c.jail--; if (!c.jail) remember(c, 'Got out of jail'); continue; }
       c.hunger = clamp(c.hunger - 3, 0, 100); c.energy = clamp(c.energy - 2, 0, 100); c.social = clamp(c.social - 1.5, 0, 100);
       const J = JOB[c.job] || { wage: 0 }, night = hour < 6 || hour > 21;
@@ -137,7 +143,12 @@ export function createSociety(ctx) {
           const v = citizens[Math.floor(r() * citizens.length)], amt = c.crook === 'Fraudster' ? 60 : 15 + Math.floor(r() * 30);
           if (v !== c && !v.jail) { v.wealth -= amt; c.wealth += amt; v.mood -= 8; remember(v, c.crook === 'Fraudster' ? 'Was scammed out of money' : 'Got my pocket picked'); thefts++; }
         }
-        if (r() < policeStrength * .9) { c.jail = 24 + Math.floor(r() * 48); c.knowsCrook = true; if (r() < .3) news(`Police arrest ${c.name} (${c.crook.toLowerCase()}).`); }
+        if (r() < policeStrength * .9) {
+          // usually they get the right person; now and then a witness points at the wrong one
+          const wrong = r() < .1 ? citizens.find(o => !o.dead && !o.jail && o !== c && o.city === c.city && o.age > 16 && r() < .02) : null;
+          justice.charge(wrong || c, c.crook === 'Vandal' ? 'vandalism' : c.crook === 'Fraudster' ? 'fraud' : 'theft', { culprit: c.id });
+          if (r() < .3) news(`Police arrest ${(wrong || c).name} on suspicion of ${c.crook === 'Vandal' ? 'vandalism' : c.crook === 'Fraudster' ? 'fraud' : 'theft'}.`);
+        }
       }
       if (J.wage === 0 && c.job === 'Unemployed') c.wealth += 3 + S.budget.welfare * 30 * (S.treasury > 0 ? 1 : 0);
       if (c.job === 'Retired') c.wealth += 3;
@@ -168,6 +179,7 @@ export function createSociety(ctx) {
     }
     S.approval = clamp(citizens.reduce((n, c) => n + c.mood, 0) / citizens.length * .75 + (S.clean - 50) * .15 - (S.crime - 30) * .35 - (S.treasury < 0 ? 10 : 0), 0, 100);
     nation.tick();
+    community.hourly(); justice.hourly(); if (S.tick % 24 === 0) community.daily();
     gov.tick(allPolicies, score, apply);
     if (live && S.tick % 30 === 15) goOnline();
     payStaff();
@@ -188,7 +200,7 @@ export function createSociety(ctx) {
   function score(m, p) {
     if (p.id.startsWith('build:')) return .5 + (S.treasury > 3000 ? .4 : 0) + p.econ * m.econ * .5 + m.traits.ambition * .3;   // how much a politician likes a policy: their views + what the city needs
     if (p.corrupt) return m.traits.honesty < .3 ? 1 : -2;
-    const need = { police: S.crime / 35 + (S.budget.police < .12 ? .6 : 0), curfewOn: S.crime / 60, cctvOn: S.crime / 60, watchOn: S.crime / 70, clean: (100 - S.clean) / 40, health: (100 - S.health) / 40, roads: (100 - S.roads) / 40, schools: (100 - S.edu) / 40, welfare: unemployedPct() / 10, jobs: unemployedPct() / 10, taxUp: S.treasury < 800 || (S.tax < 14 && (S.crime > 35 || S.clean < 45 || S.health < 45)) ? 1.3 : -.3, taxDown: S.treasury > 3000 ? 1 : 0, curfewOff: .8, recycle: (S.waste?.pollution || 0) / 25 + (S.waste ? S.waste.landfill / S.waste.cap : 0), landfill: S.waste ? S.waste.landfill / S.waste.cap * 1.6 : 0, plasticBan: (S.waste?.pollution || 0) / 20 }[p.id] || 0;
+    const need = { police: S.crime / 35 + (S.budget.police < .12 ? .6 : 0), curfewOn: S.crime / 60, cctvOn: S.crime / 60, watchOn: S.crime / 70, clean: (100 - S.clean) / 40, health: (100 - S.health) / 40, roads: (100 - S.roads) / 40, schools: (100 - S.edu) / 40, welfare: unemployedPct() / 10, jobs: unemployedPct() / 10, taxUp: S.treasury < 800 || (S.tax < 14 && (S.crime > 35 || S.clean < 45 || S.health < 45)) ? 1.3 : -.3, taxDown: S.treasury > 3000 ? 1 : 0, curfewOff: .8, vaccination: (S.disease?.cases || 0) / 15 + (S.disease?.strain || 0), housing: (S.homes?.homeless || 0) / 6, recycle: (S.waste?.pollution || 0) / 25 + (S.waste ? S.waste.landfill / S.waste.cap : 0), landfill: S.waste ? S.waste.landfill / S.waste.cap * 1.6 : 0, plasticBan: (S.waste?.pollution || 0) / 20 }[p.id] || 0;
     return need - .8 + p.econ * m.econ * .7 + p.order * m.order * .7;
   }
   function shift(key, amt) { const b = S.budget; b[key] = clamp(b[key] + amt, .03, .6); const sum = Object.values(b).reduce((a, x) => a + x, 0); for (const k in b) b[k] /= sum; }
@@ -198,6 +210,8 @@ export function createSociety(ctx) {
       case 'police': shift('police', .06); break; case 'clean': shift('clean', .06); break; case 'health': shift('health', .06); break;
       case 'roads': shift('roads', .06); break; case 'schools': shift('schools', .06); break; case 'welfare': shift('welfare', .06); break;
       case 'jobs': { let n = 0; for (const c of citizens) if (c.job === 'Unemployed' && n < 12 && c.age < 66) { c.job = 'Street cleaner'; remember(c, 'Got a job on the public jobs scheme'); n++; } S.treasury -= 300; break; }
+      case 'vaccination': S.laws.vaccination = true; S.treasury -= 600; break;
+      case 'housing': S.homes.built += 20; S.treasury -= 1200; for (const c of citizens) if (c.home === 'homeless' && !c.dead) { c.home = 'tenant'; remember(c, 'Moved into a new affordable home'); c.mood += 20; } break;
       case 'recycle': S.waste.rate = Math.min(.5, S.waste.rate + .08); S.treasury -= 400; break;
       case 'landfill': S.waste.cap += 30000; S.treasury -= 900; break;
       case 'plasticBan': S.laws.plasticBan = true; break;
@@ -244,7 +258,16 @@ export function createSociety(ctx) {
   const housekeeper = () => S.staff.find(s => s.role === 'housekeeper');
 
   const lives = createLives({ citizens, S, news, remember, ctx, JOB });
-  const gov = createGovernment({ citizens, S, news, remember, nameOf, ctx, stats, lives });
+  const justice = createJustice({ citizens, S, news, remember, lives, ctx });
+  function makeChild(a, b) {   // a real new resident, born to two others
+    const c = makeCitizen(citizens.length, 'Child'); const sur = a.name.split(' ').slice(1).join(' ') || b.name.split(' ')[1];
+    Object.assign(c, { name: c.name.split(' ')[0] + ' ' + sur, age: 0, city: a.city, wealth: 0, job: 'Child', econ: (a.econ + b.econ) / 2, order: (a.order + b.order) / 2 });
+    for (const k in c.traits) c.traits[k] = (a.traits[k] + b.traits[k]) / 2 * .7 + c.traits[k] * .3;
+    seedLife(c); c.tenure = 0; c.skills = {}; c.story = [`Born in ${a.city} to ${a.name} and ${b.name}.`]; c.crook = null; c.born = S.tick;
+    citizens.push(c); return c;
+  }
+  const community = createCommunity({ citizens, S, news, remember, lives, makeChild, ctx: { ...ctx, courts: justice, onDeath: c => { c.jail = Infinity; } } });
+  const gov = createGovernment({ citizens, S, news, remember, nameOf, ctx, stats, lives, justice: () => justice });
   const nation = createNationSim({ citizens, S, news, remember, nameOf });
   if (S.gov.president == null) gov.found();
   const presName = () => S.gov.president === 'player' ? 'you' : nameOf(S.gov.president);
@@ -262,7 +285,7 @@ export function createSociety(ctx) {
     live = true;
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined }])) })); } catch { }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, S, kids: citizens.filter(c => c.born != null).map(c => ({ id: c.id, name: c.name, age: c.age, city: c.city, traits: c.traits, econ: c.econ, order: c.order, born: c.born })), c: citizens.map(c => [c.id, Math.round(c.wealth), Math.round(c.mood), Math.round(c.opinion), c.jail, c.job, c.memory, c.metPlayer ? 1 : 0, c.knowsCrook ? 1 : 0]), x: Object.fromEntries(citizens.map(c => [c.id, { sk: Object.fromEntries(Object.entries(c.skills || {}).map(([k, v]) => [k, Math.round(v)])), t: Math.round((c.tenure || 0) * 10) / 10, a: c.ambition, ad: c.ambitionDone, f: c.failures, h: Math.round(c.health), il: c.illnesses, ach: c.achievements, b: Math.round(c.bond || 0), st: c.story, v: c.visited, ti: c.title, hp: c.helped, ag: c.age, n: c.uniqueName ? c.name : undefined, fm: c.family, hm: c.home, ll: c.landlord, dd: c.dead ? 1 : 0, si: c.sick, cv: c.convictions, rc: c.record ? 1 : 0, fl: c.file }])) })); } catch { }
   }
   addEventListener('beforeunload', save);
 
@@ -426,7 +449,7 @@ export function createSociety(ctx) {
           const hero = peds().find(h => h !== e && h !== v && free(h) && cit(h) && cit(h).traits.kindness > .55 && cit(h).traits.aggression > .25 && h.root.position.distanceTo(p) < 22);
           if (hero) { own(hero, { kind: 'chase', thief: e, t: 0 }); say(hero, 'Oi! Come back here!'); }
           const caught = Math.random() < S.budget.police * 2.2 * (S.laws.cctv ? 1.5 : 1);
-          if (caught && ctx.arrest(e, () => { c.jail = 48; c.knowsCrook = true; news(`Police arrest pickpocket ${c.name}.`, false); e.socLock = false; e.soc = null; e.socHome = e.root.position.clone(); e.hidden = true; e.root.visible = false; e.root.position.set(9999, -500, 9999); })) { j.arrest = true; e.socLock = true; }
+          if (caught && ctx.arrest(e, () => { justice.charge(c, 'theft', { cctv: true, witnesses: [{ reliability: .9, why: 'saw it clearly' }] }); news(`Police arrest pickpocket ${c.name}.`, false); e.socLock = false; e.soc = null; e.socHome = e.root.position.clone(); e.hidden = true; e.root.visible = false; e.root.position.set(9999, -500, 9999); })) { j.arrest = true; e.socLock = true; }
           ctx.cityEvent?.('theft', p);
         }
         j.t += dt;
@@ -506,6 +529,8 @@ export function createSociety(ctx) {
     }
     if (stage >= 4) {
       choices.push(['How is your health?', `${c.health > 80 ? "I'm healthy, touch wood." : c.health > 55 ? "Not bad, a few aches." : c.health > 30 ? "Not good. The doctors keep an eye on me." : "I'm very unwell, if I'm honest."} ${c.illnesses?.length ? 'I have ' + c.illnesses.join(', ') + '.' : ''} (${Math.round(c.health)}/100)`]);
+      if (c.family?.partner == null && S.playerPartner == null && c.age >= 18) choices.push(['Ask them to marry you', () => { if (c.opinion < 60) return 'I care about you… but I am not ready for that.'; community.propose(c); save(); return 'Yes! Of course, yes!'; }]);
+      if (S.playerPartner === c.id) choices.push(['(Your partner)', `${first} smiles. "Home tonight?"`]);
       choices.push(['Tell me your life story', c.story.join(' ') + (c.achievements.length ? ' Achievements: ' + c.achievements.join('; ') + '.' : '')]);
     }
     choices.push(["What's the news?", S.news.slice(0, 2).map(n => n.text).join(' ') || 'Quiet lately.']);
@@ -536,7 +561,7 @@ export function createSociety(ctx) {
   function render() {
     const G = S.gov, P = gov.P, left = (G.snapAt != null ? G.snapAt : G.lastElection + TERM) - S.tick, ppl = citizens.filter(c => !c.jail), hk = housekeeper();
     const year = Math.floor(S.tick / YEAR) + 1, avgOp = citizens.reduce((n, c) => n + c.opinion, 0) / citizens.length;
-    const tabs = [['overview', 'Overview'], ['politics', 'Politics'], ['economy', 'Economy'], ['orgs', 'Organisations'], ['atlas', 'ATLAS & science'], ['lawgiver', 'The Lawgiver'], ['news', 'News']];
+    const tabs = [['overview', 'Overview'], ['politics', 'Politics'], ['economy', 'Economy'], ['orgs', 'Organisations'], ['justice', 'Courts'], ['people', 'People'], ['atlas', 'ATLAS & science'], ['lawgiver', 'The Lawgiver'], ['news', 'News']];
     const head = `<button class="x" type="button" data-close>Close</button><h2>🏛 Government of ${COUNTRY}</h2><div style="opacity:.8">City year ${year} · Development level ${S.dev.toFixed(1)} (it only goes up)</div>
       <div class="row" style="margin:8px 0">${tabs.map(([k, n]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
     let body = '';
@@ -580,6 +605,16 @@ export function createSociety(ctx) {
       <h3>Ideas residents found online</h3><ul>${PROJECTS.filter(p => S.research[p.id]).map(p => { const r = S.research[p.id], pr = S.projects[p.id];
         const status = pr?.done ? '✅ built' : pr?.waiting ? `⏳ waiting for materials${pr.short ? ': short of ' + Object.entries(pr.short).map(([k, n]) => n + ' ' + (ALL[k]?.name || k)).join(', ') : ''}` : pr ? `🏗 being built: ${Math.round(100 * clamp((Date.now() - pr.start) / (pr.end - pr.start), 0, 1))}%` : r.advanced ? 'proposed to the Assembly' : 'not needed';
         return `<li><b>${esc(p.name)}</b> (${status}). ${esc(nameOf(r.by))}: "${esc(r.summary)}"${r.sources.length ? ' Sources: ' + r.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:#9fd3ff">${esc(s.title || 'link')}</a>`).join(', ') : ''}</li>`; }).join('') || '<li>Nobody has gone looking yet. Residents read up on new ideas about every half hour.</li>'}</ul>`;
+    } else if (tab === 'justice') {
+      const J = justice.J, nm = i => i == null ? '—' : esc(citizens[i]?.name || '?');
+      body = `<div style="opacity:.8">Every arrest goes to trial. Verdicts rest on the evidence: witnesses (each with a reliability), CCTV and what the police found. Hired lawyers have skill; public defenders are stretched. Mistakes happen, always with a cause, and good lawyers or new evidence can win an appeal.</div>
+      <div>Wrongful convictions so far: ${J.wrongful} · overturned on appeal: ${J.overturned}</div>
+      <ul>${J.cases.slice(0, 25).map(k => k.civil ? `<li><b>Civil · ${esc(k.civil)}</b>: ${esc(k.state)}</li>` : `<li><b>R v ${nm(k.defendant)}</b> · ${esc(k.offence)} · evidence ${k.evidence ?? '?'}% · ${k.witnesses.length} witness${k.witnesses.length > 1 ? 'es' : ''} (${k.witnesses.map(w => Math.round(w.reliability * 100) + '%').join(', ')})${k.cctv ? ' + CCTV' : ''} · judge ${nm(k.judge)} · ${k.lawyer != null ? 'lawyer ' + nm(k.lawyer) : 'public defender'} · <i>${esc(k.state)}</i>${k.cause ? ' · cause: ' + esc(k.cause) : ''}</li>`).join('') || '<li>No cases yet.</li>'}</ul>`;
+    } else if (tab === 'people') {
+      const cs = community.stats(), alive = citizens.filter(c => !c.dead);
+      body = `<h3>Families</h3><div>${cs.marriages} marriages · ${cs.births} births · ${cs.deaths} deaths · ${alive.filter(c => c.job === 'Child').length} children growing up · ${alive.length} people alive${S.playerPartner != null ? ' · you are married to ' + esc(citizens[S.playerPartner]?.name) : ''}</div>
+      <h3>Health</h3><div>${cs.cases} people ill right now · hospitals ${cs.strain > 1 ? '<b>overwhelmed</b>' : cs.strain > .6 ? 'busy' : 'coping'} (${Math.round(cs.strain * 100)}% of capacity) · ${cs.outbreaks} outbreaks so far${S.laws.vaccination ? ' · vaccination programme running' : ''}</div>
+      <h3>Homes</h3><div>Average house price ${fmt(cs.price * 100)} gold · rent ${cs.rent.toFixed(1)} gold a day · ${alive.filter(c => c.home === 'owner').length} owners, ${alive.filter(c => c.home === 'tenant').length} renting, <b>${cs.homeless} homeless</b> · ${cs.evictions} evictions</div>`;
     } else if (tab === 'orgs') {
       const O = S.orgs || { funds: {}, helped: {} };
       body = `<div style="opacity:.8">Public bodies are paid for by taxes, private companies run for profit, charities live on donations, social enterprises trade but put their profits into a social purpose, co-operatives are owned by their members, and NGOs campaign and volunteer.</div>
@@ -622,7 +657,7 @@ export function createSociety(ctx) {
   setTimeout(() => checkProjects(true), 0);
 
   return {
-    lives, update, converse, openHall, openTab, close,
+    lives, community, justice, update, converse, openHall, openTab, close,
     knownName(e) { const c = cit(e); return c ? lives.knownName(c) || (c.record ? c.name : null) : null; },
     remember,
     speedOf(e) {   // how this person walks: the old slower, the young quicker, the tired dragging, the late hurrying
