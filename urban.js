@@ -1,7 +1,8 @@
+import {marketStall,setStallScene,bunting} from './market-stalls.js';
 import * as THREE from 'three';
 import {arrivalBoard,formatWait} from './arrival-boards.js';
 export function buildUrban(ctx){
- const {scene,box,sitSpots,interactables,makePerson,animatePerson,makeTex}=ctx;const vendors=[],hands=[],busBoards=[];
+ const {scene,box,sitSpots,interactables,makePerson,animatePerson,makeTex}=ctx;const vendors=[],hands=[],busBoards=[];setStallScene(scene);
  // A dedicated centre avoids placing the tower in a traffic intersection.
  box(90,.16,90,310,.08,65,0xaab0ab,false);box(8,.16,35,310,.08,8,0xaab0ab,false);
  function label(text,x,y,z,width=8){const map=makeTex(768,96,g=>{g.fillStyle='#2a4954';g.fillRect(0,0,768,96);g.fillStyle='white';g.font='bold 36px sans-serif';g.textAlign='center';g.fillText(text,384,60);});const m=new THREE.Mesh(new THREE.PlaneGeometry(width,1.2),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));m.position.set(x,y,z);scene.add(m);return m;}
@@ -14,9 +15,9 @@ export function buildUrban(ctx){
  const names=['FRUIT AND VEG','BAKERY','FLOWERS','STREET FOOD','LOCAL CRAFTS','BOOKS','FRESH PRODUCE','COFFEE'];
  for(let i=0;i<8;i++){
   const x=i<4?282:338,z=49+(i%4)*15,color=[0xa9584e,0x547b69,0xba974b,0x577e96][i%4];
-  box(6,.9,2,x,.61,z,0x796149);box(7,.15,4.6,x,3.1,z,color,false);for(const dx of [-3,3])for(const dz of [-2,2])box(.1,3,.1,x+dx,1.6,z+dz,0x4b5456,false);
-  label(names[i],x,2.4,z-1.1,6).rotation.y=Math.PI;
-  for(let j=0;j<4;j++)box(.8,.3,.7,x-1.5+j,1.2,z,0xb68a4e,false);
+  // a proper stall: counter, striped awning, goods in crates, chalkboard, string lights (market-stalls.js)
+  marketStall({x,y:.16,z,colour:color,goods:['fruit','bread','flowers','food','crafts','books','veg','coffee'][i],title:names[i],sub:['Fresh today','Baked at dawn','Cut this morning','Hot and ready','Made in Ashford','Second-hand & new','From Greenfield Farms','Roasted locally'][i]});
+  ctx.colliders?.push({minX:x-2.2,maxX:x+2.2,minZ:z-1,maxZ:z+1});
   const h=makePerson({outfit:color,hair:0x43332c,pants:0x344555});h.root.position.set(x,.16,z+1.4);h.root.rotation.y=Math.PI;vendors.push(h);
   interactables.push({pos:new THREE.Vector3(x,.16,z-2),r:2,label:'Visit '+names[i].toLowerCase(),action:()=>[0,1,3,6,7].includes(i)?ctx.buyFood():ctx.toast(names[i]+': browse the local market stall.')});
  }
@@ -32,7 +33,14 @@ export function buildUrban(ctx){
  for(const dx of [-4,4])for(const dz of [-4,4])box(.3,5,.3,310+dx,40,29+dz,0x7e7867,false);
  box(11,.5,11,310,42.7,29,0x53636d,false);
  const bell=new THREE.Mesh(new THREE.ConeGeometry(1.7,2.5,24,1,true),new THREE.MeshStandardMaterial({color:0xbf9841,metalness:.65,roughness:.3,side:THREE.DoubleSide}));bell.position.set(310,40.3,29);scene.add(bell);
- label('ASHFORD CENTRAL MARKET',310,3,112,20);ctx.destinations.push({name:'City centre and market',x:310,z:114});
+ label('ASHFORD CENTRAL MARKET',310,3,112,20);for(let i=0;i<4;i++)bunting(scene,new THREE.Vector3(282,4.2,49+i*15),new THREE.Vector3(338,4.2,49+i*15));
+ // a fuller market: two inner rows of stalls facing the aisles, café tables under parasols, and shoppers' crates
+ {const inner=[['SPICES','fruit',0xc0602a],['CHEESE & DAIRY','bread',0xd9b44a],['FISH','food',0x3f7fa0],['TEA','coffee',0x5d8a4a],['ANTIQUES','crafts',0x7a5b8a],['TOYS','flowers',0xd84a6a]];
+  inner.forEach(([n,g,c],k)=>{const x=k<3?298:322,z=56+(k%3)*16;marketStall({x,y:.16,z,ry:k<3?Math.PI/2:-Math.PI/2,colour:c,goods:g,title:n,sub:'Ashford Central Market'});ctx.colliders?.push({minX:x-1,maxX:x+1,minZ:z-2.2,maxZ:z+2.2});
+   const v=makePerson({outfit:c,hair:0x2d1b0e,pants:0x344555});v.root.position.set(x+(k<3?-1.4:1.4),.16,z);v.root.rotation.y=k<3?Math.PI/2:-Math.PI/2;vendors.push(v);
+   interactables.push({pos:new THREE.Vector3(x+(k<3?2:-2),.16,z),r:2,label:'Visit the '+n.toLowerCase()+' stall',action:()=>g==='food'||g==='bread'||g==='coffee'?ctx.buyFood():ctx.toast(n.charAt(0)+n.slice(1).toLowerCase()+': you browse the stall.')});});
+  for(const [px,pz] of [[310,58],[310,74],[310,88]]){box(.08,2.4,.08,px,1.36,pz,0x555555,false);const p=new THREE.Mesh(new THREE.ConeGeometry(1.6,.6,10),new THREE.MeshStandardMaterial({color:[0xd9534f,0xf0ad4e,0x5bc0de][(pz/16|0)%3]}));p.position.set(px,2.7,pz);scene.add(p);box(1.2,.06,1.2,px,.95,pz,0xe8e2d0,false);for(const d of [-1,1]){box(.45,.45,.45,px+d*1.1,.4,pz,0x8a6440,false);}}
+ }ctx.destinations.push({name:'City centre and market',x:310,z:114});
  // Open gutters run beside the existing city road grid.
  for(let line=-160;line<=160;line+=40)for(const side of [-1,1]){box(320,.035,.35,0,.035,line+side*5.3,0x414a4d,false);box(.35,.035,320,line+side*5.3,.035,0,0x414a4d,false);}
  const grateMap=makeTex(64,64,g=>{g.fillStyle='#222c33';g.fillRect(0,0,64,64);g.fillStyle='#86949e';for(let x=6;x<64;x+=10)g.fillRect(x,3,4,58);});

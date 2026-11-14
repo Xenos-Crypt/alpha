@@ -1,3 +1,4 @@
+import { marketStall, setStallScene } from './market-stalls.js';
 // The Narrows: the dark side of the country, a maze of grimy back alleys on the far west
 // edge of the dome. Dealers sell illegal weapons (permanent damage bonus) and street stims
 // (fictional drugs: a strong boost for a minute, then a nasty comedown). Every deal risks a
@@ -60,6 +61,8 @@ export function buildBlackMarket({ openVehicleShop, openPropertyShop, forgeLicen
 
   // ---- market stalls in the square ----
   const stall = (x, z, ry, colour) => {
+    const titles = { 0x3a0f0f: ['ARMOURY', 'no questions'], 0x0f2a1a: ['STIMS', 'feel better'], 0x1a1a3a: ['PAPERS', 'any name'], 0x2a2a2a: ['WHEELS', 'cash only'] }[colour] || ['', ''];
+    if (marketStall) { setStallScene(scene); const s = marketStall({ x, y: Y, z, ry: ry + Math.PI, colour: colour + 0x202020, goods: 'dark', dark: true, title: titles[0], sub: titles[1] }); colliders.push({ minX: x - 1.8, maxX: x + 1.8, minZ: z - 1.2, maxZ: z + 1.2 }); return s; }
     const g = new THREE.Group(); g.position.set(x, Y, z); g.rotation.y = ry; scene.add(g);
     for (const [w, h, d, px, py, pz, c] of [[3.2, 1.0, 1.2, 0, 0.5, 0.3, 0x3a2a1a], [3.4, 0.08, 2.2, 0, 2.4, 0, colour], [0.1, 2.4, 0.1, -1.6, 1.2, -0.8, 0x222222], [0.1, 2.4, 0.1, 1.6, 1.2, -0.8, 0x222222], [0.1, 2.4, 0.1, -1.6, 1.2, 0.9, 0x222222], [0.1, 2.4, 0.1, 1.6, 1.2, 0.9, 0x222222]]) { const p = new THREE.Mesh(geo, mat(c)); p.scale.set(w, h, d); p.position.set(px, py, pz); g.add(p); }
     colliders.push({ minX: x - 1.8, maxX: x + 1.8, minZ: z - 1.2, maxZ: z + 1.2 });
