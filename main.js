@@ -15,6 +15,7 @@ import {createWorldWatch} from './world-watch.js';
 import {buildProject} from './innovations.js';
 import {buildAtlasWorld} from './atlas-world.js';
 import {createWorldIds} from './world-ids.js';
+import {createWorldRegistry} from './world-registry.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -125,7 +126,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -2302,6 +2303,7 @@ async function boot() {
   if(navigator.onLine){try{const result=await Promise.race([supabase.auth.getSession(),new Promise(resolve=>setTimeout(()=>resolve(null),8000))]);session=result?.data?.session||null;}catch{}}
   window.gameLoading?.hide();
   const activeSession = navigator.onLine?(session||await showAuthScreen()):offlinePlayerSession();
+  registryUserId=activeSession.user.isGuest?null:activeSession.user.id;   // the world registry only takes signed-in players' reports
   alignmentUserId=activeSession.user.id;try{const role=JSON.parse(localStorage.getItem('alignment:'+alignmentUserId));if(role){heroDungeonKills=role.heroDungeonKills||0;villainKills=role.villainKills||0;isVillain=villainKills>0;}}catch{}
   playerUsername = activeSession.user.isGuest?(localStorage.getItem('lastPlayerName')||'Guest'):await requireUsername(supabase);
   if(!activeSession.user.isGuest)localStorage.setItem('lastPlayerName',playerUsername);
@@ -2577,7 +2579,7 @@ const _fwd = new THREE.Vector3();
 function updateFlashlight() {
   const xo = $('exoBtn'); if (xo) { const w = !!military?.wearing; if ((xo.style.display !== 'none') !== w) xo.style.display = w ? '' : 'none'; if (!xo.onclick) xo.onclick = () => military?.takeOff(); }
   for (const id of ['torchBtn', 'taxiBtn']) { const el = $(id); if (el && el.style.display !== 'none') el.style.visibility = inCar || !canAct() ? 'hidden' : 'visible'; }   // no torch or taxi call while you're in a vehicle
-  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } const hb = $('cityBtn'); if (hb) { hb.style.display = ''; hb.onclick = () => society?.openHall(); } const ib = $('idBtn'); if (ib) { ib.style.display = ''; ib.onclick = () => worldIds?.open(); } }
+  const tb = $('torchBtn'); if (tb && tb.style.display === 'none') { tb.style.display = ''; tb.onclick = toggleFlashlight; const xb = $('taxiBtn'); if (xb) { xb.style.display = ''; xb.onclick = () => { if (!inCar) cityServices?.callTaxi(player.position.clone()); }; } const hb = $('cityBtn'); if (hb) { hb.style.display = ''; hb.onclick = () => society?.openHall(); } const ib = $('idBtn'); if (ib && isOwner()) { ib.style.display = ''; ib.onclick = () => worldIds?.open(); } }
   flashlight.intensity = flashlightOn && !inCar ? 90 : 0;
   if (!flashlightOn) return;
   camera.getWorldDirection(_fwd);
@@ -6591,7 +6593,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyV') toggleFlashlight();
   if (e.code === 'KeyY' && !inCar) cityServices?.callTaxi(player.position.clone());
   if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
-  if (e.code === 'KeyK' && locked && !e.repeat) worldIds?.open();
+  if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
   if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
@@ -7747,13 +7749,16 @@ atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,
 // Every building, house, road tile, block, resident, vehicle and the player gets a unique ID (world-ids.js).
 const idBlocks=[];for(const [city,b] of [['Ashford',MAIN_BOUNDS],['Riverside',RIVERSIDE_BOUNDS],['Capital',CAPITAL_BOUNDS]])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)idBlocks.push({city,bx,bz});
 let idNewRoads=null;
-const idExtra=[{code:'rp',seed:'atlas-base',kind:'AI base',name:'ATLAS national AI base',pos:{x:80,z:922}},{code:'rp',seed:'temple-dig',kind:'archaeological site',name:'Ancient temple dig',pos:{x:-147,z:-357}}];
-worldIds=createWorldIds({THREE,scene,grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
+const idExtra=[{cls:'BLD',kind:'AIB',mat:'GLS.STL',owner:'GOV',seed:'atlas-base',maker:'Westhaven Builders',name:'ATLAS national AI base',pos:{x:80,z:922}},{cls:'BLD',kind:'TMP',mat:'STN',owner:'GOV',seed:'temple-dig',maker:'the First Kings (ancient)',name:'Ancient temple dig',pos:{x:-147,z:-357}},{cls:'BLD',kind:'GEN',mat:'STL.CON',owner:'GOV',seed:'waste-centre',maker:'Westhaven Builders',name:'Waste & Recycling Centre',pos:{x:283,z:-411}}];
+// The IDs are for the AI and the back end, not for players: only the owner (open the game once with ?owner) gets the hidden registry view.
+const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setItem('aw.owner','1');return localStorage.getItem('aw.owner')==='1';}catch{return false;}};
+worldIds=createWorldIds({isOwner,THREE,scene,grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
-  extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={code:'bh',seed:'innovation:'+b.group.name,kind:'resident-built project',name:b.group.name.replace('innovation:',''),pos:null}))],
+  extra:()=>[...idExtra,...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+const worldRegistry=createWorldRegistry({client:supabase,ids:worldIds,userId:()=>registryUserId});
 worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
   unstick:e=>{const s=e.ped;s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;e.root.position.copy(cornerPos(s.node));e.root.position.y=groundY(e.root.position.x,e.root.position.z);s.target=cornerPos(nextCorner(s.node,null,s.bounds));s.state='wander';},
@@ -8062,7 +8067,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);worldIds?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);

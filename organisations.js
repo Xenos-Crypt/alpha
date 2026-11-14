@@ -42,7 +42,7 @@ export const ORGS = [
   ['Riverside Animal Rescue', 'charity', 'tertiary', 'tourism', 'rescues and rehomes animals'], ['Wild A.T. Trust', 'charity', 'tertiary', 'tourism', 'protects habitats, the zoo\'s breeding programmes and wild animals'],
   ['Clean Coasts Collective', 'NGO', 'tertiary', 'public', 'volunteers who clean beaches and campaign against waste'],
   // quaternary
-  ['Atlas Dynamics', 'private', 'quaternary', 'tech', 'robotics and AI hardware for ATLAS'], ['ATLAS (national AI)', 'public', 'quaternary', 'tech', 'runs every machine; learns from the Unity Network'],
+  ['Atlas Dynamics', 'private', 'quaternary', 'tech', 'robotics and AI hardware for ATLAS'], ['ATLAS Foundry', 'public', 'secondary', 'tech', 'fabricates the robots and the dungeon monsters'], ['ATLAS (national AI)', 'public', 'quaternary', 'tech', 'runs every machine; learns from the Unity Network'],
   ['Novachem Labs', 'private', 'quaternary', 'science', 'chemistry research and bio-gel'], ['University of Westhaven', 'public', 'quaternary', 'education', 'teaching and research'],
   ['First Crown Bank', 'private', 'quaternary', 'finance', 'banking, loans and investment'], ['Horizon Media', 'private', 'quaternary', 'media', 'news and broadcasts'],
   ['Open Code A.T.', 'NGO', 'quaternary', 'tech', 'free software and digital skills for everyone'],

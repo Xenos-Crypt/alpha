@@ -497,7 +497,7 @@ export function createSociety(ctx) {
       return `Deal! I'll do your laundry, dishes and the rest. ${WAGE.housekeeper} gold a day, paid each city day.`;
     }]);
     if (hk && hk.id === c.id) choices.push(['Let them go', () => { S.staff = S.staff.filter(s => s !== hk); c.opinion -= 10; remember(c, 'Was let go as a housekeeper'); save(); return 'Oh. Right. Well, good luck.'; }]);
-    return { title: `${c.name} · ${c.job}${ctx.idOf?.(e) ? ' · ID ' + ctx.idOf(e) : ''}`, text: greet, choices };
+    return { title: `${c.name} · ${c.job}`, text: greet, choices };
   }
 
   // ---- the City Hall panel -----------------------------------------------------------------------------

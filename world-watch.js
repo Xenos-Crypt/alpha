@@ -41,7 +41,7 @@ export function createWorldWatch(ctx) {
     const name = who ? (ctx.nameOf(who) || 'A resident') : 'A resident';
     if (!r) { r = { key, cat, title: TITLES[cat], x: Math.round(pos.x), z: Math.round(pos.z), first: Date.now(), count: 0, fixed: 0, who: [], words: words || pick(WORDS[cat]), sent: false }; list.unshift(r); ctx.onNew?.(r, name); }
     // the IDs of what was seen and who saw it, so the Lawgiver knows exactly which thing it is
-    const sid = subject ? ctx.idOf?.(subject) : /building/.test(cat) ? ctx.nearestId?.(pos, ['rp', 'bh', 'hs']) : null, wid = who ? ctx.idOf?.(who) : ctx.playerId?.();
+    const sid = subject ? ctx.idOf?.(subject) : /building/.test(cat) ? ctx.nearestId?.(pos, ['BLD-']) : null, wid = who ? ctx.idOf?.(who) : ctx.playerId?.();
     r.ids ||= []; for (const i of [sid, ...(ids || [])]) if (i && !r.ids.includes(i) && r.ids.length < 6) r.ids.push(i); r.reporters ||= []; if (wid && !r.reporters.includes(wid) && r.reporters.length < 6) r.reporters.push(wid);
     r.count++; r.last = Date.now(); if (fixed) r.fixed++; if (!r.who.includes(name) && r.who.length < 6) r.who.push(name);
     r.status = fixed ? 'Put right by the Rule Keepers (the cause is with the Lawgiver)' : 'Awaiting the Lawgiver';
