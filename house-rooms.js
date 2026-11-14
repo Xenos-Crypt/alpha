@@ -31,7 +31,8 @@ export function furnishHouse(ctx, h) {
     return m;
   }
   const cyl = (u, v, r, y0, y1, c, o) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, y1 - y0, 14), mat(c, o)); m.position.set(X(u), y + (y0 + y1) / 2, Z(v)); scene.add(m); return m; };
-  const floorPatch = (u0, u1, v0, v1, c, kind) => B(u0, u1, v0, v1, 0.02, 0.035, kind && ctx.floorMaterial ? ctx.floorMaterial(ctx.makeTex, kind, c, Math.abs(u1 - u0), Math.abs(v1 - v0)) : c);
+  // top: a rug laid on another floor patch must sit a little higher, or the two share one height and flicker
+  const floorPatch = (u0, u1, v0, v1, c, kind, top = 0.035) => B(u0, u1, v0, v1, 0.02, top, kind && ctx.floorMaterial ? ctx.floorMaterial(ctx.makeTex, kind, c, Math.abs(u1 - u0), Math.abs(v1 - v0)) : c);
   const spot = (u, v, r, label, action) => { const it = { pos: P(u, v, y), r, action }; if (typeof label === 'function') Object.defineProperty(it, 'label', { get: label }); else it.label = label; interactables.push(it); return it; };
   // wall along u at v, from u0 to u1, with doorway gaps [[a,b],...]
   const plaster = mat(0xf1ece2, { rough: 0.95 }), tile = mat(0xdfe6e8, { rough: 0.4 });
@@ -103,7 +104,7 @@ export function furnishHouse(ctx, h) {
   for (const s of [-1, 1]) { const u = bu + s * (bw / 2 + 0.3); if (Math.abs(u) > 1.2 && Math.abs(u) < hw - 0.2) { B(u - 0.22, u + 0.22, D - 0.5, D - 0.1, 0, 0.5, 0x7a5636); cyl(u, D - 0.3, 0.1, 0.5, 0.75, 0xfff0cc, { emissive: 0xffd58a, ei: 0.6 }); } }
   B(-hw + 0.08, -hw + 0.65, mid + 0.25, mid + 1.65, 0, 2.05, 0x8a6a4a, true);        // wardrobe
   B(-hw + 0.64, -hw + 0.66, mid + 0.95, mid + 0.96, 0.2, 1.9, 0x3b2b1f);
-  floorPatch(bu - 0.9, bu + 0.9, D - 3.0, D - 2.25, 0xc9b18a, 'carpet');
+  floorPatch(bu - 0.9, bu + 0.9, D - 3.0, D - 2.25, 0xc9b18a, 'carpet', 0.05);   // bedside rug, on top of the bedroom carpet
   spot(bu, D - 1.1, 1.7, 'Sleep in the bed', ctx.sleep);
   spot(-hw + 1.0, mid + 0.95, 1.0, 'Open the wardrobe', () => K().openStorage());
 
