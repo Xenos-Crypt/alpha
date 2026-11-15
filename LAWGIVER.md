@@ -2,6 +2,18 @@
 
 One entry per run: what was decided, why, and what was declined. The owner reviews and merges every change.
 
+## 2026-11-15 — The Westhaven Superstore shelves carry real stock again
+
+**Decision:** In `supermarket.js`, the colour of each product box on the aisle shelves was picked with `stock[(... + Math.floor(z)) % stock.length]`. The aisles stand at z ≈ -230…-210, so the sum is mostly negative, and JS `%` keeps the sign: 765 of the 880 boxes looked up `stock[-n]` = `undefined` and rendered as plain white (Three.js also warned at load). A small `shelfColour()` helper now wraps the index into 0..7, so every box has one of the eight product colours.
+
+**Where:** Westhaven Superstore, North Road (x 36…72, z -242…-198), the five shelving runs between x 50 and 66.
+
+**Why:** Deferred from yesterday's run. It is the store every resident shops in; a supermarket of blank boxes breaks the rule that goods come from somewhere. Cause-level fix, five lines, no save keys touched.
+
+**Input this run:** no open issues, no Petitions issue, no open PRs. Supabase registry still unreachable from the Lawgiver's sandbox (network policy 403). Vercel production logs: no `[world-report]` lines in the last 50 minutes (Hobby keeps 1 h).
+
+**Still deferred:** the 17 remaining surface overlaps listed on 2026-11-14 (road paint at road height, far-region floors, the hover body at (-40, 680)).
+
 ## 2026-11-14 — The bedside rug no longer sinks into the bedroom carpet
 
 **Decision:** In every furnished house (`house-rooms.js`), the bedside rug and the bedroom carpet were laid at the same height (top y = 0.035), so the two surfaces z-fought and the rug was in practice invisible. The rug now sits 1.5 cm higher (top 0.05). `floorPatch` takes an optional `top` for this.
