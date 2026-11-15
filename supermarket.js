@@ -50,10 +50,14 @@ export function buildSupermarket(ctx) {
   spot(S.x0 + 9.7, S.z0 + 6, 2.4, 'Shop fruit and veg', () => kitchen().openShelf('Fruit and veg', AISLES[0].items));
   // ---- aisles (shelving running away from the door) ----
   const stock = [0xc0392b, 0xf39c12, 0x27ae60, 0x2980b9, 0x8e44ad, 0xecf0f1, 0xd35400, 0x16a085];
+  // The aisles stand at negative z (the store is north of the centre), so the raw sum below is mostly
+  // negative and JS `%` keeps the sign: 765 of 880 boxes got stock[-n] = undefined and showed as plain
+  // white. Wrap the index into 0..length-1 so every box on the shelf carries a real product colour.
+  const shelfColour = (x, lvl, s, z) => { const n = stock.length, k = Math.floor(x * 3) + lvl * 3 + (s > 0 ? 1 : 0) + Math.floor(z); return ((k % n) + n) % n; };
   const aisleZ = [cz - 7.5, cz - 2.5, cz + 2.5, cz + 7.5], ax0 = S.x0 + 14, ax1 = S.x1 - 6;
   for (const z of [cz - 10, cz - 5, cz, cz + 5, cz + 10]) {
     B(ax0, ax1, 0, 2.1, z - 0.55, z + 0.55, 0x8a939c, true, { metal: 0.3 });
-    for (let lvl = 0; lvl < 4; lvl++) for (let x = ax0 + 0.3; x < ax1 - 0.6; x += 0.7) for (const s of [-1, 1]) B(x, x + 0.55, 0.15 + lvl * 0.5, 0.45 + lvl * 0.5, z + s * 0.56 - 0.12, z + s * 0.56 + 0.12, stock[(Math.floor(x * 3) + lvl * 3 + (s > 0 ? 1 : 0) + Math.floor(z)) % stock.length]);
+    for (let lvl = 0; lvl < 4; lvl++) for (let x = ax0 + 0.3; x < ax1 - 0.6; x += 0.7) for (const s of [-1, 1]) B(x, x + 0.55, 0.15 + lvl * 0.5, 0.45 + lvl * 0.5, z + s * 0.56 - 0.12, z + s * 0.56 + 0.12, stock[shelfColour(x, lvl, s, z)]);
   }
   [AISLES[1], AISLES[2], AISLES[3], { name: 'Household', icon: '🧽', items: null }].forEach((a, i) => {
     const z = aisleZ[i]; label(`${i + 1}  ${a.name.toUpperCase()}`, ax0 - 0.2, 4.2, z, -Math.PI / 2, 4.2, '#ffd23f', '#0f5132');
