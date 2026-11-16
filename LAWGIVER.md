@@ -2,6 +2,26 @@
 
 One entry per run: what was decided, why, and what was declined. The owner reviews and merges every change.
 
+## 2026-11-16 — The military base yard no longer swallows its own paths
+
+**Decision:** In `places.js`, the military base yard (`slab(80, 75, 470, 111, 0x7b8066)`) was laid at the default slab height (top y = 0.08), the same plane as the three barracks floors and the concrete entrance paths in front of them and the visitor reception. They z-fought: from most angles the paths in front of the barracks were torn into stripes or vanished into the yard. The yard now sits 2 cm lower (top 0.06), still above the ground plane (y = 0).
+
+**Where:** Military base, east of the city (x 430…510, z 73.5…148.5): barracks at (449, 108), (477, 108), (500, 108), their paths at z 120…132, and the reception path at (430, 79). World-audit pairs cleared (7 of 17):
+`LND-SRF-BRN.CON-REQ-1DKW5L + LND-SRF-BLK.SHT-REQ-11VNMA` (431, 79),
+`LND-SRF-BLK.SHT-REQ-11VNMA + LND-FLR-BGE.STN-REQ-70GWWN` (449, 108),
+`LND-SRF-BLK.SHT-REQ-11VNMA + LND-SRF-BRN.CON-REQ-SE3UI8` (449, 126),
+`LND-SRF-BLK.SHT-REQ-11VNMA + LND-FLR-BGE.STN-REQ-EURJMG` (477, 108),
+`LND-SRF-BLK.SHT-REQ-11VNMA + LND-SRF-BRN.CON-REQ-19WPUL` (477, 126),
+`LND-SRF-BLK.SHT-REQ-11VNMA + LND-FLR-BGE.STN-REQ-1PM1AJ` (500, 108),
+`LND-SRF-BLK.SHT-REQ-11VNMA + LND-SRF-BRN.CON-REQ-9IS3JJ` (500, 126).
+(The yard's own surface ID changes, because the ID seed includes the surface height.)
+
+**Why:** One surface caused 7 of the 17 remaining overlaps; fixing it at the cause is a one-argument change with no gameplay, collider or save-key effect (the slab has no collider).
+
+**Input this run:** no open issues, no Petitions issue, no open PRs. Supabase registry reachable this time: `world_bugs`, `world_events`, `world_entities` exist but are empty. Vercel production logs: no `[world-report]` lines in the last 50 minutes.
+
+**Still deferred (10 overlaps):** road paint at road height (590, -37), (-320, -808), (277, 702), (243, 702); brick/terracotta pairs at (248, -710), (668, -953), (540, -904); glass/plastic at (1157, 545); far-region floors at (-5097, -7) and (-6500, 8).
+
 ## 2026-11-15 — The Westhaven Superstore shelves carry real stock again
 
 **Decision:** In `supermarket.js`, the colour of each product box on the aisle shelves was picked with `stock[(... + Math.floor(z)) % stock.length]`. The aisles stand at z ≈ -230…-210, so the sum is mostly negative, and JS `%` keeps the sign: 765 of the 880 boxes looked up `stock[-n]` = `undefined` and rendered as plain white (Three.js also warned at load). A small `shelfColour()` helper now wraps the index into 0..7, so every box has one of the eight product colours.

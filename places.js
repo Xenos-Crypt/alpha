@@ -158,7 +158,9 @@ export function buildPlaces(ctx) {
 
   room('BASE VISITOR RECEPTION', 430, 62, 28, 22, 0x929780);
   desk(430, 58, 'Military visitor reception', () => toast('Visitors must remain in reception. Beyond the checkpoint is restricted.'));
-  slab(80, 75, 470, 111, 0x7b8066);
+  // The yard sits 2 cm lower (top 0.06) than the barracks floors and their entrance paths (top 0.08), so they
+  // no longer lie in the same plane and flicker through it (world audit: 7 surface overlaps here).
+  slab(80, 75, 470, 111, 0x7b8066, .04);
   for (const x of [449, 477, 500]) room('BARRACKS', x, 108, 20, 24, 0x858b74, 4);
   fence(438,74,438,148,3.2); fence(510,74,510,148,3.2); fence(438,148,510,148,3.2);
   fence(438,74,458,74,3.2); fence(472,74,510,74,3.2);
