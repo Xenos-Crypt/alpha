@@ -27,6 +27,14 @@ await esbuild.build({
   logLevel: 'info',
 });
 
+// Create Mode is its own page (create.html) with its own small bundle: empty land, no city to load
+await esbuild.build({
+  absWorkingDir: fileURLToPath(new URL('.', import.meta.url)),
+  entryPoints: [fileURLToPath(new URL('./create.js', import.meta.url))],
+  tsconfigRaw: {}, bundle: true, format: 'esm', outfile: 'dist/create.js', minify: process.env.NOMIN ? false : true,
+  sourcemap: true, platform: 'browser', plugins: [threeAddonsPlugin], logLevel: 'info',
+});
+
 // The bundled wasm-bindgen init() resolves `new URL('wasm_physics_bg.wasm', import.meta.url)`
 // relative to bundle.js's own location once inlined, so the binary must live beside it.
 await copyFile(
@@ -38,6 +46,6 @@ await copyFile(
 const {createHash}=await import('node:crypto');
 const {readFile,writeFile}=await import('node:fs/promises');
 const hash=createHash('sha256');
-for(const file of ['index.html','responsive-ui.css','offline.js','auth-video.js','game-loading.js','dist/bundle.js','dist/wasm_physics_bg.wasm','assets/auth-gameplay.mp4','assets/auth-gameplay-poster.jpg'])hash.update(await readFile(file));
+for(const file of ['index.html','create.html','dist/create.js','responsive-ui.css','offline.js','auth-video.js','game-loading.js','dist/bundle.js','dist/wasm_physics_bg.wasm','assets/auth-gameplay.mp4','assets/auth-gameplay-poster.jpg'])hash.update(await readFile(file));
 const worker=await readFile('service-worker.js','utf8');
 await writeFile('service-worker.js',worker.replace(/const CACHE='[^']+';/,"const CACHE='another-world-offline-"+hash.digest('hex').slice(0,16)+"';"));

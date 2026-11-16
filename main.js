@@ -21,6 +21,7 @@ import {createWorldIds} from './world-ids.js';
 import {createWorldRegistry} from './world-registry.js';
 import {createInfoMarkets} from './info-markets.js';
 import {createStory} from './story.js';
+import {createChronicle} from './chronicle.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -135,7 +136,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null,bankPanel=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null,chronicle=null,bankPanel=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -2335,13 +2336,29 @@ function showMenu(hasSave) {
     $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
     $('offlineInfoBtn').onclick = (e) => { e.stopPropagation(); const box = $('offlineInfoBox'); box.style.display = box.style.display === 'none' ? 'block' : 'none'; };
     $('menuNewGame').onclick = () => { $('menu').style.display = 'none'; resolve('new'); };
-    $('menuHost').onclick = () => hosting.show('host',()=>{ $('menu').style.display='none'; resolve('host'); });
-    $('menuJoin').onclick = () => hosting.show('join',()=>{ $('menu').style.display='none'; resolve('join'); });
-    $('menuCreate').onclick = () => toast('Creating your own content is still in development — check back soon.');
+    // World Mode: no servers to host or join; everyone signed in shares one world
+    $('menuWorld').onclick = async () => { const b = $('menuWorld'); if (b.disabled) return; b.disabled = true; try { await hosting.enterWorld(); $('menu').style.display = 'none'; resolve('world'); } catch (e) { toast(e.message); } finally { b.disabled = false; } };
+    // Create Mode: build your own world on empty land (create.html)
+    $('menuCreate').onclick = () => { location.href = './create.html'; };
     $('menuContact').onclick = () => { $('contactModal').style.display = 'flex'; };
     $('contactClose').onclick = () => { $('contactModal').style.display = 'none'; };
     $('menuSignout').onclick = () => signOutAndReload();
   });
+}
+
+// Story Mode: the Chronicle (chronicle.js, chronicle-data.js), a branching story with variants
+function startChronicle(userId){
+  if(chronicle)return;
+  chronicle=createChronicle({userId,scene,interactables,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+    groundY:(x,z)=>groundY(x,z),player:()=>(dungeon?dungeon.returnPos:player.position),
+    pause:()=>{locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,
+    setWaypoint:(name,x,z)=>setWaypoint({name,x,z}),clearWaypoint:()=>{waypoint=null;},
+    playerLook:()=>{const c=characters[charIdx];return c?{outfit:c.color,hair:c.hair}:null;},
+    places:{capitalX:CAPITAL_CX-26,capitalZ:CAPITAL_CZ+34,hqX:frontier?.desks?.hq?.x??-200,hqZ:frontier?.desks?.hq?.z??-474},
+    register:t=>idExtra.push(t),
+    storyGate:(x,z,name)=>{const level=Math.max(1,prog.level),tier=tierOf(level),gm=makeGateMesh(TIER[tier].color),pos=new THREE.Vector3(x,0,z),rank=rankOf(level),gate=Object.assign(gm,{pos,level,rank,stars:rank+1,theme:'demon',tier,name,storyGate:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;},
+    world:()=>{const p=dungeon?dungeon.returnPos:player.position;return {x:p.x,y:p.y,z:p.z,gold:stats.gold,wanted,villain:isVillain,dungeons:supportCounters.dungeons,licensed:!!hunterGuilds?.licensed,inDungeon:!!dungeon,knowsTruth:!!society?.state?.story?.knows};}});
+  chronicle.start();
 }
 
 let playerUsername = null;   // set once the user signs in/up; null for guests or if they skipped it
@@ -2365,12 +2382,12 @@ async function boot() {
     applySoloSave(existingSave);
     wanted = 0; pursuitBackupCooldown = 0;   // a reload should never resume with police already after you
   } else if (mode === 'new') {
-    clearSolo(activeSession.user.id);
+    clearSolo(activeSession.user.id);try{localStorage.removeItem('chronicle:'+activeSession.user.id);}catch{}
     window.gameLoading?.hide();
     await runSpawnScreen(activeSession.user.id, false);
     window.gameLoading?.show(35,'Creating your character data...');
   }
-  if(mode==='host'||mode==='join'){
+  if(mode==='host'||mode==='join'||mode==='world'){
     let account=await onlineAccount.load();
     origin={roll:null,family:null,backstory:null,stats:{confidence:50,peace:50,karma:50,wisdom:50},perk:null,wealthTier:'working',housing:'Online resident',startingGold:150,maxHealth:100,weapon:null};
     stats.gold=150;stats.hp=maxHp();
@@ -2388,7 +2405,7 @@ async function boot() {
   window.addEventListener('beforeunload', saveSolo);
   window.addEventListener('pagehide',saveSolo);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)saveSolo();});
-  onlinePlayReady=mode==='host'||mode==='join';
+  onlinePlayReady=mode==='host'||mode==='join'||mode==='world';
   window.gameLoading?.show(60,'Preparing buildings, vehicles and textures...');
   await visualAssetsReady;
   window.gameLoading?.show(85,'Saving your progress...');
@@ -2398,6 +2415,7 @@ async function boot() {
   await window.gameLoading?.complete();
   $('start').style.display = 'flex';
   if(mobileControls?.mobile)requestGameControl();
+  if(soloMode)startChronicle(activeSession.user.id);   // Story Mode: the Chronicle
   else {locked=true;freeMouse=true;$('start').style.display='none';$('mouseHint').textContent='Click the game to control the camera';$('mouseHint').style.display='block';renderer.domElement.addEventListener('click',()=>{setFreeMouse(false);requestGameControl();},{once:true});}
 }
 addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();}})());});
@@ -5385,7 +5403,7 @@ function spawnGate(announce) {
   const gate = Object.assign(gm, { pos: spot.pos, level, rank, stars: rank + 1, theme, tier, name: pick(GATE_NAMES[theme]) });
   gm.disc.userData.gate = gate;
   gates.push(gate);
-  const ordinary=gates.filter(g=>!g.poisonCity&&!g.capitalGate);if(ordinary.length>6)removeGate(ordinary[0]);
+  const ordinary=gates.filter(g=>!g.poisonCity&&!g.capitalGate&&!g.storyGate);if(ordinary.length>6)removeGate(ordinary[0]);
   if (announce) worldAlert(gate);
 }
 function removeGate(g) {
@@ -5774,7 +5792,7 @@ function spawnWave() {
 function clearDungeon() {
   const d = dungeon, g = d.gate;
   if(d.cleared)return;
-  d.cleared = true;supportCounters.dungeons++;persistSupportProgress();
+  d.cleared = true;supportCounters.dungeons++;persistSupportProgress();chronicle?.event('dungeonCleared',{storyGate:!!g.storyGate});
   const rewardMultiplier=d.secretBonus?20:1;
   const gold = Math.round(40 * g.stars * (1 + g.level * 0.2))*rewardMultiplier;
   const xp = Math.round(60 * g.stars * (1 + g.level * 0.15))*rewardMultiplier;
@@ -6655,6 +6673,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
   if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
   if (e.code === 'KeyJ' && military?.takeOff()) return;
+  if (e.code === 'KeyJ' && !e.repeat && chronicle) { chronicle.open(); return; }
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
   if (e.code === 'KeyR'&&!(inCar&&driving.kind==='plane')) psychicGrip();
@@ -8176,6 +8195,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
+    chronicle?.update(rawDt);
     { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);

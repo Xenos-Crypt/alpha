@@ -167,3 +167,12 @@ export function pickKind(x, z) {   // a natural mix: mostly broadleaf, some pine
   const h = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
   return h < 0.58 ? 'oak' : h < 0.8 ? 'pine' : 'birch';
 }
+
+// one tree on its own (Create Mode places trees one by one): the same models the forest uses
+const oneGeo = new Map(); let oneMat = null;
+export function treeMesh(kind, variant = 0) {
+  if (!BUILD[kind]) kind = 'oak';
+  const k = kind + ':' + variant; if (!oneGeo.has(k)) oneGeo.set(k, BUILD[kind](variant));
+  oneMat ||= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+  const m = new THREE.Mesh(oneGeo.get(k), oneMat); m.castShadow = m.receiveShadow = true; return m;
+}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Create Mode · Another World</title>
+<meta name="theme-color" content="#14202e">
+<style>
+  :root { --bg: #14202eee; --line: #ffffff26; --ink: #eef3f8; --muted: #9fb3c8; --accent: #3fd17a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #a9d4f2; font: 14px system-ui, sans-serif; color: var(--ink); }
+  #view { position: fixed; inset: 0; }
+  button { font: inherit; color: var(--ink); background: #243652; border: 1px solid #4a6285; border-radius: 9px; padding: 7px 11px; cursor: pointer; }
+  button:hover { background: #2e4466; }
+  #top { position: fixed; top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; z-index: 5; }
+  #top h1 { font-size: 15px; margin: 0 6px 0 0; white-space: nowrap; }
+  #worldName { font: inherit; color: var(--ink); background: #0f1824; border: 1px solid #4a6285; border-radius: 8px; padding: 6px 8px; width: 150px; }
+  #top .grow { flex: 1; }
+  #saved, #who, #count { color: var(--muted); font-size: 12px; }
+  #cat { position: fixed; left: 10px; top: 70px; bottom: 10px; width: 236px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; z-index: 4; }
+  #tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; border-bottom: 1px solid var(--line); }
+  #tabs button { padding: 5px 8px; font-size: 12px; }
+  #tabs button.on { background: #3867d6; border-color: #3867d6; }
+  #items { overflow: auto; padding: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-content: start; flex: 1; }
+  .cat-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; text-align: center; font-size: 12px; line-height: 1.2; }
+  .cat-item .ic { font-size: 24px; }
+  .cat-item i { color: var(--muted); font-size: 10px; }
+  .cat-item.on { background: #1f6f4a; border-color: var(--accent); }
+  #billBox { border-top: 1px solid var(--line); padding: 8px 10px; max-height: 26%; overflow: auto; font-size: 12px; }
+  #billBox b { font-size: 12px; color: var(--muted); }
+  #bill { margin: 4px 0 0; padding-left: 16px; }
+  #hintBar { position: fixed; left: 256px; right: 10px; bottom: 10px; display: flex; gap: 10px; align-items: center; justify-content: center; pointer-events: none; z-index: 3; }
+  #hint { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; font-size: 13px; }
+  #why:not(:empty) { background: #7a1f1fee; border-radius: 10px; padding: 7px 12px; font-size: 13px; }
+  #sel { position: fixed; right: 10px; top: 70px; width: 250px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px; z-index: 4; }
+  #sel[hidden], #worlds[hidden] { display: none; }
+  #selName { font-weight: 600; font-size: 15px; }
+  #selBot { font-style: italic; color: var(--muted); font-size: 12px; }
+  #selId { font: 12px ui-monospace, monospace; color: #9fe3b5; margin: 6px 0 2px; word-break: break-all; }
+  #selMaker { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  #sel .row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  #walkPad { position: fixed; right: 16px; bottom: 16px; display: none; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(2, 54px); gap: 6px; z-index: 5; }
+  #walkPad button { font-size: 20px; padding: 0; }
+  #wup { grid-column: 2; } #wleft { grid-column: 1; grid-row: 2; } #wdown { grid-column: 2; grid-row: 2; } #wright { grid-column: 3; grid-row: 2; }
+  body.walking #cat, body.walking #sel { display: none; }
+  body.walking #walkPad { display: grid; }
+  body.walking #hintBar { left: 10px; }
+  #worlds { position: fixed; inset: 0; background: #0008; display: flex; align-items: center; justify-content: center; z-index: 10; }
+  #worlds > div { background: #162238; border-radius: 14px; padding: 18px; width: min(420px, 92vw); max-height: 80vh; overflow: auto; }
+  #worldList button { display: block; width: 100%; text-align: left; margin: 6px 0; }
+  @media (max-width: 760px) {
+    #top h1, #who { display: none; }
+    #cat { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; height: 40%; }
+    #items { grid-template-columns: repeat(4, 1fr); }
+    #billBox { display: none; }
+    #hintBar { left: 10px; bottom: calc(40% + 20px); }
+    #sel { top: auto; bottom: calc(40% + 64px); right: 10px; left: 10px; width: auto; }
+  }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="top">
+  <h1>🏗️ Create Mode</h1>
+  <input id="worldName" aria-label="World name" maxlength="60">
+  <button id="newWorld" type="button">New</button>
+  <button id="openWorld" type="button">Open</button>
+  <button id="undo" type="button" title="Undo (Ctrl+Z)">↶</button>
+  <button id="redo" type="button" title="Redo (Ctrl+Y)">↷</button>
+  <button id="walk" type="button">🚶 Walk around</button>
+  <span id="count"></span>
+  <span class="grow"></span>
+  <span id="saved"></span><span id="who"></span>
+  <button id="back" type="button">Back to menu</button>
+</div>
+<aside id="cat">
+  <div id="tabs"></div>
+  <div id="items"></div>
+  <div id="billBox"><b>Bill of materials</b><ul id="bill"></ul></div>
+</aside>
+<div id="hintBar"><span id="hint"></span><span id="why"></span></div>
+<section id="sel" hidden>
+  <div id="selName"></div>
+  <div id="selBot"></div>
+  <div id="selId" title="This thing's ID"></div>
+  <div id="selMaker"></div>
+  <div class="row">
+    <button id="move" type="button">✥ Move</button>
+    <button id="turn" type="button">⟳ Turn</button>
+    <button id="copy" type="button">⧉ Copy</button>
+    <button id="del" type="button">🗑 Remove</button>
+  </div>
+</section>
+<div id="walkPad">
+  <button id="wup" type="button" aria-label="Forward">▲</button>
+  <button id="wleft" type="button" aria-label="Left">◀</button>
+  <button id="wdown" type="button" aria-label="Back">▼</button>
+  <button id="wright" type="button" aria-label="Right">▶</button>
+</div>
+<div id="worlds" hidden><div><h2 style="margin:0 0 8px;font-size:17px">Your worlds</h2><div id="worldList"></div><button id="worldsClose" type="button" style="margin-top:8px">Close</button></div></div>
+<script type="module" src="./dist/create.js"></script>
+</body>
+</html>
