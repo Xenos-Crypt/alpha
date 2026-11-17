@@ -74,7 +74,7 @@ export function buildGrandPark(ctx) {
       const arch = new THREE.Mesh(new THREE.TorusGeometry(4.6, .18, 6, 24, Math.PI), mat(0x1f2326, { metal: .6, rough: .4 })); arch.position.set(0, 4.2, 0); g.add(arch);
       const sg = sign(title, sub, 7, '#123a2a', '#f2e6c8'); sg.position.set(0, 6.1, .05); g.add(sg);
     };
-    for (const x of O.gates.south) { gate(x, O.z1, 0, 'WESTHAVEN GRAND PARK', x === 420 ? 'lake · gardens · mini zoo · playground' : ''); path(x - 3, x + 3, O.z1 - 6, O.z1 + 8); }
+    for (const x of O.gates.south) { gate(x, O.z1, 0, 'WESTHAVEN GRAND PARK', x === 420 ? 'lake · gardens · mini zoo · playground' : ''); path(x - 3, x + 3, O.z1 - 6, O.z1 + 6.5); }   // the apron outside each gate stops 6.5 m out: at x 540 Ventura's north wall stands at z -905, so a longer apron ran through the wall and z-fought with the fun centre's floor
     for (const x of O.gates.north) gate(x, O.z0, Math.PI, 'WESTHAVEN GRAND PARK', 'north gate');
     for (const z of O.gates.east) gate(O.x1, z, Math.PI / 2, 'WESTHAVEN GRAND PARK', 'east gate · mini zoo');
     for (const z of O.gates.west) gate(O.x0, z, -Math.PI / 2, 'WESTHAVEN FLOWER PARK', 'tulips · roses · sunflowers · glasshouse');
