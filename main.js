@@ -2335,9 +2335,10 @@ function showMenu(hasSave) {
     $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
     $('offlineInfoBtn').onclick = (e) => { e.stopPropagation(); const box = $('offlineInfoBox'); box.style.display = box.style.display === 'none' ? 'block' : 'none'; };
     $('menuNewGame').onclick = () => { $('menu').style.display = 'none'; resolve('new'); };
-    $('menuHost').onclick = () => hosting.show('host',()=>{ $('menu').style.display='none'; resolve('host'); });
-    $('menuJoin').onclick = () => hosting.show('join',()=>{ $('menu').style.display='none'; resolve('join'); });
-    $('menuCreate').onclick = () => toast('Creating your own content is still in development — check back soon.');
+    // World Mode: no servers to host or join; everyone signed in shares one world
+    $('menuWorld').onclick = async () => { const b = $('menuWorld'); if (b.disabled) return; b.disabled = true; try { await hosting.enterWorld(); $('menu').style.display = 'none'; resolve('world'); } catch (e) { toast(e.message); } finally { b.disabled = false; } };
+    // Create Mode: build your own world on empty land (create.html)
+    $('menuCreate').onclick = () => { location.href = './create.html'; };
     $('menuContact').onclick = () => { $('contactModal').style.display = 'flex'; };
     $('contactClose').onclick = () => { $('contactModal').style.display = 'none'; };
     $('menuSignout').onclick = () => signOutAndReload();
@@ -2370,7 +2371,7 @@ async function boot() {
     await runSpawnScreen(activeSession.user.id, false);
     window.gameLoading?.show(35,'Creating your character data...');
   }
-  if(mode==='host'||mode==='join'){
+  if(mode==='host'||mode==='join'||mode==='world'){
     let account=await onlineAccount.load();
     origin={roll:null,family:null,backstory:null,stats:{confidence:50,peace:50,karma:50,wisdom:50},perk:null,wealthTier:'working',housing:'Online resident',startingGold:150,maxHealth:100,weapon:null};
     stats.gold=150;stats.hp=maxHp();
@@ -2388,7 +2389,7 @@ async function boot() {
   window.addEventListener('beforeunload', saveSolo);
   window.addEventListener('pagehide',saveSolo);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)saveSolo();});
-  onlinePlayReady=mode==='host'||mode==='join';
+  onlinePlayReady=mode==='host'||mode==='join'||mode==='world';
   window.gameLoading?.show(60,'Preparing buildings, vehicles and textures...');
   await visualAssetsReady;
   window.gameLoading?.show(85,'Saving your progress...');

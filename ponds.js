@@ -10,7 +10,6 @@ import * as THREE from 'three';
 const MAX = 8;
 // [x, z, radius x, radius z] of each pond; the shaders read these
 const HOLES = Array.from({ length: MAX }, () => new THREE.Vector4(0, 0, 0, 0));
-let used = 0;
 const patched = new WeakSet();
 
 // cut the ponds out of a material (the ground under a pond, a lawn, a floor…)
@@ -35,8 +34,9 @@ export function holeMaterial(m) {
 //   rim   – the height of the ground round it (the top of the bank)
 //   level – the water level (below the rim, so the water sits in the hollow)
 //   bed   – the height of the muddy bottom
+export const pondSlotsFree = () => HOLES.filter(h => h.z === 0).length;
 export function digPond(parent, { x, z, rx, rz = rx, rim = 0, level = rim - .3, bed = level - 1.5, water = null, materials = [] }) {
-  if (used < MAX) HOLES[used++].set(x, z, rx, rz);
+  const slot = HOLES.find(h => h.z === 0); if (slot) slot.set(x, z, rx, rz);   // (at most 8 ponds can cut the ground at once)
   for (const m of materials) holeMaterial(m);
   // the bank profile, from the middle of the bed out to the rim (radius as a share of the pond's radius)
   const toe = .5, shelf = .78, shelfY = level - .3;   // a wide sloping bank you can see above the water
@@ -61,5 +61,7 @@ export function digPond(parent, { x, z, rx, rz = rx, rim = 0, level = rim - .3, 
   else if (water.geometry.parameters?.radius) water.geometry.scale(1 / water.geometry.parameters.radius, 1 / water.geometry.parameters.radius, 1);
   water.rotation.x = -Math.PI / 2; water.scale.set(rx * wr, rz * wr, 1); water.position.set(x, level, z);
   water.material.transparent = true; water.material.opacity = Math.min(water.material.opacity ?? 1, .78); water.material.depthWrite = false;
-  return { water, basin, level, bed, rim, inside: (px, pz) => ((px - x) / rx) ** 2 + ((pz - z) / rz) ** 2 < 1 };
+  return { water, basin, level, bed, rim, cut: !!slot, inside: (px, pz) => ((px - x) / rx) ** 2 + ((pz - z) / rz) ** 2 < 1,
+    // fill it in again (Create Mode): the ground closes over and the basin and water go
+    remove() { slot?.set(0, 0, 0, 0); basin.removeFromParent(); basin.geometry.dispose(); water.removeFromParent(); } };
 }
