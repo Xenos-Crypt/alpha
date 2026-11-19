@@ -1908,7 +1908,18 @@ const characters = [
     ],
     ult: { name: 'Terra Sovereign', icon: '🗿', dmg: '62', desc: 'Cinematic earthquake explosion, then +30% damage for 10 seconds.', run: terraUlt },
   },
+  {   // Story Mode only: the protagonist's one power, the Mythic Blood power. Skills unlock as he levels.
+    name: 'Blood', color: 0x2a1d1f, hair: 0x15100f, fx: 0xc8102e, jump: 9, cds: [0, 0, 0, 0], unlock: [1, 3, 4, 6], ultLevel: 10,
+    skills: [
+      { name: 'Blood Whip', icon: '🩸', cd: 3, dmg: '10', desc: 'Lash with a whip of your own blood. Costs a little health.', run: bloodWhip },
+      { name: 'Blood Blade', icon: '🗡️', cd: 5, dmg: '16', desc: 'Form a blade from your blood and cut forward. Breaks guard.', run: bloodBlade },
+      { name: 'Life Drain', icon: '❤️', cd: 9, dmg: '8', desc: 'Drain health from enemies around you to heal yourself.', run: bloodDrain },
+      { name: 'Blood Armour', icon: '🛡️', cd: 18, dmg: '-', desc: 'Harden your blood into armour: half damage for 6 seconds.', run: bloodArmourCast },
+    ],
+    ult: { name: 'Crimson Rain', icon: '🌧️', dmg: '6 × 8', desc: 'Rain sharp drops of blood over everything around you.', run: bloodUlt },
+  },
 ];
+const BLOOD_CHAR = 4;
 let charIdx = 0;
 let unlockedCharIndices = [0, 1]; // the primary/secondary pair chosen at class select; T switches only within this pair
 
@@ -1970,7 +1981,7 @@ const hosting=createHosting({client:supabase,onRoomJoined:room=>roomChat.start(r
 
 let vy = 0, onGround = true;
 const pvel = new THREE.Vector3();          // knockback velocity
-let playerStun = 0, iFrames = 0, playerBlocking = false, awaken = 0, drownWarned = false;
+let playerStun = 0, iFrames = 0, playerBlocking = false, awaken = 0, drownWarned = false, bloodArmour = 0;
 let action = null;                          // the move currently being performed
 let comboIdx = 0, lastM1 = 0, m1Cd = 0, dashCd = 0, mouseHeld = false;
 const stats = { hp: 100, hunger: 80, energy: 80, ult: 0, gold: 0 };
@@ -2300,7 +2311,7 @@ function applySoloSave(save) {
   stats.gold = save.gold ?? 0;
   stats.hp = maxHp();
   swordGrip.visible = !!origin.weapon;
-  if (Array.isArray(save.unlockedCharIndices) && save.unlockedCharIndices.length === 2) unlockedCharIndices = save.unlockedCharIndices;
+  if (Array.isArray(save.unlockedCharIndices) && save.unlockedCharIndices.length >= 1) unlockedCharIndices = save.unlockedCharIndices;
   if (Number.isInteger(save.charIdx) && characters[save.charIdx]) {
     charIdx = save.charIdx;
     const c = characters[charIdx];
@@ -2369,10 +2380,14 @@ async function boot() {
   } else if (mode === 'new') {
     clearSolo(activeSession.user.id);
     window.gameLoading?.hide();
-    await runSpawnScreen(activeSession.user.id, false);
-    // Story Mode: the protagonist always starts at the bottom, broke, in a rented room
-    origin = { ...origin, wealthTier: 'poor', housing: 'A cold rented room in the poorest district', startingGold: 12 };
-    stats.gold = origin.startingGold;
+    // Story Mode: no element pick. The protagonist is always the same poor boy, broke in a rented room,
+    // and his only power is the Mythic Blood power; its skills unlock as he levels.
+    origin = { roll: null, family: null, backstory: null, stats: { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
+      perk: null, wealthTier: 'poor', housing: 'A cold rented room in the poorest district', startingGold: 12, maxHealth: 100, weapon: null };
+    stats.gold = origin.startingGold; stats.hp = maxHp(); swordGrip.visible = false;
+    charIdx = BLOOD_CHAR; unlockedCharIndices = [BLOOD_CHAR];
+    P.mats.outfit.color.set(characters[charIdx].color); P.mats.hair.color.set(characters[charIdx].hair);
+    buildHotbar();
     window.gameLoading?.show(35,'Creating your character data...');
   }
   if(mode==='host'||mode==='join'||mode==='world'){
@@ -4607,7 +4622,7 @@ function noteHpLoss(reason) { hpLossReason = reason; hpLossAt = performance.now(
 function hurtPlayer(dmg, from, kb, reason = 'Attacked') {
   if(inCar&&driving){monsterEnvironmentDamage(driving.group.position,dmg,2);return;}
   if (iFrames > 0) return;
-  dmg *= defMul()*(supportSkills?.defenseMultiplier||1)*(adventureServices?.armour||1);
+  dmg *= defMul()*(supportSkills?.defenseMultiplier||1)*(adventureServices?.armour||1)*(bloodArmour>0?0.5:1);
   // High defense can knock dmg down near zero; it still rounded to "0" in the
   // taken-damage popup along with a full flash/stun/knockback for nothing.
   if (dmg < 0.5) return;
@@ -4824,10 +4839,13 @@ function dash() {
 const SKILL_UNLOCK_LEVEL = [2, 2, 3, 4];
 const PSYCHIC_UNLOCK_LEVEL = 2;
 const ULT_UNLOCK_LEVEL = 5;
+// a character can set its own unlock levels (the Blood power does)
+const skillLevel = (i, c = characters[charIdx]) => (c.unlock || SKILL_UNLOCK_LEVEL)[i];
+const ultLevel = (c = characters[charIdx]) => c.ultLevel ?? ULT_UNLOCK_LEVEL;
 function useSkill(i) {
   const c = characters[charIdx];
   if (!canAct() || c.cds[i] > 0) return;
-  if (prog.level < SKILL_UNLOCK_LEVEL[i]) { toast(`${c.skills[i].name} unlocks at level ${SKILL_UNLOCK_LEVEL[i]}`); return; }
+  if (prog.level < skillLevel(i, c)) { toast(`${c.skills[i].name} unlocks at level ${skillLevel(i, c)}`); return; }
   c.cds[i] = c.skills[i].cd;
   callout(c.skills[i].name.toUpperCase(), c.fx);
   c.skills[i].run();
@@ -4835,7 +4853,7 @@ function useSkill(i) {
 function useUlt() {
   const c = characters[charIdx];
   if (!canAct()) return;
-  if (prog.level < ULT_UNLOCK_LEVEL) { toast(`${c.ult.name} unlocks at level ${ULT_UNLOCK_LEVEL}`); return; }
+  if (prog.level < ultLevel(c)) { toast(`${c.ult.name} unlocks at level ${ultLevel(c)}`); return; }
   if (stats.ult < 100) { toast(`Ultimate not ready (${Math.floor(stats.ult)}%). Land hits to charge it.`); return; }
   stats.ult = 0;
   c.ult.run();
@@ -4998,6 +5016,69 @@ function startCinematic(dur, title, color) {
   cine = { t: 0, dur };
   letterbox(true);
   callout(title, color, true);
+}
+
+// ---- Blood (Story Mode protagonist) ----
+const BLOOD = [0xc8102e, 0x7a0a1a, 0xff3b4e, 0x3a0510];
+function bloodCost(n) { if (stats.hp > n + 5) stats.hp -= n; }   // his power runs on his own blood, but never kills him
+function bloodWhip() {
+  const f = aimForward();
+  bloodCost(2);
+  startAction({ name: 'Blood Whip', dur: 0.45, pose: 'punchR', update(dt, t, a) {
+    if (t < 0.12 || a.fired) return;
+    a.fired = true;
+    for (let d = 0.8; d < 5.5; d += 0.35) spawnParticle(at(player.position, 1.2).addScaledVector(f, d), randUnit().multiplyScalar(0.8), pick(BLOOD), 0.12, 0.3, -4);
+    hitCone(player.position, f, 5.5, 0.55, a.hits, { dmg: S(10), kb: 6, up: 2, stun: 0.5 });
+  } });
+}
+function bloodBlade() {
+  const f = aimForward();
+  bloodCost(3);
+  startAction({ name: 'Blood Blade', dur: 0.5, pose: 'dash', update(dt, t, a) {
+    if (t < 0.2) player.position.addScaledVector(f, 14 * dt);
+    if (t < 0.18 || a.fired) return;
+    a.fired = true;
+    hitCone(player.position, f, 3.4, 0.25, a.hits, { dmg: S(16), kb: 9, up: 3, stun: 0.9, guardBreak: true });
+    const spot = player.position.clone().addScaledVector(f, 1.6);
+    fxRing(spot, 0xc8102e, 2.6, 0.3);
+    burst(at(spot, 1), 24, BLOOD, 7, 0.14, 0.4, 6);
+  } });
+}
+function bloodDrain() {
+  startAction({ name: 'Life Drain', dur: 0.9, pose: 'charge', update(dt, t, a) {
+    for (const e of enemies) {
+      if (!e.alive || e.hidden || distXZ(e.root.position, player.position) > 5) continue;
+      const v = player.position.clone().sub(e.root.position).setY(0).multiplyScalar(2.2);
+      spawnParticle(at(e.root.position, 1), v, pick(BLOOD), 0.12, 0.45);
+    }
+    if (t < 0.6 || a.fired) return;
+    a.fired = true;
+    const n = hitAround(player.position, 5, a.hits, { dmg: S(8), kb: 1, stun: 0.6 });
+    if (n) { stats.hp = Math.min(maxHp(), stats.hp + Math.min(20, n * 5)); toast(`Life Drain: +${Math.min(20, n * 5)} health`); }
+    fxRing(player.position, 0xc8102e, 5, 0.4);
+  } });
+}
+function bloodArmourCast() {
+  bloodCost(4);
+  bloodArmour = 6;
+  fxRing(player.position, 0x7a0a1a, 2.2, 0.4);
+  burst(at(player.position, 1), 30, BLOOD, 4, 0.14, 0.5, 2);
+  toast('Blood Armour: half damage for 6 seconds');
+}
+function bloodUlt() {
+  startCinematic(0.9, 'CRIMSON RAIN', 0xc8102e);
+  startAction({ name: 'ult', dur: 2.6, pose: 'charge', superArmor: true, update(dt, t, a) {
+    if (t < 0.9) return;
+    const wave = Math.floor((t - 0.9) / 0.2);
+    if (wave >= 8 || a['w' + wave]) return;
+    a['w' + wave] = true;
+    const pos = player.position.clone();
+    for (let i = 0; i < 26; i++) {
+      const p = pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 20, 9 + Math.random() * 3, (Math.random() - 0.5) * 20));
+      spawnParticle(p, new THREE.Vector3(0, -30, 0), pick(BLOOD), 0.1, 0.4);
+    }
+    hitAround(pos, 10, null, { dmg: S(6), from: pos, kb: 1, stun: 0.25 }, 6);
+  } });
 }
 
 // ---- Ember (Pyro) ----
@@ -5835,6 +5916,7 @@ function updateDungeon(dt) {
 function switchChar() {
   if(onlinePlayReady&&hosting.room){toast('Your online class is permanent for this account.');return;}
   if (!canAct()) return;
+  if (unlockedCharIndices.length < 2) { toast('You have only one power.'); return; }
   const pos = unlockedCharIndices.indexOf(charIdx);
   charIdx = unlockedCharIndices[(pos + 1) % unlockedCharIndices.length];
   const c = characters[charIdx];
@@ -6474,8 +6556,8 @@ function buildHotbar() {
     <div class="lock">🔒<span class="lvl">Lv ${lvl}</span></div></div>`;
   $('hotbar').innerHTML = slot('Q', { icon: '➤', name: 'Dash' }, 'small')
     + slot('R', { icon: 'SP', name: supportSkills?.name||(specialUnlocked?'Psychic':'Empty special') }, 'small')
-    + c.skills.map((s, i) => slot(i + 1, s, '', SKILL_UNLOCK_LEVEL[i])).join('')
-    + slot('G', c.ult, 'ult', ULT_UNLOCK_LEVEL);
+    + c.skills.map((s, i) => slot(i + 1, s, '', skillLevel(i, c))).join('')
+    + slot('G', c.ult, 'ult', ultLevel(c));
   slotEls = [...$('hotbar').children].map(el => ({ el, cd: el.querySelector('.cd'), cdt: el.querySelector('.cdt') }));
 }
 function updateHotbar() {
@@ -6487,8 +6569,8 @@ function updateHotbar() {
   set(slotEls[0], dashCd, 1.5);
   set(slotEls[1],supportSkills?.equipped?supportSkills.cooldown:psyCd,supportSkills?.equipped?12:psyCdMax());
   slotEls[1].el.classList.toggle('locked', !specialUnlocked);slotEls[1].el.querySelector('.lvl').textContent=specialUnlocked?'':'Quest';
-  c.skills.forEach((s, i) => { set(slotEls[i + 2], c.cds[i], s.cd); slotEls[i + 2].el.classList.toggle('locked', prog.level < SKILL_UNLOCK_LEVEL[i]); });
-  slotEls[slotEls.length - 1].el.classList.toggle('locked', prog.level < ULT_UNLOCK_LEVEL);
+  c.skills.forEach((s, i) => { set(slotEls[i + 2], c.cds[i], s.cd); slotEls[i + 2].el.classList.toggle('locked', prog.level < skillLevel(i, c)); });
+  slotEls[slotEls.length - 1].el.classList.toggle('locked', prog.level < ultLevel(c));
   const u = slotEls[slotEls.length - 1];
   u.cd.style.height = (100 - stats.ult) + '%';
   u.cdt.textContent = stats.ult < 100 ? Math.floor(stats.ult) + '%' : '';
@@ -6884,6 +6966,10 @@ function updatePlayer(dt) {
   if (pose === 'slash') P.armR.pivot.rotation.x = lerp(-2.8, -0.4, clamp(action.t / 0.18, 0, 1));
   P.rig.rotation.x = lerp(P.rig.rotation.x, playerStun > 0 ? -0.3 : 0, 1 - Math.exp(-15 * dt));
 
+  if (bloodArmour > 0) {   // dark red armour glints while Blood Armour lasts
+    bloodArmour -= dt;
+    if (Math.random() < 0.5) spawnParticle(at(player.position, 0.3 + Math.random() * 1.4).add(randUnit().multiplyScalar(0.45)), new THREE.Vector3(0, 0.6, 0), pick(BLOOD), 0.1, 0.4);
+  }
   if (awaken > 0) {   // flaming aura while awakened
     awaken -= dt;
     spawnParticle(at(player.position, Math.random() * 1.8).add(randUnit().multiplyScalar(0.5)), new THREE.Vector3(0, 2.5, 0), pick(FIRE), 0.12, 0.5);
