@@ -3695,6 +3695,7 @@ function applyHit(e, h) {
 }
 
 function killEnemy(e, byPlayer = true) {
+  if(byPlayer&&!e.npcRaid&&e.kind!=='standing')system?.note('kill',e.type||e.kind||'monster');
   if(e.npcRaid){e.alive=false;e.hp=0;e.root.visible=false;e.respawn=Infinity;return;}
   if (e.kind === 'standing') {           // the standing dummy never dies
     e.hp = e.maxHp;
@@ -5739,6 +5740,7 @@ function removeEnemy(e) {
 // =====================================================================
 let dungeon = null;
 function enterDungeon(gate) {
+  system?.note('dungeon','entered a dungeon gate');
   if (gate.tier === 'red') toast('Warning: this gate is far above your level. Survival chance is extremely low.');
   action = null;
   $('fade').style.opacity = 1;
@@ -7872,7 +7874,14 @@ system=createSystem({userId:()=>soloUserId||'guest',interactables,toast,pause:st
   playerPos:()=>player.position,
   onFoot:()=>!inCar&&!riding&&!swimming&&!sitting&&!busRide&&!metro?.rider&&!transport?.rider&&!cityServices?.rider&&!intercityRail?.rider&&!navy?.rider&&!helipads?.flying&&!spaceCentre?.rider,
   takeBelongings:()=>{const b={gold:stats.gold,items:inventory.splice(0)};stats.gold=0;renderInventory?.();return b;},
-  giveBelongings:b=>{stats.gold+=b.gold||0;inventory.push(...(b.items||[]));renderInventory?.();}});
+  giveBelongings:b=>{stats.gold+=b.gold||0;inventory.push(...(b.items||[]));renderInventory?.();},
+  gold:()=>stats.gold,places:()=>townPlaces?.destinations||[],
+  // what the Quest Director sees of the player right now
+  snapshot:()=>{const p=player.position,pl=(townPlaces?.destinations||[]).reduce((b,d)=>{const dd=Math.hypot(d.x-p.x,d.z-p.z);return dd<b.d?{d:dd,name:d.name}:b;},{d:Infinity,name:''});
+    return{gold:Math.floor(stats.gold),hp:Math.round(stats.hp),maxHp:Math.round(maxHp()),hunger:Math.round(stats.hunger),energy:Math.round(stats.energy),wanted:Math.round(wanted),
+      timeOfDay:dayTime>.55&&dayTime<.95?'night':dayTime>=.95||dayTime<.2?'morning':dayTime<.4?'afternoon':'evening',near:pl.d<150?pl.name:'',inDungeon:!!dungeon,inVehicle:inCar,
+      places:(townPlaces?.destinations||[]).map(d=>d.name).slice(0,60)};},
+  director:async q=>{const r=await fetch('/api/quest-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;}});
 const worldRegistry=createWorldRegistry({client:supabase,ids:worldIds,userId:()=>registryUserId});
 worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
