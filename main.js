@@ -2336,17 +2336,28 @@ function applySoloSave(save) {
 
 }
 
+// Story Mode: no element pick. The protagonist is always the same poor boy, broke in a rented room,
+// and his only power is the Mythic Blood power; its skills unlock as he levels.
+function storyProtagonist() {
+  origin = { roll: null, family: null, backstory: null, stats: { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
+    perk: null, wealthTier: 'poor', housing: 'A cold rented room in the poorest district', startingGold: 12, maxHealth: 100, weapon: null };
+  stats.gold = origin.startingGold; stats.hp = maxHp(); swordGrip.visible = false;
+  charIdx = BLOOD_CHAR; unlockedCharIndices = [BLOOD_CHAR];
+  P.mats.outfit.color.set(characters[charIdx].color); P.mats.hair.color.set(characters[charIdx].hair);
+  buildHotbar();
+}
+
 function showMenu(hasSave) {
   return new Promise(resolve => {
     $('menu').style.display = 'block';
     if (hasSave) {
       $('menuOfflineLabel').textContent = 'Continue';
       $('menuOfflineSub').textContent = 'Pick up where you left off';
-      $('menuNewGame').style.display = '';
     }
     $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
     $('offlineInfoBtn').onclick = (e) => { e.stopPropagation(); const box = $('offlineInfoBox'); box.style.display = box.style.display === 'none' ? 'block' : 'none'; };
-    $('menuNewGame').onclick = () => { $('menu').style.display = 'none'; resolve('new'); };
+    // There is no "New story": a Story Mode run is started once and can only be continued, so nobody can
+    // restart to dodge a death or redo choices.
     // World Mode: no servers to host or join; everyone signed in shares one world
     $('menuWorld').onclick = async () => { const b = $('menuWorld'); if (b.disabled) return; b.disabled = true; try { await hosting.enterWorld(); $('menu').style.display = 'none'; resolve('world'); } catch (e) { toast(e.message); } finally { b.disabled = false; } };
     // Create Mode: build your own world on empty land (create.html)
@@ -2372,22 +2383,20 @@ async function boot() {
   if (!activeSession.user.isGuest) supabase.from('logins').insert({ user_id: activeSession.user.id });
   const existingSave = loadSolo(activeSession.user.id);
   const restoringUpdate=sessionStorage.getItem('resumeAfterUpdate')===activeSession.user.id&&!!existingSave;sessionStorage.removeItem('resumeAfterUpdate');
-  const mode = restoringUpdate?'continue':await showMenu(!!existingSave);
+  // the server's record of this account's Story Mode run (it outlives a cleared browser)
+  let storyRun=null;
+  if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await Promise.race([supabase.rpc('story_run_status'),new Promise(res=>setTimeout(()=>res(null),6000))]);storyRun=r?.data||null;}catch{}}
+  const mode = restoringUpdate?'continue':await showMenu(!!existingSave||!!storyRun);
   window.gameLoading?.show(10,'Preparing your adventure...');
-  if (mode === 'continue') {
+  if (mode === 'continue' && !existingSave) {
+    storyProtagonist();   // the run exists on the server but this device has no save: carry on from the room, no reset
+  } else if (mode === 'continue') {
     applySoloSave(existingSave);
     wanted = 0; pursuitBackupCooldown = 0;   // a reload should never resume with police already after you
   } else if (mode === 'new') {
     clearSolo(activeSession.user.id);
     window.gameLoading?.hide();
-    // Story Mode: no element pick. The protagonist is always the same poor boy, broke in a rented room,
-    // and his only power is the Mythic Blood power; its skills unlock as he levels.
-    origin = { roll: null, family: null, backstory: null, stats: { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
-      perk: null, wealthTier: 'poor', housing: 'A cold rented room in the poorest district', startingGold: 12, maxHealth: 100, weapon: null };
-    stats.gold = origin.startingGold; stats.hp = maxHp(); swordGrip.visible = false;
-    charIdx = BLOOD_CHAR; unlockedCharIndices = [BLOOD_CHAR];
-    P.mats.outfit.color.set(characters[charIdx].color); P.mats.hair.color.set(characters[charIdx].hair);
-    buildHotbar();
+    storyProtagonist();
     window.gameLoading?.show(35,'Creating your character data...');
   }
   if(mode==='host'||mode==='join'||mode==='world'){
@@ -2420,7 +2429,7 @@ async function boot() {
   if(mobileControls?.mobile)requestGameControl();
   else {locked=true;freeMouse=true;$('start').style.display='none';$('mouseHint').textContent='Click the game to control the camera';$('mouseHint').style.display='block';renderer.domElement.addEventListener('click',()=>{setFreeMouse(false);requestGameControl();},{once:true});}
   // Story Mode: a new story plays the opening; a continued one restores the System (and any death wait)
-  if(soloMode&&system){if(mode==='new')system.begin();else system.resume();}
+  if(soloMode&&system){if(mode==='new')system.begin();else system.resume(storyRun);}
 }
 addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();}})());});
 boot().catch(error=>window.gameLoading?.fail(error.message));
@@ -7950,7 +7959,9 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   director:async q=>{if(!navigator.onLine)return null;const r=await fetch('/api/story-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;},
   pause:storyPause,resume:requestGameControl});
 // The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
-system=createSystem({userId:()=>soloUserId||'guest',interactables,toast,pause:storyPause,resume:requestGameControl,
+system=createSystem({userId:()=>soloUserId||'guest',
+  // the server keeps the run and the death wait, so clearing the browser can't restart or skip them (signed-in players)
+  server:{start:async()=>registryUserId?(await supabase.rpc('story_run_start')).data:null,died:async()=>registryUserId?(await supabase.rpc('story_run_died')).data:null},interactables,toast,pause:storyPause,resume:requestGameControl,
   fetchNodes:async keys=>{const{data,error}=await supabase.rpc('story_get',{p_keys:keys});if(error)throw error;return data||{};},
   level:()=>prog.level,xp:()=>Math.floor(prog.xp),xpNext:()=>xpToNext(),points:()=>prog.points,gainXp:n=>gainXp(n),
   setLevel:n=>{prog.level=n;prog.xp=Math.min(prog.xp,xpToNext()-1);},

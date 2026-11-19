@@ -183,6 +183,8 @@ export function createSystem(ctx) {
     st.deadUntil = Date.now() + DEATH_WAIT_MS;
     const h = st.hidden; h.bloodPower = Math.max(0, h.bloodPower - 10); h.bloodMemory = Math.max(0, h.bloodMemory - 10); h.loyalty = Math.max(-100, h.loyalty - 15);
     save(); placeDropped(); deathScreen();
+    // the server sets its own 24-hour wait; trust whichever ends later
+    ctx.server?.died().then(r => { const t = r?.dead_until ? Date.parse(r.dead_until) : 0; if (t > st.deadUntil) { st.deadUntil = t; save(); } }).catch(() => {});
     return true;
   }
   function deathScreen() {
@@ -218,9 +220,14 @@ export function createSystem(ctx) {
     active: () => st.on,
     dead: () => st.deadUntil > Date.now(),
     // a brand-new Story Mode game: wipe the System and play the opening
-    async begin() { st = fresh(); save(); btn.hidden = true; await play(START_KEY); },
+    async begin() { st = fresh(); save(); btn.hidden = true; ctx.server?.start().catch(() => {}); await play(START_KEY); },
     // continuing: restore the button, the markers, and the death wait if it isn't over
-    resume() { st = load(); btn.hidden = !st.on; placeDropped(); if (st.deadUntil > Date.now()) deathScreen(); else if (st.on) refreshDay(); },
+    // `run` is the server's record: if it exists the System stays on even when this device lost its save,
+    // and its death wait counts even if the browser's was wiped
+    resume(run) {
+      st = load();
+      if (run) { st.on = true; const t = run.dead_until ? Date.parse(run.dead_until) : 0; if (t > st.deadUntil) st.deadUntil = t; save(); }
+      btn.hidden = !st.on; placeDropped(); if (st.deadUntil > Date.now()) deathScreen(); else if (st.on) refreshDay(); },
     died,
     toggle() { if (open && page.dataset.view === 'window') close(); else showWindow(); },
     update(dt) {
