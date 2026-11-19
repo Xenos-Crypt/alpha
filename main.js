@@ -21,6 +21,7 @@ import {createWorldIds} from './world-ids.js';
 import {createWorldRegistry} from './world-registry.js';
 import {createInfoMarkets} from './info-markets.js';
 import {createStory} from './story.js';
+import {createSystem} from './system.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -135,7 +136,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null,bankPanel=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null,bankPanel=null,system=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -2369,6 +2370,9 @@ async function boot() {
     clearSolo(activeSession.user.id);
     window.gameLoading?.hide();
     await runSpawnScreen(activeSession.user.id, false);
+    // Story Mode: the protagonist always starts at the bottom, broke, in a rented room
+    origin = { ...origin, wealthTier: 'poor', housing: 'A cold rented room in the poorest district', startingGold: 12 };
+    stats.gold = origin.startingGold;
     window.gameLoading?.show(35,'Creating your character data...');
   }
   if(mode==='host'||mode==='join'||mode==='world'){
@@ -2400,6 +2404,8 @@ async function boot() {
   $('start').style.display = 'flex';
   if(mobileControls?.mobile)requestGameControl();
   else {locked=true;freeMouse=true;$('start').style.display='none';$('mouseHint').textContent='Click the game to control the camera';$('mouseHint').style.display='block';renderer.domElement.addEventListener('click',()=>{setFreeMouse(false);requestGameControl();},{once:true});}
+  // Story Mode: a new story plays the opening; a continued one restores the System (and any death wait)
+  if(soloMode&&system){if(mode==='new')system.begin();else system.resume();}
 }
 addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();}})());});
 boot().catch(error=>window.gameLoading?.fail(error.message));
@@ -6525,7 +6531,7 @@ $('closeBoard').addEventListener('click', () => toggleBoard(false));
 // SETTINGS (controls / sound / graphics)
 // =====================================================================
 // First-person is the default view; third-person is a choice in Settings (remembered once you pick it there).
-let cameraView = localStorage.getItem('cameraViewPicked') === '1' && localStorage.getItem('cameraView') === 'third' ? 'third' : 'first';
+let cameraView = 'third';   // set every frame by updateCamera(): the place decides the view, not the player
 // The view you picked in Settings; indoors the camera always goes first-person (no seeing through
 // roofs and walls), and goes back to your choice when you step outside.
 let cameraViewSetting = cameraView;
@@ -6654,6 +6660,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyV') toggleFlashlight();
   if (e.code === 'KeyY' && !inCar) cityServices?.callTaxi(player.position.clone());
   if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
+  if (e.code === 'KeyO' && !e.repeat && system?.active()) system.toggle();
   if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
   if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
@@ -6700,7 +6707,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||system?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -7402,6 +7409,8 @@ function updateNeeds(dt) {
   if (peace < 25) { stats.hp -= (25 - peace) / 25 * dt; noteHpLoss('Frail health (low Peace from your birth)'); }
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
+    const deathPos = (inCar && driving ? driving.group.position : player.position).clone();
+    const storyDeath = soloMode && !!system?.active();
     navy?.reset();intercityRail?.reset();cityServices?.reset();
     metro?.reset();
     sewers?.reset();
@@ -7414,7 +7423,8 @@ function updateNeeds(dt) {
     if (dungeon) leaveDungeon();
     action = null;
     player.position.copy(SPAWN);
-    toast(hosting.room?'You respawned in '+hosting.room.city+'.':'You fainted and woke up at home.');
+    if (storyDeath) system.died(deathPos);
+    else toast(hosting.room?'You respawned in '+hosting.room.city+'.':'You fainted and woke up at home.');
   }
 }
 
@@ -7525,7 +7535,10 @@ function updateCamera(dt) {
   { // indoors (a house, a building interior, or under any roof) -> first person
     const p = player.position;
     const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
-    const want = indoors ? 'first' : cameraViewSetting;
+    // The player doesn't pick the view: first-person indoors, third-person in a vehicle,
+    // and on foot it depends on the place (first-person in dungeons and underground, third-person outside).
+    const below = !!dungeon || !!sewers?.underground || !!metro?.underground;
+    const want = indoors ? 'first' : inCar ? 'third' : below ? 'first' : 'third';
     if (want !== cameraView) { cameraView = want; pitch = want === 'third' ? clamp(pitch, -.1, 1.2) : pitch; }
   }
   updateCockpit(dt || 0.016);
@@ -7689,7 +7702,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !bankPanel?.open && !story?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !bankPanel?.open && !story?.open && !system?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -7850,6 +7863,16 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   flying:()=>inCar&&driving&&driving.kind==='plane'?driving:null,crash:v=>crashPlane(v),
   director:async q=>{if(!navigator.onLine)return null;const r=await fetch('/api/story-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;},
   pause:storyPause,resume:requestGameControl});
+// The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
+system=createSystem({userId:()=>soloUserId||'guest',interactables,toast,pause:storyPause,resume:requestGameControl,
+  fetchNodes:async keys=>{const{data,error}=await supabase.rpc('story_get',{p_keys:keys});if(error)throw error;return data||{};},
+  level:()=>prog.level,xp:()=>Math.floor(prog.xp),xpNext:()=>xpToNext(),points:()=>prog.points,gainXp:n=>gainXp(n),
+  setLevel:n=>{prog.level=n;prog.xp=Math.min(prog.xp,xpToNext()-1);},
+  energy:()=>stats.energy,spendEnergy:n=>{stats.energy=Math.max(0,stats.energy-n);},hunger:()=>stats.hunger,
+  playerPos:()=>player.position,
+  onFoot:()=>!inCar&&!riding&&!swimming&&!sitting&&!busRide&&!metro?.rider&&!transport?.rider&&!cityServices?.rider&&!intercityRail?.rider&&!navy?.rider&&!helipads?.flying&&!spaceCentre?.rider,
+  takeBelongings:()=>{const b={gold:stats.gold,items:inventory.splice(0)};stats.gold=0;renderInventory?.();return b;},
+  giveBelongings:b=>{stats.gold+=b.gold||0;inventory.push(...(b.items||[]));renderInventory?.();}});
 const worldRegistry=createWorldRegistry({client:supabase,ids:worldIds,userId:()=>registryUserId});
 worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
@@ -8160,7 +8183,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
