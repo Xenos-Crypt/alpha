@@ -13,6 +13,7 @@ export const APPS = {
   camera:   { name: 'Camera', icon: '📷', pre: true },
   gallery:  { name: 'Photos', icon: '🖼️', pre: true },
   maps:     { name: 'Maps', icon: '🗺️', pre: true },
+  messages: { name: 'Messages', icon: '💬', pre: true },
   taxi:     { name: 'Taxi', icon: '🚕', pre: true },
   infohub:  { name: 'Info Hub', icon: 'ℹ️', pre: true },
   career:   { name: 'Career Hub', icon: '💼', pre: true },
@@ -37,7 +38,7 @@ export function createPhone(ctx) {
   const uid = () => ctx.userId?.() || 'guest';
   const load = () => { try { return JSON.parse(localStorage.getItem('cryptic:' + uid()) || 'null'); } catch { return null; } };
   let S = null;
-  const fresh = () => ({ installed: [], photos: [], posts: [], notes: '', events: [], laptop: false, steps: 0 });
+  const fresh = () => ({ installed: [], photos: [], posts: [], notes: '', events: [], laptop: false, steps: 0, msgs: {}, unread: {} });
   const st = () => (S ||= { ...fresh(), ...(load() || {}) });
   const save = () => { try { localStorage.setItem('cryptic:' + uid(), JSON.stringify(S)); } catch { if (S.photos.length > 5) { S.photos.splice(0, 5); save(); } } };
   const has = id => APPS[id]?.pre || st().installed.includes(id);
@@ -112,6 +113,19 @@ body.cinema #phoneBtn{visibility:hidden}`;
       body.append(g);
     },
     maps() { close(); ctx.openMap(); },
+    // Messages: text the people you know (and players in your room). People answer in their own time.
+    messages() {
+      const s = st(); s.msgs ||= {}; s.unread ||= {};
+      const body = frame('Messages', '');
+      const people = ctx.contacts?.() || [];
+      if (!people.length) body.insertAdjacentHTML('beforeend', '<p>No contacts yet.</p>');
+      for (const c of people) {
+        const t = s.msgs[c.id] || [], lastMsg = t[t.length - 1], n = s.unread[c.id] || 0;
+        const r = row(`<b>${esc(c.icon || '👤')} ${esc(c.name)}</b>${n ? ` <span style="background:#e74c3c;border-radius:9px;padding:0 6px;font-size:11px">${n}</span>` : ''}<br><small style="opacity:.7">${lastMsg ? esc((lastMsg.me ? 'You: ' : '') + lastMsg.text).slice(0, 48) : esc(c.about || '')}</small>`, button('Open', () => thread(c)));
+        body.append(r);
+      }
+    },
+
     career() { close(); ctx.openCareer(); },
     cityhall() { close(); ctx.openCityHall(); },
     taxi() {
@@ -234,6 +248,26 @@ body.cinema #phoneBtn{visibility:hidden}`;
   }
   function setLaptop(on) { if (on && !st().laptop) return ctx.toast('You need a Cryptic Book. Get one in the Cryptic Store.'); laptop = on; if (!open) toggle(true); go('home'); }
 
+  function thread(c) {
+    const s = st(); s.msgs ||= {}; s.unread ||= {}; s.unread[c.id] = 0; save(); app = 'thread:' + c.id;
+    const body = frame(`${c.icon || '👤'} ${c.name}`, '');
+    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:330px;overflow-y:auto;margin-bottom:8px';
+    for (const m of s.msgs[c.id] || []) { const b = document.createElement('div'); b.textContent = m.text; b.style.cssText = `max-width:78%;padding:7px 10px;border-radius:14px;font:14px system-ui;${m.me ? 'align-self:flex-end;background:#2f80ed' : 'align-self:flex-start;background:#ffffff1c'}`; list.append(b); }
+    body.append(list); setTimeout(() => { list.scrollTop = list.scrollHeight; }, 0);
+    const input = document.createElement('input'); input.placeholder = 'Type a message'; input.maxLength = 300; body.append(input);
+    const sendIt = () => { const text = input.value.trim(); if (!text) return; input.value = ''; add(c.id, { me: true, text }); ctx.sendMessage?.(c, text); thread(c); };
+    input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') sendIt(); });
+    body.append(button('Send', sendIt), button('Back', () => go('messages')));
+    setTimeout(() => input.focus(), 30);
+  }
+  function add(id, m) { const s = st(); s.msgs ||= {}; (s.msgs[id] ||= []).push({ ...m, at: Date.now() }); if (s.msgs[id].length > 80) s.msgs[id].splice(0, s.msgs[id].length - 80); save(); }
+  // a message arriving from someone (an NPC's reply, or a player in your room)
+  function receive(c, text) {
+    const s = st(); s.unread ||= {}; add(c.id, { me: false, text });
+    if (open && app === 'thread:' + c.id) { thread(c); return; }
+    s.unread[c.id] = (s.unread[c.id] || 0) + 1; save(); ctx.toast(`💬 ${c.name}: ${text.length > 60 ? text.slice(0, 60) + '…' : text}`);
+    if (open && app === 'messages') go('messages');
+  }
   function go(id) { app = id; if (!has(id) && APPS[id]) { ctx.toast('Download it from the Cryptic Store first.'); id = 'store'; app = id; } (screens[id] || screens.home)(); }
   function toggle(force) {
     const want = force ?? !open;
@@ -259,7 +293,7 @@ body.cinema #phoneBtn{visibility:hidden}`;
   return {
     devices,
     get open() { return open; },
-    toggle, close, openLaptop: () => setLaptop(true),
+    toggle, close, openLaptop: () => setLaptop(true), receive,
     reset() { S = null; things.clear(); },   // a different player signed in
     update(p, onFoot) { if (onFoot && last) { const d = Math.hypot(p.x - last.x, p.z - last.z); if (d < 3) { st().steps += d; } } last = onFoot ? { x: p.x, z: p.z } : null; },
     save,
