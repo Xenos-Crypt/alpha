@@ -2296,6 +2296,17 @@ let soloMode = false, soloUserId = null, soloSaveTimer = 0;
 const soloSaveKey = userId => 'aw_solo_save_' + userId;
 function loadSolo(userId) { try { const raw = localStorage.getItem(soloSaveKey(userId)); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 function clearSolo(userId) { try { localStorage.removeItem(soloSaveKey(userId)); } catch {} }
+// Story Mode death, after the 24-hour wait: you come back as a new player. Everything about the old you is
+// wiped (save, System, phone, skills, bank phone, purchases), every resident forgets you, and the game reloads
+// straight into the opening film. The server has already opened the new life (story_run_reborn).
+function startOverAsNewPlayer(life){
+  const uid=soloUserId;soloMode=false;   // stop the old life being saved again on the way out
+  clearSolo(uid);
+  for(const k of ['system:'+uid,'cryptic:'+uid,'alignment:'+uid,'support:'+uid,'specialUnlocked','villainKills','specialTrainingKills','aw.phone.v1','aw.info.v1','anotherworld-arcade-tickets','anotherworld-fair-tickets'])try{localStorage.removeItem(k);}catch{}
+  try{society?.forgetPlayer();}catch{}
+  try{sessionStorage.setItem('storyStartOver',JSON.stringify({uid,life}));}catch{}
+  shutDownForReload();location.reload();
+}
 function saveSolo() {
   if (!soloMode || !soloUserId) return true;
   try {
@@ -2435,8 +2446,12 @@ async function boot() {
   if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await Promise.race([supabase.rpc('story_run_status'),new Promise(res=>setTimeout(()=>res(null),6000))]);storyRun=r?.data||null;}catch{}}
   // admin accounts (listed privately on the server) can replay the story and use the System's admin tools
   if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await supabase.rpc('is_admin');isAdmin=r?.data===true;}catch{}}
+  await new Promise(r=>setTimeout(r,0));   // offline there's nothing to wait for, so let the rest of the world (your car included) finish being made first
   setUpHome();
-  const mode = restoringUpdate?'continue':await showMenu(!!existingSave||!!storyRun);
+  // coming back from a death as a new player: no menu, straight into the opening
+  let startOver=null;try{startOver=JSON.parse(sessionStorage.getItem('storyStartOver')||'null');sessionStorage.removeItem('storyStartOver');}catch{}
+  if(startOver&&startOver.uid!==activeSession.user.id)startOver=null;
+  const mode = startOver?'new':restoringUpdate?'continue':await showMenu(!!existingSave||!!storyRun);
   window.gameLoading?.show(10,'Preparing your adventure...');
   if (mode === 'continue' && !existingSave) {
     storyProtagonist();   // the run exists on the server but this device has no save: carry on from the room, no reset
@@ -2479,7 +2494,7 @@ async function boot() {
   if(mobileControls?.mobile)requestGameControl();
   else {locked=true;freeMouse=true;$('start').style.display='none';$('mouseHint').textContent='Click the game to control the camera';$('mouseHint').style.display='block';renderer.domElement.addEventListener('click',()=>{setFreeMouse(false);requestGameControl();},{once:true});}
   // Story Mode: a new story plays the opening; a continued one restores the System (and any death wait)
-  if(soloMode&&system){if(mode==='new')system.begin();else system.resume(storyRun);}
+  if(soloMode&&system){if(mode==='new')system.begin(startOver?.life||storyRun?.life||1);else system.resume(storyRun);}
 }
 addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);shutDownForReload();}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();shutDownForReload();}})());});
 boot().catch(error=>window.gameLoading?.fail(error.message));
@@ -8057,7 +8072,10 @@ system=createSystem({userId:()=>soloUserId||'guest',
     end(){const e=homeRooms.spots.end;player.position.set(e.x,CURB,e.z);vy=0;yaw=Math.atan2(-e.facing.x,-e.facing.z);pitch=0;cutCam=null;player.visible=true;document.body.classList.remove('cinema');},
   },
   // the server keeps the run and the death wait, so clearing the browser can't restart or skip them (signed-in players)
-  server:{start:async()=>registryUserId?(await supabase.rpc('story_run_start')).data:null,died:async()=>registryUserId?(await supabase.rpc('story_run_died')).data:null},interactables,toast,pause:storyPause,resume:requestGameControl,
+  server:{start:async()=>registryUserId?(await supabase.rpc('story_run_start')).data:null,
+    died:async lvl=>{if(!registryUserId)return null;let r=await supabase.rpc('story_run_died',{p_level:Math.round(lvl)||null});if(r.error)r=await supabase.rpc('story_run_died');return r.data;},
+    reborn:async()=>{if(!registryUserId||!navigator.onLine)return null;const r=await supabase.rpc('story_run_reborn');if(r.error){if(/not over/i.test(r.error.message||''))throw new Error(r.error.message);return null;}return r.data;}},
+  startOver:life=>startOverAsNewPlayer(life),interactables,toast,pause:storyPause,resume:requestGameControl,
   fetchNodes:async keys=>{const{data,error}=await supabase.rpc('story_get',{p_keys:keys});if(error)throw error;return data||{};},
   level:()=>prog.level,xp:()=>Math.floor(prog.xp),xpNext:()=>xpToNext(),points:()=>prog.points,gainXp:n=>gainXp(n),
   setLevel:n=>{prog.level=n;prog.xp=Math.min(prog.xp,xpToNext()-1);},
