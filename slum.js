@@ -12,15 +12,31 @@ import { makeBotany } from './botany.js';
 export const SLUM = { name: 'Cinder Row', minX: 596, maxX: 844, minZ: 448, maxZ: 598 };
 // lanes: north-south ones carry on from Poison Land's streets (same centres), two run east-west
 export const LANES_X = [600, 640, 680, 720, 760, 800, 840], LANES_Z = [500, 550], LANE_W = 6;
-// your home: a run-down house facing the z 500 lane, with a dirt yard in front
-export const SLUM_HOME = { x: 700, z: 515, minX: 694, maxX: 706, minZ: 510, maxZ: 520 };
-export const SLUM_HOME_YARD = { minX: 689, maxX: 711, minZ: 503, maxZ: 526 };
+// Your home: a rented flat on the TOP floor of a run-down three-storey tenement facing the z 500 lane.
+// Other tenants live on the two floors below; the landlord has the ground floor. You get up by a rickety
+// outside staircase on the east side (two flights with a landing at the back) onto a narrow balcony.
+export const FLOOR_H = 3.1, LEVELS = [0.15, 0.15 + FLOOR_H, 0.15 + 2 * FLOOR_H];   // ground, first, top
+export const SLUM_HOME_Y = LEVELS[2];
+export const SLUM_HOME = { x: 700, z: 511, minX: 695, maxX: 705, minZ: 507, maxZ: 515 };
+const STAIR = { a0: 705.3, a1: 706.5, b1: 707.7, z0: 507, z1: 515, land1: 516.4, bal0: 505.6, balX0: 694.8 };
+export const SLUM_HOME_YARD = { minX: 693.5, maxX: 708.6, minZ: 503, maxZ: 517.2 };
 const Z_TOP = 598, Z_BOTTOM = 447;
 
 const inLane = (x, z) => (z >= Z_BOTTOM && z <= Z_TOP && LANES_X.some(c => Math.abs(x - c) <= LANE_W / 2)) ||
   (x >= SLUM.minX && x <= SLUM.maxX && LANES_Z.some(c => Math.abs(z - c) <= LANE_W / 2));
-export function slumGroundAt(x, z) {
+// the tenement's floors, stairs, landing and balcony: you're on one if your body is near its height, under it otherwise
+function tenementAt(x, z, by) {
+  const [G, M, T] = LEVELS, S = STAIR, on = h => by == null || by > h - 1.1;
+  if (x >= S.a0 && x <= S.a1 && z >= S.z0 && z <= S.z1) { const h = G + (z - S.z0) / (S.z1 - S.z0) * (M - G); return on(h) ? h : G; }   // first flight: up towards the back
+  if (x > S.a1 && x <= S.b1 && z >= S.z0 && z <= S.z1) { const h = M + (S.z1 - z) / (S.z1 - S.z0) * (T - M); return by != null && by > h - 1.1 ? h : G; }   // second flight: up towards the front
+  if (x >= S.a0 && x <= S.b1 && z > S.z1 && z <= S.land1) return by != null && by > M - 1.1 ? M : G;   // the landing at the back
+  if (x >= S.balX0 && x <= S.b1 && z >= S.bal0 && z < S.z0) return by != null && by > T - 1.1 ? T : G;   // the balcony along the top floor
+  const H = SLUM_HOME; if (x >= H.minX && x <= H.maxX && z >= H.minZ && z <= H.maxZ) return by != null && by > T - 1.1 ? T : G;   // your flat (the floors below are other people's)
+  return null;
+}
+export function slumGroundAt(x, z, bodyY = null) {
   if (x < SLUM.minX || x > SLUM.maxX || z < 450 || z > Z_TOP) return null;
+  const t = tenementAt(x, z, bodyY); if (t != null) return t;
   return inLane(x, z) ? 0 : 0.15;   // lanes at road level, the packed-dirt plots raised like a pavement
 }
 
@@ -179,12 +195,41 @@ export function createSlum(ctx) {
   // graffiti on lane-facing walls
   for (const [x, z, ry, along] of wallSpots) if (R() < 0.35) { const fx = Math.sin(ry), fz = Math.cos(ry); plane(Math.min(along - 0.4, 3.2), 1.2, x + fx * 0.05, curb + 1.3 + R() * 0.4, z + fz * 0.05, tagMat, ry); }
 
-  // ---------------- your yard: a rickety fence of odd planks and a dirt path ----------------
-  { const y = curb, { minX, maxX, minZ, maxZ } = SLUM_HOME_YARD;
-    const fence = (x0, z0, x1, z1) => { const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.32); for (let i = 0; i <= n; i++) { if (R() < 0.18) continue; const t = i / n, hh = between(0.8, 1.3); box(0.18, hh, 0.04, x0 + (x1 - x0) * t, y + hh / 2, z0 + (z1 - z0) * t, R() < 0.5 ? plank : ply, 0, x0 === x1 ? Math.PI / 2 : 0, (R() - 0.5) * 0.25); } box(Math.abs(x1 - x0) || 0.05, 0.06, Math.abs(z1 - z0) || 0.05, (x0 + x1) / 2, y + 0.7, (z0 + z1) / 2, plank); };
-    fence(minX, minZ, SLUM_HOME.x - 1.4, minZ); fence(SLUM_HOME.x + 1.4, minZ, maxX, minZ);   // front, with a gap for the path
-    fence(minX, minZ, minX, maxZ); fence(maxX, minZ, maxX, maxZ); fence(minX, maxZ, maxX, maxZ);
-    tag('LND', 'FEN', 'WOD', 'Scrap wood', 'Rickety fence round your yard', SLUM_HOME.x, minZ, 'PLR');
+  // ---------------- the tenement: two floors of other people's flats under yours, an outside stair, a balcony ----------------
+  const tenants = [];
+  { const H = SLUM_HOME, [G, M, T] = LEVELS, S = STAIR, W = H.maxX - H.minX, D = H.maxZ - H.minZ, cx = H.x, cz = (H.minZ + H.maxZ) / 2;
+    const level = base => c => { c.baseYAt = () => base; return c; };
+    // the two lower storeys: breeze block downstairs, faded paint on the first floor, stains everywhere
+    box(W, FLOOR_H, D, cx, G + FLOOR_H / 2, cz, breeze); box(W + 0.1, FLOOR_H - 0.05, D + 0.1, cx, M + FLOOR_H / 2 - 0.05, cz, painted[1]);
+    box(W + 0.4, 0.14, D + 0.4, cx, M - 0.02, cz, concrete); box(W + 0.3, 0.14, D + 0.3, cx, T - 0.04, cz, concrete);   // slab edges
+    level(G)(solid(H.minX, H.maxX, H.minZ, H.maxZ)); level(2.9)(solid(H.minX, H.maxX, H.minZ, H.maxZ));   // you can't walk into other people's flats
+    // doors and barred windows of the flats below: two on the ground floor (one is the landlord's), one up a floor
+    for (const [dx, y, who] of [[-2.6, G, 'Flat 1 (the landlord)'], [2.6, G, 'Flat 2'], [-2.6, M, 'Flat 3']]) {
+      box(1.0, 2.05, 0.08, cx + dx, y + 1.03, H.minZ - 0.04, y === G ? plank : dark);
+      tenants.push({ x: cx + dx, z: H.minZ - 0.9, y, who });
+    }
+    for (const [dx, y] of [[0, G], [-0.3, M], [2.6, M]]) { box(1.2, 0.9, 0.06, cx + dx, y + 1.6, H.minZ - 0.04, dark); for (let k = -2; k <= 2; k++) box(0.03, 0.92, 0.08, cx + dx + k * 0.25, y + 1.6, H.minZ - 0.06, bars); }
+    for (const [x, y] of [[H.minX - 0.04, G], [H.minX - 0.04, M]]) box(0.06, 0.9, 1.2, x, y + 1.6, cz, dark);
+    box(0.08, 2.0, 0.95, H.maxX + 0.04, M + 1.0, H.maxZ - 0.9, dark); tenants.push({ x: S.a0 + 0.6, z: S.z1 + 0.7, y: M, who: 'Flat 4 (door on the landing)' });
+    for (let i = 0; i < 9; i++) box(0.5 + R() * 1.4, 0.4 + R() * 1.2, 0.02, cx + (R() - 0.5) * W * 0.9, G + 0.6 + R() * 4.5, H.minZ - 0.09, std('stain', { color: 0x3a3226, transparent: true, opacity: 0.45 }));   // damp stains down the front
+    // the outside stair: two steep flights of rough planks on steel posts, with a landing at the back
+    const flight = (x0, x1, za, ya, zb, yb) => { const n = 18; for (let i = 0; i < n; i++) { const t = (i + 0.5) / n, z = za + (zb - za) * t, y = ya + (yb - ya) * t; box(x1 - x0, 0.06, Math.abs(zb - za) / n + 0.02, (x0 + x1) / 2, y - 0.03, z, plank); }
+      const len = Math.hypot(zb - za, yb - ya), ang = Math.atan2(yb - ya, zb - za); for (const x of [x0 + 0.04, x1 - 0.04]) box(0.08, 0.22, len, x, (ya + yb) / 2 - 0.15, (za + zb) / 2, bars, -ang, 0, 0); };
+    flight(S.a0, S.a1, S.z0, G, S.z1, M); flight(S.a1, S.b1, S.z1, M, S.z0, T);
+    box(S.b1 - S.a0, 0.1, S.land1 - S.z1, (S.a0 + S.b1) / 2, M - 0.05, (S.z1 + S.land1) / 2, plank);   // the landing
+    box(S.b1 - S.balX0, 0.1, S.z0 - S.bal0, (S.balX0 + S.b1) / 2, T - 0.05, (S.bal0 + S.z0) / 2, plank);   // the balcony
+    for (const [x, z, h] of [[S.a0, S.z0, M], [S.b1, S.z0, T], [S.b1, S.land1, M], [S.a0, S.land1, M], [S.balX0, S.bal0, T], [S.b1, S.bal0, T], [702, S.bal0, T], [697, S.bal0, T]]) cyl(0.06, h, x, h / 2, z, bars, 6);   // rusty posts
+    // railings (the gaps are missing bars: don't lean on it)
+    const rail = (x0, z0, x1, z1, y) => { box(Math.abs(x1 - x0) || 0.05, 0.05, Math.abs(z1 - z0) || 0.05, (x0 + x1) / 2, y + 0.95, (z0 + z1) / 2, bars); const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.3); for (let i = 0; i <= n; i++) { if (R() < 0.15) continue; const t = i / n; box(0.03, 0.95, 0.03, x0 + (x1 - x0) * t, y + 0.47, z0 + (z1 - z0) * t, bars); } };
+    rail(S.balX0, S.bal0, S.b1, S.bal0, T); rail(S.balX0, S.bal0, S.balX0, S.z0, T); rail(S.a0, S.land1, S.b1, S.land1, M); rail(S.b1, S.z1, S.b1, S.land1, M);
+    level(T)(solid(S.balX0, S.b1, S.bal0 - 0.06, S.bal0 + 0.06)); level(T)(solid(S.balX0 - 0.06, S.balX0 + 0.06, S.bal0, S.z0));   // the balcony rails stop you falling off
+    level(M)(solid(S.a0, S.b1, S.land1 - 0.06, S.land1 + 0.06));
+    solid(S.a1 - 0.05, S.a1 + 0.05, S.z0 + 0.4, S.z1); solid(S.b1 - 0.05, S.b1 + 0.08, S.z0, S.land1);   // between the flights, and the outside edge
+    // washing hung over the balcony rail, and a satellite dish someone found
+    for (let i = 0; i < 6; i++) plane(between(0.4, 0.8), between(0.5, 0.9), S.balX0 + 0.8 + i * 1.6, T + 0.55, S.bal0 - 0.03, pick(cloth), 0);
+    put(new THREE.SphereGeometry(0.45, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), concrete, H.minX + 0.6, M + 2.5, H.minZ - 0.3, 1, 0.4, 1, -1.2, 0, 0);
+    tag('BLD', 'APT', 'CON.MET', 'Built by hand, floor by floor (no permit)', 'Tenement block (3 storeys)', cx, cz);
+    tag('PRD', 'FUR', 'WOD.STL', 'Scrap wood and steel', 'Outside staircase', S.a1, (S.z0 + S.z1) / 2);
   }
 
   // ---------------- street life: power lines, lamps, laundry, rubbish, fire barrels ----------------
@@ -243,6 +288,7 @@ export function createSlum(ctx) {
     for (const [x, z] of barrels) for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 + R(); K.stander(x + Math.cos(a) * 1.1, z + Math.sin(a) * 1.1, Math.atan2(-Math.cos(a), -Math.sin(a)), { task: 'talk', y }); }
     for (let i = 0; i < 3; i++) K.stander(715 + 0.6 + i * 0.7, 506 + 1.2, Math.PI, { y });   // queueing at the tap
     K.stander(647.5, 503.4, 0, { y, task: 'talk' });   // Mama Ade at her hatch
+    for (const t of tenants) K.stander(t.x, t.z, Math.PI, { y: t.y + 0.05, task: t.who.includes('landlord') ? 'phone' : 'talk' });   // the landlord and your neighbours
     // kids playing football in the main lane, people walking the lanes
     for (let i = 0; i < 4; i++) K.walker([[735 + i * 2, 498], [752, 501.5 - i * 0.5], [742 - i, 498.5]], { child: true, speed: 1.6 + R() * 0.4, t: R() * 20 });
     for (const x of [640, 720, 800]) { K.walker([[x - 1.5, 452], [x - 1.5, 594], [x + 1.5, 594], [x + 1.5, 452]], { speed: 0.9 + R() * 0.3, t: R() * 200 }); }
@@ -257,7 +303,7 @@ export function createSlum(ctx) {
 
   let ft = 0;
   return {
-    bounds: SLUM, home: SLUM_HOME, lanes, neglected, shacks,
+    bounds: SLUM, home: SLUM_HOME, homeY: SLUM_HOME_Y, landlordAt: tenants[0], lanes, neglected, shacks,
     groundAt: slumGroundAt,
     destinations: [{ name: 'Cinder Row (slum)', x: 720, z: 520 }, { name: "Mama Ade's corner shop (Cinder Row)", x: 647.5, z: 503 }],
     update(dt, p) {
@@ -266,5 +312,42 @@ export function createSlum(ctx) {
       glow.intensity = 2.1 + 0.6 * Math.sin(ft * 11) * Math.sin(ft * 7.3);
       K?.update?.(dt, p);
     },
+  };
+}
+
+// ---------------- RENT: your flat is rented from the landlord on the ground floor ----------------
+// Rent is due every 7 game days and you pay him in person (walk up to him outside Flat 1).
+// Miss it and arrears build up with a late fee; a full week behind and he padlocks your door: you
+// can't get in or sleep at home until you pay everything you owe. The admin doesn't rent (they own an estate).
+export const RENT = { amount: 60, every: 7, lateFee: 10, landlord: 'Mr Kassim' };
+export function createRent(ctx) {
+  // ctx: { day: () => game days, gold: { get, add }, toast, interactables, at: {x, z, y}, exempt: () => bool }
+  let st = null;
+  const fresh = () => ({ dueDay: Math.floor(ctx.day()) + RENT.every, owed: 0, late: false, locked: false, paid: 0 });
+  const S = () => (st ||= fresh());
+  const owing = () => S().owed + (ctx.day() >= S().dueDay ? RENT.amount : 0);
+  function tick() {
+    if (ctx.exempt?.()) return;
+    const s = S(), d = ctx.day();
+    if (d >= s.dueDay && !s.late) { s.late = true; ctx.toast(`🏚️ Rent day. ${RENT.landlord} wants ${RENT.amount} gold for your flat. Pay him outside Flat 1.`); }
+    if (d >= s.dueDay + RENT.every) { s.owed += RENT.amount + RENT.lateFee; s.dueDay += RENT.every; s.late = false; ctx.toast(`🏚️ You missed the rent. You now owe ${RENT.landlord} ${s.owed} gold (late fees included).`); }
+    if (!s.locked && s.owed > 0) { /* a whole week of rent missed */ s.locked = true; ctx.toast(`🔒 ${RENT.landlord} has padlocked your door. Pay what you owe (${owing()} gold) to get back in.`); }
+  }
+  function pay() {
+    const due = owing(); if (due <= 0) return ctx.toast(`${RENT.landlord}: "You're paid up until day ${S().dueDay}. Don't be late."`);
+    if (ctx.gold.get() < due) return ctx.toast(`${RENT.landlord}: "${due} gold. You've got ${Math.floor(ctx.gold.get())}? Come back when you have it."`);
+    ctx.gold.add(-due); const s = S(); s.paid += due; s.owed = 0; if (ctx.day() >= s.dueDay) s.dueDay += RENT.every; s.late = false;
+    const was = s.locked; s.locked = false;
+    ctx.toast(`🏚️ Paid ${due} gold rent. ${was ? 'He takes the padlock off your door. ' : ''}Next rent is due on day ${s.dueDay}.`);
+  }
+  if (ctx.at) ctx.interactables.push({ pos: new THREE.Vector3(ctx.at.x, ctx.at.y, ctx.at.z), r: 2.2,
+    get label() { if (ctx.exempt?.()) return `Talk to ${RENT.landlord}`; const due = owing(); return due > 0 ? `Pay rent to ${RENT.landlord} (${due} gold)` : `${RENT.landlord} (rent paid until day ${S().dueDay})`; },
+    action: () => ctx.exempt?.() ? ctx.toast(`${RENT.landlord}: "You're not one of my tenants."`) : pay() });
+  return {
+    tick, pay, owing,
+    lockedOut: () => !ctx.exempt?.() && !!S().locked,
+    status: () => ({ ...S(), owing: owing() }),
+    snapshot: () => S(),
+    restore(v) { st = v && typeof v === 'object' ? { ...fresh(), ...v } : null; },
   };
 }

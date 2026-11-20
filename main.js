@@ -115,7 +115,7 @@ import { buildBeach } from './beach.js';
 import { buildResortBeach } from './resort-beach.js';
 import { makeKit } from './leisure-kit.js';
 import { makeRundown, buildAdminEstate } from './home-styles.js';
-import { createSlum, SLUM_HOME, SLUM_HOME_YARD, slumGroundAt } from './slum.js';
+import { createSlum, createRent, SLUM_HOME, SLUM_HOME_Y, SLUM_HOME_YARD, slumGroundAt } from './slum.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
 import { buildRoadLinks } from './road-links.js';
@@ -552,7 +552,7 @@ function groundY(x, z, bodyY = null) {
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
-  const slumFloor=slumGroundAt(x,z);if(slumFloor!=null)return slumFloor;   // Cinder Row: dirt plots and lanes
+  const slumFloor=slumGroundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player?.position.y));if(slumFloor!=null)return slumFloor;   // (the tenement's floors, stairs and balcony depend on how high you are)   // Cinder Row: dirt plots and lanes
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
   const ghostFloor=ghostIsland?.groundAt(x,z);if(ghostFloor!=null)return ghostFloor;
   const spaceFloor=spaceCentre?.groundAt(x,z,bodyY??player.position.y);if(spaceFloor!=null)return spaceFloor;
@@ -1334,16 +1334,17 @@ const RUNWAY = new THREE.Vector3(TRAIN.x, 0, 200);
 // =====================================================================
 // Your home is in Cinder Row, the slum on the edge of Poison Land (slum.js): everyone but the admin starts out broke.
 const HOME = { ...SLUM_HOME };
+const HOME_Y = SLUM_HOME_Y;   // your flat is on the top floor of a three-storey tenement (the floors below are other tenants')
 const wallMat = new THREE.MeshStandardMaterial({ color: 0xb3a68f, roughness: 0.95 });   // dingy, stained render (a run-down house in Cinder Row)
 const WALL_Y = CURB + 1.5;
 // Real windows in the outside walls (see windows.js): glass you can see through from inside, and they open.
 const winSys = createWindows({ scene, interactables, glowMats });
 // The outside walls of a house laid out like house-rooms.js: front wall at `front` (with the door gap
 // u -1..1), `dir` pointing to the back. Window spots match the rooms (living, bedroom, kitchen sink, bathroom).
-function houseShell(cx, front, dir, W, D, wm) {
+function houseShell(cx, front, dir, W, D, wm, y0 = CURB) {
   const hw = W / 2, mid = D / 2, back = front + dir * D, b0 = mid + 0.05;
   const solid = (x0, x1, z0, z1) => colliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
-  const wall = (ax, az, bx, bz, inward, holes) => { winSys.wall({ ax, az, bx, bz, y: CURB, h: 3, t: 0.3, mat: wm, inward, holes }); solid(ax - (ax === bx ? 0.15 : 0), bx + (ax === bx ? 0.15 : 0), az - (az === bz ? 0.15 : 0), bz + (az === bz ? 0.15 : 0)); };
+  const wall = (ax, az, bx, bz, inward, holes) => { winSys.wall({ ax, az, bx, bz, y: y0, h: 3, t: 0.3, mat: wm, inward, holes }); solid(ax - (ax === bx ? 0.15 : 0), bx + (ax === bx ? 0.15 : 0), az - (az === bz ? 0.15 : 0), bz + (az === bz ? 0.15 : 0)); };
   const fw = Math.min(1.6, hw - 1.9);
   wall(cx - hw - 0.15, front, cx - 1, front, [0, dir], [{ at: (hw - 1) / 2 + 0.15, w: fw, sill: 1.0, h: 1.2 }]);     // front, living room
   wall(cx + 1, front, cx + hw + 0.15, front, [0, dir], [{ at: (hw - 1) / 2, w: fw, sill: 1.0, h: 1.2 }]);                  // front, kitchen
@@ -1351,18 +1352,20 @@ function houseShell(cx, front, dir, W, D, wm) {
   wall(cx + hw, front, cx + hw, back, [-1, 0], [{ at: 1.4, w: 1.0, sill: 1.05, h: 0.95 }, { at: b0 + 0.5, w: 0.6, sill: 1.6, h: 0.7, frosted: true }]);   // kitchen sink, bathroom
   wall(cx - hw - 0.15, back, cx + hw + 0.15, back, [0, -dir], [{ at: (-hw + 0.05 - 1) / 2 + hw + 0.15, w: 1.2, sill: 1.15, h: 1.1 }]);   // bedroom, over the bed
 }
-houseShell(HOME.x, HOME.minZ, 1, HOME.maxX - HOME.minX, HOME.maxZ - HOME.minZ, wallMat);
-box(2, 0.8, 0.3, HOME.x, CURB + 2.6, HOME.minZ, wallMat, false); // above door
+const homeCol0 = colliders.length;   // everything from here to the furniture is up on the top floor
+houseShell(HOME.x, HOME.minZ, 1, HOME.maxX - HOME.minX, HOME.maxZ - HOME.minZ, wallMat, HOME_Y);
+box(2, 0.8, 0.3, HOME.x, HOME_Y + 2.45, HOME.minZ, wallMat, false); // above door
 // A real front door in the doorway: E opens and closes it, and it's solid when shut.
-const homeDoor = new THREE.Group(); homeDoor.position.set(HOME.x - 1, CURB, HOME.minZ); scene.add(homeDoor);
+const homeDoor = new THREE.Group(); homeDoor.position.set(HOME.x - 1, HOME_Y, HOME.minZ); scene.add(homeDoor);
 { const panel = mesh(new THREE.BoxGeometry(1.96, 2.18, 0.08), 0x6b3f22, homeDoor); panel.position.set(0.99, 1.1, 0);
   for (const y of [0.55, 1.55]) mesh(new THREE.BoxGeometry(1.5, 0.75, 0.1), 0x5a3320, homeDoor).position.set(0.99, y, 0);
   const knob = mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3 }), homeDoor); knob.position.set(1.75, 1.05, -0.08);
-  box(2.3, 0.12, 0.4, HOME.x, CURB + 2.25, HOME.minZ, 0xf0ece2, false); }
+  box(2.3, 0.12, 0.4, HOME.x, HOME_Y + 2.1, HOME.minZ, 0xf0ece2, false); }
 const homeDoorCollider = { minX: HOME.x - 1, maxX: HOME.x + 1, minZ: HOME.minZ - 0.12, maxZ: HOME.minZ + 0.12 };
 colliders.push(homeDoorCollider);
 let homeDoorOpen = false;
-interactables.push({ pos: new THREE.Vector3(HOME.x, CURB, HOME.minZ), r: 2.2, get label() { return homeDoorOpen ? 'Close the front door' : 'Open the front door'; }, action: () => {
+interactables.push({ pos: new THREE.Vector3(HOME.x, HOME_Y, HOME.minZ), r: 2.2, get label() { return homeDoorOpen ? 'Close the front door' : rent?.lockedOut() && !houseAt(player.position) ? 'Padlocked by the landlord' : 'Open the front door'; }, action: () => {
+  if (!homeDoorOpen && rent?.lockedOut() && !houseAt(player.position)) return toast(`🔒 ${'Mr Kassim'} padlocked your door. Pay him the ${rent.owing()} gold you owe (he's outside Flat 1, downstairs).`);
   homeDoorOpen = !homeDoorOpen;
   const i = colliders.indexOf(homeDoorCollider);
   if (homeDoorOpen && i >= 0) colliders.splice(i, 1); else if (!homeDoorOpen && i < 0) colliders.push(homeDoorCollider);
@@ -1400,17 +1403,14 @@ function updateHomeDoor(dt) {
 const houseWindowMat = new THREE.MeshStandardMaterial({ color: 0x8fb3cc, roughness: 0.1, emissive: 0xffd58a, emissiveIntensity: 0 });
 glowMats.push(houseWindowMat);
 
-const floor = mesh(new THREE.PlaneGeometry(11.7, 9.7), new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.7 }));
+const floor = mesh(new THREE.PlaneGeometry(HOME.maxX - HOME.minX - 0.3, HOME.maxZ - HOME.minZ - 0.3), new THREE.MeshStandardMaterial({ map: woodTex, color: 0x9c8f7c, roughness: 0.85 }));   // worn, stained boards
 floor.rotation.x = -Math.PI / 2;
-floor.position.set(HOME.x, CURB + 0.02, HOME.z);
+floor.position.set(HOME.x, HOME_Y + 0.02, HOME.z);
 floor.castShadow = false;
 
-const roofShape = new THREE.Shape([new THREE.Vector2(-5.6, 0), new THREE.Vector2(5.6, 0), new THREE.Vector2(0, 2.2)]);
-const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: 12.6, bevelEnabled: false });
-roofGeo.translate(0, 0, -6.3);
-roofGeo.rotateY(Math.PI / 2);
-const houseRoof = new THREE.Mesh(roofGeo, [wallMat, new THREE.MeshStandardMaterial({ map: roofTex, roughness: 0.9 })]);
-houseRoof.position.set(HOME.x, CURB + 3, HOME.z);
+// a flat, rusty tin roof, sloping a little for the rain (it hides while you're inside, like any house roof)
+const houseRoof = new THREE.Mesh(new THREE.BoxGeometry(HOME.maxX - HOME.minX + 0.7, 0.1, HOME.maxZ - HOME.minZ + 0.7), new THREE.MeshStandardMaterial({ color: 0x8a6b55, roughness: 0.75, metalness: 0.3 }));
+houseRoof.position.set(HOME.x, HOME_Y + 3.08, HOME.z); houseRoof.rotation.x = -0.05;
 houseRoof.castShadow = houseRoof.receiveShadow = true;
 scene.add(houseRoof);
 const homeDesign=detailHome({scene,box,makeTex,home:HOME,curb:CURB,wallMat,roof:houseRoof,glowMats,yard:false});
@@ -1426,12 +1426,13 @@ doorPath.castShadow = false;
 // Furniture: proper rooms (hallway, living room, bedroom, kitchen, bathroom, storage) — see house-rooms.js
 const F_Y = CURB;
 let kitchen = null, chores = null;
-const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
-  { cx: HOME.x, front: HOME.minZ, dir: 1, W: HOME.maxX - HOME.minX, D: HOME.maxZ - HOME.minZ, y: CURB, sideWindows: [3, 7.5] });
+const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), kitchen: () => kitchen, sleep: () => rent?.lockedOut() ? toast('🔒 The landlord padlocked your flat. Pay the rent first.') : sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
+  { cx: HOME.x, front: HOME.minZ, dir: 1, W: HOME.maxX - HOME.minX, D: HOME.maxZ - HOME.minZ, y: HOME_Y, sideWindows: [(HOME.maxZ - HOME.minZ) * 0.3, (HOME.maxZ - HOME.minZ) * 0.75] });
+for (const c of colliders.slice(homeCol0)) if (!c.baseYAt) c.baseYAt = () => HOME_Y;   // the flat's walls, doors and furniture only block you up on the top floor
 const houseRoomList = [homeRooms];
 
 const houseLight = new THREE.PointLight(0xffe2b0, 6, 12, 2);
-houseLight.position.set(HOME.x, CURB + 2.7, HOME.z);
+houseLight.position.set(HOME.x, HOME_Y + 2.7, HOME.z);
 scene.add(houseLight);
 
 // Garden trees in the corners, kept clear of the driveway (x 10.7–14.5) and the front path; placed
@@ -1981,7 +1982,7 @@ function toggleInventory(open) {
   else requestGameControl();
 }
 
-const SPAWN = new THREE.Vector3(HOME.x, CURB, HOME.minZ - 3);
+const SPAWN = new THREE.Vector3(HOME.x, HOME_Y, HOME.minZ - 0.7);   // on the balcony outside your door
 player.position.copy(SPAWN);
 const DEFAULT_SPAWN=SPAWN.clone();
 let houseVisits=null;
@@ -2315,7 +2316,7 @@ function saveSolo() {
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
-      kitchen:kitchen?.snapshot(),careers:careers?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
+      kitchen:kitchen?.snapshot(),rent:rent?.snapshot(),careers:careers?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
       metro:metro?.snapshot(),sewer:sewers?.snapshot(),law:roadLaw?.snapshot(),hunter:hunterGuilds?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
       navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
       driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
@@ -2346,7 +2347,7 @@ function applySoloSave(save) {
   supportSkills?.restore(save.support);if(save.supportCounters)supportCounters=save.supportCounters;specialUnlocked=!!supportSkills?.equipped;buildHotbar();
   heroDungeonKills=save.heroDungeonKills||0;
   monsterQuestKills=save.monsterQuestKills||0;for(const q of cityLife?.quests||[]){const saved=save.questState?.find(s=>s.name===q.name);if(saved)Object.assign(q,saved);}
-  kitchen?.restore(save.kitchen);careers?.restore(save.careers);roadWear?.restore(save.roadWear);conditions?.restore(save.buildingCondition);property?.restore(save.property);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
+  kitchen?.restore(save.kitchen);rent?.restore(save.rent);careers?.restore(save.careers);roadWear?.restore(save.roadWear);conditions?.restore(save.buildingCondition);property?.restore(save.property);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
   if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
   adventureServices?.restore(save.adventure);
   roadLaw?.restore(save.law);hunterGuilds?.restore(save.hunter);
@@ -2420,7 +2421,7 @@ function setUpHome(){
     townPlaces?.destinations?.push({name:'Your mansion (Xenos Estate)',x:adminEstate.home.x,z:adminEstate.home.z});
   }else{
     const bed=homeRooms.rooms.find(q=>q.name==='bedroom');
-    makeRundown({scene,makeTex,curb:CURB,home:HOME,bedroom:bed?{x:(bed.minX+bed.maxX)/2,z:(bed.minZ+bed.maxZ)/2}:null});
+    makeRundown({scene,makeTex,curb:CURB,floorY:HOME_Y,home:HOME,bedroom:bed?{x:(bed.minX+bed.maxX)/2,z:(bed.minZ+bed.maxZ)/2}:null});
   }
   scene.remove(myCar.group);const i=vehicles.indexOf(myCar);if(i>=0)vehicles.splice(i,1);myCar.disabled=true;   // nobody starts with that car: you're broke (the admin has the estate's cars)
 }
@@ -6885,7 +6886,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, slum = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let venueFences = null, slum = null, rent = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -8072,7 +8073,7 @@ system=createSystem({userId:()=>soloUserId||'guest',
     busy(){return !!cutCam?.steps.length;},
     // skipping ahead: finish the current walk at once (doors on the way still open)
     finish(){if(!cutCam)return;const last=cutCam.steps.at(-1);for(const x of cutCam.steps)if(x.open)homeRooms.openDoor(x.open);if(last){cutCam.pos.set(last.to.x,last.to.y,last.to.z);cutCam.look.set(last.look.x,last.look.y,last.look.z);}cutCam.steps=[];cutCam.hold=0;},
-    end(){const e=homeRooms.spots.end;player.position.set(e.x,CURB,e.z);vy=0;yaw=Math.atan2(-e.facing.x,-e.facing.z);pitch=0;cutCam=null;player.visible=true;document.body.classList.remove('cinema');},
+    end(){const e=homeRooms.spots.end;player.position.set(e.x,HOME_Y,e.z);vy=0;yaw=Math.atan2(-e.facing.x,-e.facing.z);pitch=0;cutCam=null;player.visible=true;document.body.classList.remove('cinema');},
   },
   // the server keeps the run and the death wait, so clearing the browser can't restart or skip them (signed-in players)
   server:{start:async()=>registryUserId?(await supabase.rpc('story_run_start')).data:null,
@@ -8153,6 +8154,8 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // Cinder Row: the slum north of Poison Land where everyone but the admin starts out (slum.js). Built before the road scan so its lanes count as roads.
   slum=createSlum({...leisureCtx,K:makeKit(leisureCtx),curb:CURB,drink:()=>{stats.energy=clamp(stats.energy+4,0,100);toast('💧 Warm water that tastes of the pipe. Better than nothing.');}});
   townPlaces.destinations.push(...slum.destinations);
+  // your flat is rented: 60 gold a week to the landlord downstairs (slum.js createRent)
+  rent=createRent({day:()=>reconstructionDays,gold:{get:()=>stats.gold,add:n=>{stats.gold+=n;}},toast,interactables,at:slum.landlordAt,exempt:()=>isAdmin});
   // Seasons and holidays from the real calendar: weather, leaf colour, and the whole city decorated (seasons.js)
   seasons=createSeasons({scene,lampSpots,buildings,fair:FAIR,curb:CURB,home:{x:HOME.x,z:HOME.z,minZ:HOME.minZ,maxZ:HOME.maxZ},colliders,tint:FOLIAGE_TINT,toast,stats,
     kit:makeKit(leisureCtx),openShop:leisureCtx.openShop,addItem:(name,icon)=>{inventory.push({name,icon});renderInventory?.();},marketAt:{x:420,z:-925},
@@ -8447,7 +8450,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
