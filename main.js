@@ -60,6 +60,7 @@ import {buildHelipads} from './helipads.js';
 import {buildDrones} from './drones.js';
 import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
+import {auditScene} from './world-grid.js';
 import {buildBlackMarket, NARROWS} from './black-market.js';
 import {buildMilitary, addNavyCrew} from './military.js';
 import {createConditions,conditionOf} from './condition.js';
@@ -2517,6 +2518,15 @@ async function boot() {
   window.gameLoading?.show(60,'Preparing buildings, vehicles and textures...');
   await visualAssetsReady;
   fixMirroredSigns(); setTimeout(()=>fixMirroredSigns(),20000);   // signs read the right way round from both sides
+  // ?audit: list every place in the world where two things overlap (world-grid.js). Changes nothing.
+  if(new URLSearchParams(location.search).has('audit'))setTimeout(()=>{
+    const skip=new Set([player,...vehicles.map(v=>v.group),...(transport?.services||[]).map(s=>s.g),transport?.airport?.g].filter(Boolean));
+    const dests=townPlaces?.destinations||[];
+    const areaName=(x,z)=>{let best=null,bd=1e9;for(const d of dests){const q=Math.hypot(d.x-x,d.z-z);if(q<bd){bd=q;best=d.name;}}return bd<400?best:`open land near (${Math.round(x/50)*50}, ${Math.round(z/50)*50})`;};
+    const roads=roadRectList.map(r=>({minX:r.minX+.5,maxX:r.maxX-.5,minZ:r.minZ+.5,maxZ:r.maxZ-.5}));
+    const t0=performance.now(),result=auditScene(THREE,scene,{skip,areaName,roads,colliders});
+    window.__worldAudit=result;console.log('[world-grid] audit:',result.clashes.length,'clashes among',result.boxes,'things in',Math.round(performance.now()-t0),'ms',result.summary);
+  },20000);
   window.gameLoading?.show(85,'Saving your progress...');
   if(soloMode&&!saveSolo())throw new Error('Unable to save progress on this device.');
   perfBudget.start();
