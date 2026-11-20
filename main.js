@@ -532,6 +532,15 @@ function rebuildSolidProps() {
     }, 3000);
   }, 50);
 }
+// Fast movers (high level speed, sprinting, dashing, a slow frame) can cover more than a wall's thickness in one frame
+// and come out the other side. So a long move is replayed in short steps, each one checked against the walls.
+function sweepCollide(from, p, r) {
+  const dx = p.x - from.x, dz = p.z - from.z, n = Math.min(60, Math.ceil(Math.hypot(dx, dz) / 0.15));
+  if (n <= 1) return collide(p, r);
+  p.x = from.x; p.z = from.z; let hit = false;
+  for (let i = 0; i < n; i++) { p.x += dx / n; p.z += dz / n; if (collide(p, r)) hit = true; }
+  return hit;
+}
 function collide(p, r) {
   let hit = false;
   for (const c of colliders) {
@@ -843,7 +852,7 @@ function collapseBuilding(b,criminal=true) {
   for (const m of b.meshes) { const i = camBlockers.indexOf(m); if (i >= 0) camBlockers.splice(i, 1); }
   const base = new THREE.Vector3(b.x, CURB, b.z), size = Math.max(b.w, b.d), H = b.top;
   impactFrame(1.5);
-  callout('BUILDING DESTROYED', 0xff7a2f, true);
+  society?.news(`A building came down near ${placeNear(b.x, b.z)}${criminal ? '. Police are looking for whoever did it.' : '.'}`);
   if(criminal)raiseWanted(90);
   hitAround(base, size * 0.9, null, { dmg: 80, kb: 14, up: 8, stun: 2, heavy: true, impact: 1, guardBreak: true,police:!criminal,fromPlayer:criminal }, 60);
   if (!inCar && distXZ(player.position, base) < size) hurtPlayer(30, base, 15, 'Hit by a collapsing building');
@@ -1416,14 +1425,17 @@ function houseShell(cx, front, dir, W, D, wm, y0 = CURB) {
   wall(cx + hw, front, cx + hw, back, [-1, 0], [{ at: 1.4, w: 1.0, sill: 1.05, h: 0.95 }, { at: b0 + 0.5, w: 0.6, sill: 1.6, h: 0.7, frosted: true }]);   // kitchen sink, bathroom
   wall(cx - hw - 0.15, back, cx + hw + 0.15, back, [0, -dir], [{ at: (-hw + 0.05 - 1) / 2 + hw + 0.15, w: 1.2, sill: 1.15, h: 1.1 }]);   // bedroom, over the bed
 }
-const homeCol0 = colliders.length;   // everything from here to the furniture is up on the top floor
+const homeCol0 = colliders.length, homeObj0 = scene.children.length;   // everything from here to the furniture is up on the top floor
 houseShell(HOME.x, HOME.minZ, 1, HOME.maxX - HOME.minX, HOME.maxZ - HOME.minZ, wallMat, HOME_Y);
 box(2, 0.8, 0.3, HOME.x, HOME_Y + 2.45, HOME.minZ, wallMat, false); // above door
 // A real front door in the doorway: E opens and closes it, and it's solid when shut.
-const homeDoor = new THREE.Group(); homeDoor.position.set(HOME.x - 1, HOME_Y, HOME.minZ); scene.add(homeDoor);
-{ const panel = mesh(new THREE.BoxGeometry(1.96, 2.18, 0.08), 0x6b3f22, homeDoor); panel.position.set(0.99, 1.1, 0);
-  for (const y of [0.55, 1.55]) mesh(new THREE.BoxGeometry(1.5, 0.75, 0.1), 0x5a3320, homeDoor).position.set(0.99, y, 0);
-  const knob = mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3 }), homeDoor); knob.position.set(1.75, 1.05, -0.08);
+// Two leaves that open OUT onto the balcony (opening inwards, one wide leaf went straight into the hallway walls).
+const homeDoor = new THREE.Group(); homeDoor.position.set(HOME.x - 1, HOME_Y, HOME.minZ - 0.06); scene.add(homeDoor);
+const homeDoorR = new THREE.Group(); homeDoorR.position.set(HOME.x + 1, HOME_Y, HOME.minZ - 0.06); scene.add(homeDoorR);
+{ const knobM = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3 });
+  for (const [g, s] of [[homeDoor, 1], [homeDoorR, -1]]) { const panel = mesh(new THREE.BoxGeometry(0.97, 2.18, 0.07), 0x6b3f22, g); panel.position.set(s * 0.5, 1.1, 0);
+    for (const y of [0.55, 1.55]) mesh(new THREE.BoxGeometry(0.72, 0.75, 0.09), 0x5a3320, g).position.set(s * 0.5, y, 0);
+    const knob = mesh(new THREE.SphereGeometry(0.05, 10, 8), knobM, g); knob.position.set(s * 0.88, 1.05, -0.06); g.name = 'home door'; }
   box(2.3, 0.12, 0.4, HOME.x, HOME_Y + 2.1, HOME.minZ, 0xf0ece2, false); }
 const homeDoorCollider = { minX: HOME.x - 1, maxX: HOME.x + 1, minZ: HOME.minZ - 0.12, maxZ: HOME.minZ + 0.12 };
 colliders.push(homeDoorCollider);
@@ -1458,7 +1470,7 @@ function updateHomeGates(dt) {
   }
 }
 function updateHomeDoor(dt) {
-  updateHomeGates(dt); homeDoor.rotation.y += ((homeDoorOpen ? -Math.PI / 2 : 0) - homeDoor.rotation.y) * Math.min(1, dt * 6);
+  updateHomeGates(dt); homeDoor.rotation.y += ((homeDoorOpen ? Math.PI / 2 * 0.95 : 0) - homeDoor.rotation.y) * Math.min(1, dt * 6); homeDoorR.rotation.y += ((homeDoorOpen ? -Math.PI / 2 * 0.95 : 0) - homeDoorR.rotation.y) * Math.min(1, dt * 6);
   for (const d of houseFrontDoors) { const want = d.open ? d.swing : 0, cur = d.door.rotation.y; if (Math.abs(want - cur) <= 0.001) continue;
     const step = cur + (want - cur) * Math.min(1, dt * 6), p = d.door.position;
     const r = doorSweep(p.x, p.z, 1, 0, 1.96, cur, step);   // the leaf runs along +x from its hinge
@@ -1492,7 +1504,8 @@ const F_Y = CURB;
 let kitchen = null, chores = null;
 const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), kitchen: () => kitchen, sleep: () => rent?.lockedOut() ? toast('🔒 The landlord padlocked your flat. Pay the rent first.') : sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
   { cx: HOME.x, front: HOME.minZ, dir: 1, W: HOME.maxX - HOME.minX, D: HOME.maxZ - HOME.minZ, y: HOME_Y, sideWindows: [(HOME.maxZ - HOME.minZ) * 0.3, (HOME.maxZ - HOME.minZ) * 0.75] });
-for (const c of colliders.slice(homeCol0)) if (!c.baseYAt) c.baseYAt = () => HOME_Y;   // the flat's walls, doors and furniture only block you up on the top floor
+for (const c of colliders.slice(homeCol0)) if (!c.baseYAt) c.baseYAt = () => HOME_Y;
+{ const bb = new THREE.Box3(); for (const o of scene.children.slice(homeObj0)) o.traverse(m => { if (!m.isMesh) return; bb.setFromObject(m); const h = bb.max.y - bb.min.y, t = Math.min(bb.max.x - bb.min.x, bb.max.z - bb.min.z); if (h > 2 && t < 0.45 && !camBlockers.includes(m)) camBlockers.push(m); }); }   // the flat's walls keep the camera inside   // the flat's walls, doors and furniture only block you up on the top floor
 const houseRoomList = [homeRooms];
 
 const houseLight = new THREE.PointLight(0xffe2b0, 6, 12, 2);
@@ -1637,7 +1650,10 @@ function toScreen(pos) {
 }
 
 const pops = [];
-function popText(pos, text, cls = '') {
+// Floating numbers over people: only the damage YOU deal is shown. Everything else (damage you take, blocks, K.O.,
+// gold, resets...) stays off the screen.
+function popText(pos, text, cls = '', mine = false) {
+  if (!mine) return;
   const el = document.createElement('div');
   el.className = 'pop ' + cls;
   el.textContent = text;
@@ -1666,6 +1682,8 @@ function makeLabel(name, withGuard) {
   return { el, hp: el.querySelector('.lhp'), guard: el.querySelector('.lg') };
 }
 
+// the nearest named place to a spot, for news reports
+function placeNear(x, z) { let best = null, bd = Infinity; for (const d of townPlaces?.destinations || []) { const q = (d.x - x) ** 2 + (d.z - z) ** 2; if (q < bd) { bd = q; best = d.name; } } return best || 'Ashford'; }
 let calloutTimer;
 function callout(text, color, big = false) {
   if (inFilm()) return;
@@ -3890,7 +3908,7 @@ function applyHit(e, h) {
 
   // Damage numbers only appear for hits the player made; other people's fights and
   // traffic accidents don't pop numbers on the player's screen.
-  if (byPlayer) popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '');
+  if (byPlayer) popText(at(p, e.height + 0.3), Math.round(dmg), h.heavy ? 'heavy' : '', true);   // the only number on screen: damage you dealt
   burst(at(p, e.height * 0.6), h.heavy ? 18 : 8, [0xffffff, 0xffe08a, characters[charIdx].fx], h.heavy ? 12 : 7, 0.12, 0.3, 8);
   // Only count toward the player's own combo/ultimate-charge when the player
   // actually caused the hit — AI traffic running someone over was bumping the
@@ -4477,7 +4495,7 @@ function dispatchPoliceArrest(offender, reason) {
         h.root.position.copy(offender.group.position).add(off); h.root.position.y = groundY(h.root.position.x, h.root.position.z);
         h.root.lookAt(offender.group.position.x, h.root.position.y, offender.group.position.z);
       }
-      if (playerNear(offender.group.position)) callout('DRIVER ARRESTED', 0x74b9ff);
+      if (playerNear(offender.group.position)) society?.news(`Police arrested a driver near ${placeNear(offender.group.position.x, offender.group.position.z)}.`);
       return [officer, suspect];
     },
     onSceneDone() {
@@ -4498,7 +4516,7 @@ function arrestPed(e, done) {
       const officer = makeHumanoid({ outfit: 0x243c58, hair: 0x382d24, pants: 0x1c2f43 });
       officer.root.position.copy(e.root.position).add(new THREE.Vector3(1.1, 0, 0)); officer.root.position.y = groundY(officer.root.position.x, officer.root.position.z);
       officer.root.lookAt(e.root.position.x, officer.root.position.y, e.root.position.z);
-      if (playerNear(e.root.position, 60)) callout('THIEF ARRESTED', 0x74b9ff);
+      if (playerNear(e.root.position, 60)) society?.news(`Police arrested a thief near ${placeNear(e.root.position.x, e.root.position.z)}.`);
       return [officer];
     },
     onSceneDone() { responseUnits.police = Math.max(0, responseUnits.police - 1); done(); },
@@ -5051,7 +5069,6 @@ function useSkill(i) {
   if (!canAct() || c.cds[i] > 0) return;
   if (prog.level < skillLevel(i, c)) { toast(`${c.skills[i].name} unlocks at level ${skillLevel(i, c)}`); return; }
   c.cds[i] = c.skills[i].cd;
-  callout(c.skills[i].name.toUpperCase(), c.fx);
   c.skills[i].run();
 }
 function useUlt() {
@@ -5131,7 +5148,6 @@ function legacyPsychicGrip() {
     return len < range && (len < 1.5 || d.normalize().dot(f) > 0.35);
   }).sort((a, b) => distXZ(a.root.position, player.position) - distXZ(b.root.position, player.position)).slice(0, maxTargets);
   psyCd = psyCdMax();
-  callout('PSYCHIC GRIP', 0xb388ff);
   fxRing(player.position, 0xb388ff, 4, 0.4);
   hitVehicles(player.position, range, new Set(), { dmg: psyDmg() * 2 }, 3, f, 0.35);
   if (!grabbed.length) return;
@@ -6696,7 +6712,6 @@ async function enterCivicBuilding(b) {
     player.rotation.y = Math.PI;
     yaw = 0; vy = 0; pvel.set(0, 0, 0);
     $('fade').style.opacity = 0;
-    callout(b.name.toUpperCase(), 0xffd166, true);
     const desc = data?.description || `You step into ${b.name}, but it's hard to make out much more right now.`;
     const staff = data?.staff?.length ? ' Staff here: ' + data.staff.map(s => `${s.name} (${s.role})`).join(', ') + '.' : '';
     toast(desc + staff + (layout ? ' Walk around and press E on things to use them. Leave through the front door behind you.' : ' There’s a chair by a TV straight ahead — walk up and press E to sit.'));
@@ -6959,6 +6974,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
   if (e.code === 'KeyO' && !e.repeat && system?.active()) system.toggle();
   if (e.code === 'KeyH' && !e.repeat && (locked || phone?.open)) phone?.toggle();
+  if (e.code === 'Escape' && phone?.open) { phone.toggle(false); return; }   // Esc puts the phone away too
   if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
   if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
@@ -7153,6 +7169,7 @@ function updatePlayer(dt) {
 
   const dir = inputDir();
   const moving = dir.lengthSq() > 0;
+  const moveFrom = player.position.clone();   // where this frame's move starts (see sweepCollide)
   playerBlocking = !!keys.KeyF && !action && playerStun <= 0;
   const canMove = !action && playerStun <= 0;
   const sprinting = canMove && moving && keys.ShiftLeft && stats.energy > 0 && !playerBlocking;
@@ -7177,7 +7194,7 @@ function updatePlayer(dt) {
   else if (!action?.noGravity) vy -= 25 * dt;
   player.position.y += vy * dt;
   // walls only stop you near the ground while flying (the city's walls have no tops, so high up you'd hit thin air)
-  if (!adminFlying || player.position.y < groundY(player.position.x, player.position.z) + 3.5) collide(player.position, 0.4);
+  if (!adminFlying || player.position.y < groundY(player.position.x, player.position.z) + 3.5) sweepCollide(moveFrom, player.position, 0.4);
   const floorY = groundY(player.position.x, player.position.z);
   if (player.position.y <= floorY) {
     // Fall damage: only kicks in past a safe landing speed (roughly a two-storey
@@ -8079,7 +8096,7 @@ for(let i=0;i<12;i++)addWildlife('skeleton',-80+Math.sin(i*2)*18,480+Math.cos(i*
 supportSkills=createSupportSkills({level:()=>prog.level,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons,bosses:supportCounters.bosses}),toast,
 changed(){specialUnlocked=!!supportSkills?.equipped;buildHotbar();if(alignmentUserId)try{localStorage.setItem('support:'+alignmentUserId,JSON.stringify({skill:supportSkills.snapshot(),counters:supportCounters,kills:monsterQuestKills}));}catch{}},
 pause(){locked=false;mouseHeld=false;for(const key in keys)keys[key]=false;document.exitPointerLock();$('start').style.display='none';},resume(){if(!boardOpen&&!settingsOpen)requestGameControl();},
-psychic:legacyPsychicGrip,effect(name,color){callout(name.toUpperCase(),color);fxRing(player.position,color,4,.5);},
+psychic:legacyPsychicGrip,effect(name,color){fxRing(player.position,color,4,.5);},
 attack(range,damage,kb,cone){if(cone)hitCone(player.position,aimForward(),range,.25,new Set(),{dmg:damage,kb,up:1,stun:.7,heavy:true,from:player.position.clone()},3);else hitAround(player.position,range,new Set(),{dmg:damage,kb,up:2,stun:.7,heavy:true,from:player.position.clone()},3);},
 heal(hp,energy){stats.hp=Math.min(maxHp(),stats.hp+hp);stats.energy=Math.min(100,stats.energy+energy);},
 blink(distance){player.position.addScaledVector(aimForward().setY(0).normalize(),distance);collide(player.position,.4);player.position.y=groundY(player.position.x,player.position.z,player.position.y);},
@@ -8110,7 +8127,7 @@ const equippedGun=new THREE.Group();P.armR.pivot.add(equippedGun);equippedGun.po
 adventureServices=buildAdventureServices({licensed:id=>licences.has(id),licenceCheck:(id,c,who)=>licences.check(id,c,who),openLicences:name=>licences.open(name),illegalPurchase:()=>raiseWanted(60),showEquipment(id){swordGrip.visible=id==='sword'||!id&&!!origin?.weapon;equippedGun.visible=id==='pistol'||id==='rifle';equippedGun.scale.setScalar(id==='rifle'?1.5:1);},scene,box,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),sign:signboard,destinations:townPlaces.destinations,interactables,playerPosition:()=>player.position,toast,
 pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons}),pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},reward(gold,xp){stats.gold+=gold;gainXp(xp);},changed(){saveSolo();},
 repair(price){const car=vehicles.find(v=>isRoadVehicle(v)&&!v.disabled&&!v.noSteal&&distXZ(v.group.position,player.position)<12);if(!car){toast('Bring an operational car within 12 metres of the shop.');return;}if(stats.gold<price){toast('Not enough gold.');return;}stats.gold-=price;car.health=100;applyVehicleCondition(car);toast('Vehicle repaired. Full power and steering restored.');},
-swordAttack(){callout('SWORD STRIKE',0xe5f2ff);hitCone(player.position,aimForward(),5,.1,new Set(),{dmg:35,kb:5,stun:.5,from:player.position.clone()},3);},
+swordAttack(){hitCone(player.position,aimForward(),5,.1,new Set(),{dmg:35,kb:5,stun:.5,from:player.position.clone()},3);},
 shoot(range,damage){const origin=at(player.position,1.5),dir=aimForward().normalize(),ray=new THREE.Raycaster(origin,dir,.1,range),obstacle=ray.intersectObjects(camBlockers,true)[0],limit=obstacle?.distance??range;
  const objects=[...enemies.filter(e=>e.alive&&!e.hidden).map(e=>({entity:e,position:at(e.root.position,1),radius:(e.radius||.4)+.4})),...vehicles.filter(v=>!v.disabled).map(v=>({vehicle:v,position:at(v.group.position,.8),radius:v.radius||2}))];
  const target=objects.map(o=>{const delta=o.position.clone().sub(origin),along=delta.dot(dir),side=delta.clone().addScaledVector(dir,-along).length();return {...o,along,side};}).filter(o=>o.along>0&&o.along<limit&&o.side<o.radius).sort((a,b)=>a.along-b.along)[0];

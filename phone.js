@@ -56,7 +56,7 @@ export function createPhone(ctx) {
 #crypticPhone .app i{font-style:normal;font-size:24px;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:#ffffff1c}
 #crypticPhone h3{margin:2px 0 10px;font:700 18px system-ui}#crypticPhone .row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #ffffff14}
 #crypticPhone button.b{font:600 13px system-ui;padding:8px 12px;min-height:36px;border-radius:10px;border:0;background:#2f6fdf;color:#fff;cursor:pointer}#crypticPhone button.g{background:#ffffff22}
-#crypticPhone .home{height:5px;width:120px;border-radius:3px;background:#fff9;margin:8px auto 0;cursor:pointer}
+#crypticPhone .pbtns{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:8px}#crypticPhone .home{height:5px;width:110px;border:0;padding:0;border-radius:3px;background:#fff9;cursor:pointer}#crypticPhone .pclose{background:#ffffff1a;color:#fff;border:1px solid #ffffff33;border-radius:999px;padding:3px 10px;font:12px system-ui;cursor:pointer}
 #crypticPhone .crack{position:absolute;inset:0;pointer-events:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 200'%3E%3Cg stroke='white' stroke-opacity='.35' fill='none' stroke-width='.4'%3E%3Cpath d='M0 8 L14 18 L22 15 L35 30 M14 18 L10 34 L18 52 M22 15 L30 4 M35 30 L48 33 M35 30 L37 47'/%3E%3C/g%3E%3C/svg%3E") top left/100% 100% no-repeat}
 #crypticPhone img.ph{width:100%;border-radius:10px;display:block}#crypticPhone .pics{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}#crypticPhone .pics img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:pointer}
 #crypticPhone textarea,#crypticPhone input{width:100%;box-sizing:border-box;background:#ffffff14;color:#fff;border:1px solid #ffffff2a;border-radius:10px;padding:8px;font:14px system-ui}
@@ -66,18 +66,18 @@ export function createPhone(ctx) {
 body.cinema #phoneBtn{visibility:hidden}`;
   document.head.append(css);
   const el = document.createElement('section'); el.id = 'crypticPhone'; el.hidden = true; document.body.append(el);
-  const btn = document.createElement('button'); btn.id = 'phoneBtn'; btn.type = 'button'; btn.textContent = '📱 Phone'; btn.onclick = () => toggle(); document.body.append(btn);
+  const btn = document.createElement('button'); btn.id = 'phoneBtn'; btn.type = 'button'; btn.textContent = '📱 Phone (H)'; btn.onclick = () => toggle(); document.body.append(btn);
   let open = false, app = 'home', laptop = false;
 
   function frame(title, inner, opts = {}) {
     const d = new Date(), time = d.toTimeString().slice(0, 5);
     const model = ctx.premium?.() ? 'Cryptic Prime' : 'Cryptic C1';
     el.className = laptop ? 'laptop' : '';
-    el.innerHTML = `<div class="scr"><div class="bar"><span>${time}</span><span>${laptop ? 'Cryptic Book' : model} · 5G · ${Math.floor(ctx.stats.gold)}g</span></div><div class="body"></div>${!laptop && !ctx.premium?.() ? '<div class="crack"></div>' : ''}</div><div class="home" title="Home"></div>`;
+    el.innerHTML = `<div class="scr"><div class="bar"><span>${time}</span><span>${laptop ? 'Cryptic Book' : model} · 5G · ${Math.floor(ctx.stats.gold)}g</span></div><div class="body"></div>${!laptop && !ctx.premium?.() ? '<div class="crack"></div>' : ''}</div><div class="pbtns"><button type="button" class="home" title="Home"></button><button type="button" class="pclose" title="Put the phone away (H or Esc)">✕ Close</button></div>`;
     const body = el.querySelector('.body');
     if (title) { const h = document.createElement('h3'); h.textContent = title; body.append(h); }
     if (typeof inner === 'string') body.insertAdjacentHTML('beforeend', inner); else if (inner) body.append(inner);
-    el.querySelector('.home').onclick = () => go('home');
+    el.querySelector('.home').onclick = () => go('home'); el.querySelector('.pclose').onclick = () => toggle(false);
     return body;
   }
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -139,10 +139,12 @@ body.cinema #phoneBtn{visibility:hidden}`;
         ['🍂 Season', c.season || ''], ['🎉 Holidays', (c.holidays || []).join(', ') || 'none today'],
         ['💰 Your gold', Math.floor(ctx.stats.gold) + ' gold'], ['❤️ Health', Math.round(ctx.stats.hp) + ''], ['🍽️ Hunger', Math.round(ctx.stats.hunger) + '%'], ['⚡ Energy', Math.round(ctx.stats.energy) + '%'],
       ];
-      const body = frame('Info Hub', '<p style="opacity:.7;margin-top:-6px">Your daily information</p>');
+      const body = frame('Info Hub', '<p style="opacity:.7;margin-top:-6px">Your daily information, and what\'s been happening</p>');
       for (const [a, b] of lines) body.append(row(`<b>${a}</b>`, Object.assign(document.createElement('span'), { textContent: b })));
-      const top = (ctx.news?.() || []).slice(0, 3);
-      if (top.length) { body.append(Object.assign(document.createElement('h3'), { textContent: 'Headlines' })); for (const n of top) body.append(row(esc(n))); }
+      const top = (ctx.news?.() || []).slice(0, 25);   // what's been happening: buildings destroyed, arrests, the city's news (none of it pops up on your screen)
+      body.append(Object.assign(document.createElement('h3'), { textContent: "What's been happening" }));
+      if (!top.length) body.insertAdjacentHTML('beforeend', '<p style="opacity:.7">Nothing yet today.</p>');
+      for (const n of top) body.append(row(`📰 ${esc(n)}`));
     },
     store() {
       const body = frame('Cryptic Store', '<p style="opacity:.7;margin-top:-6px">The official store. Only Cryptic apps run on Cryptic devices.</p>');

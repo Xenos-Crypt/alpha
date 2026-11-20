@@ -117,7 +117,7 @@ export function createSociety(ctx) {
   }
   const unemployedPct = () => 100 * citizens.filter(c => c.job === 'Unemployed').length / citizens.length;
   const stats = () => ({ ...S, unemployed: unemployedPct() });
-  function news(text, important, src) { S.news.unshift({ t: S.tick, text, src: src || sourceFor(text) }); S.news.length = Math.min(S.news.length, 200); if (important && live) ctx.toast('📰 ' + text); }
+  function news(text, important, src) { S.news.unshift({ t: S.tick, text, src: src || sourceFor(text) }); S.news.length = Math.min(S.news.length, 200); }   // (news goes to the phone's Info Hub and Anthos News, not onto the screen)
   function remember(c, text) { c.memory.unshift(text); c.memory.length = Math.min(c.memory.length, 5); }
   const nameOf = i => citizens[i]?.name || 'nobody';
 
