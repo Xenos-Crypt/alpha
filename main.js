@@ -555,6 +555,7 @@ function groundY(x, z, bodyY = null) {
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
+  const adminFloor=adminEstate?.groundAt(x,z);if(adminFloor!=null)return adminFloor;   // the admin estate (its raised pool deck)
   const slumFloor=slumGroundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player?.position.y));if(slumFloor!=null)return slumFloor;   // (the tenement's floors, stairs and balcony depend on how high you are)   // Cinder Row: dirt plots and lanes
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
   const ghostFloor=ghostIsland?.groundAt(x,z);if(ghostFloor!=null)return ghostFloor;
@@ -1789,9 +1790,12 @@ const people = createPeople({
   babyOf: c => seatedResidents?.babyOf(c) || null,
   budget: () => Math.round(({ low: 8, medium: 14, high: 22, ultra: 30 }[gfxQuality] ?? 14) * (matchMedia('(pointer: coarse)').matches ? .7 : 1)),
 });
+// Everyone uses the same kind of figure as the player. (The realistic rigged bodies from people.js are switched
+// off: set REAL_BODIES to true to bring them back for the people nearest the camera.)
+const REAL_BODIES = false;
 function makeHumanoid(opts) {
   const h = makeHumanoidFigure(opts);
-  if (opts.real !== false) people.adopt(h, opts);
+  if (REAL_BODIES && opts.real !== false) people.adopt(h, opts);
   return h;
 }
 function makeHumanoidFigure({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes = 0x1b1b2f, handScale = 1, child = false }) {
@@ -2419,17 +2423,27 @@ function showMenu(hasSave) {
 let isAdmin = false, phone = null;
 // Admin god mode: infinite health and energy, never hungry, level 1000, maxed stats. On by default for admins;
 // they can switch it off in the System window (to test deaths, say).
+let adminFlying = false, lastSpaceTap = 0;
+// admin flight: double-tap Space to take off or land (only with god mode on)
+document.addEventListener('keydown', e => { if (e.code !== 'Space' || e.repeat || !isAdmin || !adminGod || !soloMode) return; const t = performance.now(); if (t - lastSpaceTap < 320) { adminFlying = !adminFlying; vy = 0; toast(adminFlying ? '🕊️ Flying. Space up, Z down, Shift to go fast. Double-tap Space to land.' : '🕊️ Landing.'); lastSpaceTap = 0; } else lastSpaceTap = t; }, true);
+let adminCityHome = null;
 let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{return true;}})(), adminMaxed = false;
 // Homes that fit who you are (home-styles.js): everyone else starts poor in a run-down home with no car;
-// the admin's home is a mansion with a pool, a supercar and a private airstrip on new land east of The Reserve.
+// the admin has a house in the city (where they start) and a mansion with a pool, supercars and a private airstrip
+// on new land east of The Reserve.
 function setUpHome(){
   if(isAdmin){
     if(adminEstate||!homeKitCtx)return;
     adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),
       makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
     poolZones.push(...adminEstate.pools);
-    SPAWN.set(adminEstate.home.x,CURB,adminEstate.home.z);
     townPlaces?.destinations?.push({name:'Your mansion (Xenos Estate)',x:adminEstate.home.x,z:adminEstate.home.z});
+    // ...and a house in the city where the admin starts out (the mansion is still theirs): one of the town's existing
+    // houses, the one nearest the middle of Ashford, so nothing new is built on top of anything
+    const cityHome=houses.slice(1).reduce((b,h)=>{const d=Math.hypot((h.minX+h.maxX)/2-20,h.maxZ-0);return !b||d<b.d?{h,d}:b;},null)?.h;
+    if(cityHome){ const hx=(cityHome.minX+cityHome.maxX)/2, hz=cityHome.maxZ; adminCityHome={x:hx,z:hz+1};
+      SPAWN.set(hx,CURB,hz+1);   // on the garden path, just outside the front door
+      townPlaces?.destinations?.push({name:'Your city house (Ashford)',x:hx,z:hz+1}); }
   }else{
     const bed=homeRooms.rooms.find(q=>q.name==='bedroom');
     makeRundown({scene,makeTex,curb:CURB,floorY:HOME_Y,home:HOME,bedroom:bed?{x:(bed.minX+bed.maxX)/2,z:(bed.minZ+bed.maxZ)/2}:null});
@@ -6968,6 +6982,8 @@ function updateFirefighters(dt) {
   }
 }
 let swimming = false, waterExhausted = false;
+// the height of the water's surface here: a pool can sit above the ground (its waterY); the sea and lakes are at 0
+function waterLevelAt(x,z){const r=poolZones.find(r=>x>r.minX&&x<r.maxX&&z>r.minZ&&z<r.maxZ);return r?.waterY??0;}
 function isSeaWater(x,z,bodyY = null) {
   if (poolZones.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)) return true;   // swimming pools
   if(navy?.groundAt(x,z)!=null)return false;
@@ -6991,7 +7007,7 @@ function updateSwimming(dt) {
   stats.energy=Math.max(0,stats.energy-dt*(waterPower ? .12 : sprint ? 1.8 : moving ? .65 : .2));
   if(stats.energy===0){stats.hp=Math.max(0,stats.hp-12*dt);noteHpLoss('Exhausted while swimming: get to shore');if(!waterExhausted){waterExhausted=true;toast('Exhausted in the water! Get to shore or a dock ladder.');}}
   else waterExhausted=false;
-  const targetY=stats.energy>0?-1.05:-1.35;player.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
+  const targetY=(stats.energy>0?-1.05:-1.35)+waterLevelAt(player.position.x,player.position.z);   // a raised pool's water is higher than the seaplayer.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
   if(moving)player.rotation.y=lerpAngle(player.rotation.y,Math.atan2(dir.x,dir.z),1-Math.exp(-5*dt));
   animateHumanoid(P,null,moving,false,false,dt);P.rig.rotation.x=-.6;
   if(!isSeaWater(player.position.x,player.position.z)){swimming=false;waterExhausted=false;P.rig.rotation.x=0;player.position.y=groundY(player.position.x,player.position.z);onGround=true;toast('Back on dry ground.');}
@@ -7004,7 +7020,7 @@ function updatePlayer(dt) {
   if(spaceCentre?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(metro?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(transport?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
-  if (isSeaWater(player.position.x,player.position.z) && player.position.y < .2) return updateSwimming(dt);
+  if (isSeaWater(player.position.x,player.position.z) && player.position.y < .2 + waterLevelAt(player.position.x,player.position.z)) return updateSwimming(dt);
   if (swimming) { swimming=false; waterExhausted=false; P.rig.rotation.x=0; }
   if (sitting) { animateHumanoid(P, 'sit', false, false, true, dt); return; } // frozen in the chair until E is pressed again, but still visibly seated
   playerStun = Math.max(0, playerStun - dt);
@@ -7018,7 +7034,7 @@ function updatePlayer(dt) {
   const canMove = !action && playerStun <= 0;
   const sprinting = canMove && moving && keys.ShiftLeft && stats.energy > 0 && !playerBlocking;
   if (canMove && moving) {
-    player.position.addScaledVector(dir, (sprinting ? 9 : 5) * (sewers?.movementScale(player.position) ?? 1) * (metro?.movementScale(player.position)??1) * speedMul() * (playerBlocking ? 0.35 : 1) * dt);
+    player.position.addScaledVector(dir, (sprinting ? 9 : 5) * (adminFlying ? (sprinting ? 4 : 2) : 1) * (sewers?.movementScale(player.position) ?? 1) * (metro?.movementScale(player.position)??1) * speedMul() * (playerBlocking ? 0.35 : 1) * dt);
     if (!playerBlocking) player.rotation.y = lerpAngle(player.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-12 * dt));
   }
   if (sprinting) stats.energy -= 3 * drainMul() * dt;
@@ -7033,9 +7049,12 @@ function updatePlayer(dt) {
   player.position.x += pvel.x * dt;
   player.position.z += pvel.z * dt;
   pvel.multiplyScalar(Math.max(0, 1 - 6 * dt));
-  if (!action?.noGravity) vy -= 25 * dt;
+  if (adminFlying && !(isAdmin && adminGod)) adminFlying = false;
+  if (adminFlying) vy = ((keys.Space ? 1 : 0) - (keys.KeyZ ? 1 : 0)) * (sprinting ? 16 : 7);   // admin flight: Space up, Z down
+  else if (!action?.noGravity) vy -= 25 * dt;
   player.position.y += vy * dt;
-  collide(player.position, 0.4);
+  // walls only stop you near the ground while flying (the city's walls have no tops, so high up you'd hit thin air)
+  if (!adminFlying || player.position.y < groundY(player.position.x, player.position.z) + 3.5) collide(player.position, 0.4);
   const floorY = groundY(player.position.x, player.position.z);
   if (player.position.y <= floorY) {
     // Fall damage: only kicks in past a safe landing speed (roughly a two-storey
@@ -7050,7 +7069,7 @@ function updatePlayer(dt) {
         playerStun = Math.max(playerStun, 0.3);
       }
     }
-    player.position.y = floorY; vy = 0; onGround = true;
+    player.position.y = floorY; vy = Math.max(0, vy); onGround = true; if (adminFlying && !keys.Space) vy = 0;
   }
   else if (player.position.y - floorY > 0.2) onGround = false;
 
@@ -7850,6 +7869,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
   pause() { if (mobileControls?.mobile) { locked = false; mouseHeld = false; $('start').style.display = 'none'; } },
   resume() { requestGameControl(); }
 });
+townPlaces?.destinations?.push({name:'Ashford Charging Station',x:19.5,z:9});   // (chargers.js: the old empty lot)
 // The bridge/Riverside were hand-built directly in this file, not through places.js's
 // room() helper, so they never auto-registered on the travel map like everything else.
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
@@ -8033,7 +8053,7 @@ const townWildlife=()=>{const out=[];const one=(o,key,owner,pos,where)=>{const s
 const idExtra=[{cls:'BLD',kind:'AIB',mat:'GLS.STL',owner:'GOV',seed:'atlas-base',maker:'Westhaven Builders',name:'ATLAS national AI base',pos:{x:80,z:922}},{cls:'BLD',kind:'TMP',mat:'STN',owner:'GOV',seed:'temple-dig',maker:'the First Kings (ancient)',name:'Ancient temple dig',pos:{x:-147,z:-357}},{cls:'BLD',kind:'GEN',mat:'STL.CON',owner:'GOV',seed:'waste-centre',maker:'Westhaven Builders',name:'Waste & Recycling Centre',pos:{x:283,z:-411}}];
 // The IDs are for the AI and the back end, not for players: only the owner (open the game once with ?owner) gets the hidden registry view.
 const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setItem('aw.owner','1');return localStorage.getItem('aw.owner')==='1';}catch{return false;}};
-worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
+worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>GRASS_TUFTS?(grass?.tufts?.()||[]):[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
   extra:()=>[...idExtra,...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
@@ -8354,6 +8374,10 @@ function grassSpot(x, z) {
   return y;
 }
 const grass = createGrass({ scene, count: touchDevice ? 3000 : 6000, radius: touchDevice ? 28 : 38, spot: grassSpot });
+// The loose grass tufts are switched off everywhere for now (they grew on floors, pools and roads); they'll come
+// back placed properly, area by area. Set GRASS_TUFTS to true to bring the old scatter back.
+const GRASS_TUFTS = false;
+if (!GRASS_TUFTS) { grass.mesh.visible = false; grass.setCount(0); }
 const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
 worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosition:()=>player.position});worldAdvertising.update(0);adBalloon.visible=false;
@@ -8417,7 +8441,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
+    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); if (GRASS_TUFTS) grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
     military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
@@ -8490,7 +8514,7 @@ function frame() {
   perfBudget.update(rawDt, frameMs, running);
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
-  seatedResidents?.update(rawDt); people.update(hitStop > 0 ? 0 : rawDt);
+  seatedResidents?.update(rawDt); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt);
   if(!coveredByOverlay()){if(++shadowFrame%2===0)renderer.shadowMap.needsUpdate=true;renderer.render(scene, camera);}
   requestAnimationFrame(frame);
 }

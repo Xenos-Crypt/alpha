@@ -5,6 +5,8 @@
 // Hitting a pothole at speed jolts the car and dents it; broken road slows you down.
 // Road crews (a van, cones, a jackhammer and a roller) go to the worst damage, close it off and
 // resurface it. Fresh tarmac shows as a darker patch for a while. You can lend a hand for pay.
+// The crews' vans live at the Highways depot (next to the Westhaven Recovery yard) and drive there and back
+// along real roads: a job no van can reach by road is left alone.
 import * as THREE from 'three';
 
 export const CELL = 6;
@@ -94,7 +96,7 @@ export function createRoadWear(ctx) {
   function pickJob(crew, playerPos) {
     let best = null, bs = Infinity;
     for (const c of cells.values()) {
-      if (c.hp >= 55 || neglected.has(key(c.x, c.z)) || crews.some(o => o !== crew && o.target === c)) continue;
+      if (c.hp >= 55 || c.unreachable || neglected.has(key(c.x, c.z)) || crews.some(o => o !== crew && o.target === c)) continue;
       const score = c.hp + Math.hypot(c.x - playerPos.x, c.z - playerPos.z) / 25;
       if (score < bs) { bs = score; best = c; }
     }
@@ -102,7 +104,7 @@ export function createRoadWear(ctx) {
   }
   function setUp(crew) {
     const c = crew.target, yaw = alongOf(c.x, c.z), f = [Math.sin(yaw), Math.cos(yaw)], s = [f[1], -f[0]], y = Math.max(0, groundY(c.x, c.z, 0));
-    crew.g.visible = true; crew.along = yaw;
+    crew.g.visible = true; crew.along = yaw; for (const o of [...crew.cones, crew.sg, crew.roller, crew.drill]) o.visible = true;
     crew.v.position.set(c.x + f[0] * 8, y, c.z + f[1] * 8); crew.v.rotation.y = yaw;
     crew.cones.forEach((k, i) => { const a = i / crew.cones.length * Math.PI * 2; k.position.set(c.x + Math.cos(a) * 3.6, y, c.z + Math.sin(a) * 3.6); });
     crew.sg.position.set(c.x - f[0] * 10, y, c.z - f[1] * 10); crew.sg.rotation.y = yaw + Math.PI;
@@ -112,6 +114,51 @@ export function createRoadWear(ctx) {
     crew.it.pos.set(crew.team[2].root.position.x, y, crew.team[2].root.position.z);
   }
   function packUp(crew) { crew.g.visible = false; crew.team.forEach(h => { h.root.visible = false; }); crew.it.pos.set(0, -999, 0); crew.target = null; crew.helped = false; }
+  // ---- driving: the depot, and a route along the roads (a search over a grid of road points) ----
+  const DEPOT_NEAR = ctx.depot || [640, -93];
+  let depot = null;
+  function findDepot() {
+    if (depot) return depot;
+    for (let r = 0; r < 60 && !depot; r += 2) for (let a = 0; a < 16 && !depot; a++) { const x = DEPOT_NEAR[0] + Math.cos(a / 16 * Math.PI * 2) * r, z = DEPOT_NEAR[1] + Math.sin(a / 16 * Math.PI * 2) * r; if (isRoad(x, z)) depot = [x, z]; }
+    return depot;
+  }
+  const GS = 5;   // route grid spacing (metres)
+  function route(ax, az, bx, bz) {
+    const minX = Math.min(ax, bx) - 250, maxX = Math.max(ax, bx) + 250, minZ = Math.min(az, bz) - 250, maxZ = Math.max(az, bz) + 250;
+    const W = Math.ceil((maxX - minX) / GS) + 1, H = Math.ceil((maxZ - minZ) / GS) + 1; if (W * H > 900000) return null;
+    const road = new Int8Array(W * H), prev = new Int32Array(W * H).fill(-1);
+    const isR = (i, k) => { const id = k * W + i; if (!road[id]) road[id] = isRoad(minX + i * GS, minZ + k * GS) ? 1 : 2; return road[id] === 1; };
+    const near = (x, z) => { const i0 = Math.round((x - minX) / GS), k0 = Math.round((z - minZ) / GS); for (let r = 0; r < 4; r++) for (let di = -r; di <= r; di++) for (let dk = -r; dk <= r; dk++) { const i = i0 + di, k = k0 + dk; if (i >= 0 && k >= 0 && i < W && k < H && isR(i, k)) return k * W + i; } return -1; };
+    const s0 = near(ax, az), g0 = near(bx, bz); if (s0 < 0 || g0 < 0) return null;
+    const q = new Int32Array(W * H); let qh = 0, qt = 0, seen = 0; q[qt++] = s0; prev[s0] = s0;
+    while (qh < qt && prev[g0] < 0) { const id = q[qh++], i = id % W, k = (id - i) / W; if (++seen > 160000) return null;
+      for (const [di, dk] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = i + di, nk = k + dk; if (ni < 0 || nk < 0 || ni >= W || nk >= H) continue; const nid = nk * W + ni; if (prev[nid] >= 0 || !isR(ni, nk)) continue; prev[nid] = id; q[qt++] = nid; } }
+    if (prev[g0] < 0) return null;
+    const cellsOnPath = []; for (let id = g0; ; id = prev[id]) { cellsOnPath.push(id); if (id === s0) break; } cellsOnPath.reverse();
+    const pts = []; let lastDir = null;
+    for (let n = 0; n < cellsOnPath.length; n++) { const id = cellsOnPath[n], i = id % W, k = (id - i) / W, p = [minX + i * GS, minZ + k * GS];
+      const nx = cellsOnPath[n + 1]; const dir = nx == null ? null : (nx - id); if (n === 0 || nx == null || dir !== lastDir) pts.push(p); lastDir = dir; }
+    return pts;
+  }
+  const crewSpeed = 11;
+  function drive(crew, dt) {   // move the van along crew.path; true when it has arrived
+    const p = crew.v.position, path = crew.path;
+    while (crew.pi < path.length) {
+      const [tx, tz] = path[crew.pi], dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz), step = crewSpeed * dt;
+      if (d < 0.01) { crew.pi++; continue; }
+      const yaw = Math.atan2(dx, dz); crew.v.rotation.y += Math.atan2(Math.sin(yaw - crew.v.rotation.y), Math.cos(yaw - crew.v.rotation.y)) * Math.min(1, dt * 6);
+      if (d <= step) { p.x = tx; p.z = tz; crew.pi++; } else { p.x += dx / d * step; p.z += dz / d * step; }
+      p.y = Math.max(0, groundY(p.x, p.z, 0)); crew.lb.material.emissiveIntensity = Math.sin(clock * 10) > 0 ? 2.5 : 0.3;
+      return false;
+    }
+    return true;
+  }
+  function startDrive(crew, path) {
+    crew.path = path; crew.pi = 1; crew.g.visible = true;
+    for (const o of [...crew.cones, crew.sg, crew.roller, crew.drill]) o.visible = false;   // the gear is in the van
+    crew.team.forEach(h => { h.root.visible = false; });   // and so is the crew
+    crew.v.position.set(path[0][0], Math.max(0, groundY(path[0][0], path[0][1], 0)), path[0][1]);
+  }
 
   // ---- per frame ----
   function update(dt, s) {
@@ -140,8 +187,14 @@ export function createRoadWear(ctx) {
     // crews
     for (const crew of crews) {
       crew.timer -= dt;
-      if (crew.state === 'idle' && crew.timer <= 0) { const job = pickJob(crew, s.playerPos); if (job) { crew.target = job; crew.state = 'travel'; crew.timer = Math.min(40, 6 + Math.hypot(job.x - s.playerPos.x, job.z - s.playerPos.z) / 20); } else crew.timer = 10; }
-      else if (crew.state === 'travel' && crew.timer <= 0) { if (!cells.has(key(crew.target.x, crew.target.z))) { crew.state = 'idle'; crew.target = null; crew.timer = 2; continue; } crew.state = 'work'; crew.timer = crew.helped ? 20 : 45; setUp(crew); }
+      if (crew.state === 'idle' && crew.timer <= 0) {   // a job: work out the way there along the roads, then drive
+        const job = pickJob(crew, s.playerPos), dep = findDepot();
+        if (job && dep) { const yaw = alongOf(job.x, job.z), park = [job.x + Math.sin(yaw) * 8, job.z + Math.cos(yaw) * 8], path = route(dep[0], dep[1], park[0], park[1]);
+          if (path && path.length > 1) { path.push(park); crew.target = job; crew.state = 'out'; startDrive(crew, path); } else { job.unreachable = true; crew.timer = 8; } }
+        else crew.timer = 8; }
+      else if (crew.state === 'out') { if (!cells.has(key(crew.target.x, crew.target.z))) { crew.state = 'home'; crew.path = crew.path.slice(0, crew.pi).reverse(); crew.pi = 1; continue; }
+        if (drive(crew, dt)) { crew.state = 'work'; crew.timer = crew.helped ? 20 : 45; setUp(crew); } }
+      else if (crew.state === 'home') { if (drive(crew, dt)) { packUp(crew); crew.state = 'idle'; crew.timer = 5; } }
       else if (crew.state === 'work') {
         const c = crew.target, k = clock;
         crew.lb.material.emissiveIntensity = Math.sin(k * 10) > 0 ? 2.5 : 0.3;
@@ -153,7 +206,9 @@ export function createRoadWear(ctx) {
         crew.roller.position.set(c.x + f[0] * u + f[1] * 1.5, crew.roller.position.y, c.z + f[1] * u - f[0] * 1.5);
         if (crew.timer <= 0) {
           for (const o of cells.values()) if (Math.hypot(o.x - c.x, o.z - c.z) < 9 && o.hp < 100) { o.hp = 100; o.patch = 600; dirty = true; }
-          packUp(crew); crew.state = 'idle'; crew.timer = 5;
+          // pack the gear back in the van and drive back to the depot
+          const back = crew.path ? crew.path.slice().reverse() : null; crew.team.forEach(h => { h.root.visible = false; }); crew.it.pos.set(0, -999, 0);
+          if (back && back.length > 1) { crew.state = 'home'; startDrive(crew, back); crew.v.position.set(crew.v.position.x, crew.v.position.y, crew.v.position.z); } else { packUp(crew); crew.state = 'idle'; crew.timer = 5; }
         }
       }
     }
@@ -161,7 +216,7 @@ export function createRoadWear(ctx) {
   }
   const worst = () => { let n = 0; for (const c of cells.values()) if (c.hp < 40) n++; return n; };
   return {
-    update, damage, blast, at, crews, cells, neglect,
+    update, damage, blast, at, crews, cells, neglect, depot: findDepot, route,
     get potholes() { return worst(); },
     stageAt: (x, z) => stageFor(at(x, z)?.hp ?? 100),
     help(crew) { if (crew.state !== 'work') return false; crew.timer = Math.min(crew.timer, 6); crew.helped = true; return true; },

@@ -22,8 +22,12 @@ export function buildStreetDesign({scene,box,makeTex,addTrafficLight}){
    add(18,.12,.16,ix+20,.08,side*1.74,curb);
    add(18,.2,.18,ix+20,.12,side*8.03,curb);
    // Slim garden-side railings, leaving crossing entrances unobstructed.
-   for(const px of [ix+14,ix+26])add(.085,.85,.085,px,.58,side*10.8,new THREE.MeshStandardMaterial({color:0x38443e}));
-   add(12,.045,.045,ix+20,.95,side*10.8,new THREE.MeshStandardMaterial({color:0x38443e}));
+   // (none across the entrance of the Ashford charging station, on the south side of block 0)
+   // In front of the two streets of houses (blocks at x 20 and -20, z -20) the railing stops short of each
+   // house's garden path (x = middle ± 5.2), so you walk out of the front door onto the pavement, not through it.
+   const rail=new THREE.MeshStandardMaterial({color:0x38443e});
+   const runs=ix===0&&side===1?[]:side===-1&&(ix===0||ix===-40)?[[ix+15.9,ix+24.1]]:[[ix+14,ix+26]];
+   for(const [a,b] of runs){for(const px of [a,b])add(.085,.85,.085,px,.58,side*10.8,rail);add(b-a,.045,.045,(a+b)/2,.95,side*10.8,rail);}
   }
   add(18,.025,3.3,ix+20,.055,0,median);
  }
