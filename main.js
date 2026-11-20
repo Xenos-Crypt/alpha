@@ -23,6 +23,7 @@ import {createInfoMarkets} from './info-markets.js';
 import {createStory} from './story.js';
 import {createSystem} from './system.js';
 import { createSystemOrb } from './system-orb.js';
+import { createSystemVoice } from './system-voice.js';
 import { createVoice } from './voice.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
@@ -1559,6 +1560,7 @@ const heldToasts = [];
 function releaseHeldToasts() { const list = heldToasts.splice(0); list.forEach((t, i) => setTimeout(() => toast(t), 900 + i * 3800)); }
 function toast(text) {
   if (inFilm()) { if (!heldToasts.includes(text)) { heldToasts.push(text); if (heldToasts.length > 3) heldToasts.shift(); } return; }
+  if (soloMode && /\[SYSTEM\]/.test(text)) systemVoice?.speak(String(text).replace(/^.*?\[SYSTEM\]\s*/, ''));   // the System says its messages out loud
   text = touchText(text);
   $('toast').textContent = text;
   $('toast').style.opacity = 1;
@@ -6895,7 +6897,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, systemVoice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -8070,7 +8072,9 @@ phone=createPhone({where:()=>player.position,userId:()=>soloUserId||registryUser
   gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
   news:()=>(society?.state?.news||[]).map(n=>n.text),quests:()=>system?.quests?.()||[],
   openBanking:()=>{if(!bankPanel?.phone)return false;bankPanel.openPhone();return true;}});
-system=createSystem({mood:(m,s)=>systemOrb?.feel(m,s),onOpen:()=>{systemOrb?.talk(3.5);},userId:()=>soloUserId||'guest',
+// The System's voice (system-voice.js): an OpenAI voice, fetched once per line and kept on this device
+systemVoice=createSystemVoice({volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')||80)/100)),onSpeak:sec=>systemOrb?.talk(sec+0.3)});
+system=createSystem({systemVoice,mood:(m,s)=>systemOrb?.feel(m,s),onOpen:()=>{systemOrb?.talk(3.5);},userId:()=>soloUserId||'guest',
   admin:{on:()=>isAdmin,god:()=>adminGod,goHome:()=>{if(!adminEstate)return;if(inCar)exitVehicle(true);player.position.set(adminEstate.home.x,CURB,adminEstate.home.z);vy=0;toast('🏛 Home: Xenos Estate.');},toggleGod:()=>{adminGod=!adminGod;adminMaxed=false;try{localStorage.setItem('adminGod',adminGod?'1':'0');}catch{}toast(adminGod?'🛠 God mode on.':'🛠 God mode off: you can get hurt, hungry and tired again.');},revive:async()=>{await supabase.rpc('story_run_revive');},levelUp:()=>{gainXp(Math.max(1,xpToNext()-prog.xp));},
     questions:async()=>{const r=await supabase.rpc('dev_queries_open');if(r.error)throw r.error;return r.data||[];}},
   // the opening plays like a film: the camera moves through the home, the player can't control anything,

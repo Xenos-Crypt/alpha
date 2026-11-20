@@ -110,8 +110,13 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #inventoryBtn,body.cinema #nyCo
     page.append(box, hint); page.hidden = false;
     if (!open) { open = true; ctx.pause(); }
   }
-  // Narration: the device's own voice reads each line (free, no AI call). System lines sound flatter.
+  // Only the System speaks: its lines use the System's voice (system-voice.js). The narration is silent: you read it.
   function speak(text, system) {
+    // the System's own words are the bracketed lines, e.g. "[ ... ]"; everything else on the page is narration
+    const said = (String(text).match(/\[[^\]]+\]/g) || []).join(' ');
+    if (!said) return Promise.resolve(false);
+    text = said;
+    if (ctx.systemVoice) return ctx.systemVoice.speak(text);
     return new Promise(done => {
       const tts = window.speechSynthesis;
       if (!tts || typeof SpeechSynthesisUtterance === 'undefined') return done(false);
@@ -132,7 +137,7 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #inventoryBtn,body.cinema #nyCo
   function lineDone(text, system) {
     return new Promise(res => {
       let skipped = false, spoke = null;
-      const go = () => { if (skipped) return; skipped = true; window.speechSynthesis?.cancel(); ctx.cinema.finish(); cleanup(); res(); };
+      const go = () => { if (skipped) return; skipped = true; window.speechSynthesis?.cancel(); ctx.systemVoice?.stop(); ctx.cinema.finish(); cleanup(); res(); };
       const key = e => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); go(); } };
       const cleanup = () => { page.removeEventListener('pointerdown', go); removeEventListener('keydown', key, true); };
       page.addEventListener('pointerdown', go); addEventListener('keydown', key, true);
