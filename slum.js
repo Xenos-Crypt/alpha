@@ -315,6 +315,10 @@ export function createSlum(ctx) {
   }
   for (const [dx, dz] of TENEMENTS) buildTenement(dx, dz, !dx && !dz);
 
+  // your neighbours' doors: locked (it's their home), but you can knock
+  { const replies = ['"Who is it? ...We\'re not buying anything."', '"Not now, the baby\'s asleep."', 'Nobody answers. A TV is on somewhere inside.', '"If it\'s about the noise, it wasn\'t us."', '"Mr Kassim sent you? Tell him the tap still leaks."'];
+    for (const t of tenants) if (!t.who.includes('landlord')) interactables.push({ pos: new THREE.Vector3(t.x, t.y, t.z), r: 1.4, door: true, label: `Knock on ${t.who.replace(/ \(.*\)/, '')}'s door (locked)`, action: () => ctx.toast('🚪 ' + replies[Math.floor(Math.random() * replies.length)]) }); }
+
   // ---------------- street life: power lines, lamps, laundry, rubbish, fire barrels ----------------
   // wooden poles along the lanes, leaning, with a tangle of wires (half of them stolen connections)
   const poles = [];
@@ -340,13 +344,21 @@ export function createSlum(ctx) {
   // fire barrels: people stand round them at night
   const barrels = [[768, 543], [633, 452], [807, 596 - 1.2], [690, 553.6]];
   const flames = [];
+  // the tap's water: a stream from the spout into the bucket, and the surface in the bucket rising and rippling
+  let pour = 0, tapAt = null;
+  const waterM = new THREE.MeshStandardMaterial({ color: 0xbfe3f2, transparent: true, opacity: 0.6, roughness: 0.05, metalness: 0.1, emissive: 0x335566, emissiveIntensity: 0.3 });
+  const stream = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.026, 1, 8, 1, true), waterM); stream.visible = false; stream.name = 'tap water'; scene.add(stream);
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.02, 14), waterM); pool.visible = false; scene.add(pool);
+  const drops = Array.from({ length: 6 }, () => { const d = new THREE.Mesh(new THREE.SphereGeometry(0.018, 5, 4), waterM); d.visible = false; scene.add(d); return d; });
   for (const [x, z] of barrels) { cyl(0.32, 0.9, x, curb + 0.45, z, rubber, 12); const f = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.6, 7), fire); f.position.set(x, curb + 1.1, z); scene.add(f); flames.push(f); colliders.push({ circleX: x, circleZ: z, circleRadius: 0.4, minX: x - 0.4, maxX: x + 0.4, minZ: z - 0.4, maxZ: z + 0.4 }); tag('PRD', 'DEC', 'STL', 'An old oil drum', 'Fire barrel', x, z); }
   const glow = new THREE.PointLight(0xff8a3a, 2.4, 14, 2); glow.position.set(768, curb + 1.6, 543); scene.add(glow);
 
   // ---------------- the communal tap (the only water for the whole street) ----------------
   { const x = 715, z = 506; box(0.5, 0.12, 0.5, x, curb + 0.06, z, concrete); cyl(0.05, 1.0, x, curb + 0.55, z, bars, 6); box(0.25, 0.05, 0.05, x + 0.12, curb + 0.98, z, bars);
     for (let i = 0; i < 4; i++) cyl(0.2, 0.35, x + 0.6 + i * 0.55, curb + 0.18, z + 0.4, std('bucket' + (i % 3), { color: [0x2d7dd2, 0xe4572e, 0xf3a712][i % 3] }), 10);
-    interactables.push({ pos: new THREE.Vector3(x, 0, z), r: 1.8, label: 'Drink from the communal tap', action: () => ctx.drink?.() });
+    cyl(0.17, 0.32, x + 0.26, curb + 0.16, z, std('bucket0', { color: 0x2d7dd2 }), 10);   // a bucket under the spout
+    interactables.push({ pos: new THREE.Vector3(x, 0, z), r: 1.8, label: 'Drink from the communal tap', action: () => { pour = 4; ctx.drink?.(); } });
+    tapAt = { x: x + 0.26, z };
     tag('PRD', 'TAP', 'STL', 'Westhaven Water and Power', 'Communal standpipe', x, z, 'GOV'); }
 
   // ---------------- Mama Ade's corner shop: cheap food through a hatch ----------------
@@ -429,6 +441,11 @@ export function createSlum(ctx) {
       glow.intensity = 2.1 + 0.6 * Math.sin(ft * 11) * Math.sin(ft * 7.3);
       K?.update?.(dt, p);
       for (const D of shackDoors) { const want = D.target * D.swing; if (Math.abs(D.g.rotation.y - D.base - want) > 0.001) D.g.rotation.y += (D.base + want - D.g.rotation.y) * Math.min(1, dt * 6); }
+      // water pours when you use the tap, and now and then when a neighbour fills a bucket
+      if (tapAt) { if (pour <= 0 && Math.random() < dt / 40) pour = 5; pour -= dt; const on = pour > 0, top = curb + 0.96, bottom = curb + 0.3;
+        stream.visible = pool.visible = on; for (const d of drops) d.visible = on;
+        if (on) { const wob = 1 + Math.sin(ft * 40) * 0.08; stream.scale.set(wob, top - bottom, wob); stream.position.set(tapAt.x, (top + bottom) / 2, tapAt.z); pool.position.set(tapAt.x, bottom + 0.005 + Math.sin(ft * 25) * 0.004, tapAt.z);
+          drops.forEach((d, i) => { const k = (ft * 2.5 + i / drops.length) % 1, a = i * 1.7; d.position.set(tapAt.x + Math.cos(a) * 0.08 * k, bottom + 0.12 * Math.sin(k * Math.PI), tapAt.z + Math.sin(a) * 0.08 * k); }); } }
       for (const e of errands) stepErrand(e, dt);
       // people are solid: you bump into them instead of walking through
       for (const h of K?.people || []) { const q = h.root.position; if (!h.root.visible || Math.abs(q.y - p.y) > 1.6) continue; const dx = p.x - q.x, dz = p.z - q.z, d = Math.hypot(dx, dz); if (d < 0.65 && d > 1e-4) { p.x = q.x + dx / d * 0.65; p.z = q.z + dz / d * 0.65; } }
