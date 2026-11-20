@@ -60,6 +60,8 @@ import {buildHelipads} from './helipads.js';
 import {buildDrones} from './drones.js';
 import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
+import {buildSkyCity} from './sky-city.js';
+import {buildDeepCity} from './deep-city.js';
 import {createSolidProps} from './solid-props.js';
 import {auditScene} from './world-grid.js';
 import {buildBlackMarket, NARROWS} from './black-market.js';
@@ -488,6 +490,7 @@ function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localSto
 let cityLife=null,monsterQuestKills=0;
 let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
+let skyCity = null, deepCity = null;   // Skyhaven (sky-city.js) and Deephaven (deep-city.js)
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
 const buildings = [];      // every city building, so it can be destroyed
@@ -517,7 +520,7 @@ function rebuildSolidProps() {
     const before = new Map(); scene.traverse(o => { if (o.isMesh) { const e = o.matrixWorld.elements; before.set(o, e[12] + e[13] * 7 + e[14] * 13 + e[0] * 17 + e[2] * 19); } });
     setTimeout(() => {
       scene.updateMatrixWorld(true);
-      const skip = new Set([player, ...vehicles.map(v => v.group)]), box = new THREE.Box3();
+      const skip = new Set([player, ...vehicles.map(v => v.group), skyCity?.ship].filter(Boolean)), box = new THREE.Box3();
       for (const [o, h] of before) { const e = o.matrixWorld.elements; if (Math.abs(e[12] + e[13] * 7 + e[14] * 13 + e[0] * 17 + e[2] * 19 - h) < 1e-4) continue;
         let q = o; while (q.parent && q.parent !== scene) { box.setFromObject(q.parent); const sz = box.getSize(new THREE.Vector3()); if (Math.max(sz.x, sz.z) > 12) break; q = q.parent; } skip.add(q); }
       const n = solidProps.build(scene, { skip, groundY: (x, z, y) => groundY(x, z, y), colliders, stairs: stairRamps.map(r => ({ minX: r.x0, maxX: r.x1, minZ: r.z0, maxZ: r.z1 })), seats: sitSpots });
@@ -569,6 +572,9 @@ const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
   if (z < -9000) { const raceFloor = race?.groundAt(x, z); if (raceFloor != null) return raceFloor; }   // Ashford Racing track worlds
+  if (skyCity || deepCity) { const by = bodyY ?? (inCar && driving ? driving.group.position.y : player?.position.y ?? 0);
+    const sky = skyCity?.groundAt(x, z, by); if (sky != null) return sky;      // Skyhaven, 200 m up (only when you're up there)
+    const deep = deepCity?.groundAt(x, z, by); if (deep != null) return deep; } // Deephaven, on the sea floor (only when you're down there)
   // the harbour bridge first: it crosses over Anthos Bay, and only counts when you're up on its deck (so you never drop through it onto the beach)
   if(harbourBridge){const deck=harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player?.position.y??0));if(deck!=null&&deck>0.6)return deck;}
   const bayFloor=resortBeach?.groundAt(x,z);if(bayFloor!=null)return bayFloor;   // Anthos Bay sand, decks and jetty (checked first: other layers treat this spot as open sea)
@@ -4931,7 +4937,7 @@ function aimMelee() {
   return fwdOf(player);
 }
 
-function canAct() { return !busRide && !helipads?.flying && !navy?.rider && !intercityRail?.rider && !cityServices?.rider && !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
+function canAct() { return !busRide && !helipads?.flying && !skyCity?.rider && !navy?.rider && !intercityRail?.rider && !cityServices?.rider && !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
 
 // ---- M1: 4-hit combo, the last hit is a heavy knockback with an impact frame ----
 function m1() {
@@ -6250,6 +6256,7 @@ function resolveInteractTarget() {
   if(helipads?.flying)return {label:'Flying by helicopter',action:()=>toast('Sit tight, the pilot will land soon.')};
   if(spaceCentre?.rider)return {label:spaceCentre.state==='landed'?'Leave rocket':spaceCentre.state==='boarding'?'Leave rocket cabin':spaceCentre.state==='countdown'?'Abort launch':'Rocket flight in progress',action:()=>spaceCentre.interact()};
   if (metro?.rider) return { label: 'Leave the subway', action: () => metro.leave() };
+  if (skyCity?.rider) return { label: 'Leave the airship', action: () => skyCity.leave() };
   if (riding) return { label: 'Dismount', action: dismountHorse };
   if (transport?.rider) return { label: 'Leave', action: () => transport.leave() };
   if (inCar && driving?.isTow) { const a = recovery?.action(driving, player.position); if (a) return a; }   // tow truck: winch / drop wrecks
@@ -7043,6 +7050,7 @@ function isSeaWater(x,z,bodyY = null) {
   if(resortBeach?.groundAt(x,z)!=null)return false;   // the new sand and the jetty aren't sea
   if(regionalEnvironment?.groundAt(x,z)!=null)return false;
   if(poisonLand?.groundAt(x,z)!=null)return false;   // Poison Land's island and its bridge
+  if(deepCity?.inside(x,z,bodyY??player?.position.y??0))return false;   // inside Deephaven's dome or tunnel there's air
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return z>=GAP0&&z<=GAP1&&liftBridgeSurface(z,bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1).height==null;
@@ -7070,7 +7078,7 @@ function updateSwimming(dt) {
 function updatePlayer(dt) {
  if(adventureServices?.parachuting){const p=player.position;const input=locked?inputDir():new THREE.Vector3();p.addScaledVector(input,5*dt);p.addScaledVector(pvel,dt);pvel.multiplyScalar(Math.max(0,1-dt*2));p.y-=3.8*dt;const floor=groundY(p.x,p.z,p.y);if(p.y-floor<3)collide(p,.4);if(p.y<=floor+.2){p.y=floor;vy=0;onGround=true;adventureServices.land();}animateHumanoid(P,'fall',false,false,false,dt);return;}
 
-  if(navy?.rider||intercityRail?.rider||helipads?.flying||busRide){animateHumanoid(P,'sit',false,false,true,dt);return;}
+  if(navy?.rider||intercityRail?.rider||helipads?.flying||busRide||skyCity?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(cityServices?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(spaceCentre?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if(metro?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
@@ -8081,7 +8089,7 @@ society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPo
   resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
   arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),notebook:()=>story?.notebook()||[],lead:()=>story?.lead(),playerSurname:()=>playerUsername||'Newcomer',companyReports:()=>infoMarkets?.companyReports(),archive:()=>infoMarkets?.archive(),
   petitions:()=>worldWatch?.list||[],note:t=>worldWatch?.note(t),
-  cityAt:p=>poisonLand?.onIsland(p.x,p.z)?'Poison Land':p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
+  cityAt:p=>skyCity?.cityAt(p.x,p.z,p.y??0)?'Skyhaven':deepCity?.cityAt(p.x,p.z,p.y??0)?'Deephaven':poisonLand?.onIsland(p.x,p.z)?'Poison Land':p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
   assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,level:()=>prog.level,
   brokenLamps:()=>{const out=[];for(let i=0;i<lampSpots.length;i++)if(lampBroken[i]&&distXZ(lampSpots[i],player.position)<80)out.push({i,p:lampSpots[i]});return out;},fixLamp,
   askAtlas:async(question,state)=>{if(!navigator.onLine)return null;const r=await fetch('/api/atlas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,state})});return r.ok?(await r.json()).answer:null;},
@@ -8111,7 +8119,7 @@ const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setIt
 worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>GRASS_TUFTS?(grass?.tufts?.()||[]):[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
-  extra:()=>[...idExtra,...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
+  extra:()=>[...idExtra,...(skyCity?.ids||[]),...(deepCity?.ids||[]),...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // every purchase, uniform, worn-out shirt and pram goes on the thing's record (belongings.js → world IDs)
@@ -8173,7 +8181,7 @@ system=createSystem({systemVoice,mood:(m,s)=>systemOrb?.feel(m,s),onOpen:()=>{sy
   setLevel:n=>{prog.level=n;prog.xp=Math.min(prog.xp,xpToNext()-1);},
   energy:()=>stats.energy,spendEnergy:n=>{stats.energy=Math.max(0,stats.energy-n);},hunger:()=>stats.hunger,
   playerPos:()=>player.position,
-  onFoot:()=>!inCar&&!riding&&!swimming&&!sitting&&!busRide&&!metro?.rider&&!transport?.rider&&!cityServices?.rider&&!intercityRail?.rider&&!navy?.rider&&!helipads?.flying&&!spaceCentre?.rider,
+  onFoot:()=>!inCar&&!riding&&!swimming&&!sitting&&!busRide&&!skyCity?.rider&&!metro?.rider&&!transport?.rider&&!cityServices?.rider&&!intercityRail?.rider&&!navy?.rider&&!helipads?.flying&&!spaceCentre?.rider,
   takeBelongings:()=>{const b={gold:stats.gold,items:inventory.splice(0)};stats.gold=0;renderInventory?.();return b;},
   giveBelongings:b=>{stats.gold+=b.gold||0;inventory.push(...(b.items||[]));renderInventory?.();},
   gold:()=>stats.gold,places:()=>townPlaces?.destinations||[],
@@ -8247,6 +8255,12 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // Cinder Row: the slum north of Poison Land where everyone but the admin starts out (slum.js). Built before the road scan so its lanes count as roads.
   slum=createSlum({...leisureCtx,K:makeKit(leisureCtx),curb:CURB,drink:()=>{stats.energy=clamp(stats.energy+4,0,100);toast('💧 Warm water that tastes of the pipe. Better than nothing.');}});
   townPlaces.destinations.push(...slum.destinations);
+  // the two cities off the ground: Skyhaven in the sky (airships from the Sky Port) and Deephaven under the bay
+  // (a lift on the west shore and a glass tunnel). Both checked clear of everything before they were placed.
+  { const ride={board(){action=null;vy=0;pvel.set(0,0,0);},carry(p){player.position.copy(p);vy=0;pvel.set(0,0,0);},leave(p){player.position.copy(p);vy=0;pvel.set(0,0,0);onGround=true;}};
+    skyCity=buildSkyCity({...leisureCtx,K:makeKit(leisureCtx),colliders,interactables,toast,makeTex,...ride,canBoard:()=>!inCar&&!sitting&&!action&&!swimming&&!navy?.rider&&!intercityRail?.rider&&!transport?.rider&&!metro?.rider&&!helipads?.flying,hurt:(d,p)=>hurtPlayer(d,p,0,'Shot by the Gravity Core turrets (Skyhaven)')});
+    deepCity=buildDeepCity({...leisureCtx,K:makeKit(leisureCtx),colliders,interactables,toast,makeTex,move(x,y,z,face,msg){teleportPlayer(new THREE.Vector3(x,y,z),msg);setTimeout(()=>{yaw=face;},700);}});
+    townPlaces.destinations.push(...skyCity.destinations,...deepCity.destinations); }
   // your flat is rented: 60 gold a week to the landlord downstairs (slum.js createRent)
   rent=createRent({day:()=>reconstructionDays,gold:{get:()=>stats.gold,add:n=>{stats.gold+=n;}},toast,interactables,at:slum.landlordAt,exempt:()=>isAdmin});
   // Seasons and holidays from the real calendar: weather, leaf colour, and the whole city decorated (seasons.js)
@@ -8548,7 +8562,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); skyCity?.update(rawDt, player.position); deepCity?.update(rawDt, player.position); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate

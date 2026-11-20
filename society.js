@@ -107,6 +107,8 @@ export function createSociety(ctx) {
   const roles = peds().map(e => e.profession && JOB[e.profession] ? e.profession : null);
   for (let i = 0; i < Math.max(POP, roles.length); i++) { const c = makeCitizen(i, roles[i]); seedLife(c); citizens.push(c); }
   peds().forEach((e, i) => { const at = ctx.cityAt?.(e.home || e.root.position); if (at && citizens[i]) citizens[i].city = at; });
+  // the people of the two cities off the ground (about one in twelve each), chosen the same way every time
+  citizens.forEach((c, i) => { if (i < peds().length) return; if (i % 12 === 10) c.city = 'Skyhaven'; else if (i % 12 === 11) c.city = 'Deephaven'; });
   if (saved?.v === 1) {
     Object.assign(S, saved.S); S.research ||= {}; S.projects ||= {};
     for (const k of saved.kids || []) { if (citizens[k.id]) continue; while (citizens.length < k.id) { const f = makeCitizen(citizens.length, 'Child'); seedLife(f); f.dead = true; f.jail = Infinity; citizens.push(f); } const c = makeCitizen(k.id, 'Child'); seedLife(c); Object.assign(c, k); citizens.push(c); }

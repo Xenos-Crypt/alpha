@@ -19,6 +19,8 @@ export const DISTRICTS = {
   Ashford: { identity: 'homes and family life', jobs: ['Teacher', 'Shop worker', 'Nurse', 'Chef', 'Street cleaner'], price: 1, basePollution: 4 },
   Riverside: { identity: 'trade, transport and the waterfront', jobs: ['Bus driver', 'Shop worker', 'Tour guide', 'Mechanic', 'Builder'], price: 1.1, basePollution: 6 },
   Capital: { identity: 'government, finance and administration', jobs: ['Office worker', 'Banker', 'Lawyer', 'Software developer', 'Police officer'], price: 1.5, basePollution: 5 },
+  Skyhaven: { identity: 'the city in the sky: research, aviation and the Gravity Core that holds it up', jobs: ['Engineer', 'Pilot', 'Scientist', 'Soldier', 'Shop worker'], price: 1.6, basePollution: 2 },
+  Deephaven: { identity: 'the city under the sea: marine science, the Space Core, fish farms and submarines', jobs: ['Scientist', 'Engineer', 'Farmer', 'Power plant operator', 'Shop worker'], price: 1.3, basePollution: 3 },
   'Poison Land': { identity: 'industry, its legacy of pollution, and redevelopment', jobs: ['Factory worker', 'Miner', 'Power plant operator', 'Recycling worker', 'Builder'], price: .6, basePollution: 25 },
 };
 export const SYSTEMS = { power: 'Power grid', water: 'Water network', sewage: 'Sewage', telecom: 'Telecoms & Unity Network', fuel: 'Fuel distribution', emergency: 'Emergency services' };

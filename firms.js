@@ -29,8 +29,8 @@ export const FIRM_TYPES = {
 };
 const STAGE3 = { agriculture: 'PRI', resources: 'PRI', energy: 'PRI', manufacturing: 'SEC', automotive: 'SEC', construction: 'SEC', utilities: 'TER', retail: 'TER', tourism: 'TER', transport: 'TER', health: 'TER', defence: 'TER', public: 'TER', tech: 'QUA', science: 'QUA', education: 'QUA', finance: 'QUA', media: 'QUA' };
 // how big a city is for business (how many local firms and how many branches it gets)
-export const CITY_WEIGHT = { Capital: 1.3, Ashford: 1.2, Riverside: 1, 'Poison Land': .6 };
-const LOCAL_FIRMS = { Capital: 4, Ashford: 4, Riverside: 3, 'Poison Land': 2 };
+export const CITY_WEIGHT = { Capital: 1.3, Ashford: 1.2, Riverside: 1, 'Poison Land': .6, Skyhaven: .7, Deephaven: .5 };
+const LOCAL_FIRMS = { Capital: 4, Ashford: 4, Riverside: 3, 'Poison Land': 2, Skyhaven: 2, Deephaven: 2 };
 // the words companies are named with
 const NOUN = { agriculture: ['Farms', 'Growers', 'Harvest', 'Agri'], resources: ['Mining', 'Quarries', 'Minerals', 'Resources'], energy: ['Energy', 'Power', 'Fuels'], utilities: ['Utilities', 'Water', 'Electrical Services'],
   manufacturing: ['Manufacturing', 'Industries', 'Works', 'Fabrication'], automotive: ['Motors', 'Automotive', 'Garages'], construction: ['Builders', 'Construction', 'Developments'], tech: ['Systems', 'Technologies', 'Digital', 'Labs'],

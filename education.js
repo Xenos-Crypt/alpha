@@ -41,7 +41,7 @@ export const INSTITUTIONS = [
   ['Riverside Army Training Depot', 'military', 'Riverside', 'minor', ['soldier'], 0],
   ['Poison Land Army Training Depot', 'military', 'Poison Land', 'minor', ['soldier'], 0],
   ['Kestrel Air Flight School', 'flight', 'Capital', 'minor', ['flying'], 1500],
-  ...['Ashford', 'Riverside', 'Capital', 'Poison Land'].flatMap(c => [[`${c} Primary School`, 'school', c, 'minor', [], 0], [`${c} Secondary School`, 'school', c, 'minor', [], 0]]),
+  ...['Ashford', 'Riverside', 'Capital', 'Poison Land', 'Skyhaven', 'Deephaven'].flatMap(c => [[`${c} Primary School`, 'school', c, 'minor', [], 0], [`${c} Secondary School`, 'school', c, 'minor', [], 0]]),
   ['Crownfield Academy', 'school', 'Capital', 'major', [], 900], ["St Ashford's School", 'school', 'Ashford', 'minor', [], 600],
 ].map(([name, kind, city, level, courses, fee]) => ({ name, kind, city, level, courses, fee }));
 // what each job needs (any one of these)
