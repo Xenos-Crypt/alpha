@@ -70,7 +70,8 @@ import {createMarketPanel} from './market-panel.js';
 import {createProperty} from './property.js';
 import {buildDrivingSchool} from './driving-school.js';
 import {createForest, pickKind, FOLIAGE_TINT} from './trees.js';
-import {createSeasons} from './seasons.js';
+import {createSeasons, calendar as calendarFor} from './seasons.js';
+import {createPhone} from './phone.js';
 import {digPond, holeMaterial} from './ponds.js';
 import {makeBotany, LIFE, PLANTS, ANIMALS, TREE_SHAPE, plantId} from './botany.js';
 import {createGrass} from './grass.js';
@@ -113,6 +114,7 @@ import { buildHomePark } from './home-park.js';
 import { buildBeach } from './beach.js';
 import { buildResortBeach } from './resort-beach.js';
 import { makeKit } from './leisure-kit.js';
+import { makeRundown, buildAdminEstate } from './home-styles.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
 import { buildRoadLinks } from './road-links.js';
@@ -2388,10 +2390,26 @@ function showMenu(hasSave) {
   });
 }
 
-let isAdmin = false;
+let isAdmin = false, phone = null;
 // Admin god mode: infinite health and energy, never hungry, level 1000, maxed stats. On by default for admins;
 // they can switch it off in the System window (to test deaths, say).
 let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{return true;}})(), adminMaxed = false;
+// Homes that fit who you are (home-styles.js): everyone else starts poor in a run-down home with no car;
+// the admin's home is a mansion with a pool, a supercar and a private airstrip on new land east of The Reserve.
+function setUpHome(){
+  if(isAdmin){
+    if(adminEstate||!homeKitCtx)return;
+    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),
+      makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
+    poolZones.push(...adminEstate.pools);
+    SPAWN.set(adminEstate.home.x,CURB,adminEstate.home.z);
+    townPlaces?.destinations?.push({name:'Your mansion (Xenos Estate)',x:adminEstate.home.x,z:adminEstate.home.z});
+  }else{
+    const bed=homeRooms.rooms.find(q=>q.name==='bedroom');
+    makeRundown({scene,makeTex,curb:CURB,home:HOME,bedroom:bed?{x:(bed.minX+bed.maxX)/2,z:(bed.minZ+bed.maxZ)/2}:null});
+    scene.remove(myCar.group);const i=vehicles.indexOf(myCar);if(i>=0)vehicles.splice(i,1);myCar.disabled=true;   // no car: you start with nothing
+  }
+}
 function updateAdminGod(){
   if(!isAdmin||!adminGod)return;
   if(!adminMaxed){adminMaxed=true;prog.level=Math.max(prog.level,1000);prog.xp=0;prog.str=Math.max(prog.str,100);prog.def=Math.max(prog.def,100);prog.men=Math.max(prog.men,100);prog.agi=Math.max(prog.agi,25);buildHotbar();toast('🛠 Admin: god mode on (infinite health and energy, never hungry, level 1000, maxed stats).');}
@@ -2417,6 +2435,7 @@ async function boot() {
   if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await Promise.race([supabase.rpc('story_run_status'),new Promise(res=>setTimeout(()=>res(null),6000))]);storyRun=r?.data||null;}catch{}}
   // admin accounts (listed privately on the server) can replay the story and use the System's admin tools
   if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await supabase.rpc('is_admin');isAdmin=r?.data===true;}catch{}}
+  setUpHome();
   const mode = restoringUpdate?'continue':await showMenu(!!existingSave||!!storyRun);
   window.gameLoading?.show(10,'Preparing your adventure...');
   if (mode === 'continue' && !existingSave) {
@@ -6785,6 +6804,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyY' && !inCar) cityServices?.callTaxi(player.position.clone());
   if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
   if (e.code === 'KeyO' && !e.repeat && system?.active()) system.toggle();
+  if (e.code === 'KeyH' && !e.repeat && (locked || phone?.open)) phone?.toggle();
   if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
   if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
@@ -6831,7 +6851,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||system?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||system?.open||phone?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -6847,7 +6867,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let venueFences = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -7851,7 +7871,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !bankPanel?.open && !story?.open && !system?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !bankPanel?.open && !story?.open && !system?.open && !phone?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -8013,8 +8033,17 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   director:async q=>{if(!navigator.onLine)return null;const r=await fetch('/api/story-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;},
   pause:storyPause,resume:requestGameControl});
 // The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
+// Cryptic: the phone everyone carries (phone.js). The torch, taxi, map, career and city hall live on it now.
+phone=createPhone({userId:()=>soloUserId||registryUserId||'guest',stats,toast,pause:()=>pauseForPanel(),resume:()=>requestGameControl(),premium:()=>isAdmin,
+  torch:{on:()=>flashlightOn,toggle:()=>toggleFlashlight()},
+  snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
+  openMap:()=>worldMap?.show(),callTaxi:()=>cityServices?.callTaxi(player.position.clone()),openCareer:()=>careers?.openCareer(),openCityHall:()=>society?.openHall(),
+  calendar:()=>seasons?.calendar,calendarOn:d=>calendarFor(d),weather:()=>WEATHER_LABEL[weatherState],
+  gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
+  news:()=>(society?.state?.news||[]).map(n=>n.text),quests:()=>system?.quests?.()||[],
+  openBanking:()=>{if(!bankPanel?.phone)return false;bankPanel.openPhone();return true;}});
 system=createSystem({userId:()=>soloUserId||'guest',
-  admin:{on:()=>isAdmin,god:()=>adminGod,toggleGod:()=>{adminGod=!adminGod;adminMaxed=false;try{localStorage.setItem('adminGod',adminGod?'1':'0');}catch{}toast(adminGod?'🛠 God mode on.':'🛠 God mode off: you can get hurt, hungry and tired again.');},revive:async()=>{await supabase.rpc('story_run_revive');},levelUp:()=>{gainXp(Math.max(1,xpToNext()-prog.xp));},
+  admin:{on:()=>isAdmin,god:()=>adminGod,goHome:()=>{if(!adminEstate)return;if(inCar)exitVehicle(true);player.position.set(adminEstate.home.x,CURB,adminEstate.home.z);vy=0;toast('🏛 Home: Xenos Estate.');},toggleGod:()=>{adminGod=!adminGod;adminMaxed=false;try{localStorage.setItem('adminGod',adminGod?'1':'0');}catch{}toast(adminGod?'🛠 God mode on.':'🛠 God mode off: you can get hurt, hungry and tired again.');},revive:async()=>{await supabase.rpc('story_run_revive');},levelUp:()=>{gainXp(Math.max(1,xpToNext()-prog.xp));},
     questions:async()=>{const r=await supabase.rpc('dev_queries_open');if(r.error)throw r.error;return r.data||[];}},
   // the opening plays like a film: the camera moves through the home, the player can't control anything,
   // and when it ends the player is standing where the last shot was (at the bathroom mirror), not outside
@@ -8098,6 +8127,7 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // Ashford Beach: rippling sea, surf, parasols, sunbathers, lifeguard, volleyball, a beach bar
   beachLife=buildBeach(leisureCtx,{sea,seaZ:SEA_Z});
   // Anthos Bay: the beach made big, with a resort, beach houses, wildlife and water sports (resort-beach.js)
+  homeKitCtx=leisureCtx;
   resortBeach=buildResortBeach(leisureCtx,{z0:SEA_Z});poolZones.push(...resortBeach.pools);
   // Seasons and holidays from the real calendar: weather, leaf colour, and the whole city decorated (seasons.js)
   seasons=createSeasons({scene,lampSpots,buildings,fair:FAIR,curb:CURB,home:{x:HOME.x,z:HOME.z,minZ:HOME.minZ,maxZ:HOME.maxZ},colliders,tint:FOLIAGE_TINT,toast,stats,
@@ -8375,7 +8405,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons?.update(rawDt,dayTime>.55&&dayTime<.95);updateAdminGod();worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons?.update(rawDt,dayTime>.55&&dayTime<.95);updateAdminGod();phone?.update(player.position,!inCar&&!swimming);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);

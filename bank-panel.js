@@ -2,8 +2,8 @@
 // interest; borrow (and repay, or be chased through the courts); pay into a pension; trade shares on the
 // A.T. Stock Exchange (prices move every city hour) and collect dividends; and invest privately in companies
 // that invite you. At the First Crown Bank booth in Ashford Central Market, or anywhere on your phone (O,
-// or the 📱 button) — once you've bought a phone. Phones are made by Atlas Dynamics from plastic, glass,
-// circuitry and alloy and sold at the Atlas Phones stall; each one has its own ID (belongings.js).
+// or the 📱 button) — once you've bought a phone. Phones are made by Cryptic from plastic, glass,
+// circuitry and alloy and sold at the the Cryptic stall stall; each one has its own ID (belongings.js).
 import * as THREE from 'three';
 import { marketStall, setStallScene } from './market-stalls.js';
 import { PHONES } from './belongings.js';
@@ -21,16 +21,17 @@ export function createBankPanel(ctx) {
   ctx.interactables.push({ pos: new THREE.Vector3(X, .16, Z - 2), r: 2.2, label: 'Go to the bank', action: () => open('account', false) });
   // ---- the phone shop ----
   const PX = 326;
-  marketStall({ x: PX, y: .16, z: Z, colour: 0x2a2f3a, goods: 'info', title: 'ATLAS PHONES', sub: 'Lite · One · Pro' });
+  marketStall({ x: PX, y: .16, z: Z, colour: 0x2a2f3a, goods: 'info', title: 'CRYPTIC', sub: 'the official phone stall' });
   ctx.colliders?.push({ minX: PX - 2.2, maxX: PX + 2.2, minZ: Z - 1, maxZ: Z + 1 });
   const seller = ctx.makePerson({ outfit: 0x2a2f3a, hair: 0x3a2a1e, pants: 0x1a1a1a }); seller.root.position.set(PX, .16, Z + 1.4); seller.root.rotation.y = Math.PI;
   ctx.interactables.push({ pos: new THREE.Vector3(PX, .16, Z - 2), r: 2.2, label: 'Browse phones', action: () => open('shop', false) });
   let phone = null; try { phone = JSON.parse(localStorage.getItem(PKEY) || 'null'); } catch { }
   const savePhone = () => { try { localStorage.setItem(PKEY, JSON.stringify(phone)); } catch { } };
   // the 📱 button (and the O key) once you own a phone
-  const btn = document.createElement('button'); btn.id = 'phoneBtn'; btn.type = 'button'; btn.textContent = '📱'; btn.title = 'Your phone (O)'; btn.hidden = !phone; document.body.append(btn);
+  // the Cryptic phone (phone.js) is the phone now: banking on it opens from its Bank app, so no separate 📱 button or O key here
+  const btn = document.createElement('button'); btn.id = 'bankPhoneBtn'; btn.type = 'button'; btn.hidden = true;
   btn.addEventListener('click', () => { if (ctx.canOpen?.() !== false) open('home', true); });
-  addEventListener('keydown', e => { if (e.code === 'KeyO' && phone && panel.hidden && ctx.canOpen?.()) { e.preventDefault(); open('home', true); } });
+
 
   const panel = document.createElement('section'); panel.id = 'bankPanel'; panel.hidden = true; document.body.append(panel);
   const css = document.createElement('style');
@@ -57,8 +58,8 @@ export function createBankPanel(ctx) {
     let body = '';
     if (tab === 'shop') {
       const st = ctx.stock?.() ?? 0;
-      body = `<p>Phones by Atlas Dynamics, made from plastic, glass, circuitry and alloy. With a phone you can bank, trade shares and invest from anywhere, and read the news.</p>${phone ? `<p>You own an <b>${PHONES[phone.model][0]}</b>.</p>` : ''}
-        <p class="dim">${st >= 1 ? `${Math.floor(st)} in stock` : 'Out of stock: Atlas Dynamics hasn\'t made any lately'}</p>
+      body = `<p>Phones by Cryptic, made from plastic, glass, circuitry and alloy. With a phone you can bank, trade shares and invest from anywhere, and read the news.</p>${phone ? `<p>You own an <b>${PHONES[phone.model][0]}</b>.</p>` : ''}
+        <p class="dim">${st >= 1 ? `${Math.floor(st)} in stock` : 'Out of stock: Cryptic hasn\'t made any lately'}</p>
         <table>${Object.entries(PHONES).map(([k, [name, price, life, screen]]) => `<tr><td><b>${name}</b><br><span class="dim">${screen} screen · lasts ${life === 1 ? 'a while' : life < 1.5 ? 'longer' : 'longest'}</span></td><td>${f0(price * (ctx.cpi?.() || 1))} gold</td><td><button data-phone="${k}">Buy</button></td></tr>`).join('')}</table>`;
     } else if (tab === 'home') body = `<div style="font-size:30px;font-weight:300">${new Date().toTimeString().slice(0, 5)}</div><div class="dim">${phone ? PHONES[phone.model][0] : ''} · ${f0(ctx.gold())} gold</div>
       <div class="apps">${[['account', '🏦', 'Bank'], ['loans', '💳', 'Loans'], ['pension', '🌅', 'Pension'], ['shares', '📈', 'Stocks'], ['private', '📩', `Invest${m.player.invites().length ? ' (' + m.player.invites().length + ')' : ''}`], ['news', '📰', 'News']].map(([k, i, n]) => `<button type="button" data-tab="${k}"><b>${i}</b>${n}</button>`).join('')}</div>`;
@@ -96,20 +97,20 @@ export function createBankPanel(ctx) {
         <h3>Your stakes</h3>${stakes.length ? `<table>${stakes.map(([f, s]) => `<tr><td><b>${f.name}</b><br><span class="dim">${f.lastProfit > 0 ? 'profitable' : 'losing money'}</span></td><td>${(s * 100).toFixed(1)}%</td><td><button data-sellstake="${f.id}">Sell back</button></td></tr>`).join('')}</table>` : '<p class="dim">None yet.</p>'}`;
     } else if (tab === 'news') body = `<h3>News</h3><ul>${(ctx.news?.() || []).slice(0, 25).map(n => `<li>${typeof n === 'string' ? n : n.text || n.t || ''}</li>`).join('')}</ul>`;
     panel.className = asPhone ? 'phone' : '';
-    panel.innerHTML = `<button class="x" type="button" data-close>${asPhone ? '✕' : 'Close'}</button><h2>${asPhone ? '📱' : tab === 'shop' ? '📱 Atlas Phones' : '🏦 First Crown Bank'}</h2>${tab === 'shop' ? '' : `<div class="dim">${f0(ctx.gold())} gold in hand · savings ${f0(P.savings)} · owed ${f0(owed)}</div>
+    panel.innerHTML = `<button class="x" type="button" data-close>${asPhone ? '✕' : 'Close'}</button><h2>${asPhone ? '📱' : tab === 'shop' ? '📱 the Cryptic stall' : '🏦 First Crown Bank'}</h2>${tab === 'shop' ? '' : `<div class="dim">${f0(ctx.gold())} gold in hand · savings ${f0(P.savings)} · owed ${f0(owed)}</div>
       <div class="tabs">${tabs.map(([k, n]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`}${body}<div class="msg">${msg}</div>`;
   }
   function buyPhone(model) {
     if (phone && phone.model === model) return 'You already have one.';
     const [name, price] = PHONES[model], cost = Math.round(price * (ctx.cpi?.() || 1));
-    if ((ctx.stock?.() ?? 0) < 1) return "Sold out: Atlas Dynamics hasn't made any lately.";
+    if ((ctx.stock?.() ?? 0) < 1) return "Sold out: Cryptic hasn't made any lately.";
     if (ctx.gold() < cost) return 'Not enough gold.';
     ctx.addGold(-cost); ctx.takeStock?.();
     const old = phone;
     phone = { model, id: makeId('PRD', 'PHN', 'TCH.GLS.PLS', 'PLR', 'player-phone:' + Date.now()), bought: Date.now(), price: cost };
-    savePhone(); btn.hidden = false;
-    ctx.record?.(phone.id, `${name} bought by the player from Atlas Phones for ${cost} gold${old ? ' (the old one recycled)' : ''}`, phone);
-    return `The ${name} is yours. Press O (or 📱) to use it anywhere.`;
+    savePhone();
+    ctx.record?.(phone.id, `${name} bought by the player from the Cryptic stall for ${cost} gold${old ? ' (the old one recycled)' : ''}`, phone);
+    return `The ${name} is yours. Its banking opens from the Bank app on your Cryptic phone.`;
   }
   panel.addEventListener('click', ev => {
     const a = ev.target.closest('a[data-pick]'); if (a) { ev.preventDefault(); pick = +a.dataset.pick; msg = ''; return render(); }
