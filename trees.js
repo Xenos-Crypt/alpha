@@ -11,6 +11,9 @@
 //   beech  – a big rounded canopy of copper-purple leaves on a smooth grey trunk
 // Each species has three shape variants, and every tree gets its own size, turn and leaf tint.
 import * as THREE from 'three';
+import { seasonalFoliage } from './seasons.js';
+// leaf colour for the season (set by seasons.js): rgb tint + strength; trunks keep their colour
+export const FOLIAGE_TINT = { value: new THREE.Vector4(0, 0, 0, 0) };
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const rnd = (() => { let s = 12345; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; })();
@@ -106,6 +109,7 @@ export function createForest(scene, { onAdd, onFall, onRegrow } = {}) {
   const moving = new Set();
   let dirty = false;
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+  seasonalFoliage(material, FOLIAGE_TINT);
   function add(x, y, z, { kind = 'oak', scale = 1, variant, species, owner } = {}) {
     if (!BUILD[kind]) kind = 'oak';
     const v = variant ?? Math.floor(rnd() * 3), key = kind + ':' + v;

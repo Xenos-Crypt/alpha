@@ -3,6 +3,8 @@
 // you walk), so it costs the same anywhere on the map. Tufts never grow on roads, pavements,
 // water or inside buildings: spot(x, z) decides, and returns the ground height or null.
 import * as THREE from 'three';
+import { FOLIAGE_TINT } from './trees.js';
+import { seasonalFoliage } from './seasons.js';
 
 function tuftGeometry() {
   const pos = [], col = [], base = new THREE.Color(0x3d6a2c), tip = new THREE.Color(0x8fbf5a);
@@ -68,5 +70,6 @@ export function createGrass({ scene, count = 3500, radius = 38, spot }) {
     }
     if (changed) mesh.instanceMatrix.needsUpdate = true;
   }
+  seasonalFoliage(material, FOLIAGE_TINT);   // grass browns in autumn and frosts in winter, like the leaves
   return { update, mesh, tufts: () => pts, setCount(n) { mesh.count = Math.max(0, Math.min(count, n)); } };
 }
