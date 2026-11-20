@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import {arrivalBoard,railArrival,formatWait} from './arrival-boards.js';
 export function buildMetro(ctx){
  const {scene,box,colliders,camBlockers,interactables,sitSpots,makeTex,toast}=ctx,origin=-12000;
- const stations=[{name:'Old Town',x:11,z:60,y:.18,tx:origin},{name:'Riverside',x:-29,z:700,y:.18,tx:origin+210},{name:'Ashford Capital',x:251,z:820,y:.32,tx:origin+420},{name:'Poison Land',x:850,z:260,y:.2,tx:origin+630},{name:'Northhaven',x:1211,z:-200,y:.08,tx:origin+840}],boards=[],fish=[],lights=[];
+ const stations=[{name:'Old Town',x:11,z:60,y:.18,tx:origin},{name:'Riverside',x:-29,z:700,y:.18,tx:origin+210},{name:'Ashford Capital',x:251,z:820,y:.32,tx:origin+420},{name:'Cinder Row',x:850,z:260,y:.2,tx:origin+630},{name:'Northhaven',x:1211,z:-200,y:.08,tx:origin+840}],boards=[],fish=[],lights=[];
  let underground=false,rider=false,entranceCooldown=0;
  function riverFish(){const g=new THREE.Group(),material=new THREE.MeshStandardMaterial({color:0x91bcba});const body=new THREE.Mesh(new THREE.SphereGeometry(.28,10,7),material);body.scale.set(1.8,.7,.7);g.add(body);const tail=new THREE.Mesh(new THREE.ConeGeometry(.23,.4,3),material);tail.rotation.z=-Math.PI/2;tail.position.x=-.55;g.add(tail);const fin=new THREE.Mesh(new THREE.ConeGeometry(.14,.3,3),material);fin.position.set(-.08,.2,0);g.add(fin);for(const side of [-1,1]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.045,6,4),new THREE.MeshBasicMaterial({color:0x142e37}));eye.position.set(.3,.08,side*.17);g.add(eye);}return g;}
 
@@ -61,7 +61,7 @@ export function buildMetro(ctx){
   rideAction.pos.copy(group.position).z=-3;rideAction.label=rider?'Leave subway train':'Board subway train';group.visible=true;
   if(rider)ctx.carry(group.position.clone().add(new THREE.Vector3(0,.4,0)));
   for(const f of fish)f.f.position.set(f.x+Math.sin(time*.3+f.phase)*3,2+Math.cos(time*.4+f.phase),f.z);
-  timer-=dt;if(timer<=0){timer=1;for(const {s,board}of boards){const eta=railArrival(train,s.tx);board.update(eta?.boarding?'BOARDING NOW':'ARRIVAL ~'+formatWait(eta?.seconds||0),'Old Town - Riverside - Capital - Poison Land - Northhaven');}}
+  timer-=dt;if(timer<=0){timer=1;for(const {s,board}of boards){const eta=railArrival(train,s.tx);board.update(eta?.boarding?'BOARDING NOW':'ARRIVAL ~'+formatWait(eta?.seconds||0),'Old Town - Riverside - Capital - Cinder Row - Northhaven');}}
  }
  return {stations,train,boards,fish,entrances,passengers:passengers.people,cutSurfaces:entrances.cutSurfaces,snapshot(){return {underground,rider,index:train.index,direction:train.direction,wait:train.wait,doors:train.doors,position:train.g?.position?.toArray?.()||group.position.toArray()};},restore(save){if(!save)return;underground=!!save.underground;rider=!!save.rider;Object.assign(train,{index:save.index,direction:save.direction,wait:save.wait,doors:save.doors});if(save.position)group.position.fromArray(save.position);},movementScale(p){if(entrances.groundAt(p.x,p.z)!=null)return .8;return stations.some(s=>Math.abs(p.x-s.tx)<2.5&&p.z>=-20&&p.z<=-8)?.8:1;},get underground(){return underground;},get rider(){return rider;},leave:()=>rideAction.action(),reset(){rider=false;underground=false;},groundAt(x,z){const entryFloor=entrances.groundAt(x,z);if(entryFloor!=null)return entryFloor;for(const s of stations){if(Math.abs(x-s.tx)<2.5&&z>=-20&&z<=-8)return Math.max(.2,5.6-Math.floor((z+20)/(12/18))*.3);if(Math.abs(x-s.tx)<15&&z>=-26.5&&z<=-20)return 5.6;}return x>origin-16&&x<origin+856&&Math.abs(z)<8?.2:null;},update};
 }

@@ -45,7 +45,7 @@ import {buildCityServices,taxiRoute} from './city-services.js';
 import {requireUsername,createOnlineAvatars} from './online-players.js';
 import {createRoomChat} from './room-chat.js';
 import {buildCityLife,waterFootprint} from './city-life.js';
-import {buildPoisonLand,poisonBossMultiplier} from './poison-land.js';
+import {buildPoisonLand,poisonBossMultiplier,SPUR as POISON_SPUR} from './poison-land.js';
 import {buildHighlandForest,buildVolcanicIsland} from './forest-volcano.js';
 import {buildGhostIsland} from './ghost-island.js';
 import {createWorldAudio} from './world-audio.js';
@@ -2878,9 +2878,13 @@ function signboard(text, x, y, z, width = 10, colour = '#15364a') {
     bridgeWarnStrips.push(strip);
   }
   for (const side of [-1, 1]) {
-    box(0.3, 1.1, len, BRIDGE_X + side * (BRIDGE_HALF_W - 0.2), BRIDGE_Y + 0.55, midZ, 0x3a3f45, false);
-    // Thin collider strip along each railing so you can't walk/drive off the edge into the water.
-    colliders.push({ minX: BRIDGE_X + side * (BRIDGE_HALF_W - 0.1) - 0.2, maxX: BRIDGE_X + side * (BRIDGE_HALF_W - 0.1) + 0.2, minZ: BRIDGE_Z0, maxZ: BRIDGE_Z1 });
+    // (the west railing stops where the road to Poison Land's island branches off: poison-land.js)
+    const runs = side < 0 ? [[BRIDGE_Z0, POISON_SPUR.z - POISON_SPUR.half], [POISON_SPUR.z + POISON_SPUR.half, BRIDGE_Z1]] : [[BRIDGE_Z0, BRIDGE_Z1]];
+    for (const [z0, z1] of runs) {
+      box(0.3, 1.1, z1 - z0, BRIDGE_X + side * (BRIDGE_HALF_W - 0.2), BRIDGE_Y + 0.55, (z0 + z1) / 2, 0x3a3f45, false);
+      // Thin collider strip along each railing so you can't walk/drive off the edge into the water.
+      colliders.push({ minX: BRIDGE_X + side * (BRIDGE_HALF_W - 0.1) - 0.2, maxX: BRIDGE_X + side * (BRIDGE_HALF_W - 0.1) + 0.2, minZ: z0, maxZ: z1 });
+    }
     for (let z = BRIDGE_Z0 + 10; z < BRIDGE_Z1; z += 24) addLampSpot(BRIDGE_X + side * (BRIDGE_HALF_W - 0.7), BRIDGE_Y, z);
   }
   for (let z = BRIDGE_Z0 + 30; z < BRIDGE_Z1; z += 60) for (const side of [-1, 1])
@@ -7038,6 +7042,7 @@ function isSeaWater(x,z,bodyY = null) {
   if(navy?.groundAt(x,z)!=null)return false;
   if(resortBeach?.groundAt(x,z)!=null)return false;   // the new sand and the jetty aren't sea
   if(regionalEnvironment?.groundAt(x,z)!=null)return false;
+  if(poisonLand?.groundAt(x,z)!=null)return false;   // Poison Land's island and its bridge
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
   if (x > BRIDGE_X - BRIDGE_HALF_W && x < BRIDGE_X + BRIDGE_HALF_W) return z>=GAP0&&z<=GAP1&&liftBridgeSurface(z,bridgeLiftAngle,BRIDGE_Y,GAP0,GAP1).height==null;
@@ -7981,8 +7986,8 @@ mobileControls = setupMobileControls({
   shiftGear,gateInfo:()=>{const gate=inspectedGate||nearestGate();return gate?gateInfoHtml(gate):null;},resume:requestGameControl,layoutChanged:applyLayout,
   editingLayout: () => layoutEditMode
 });
-poisonLand=buildPoisonLand({scene,box,makeTex,interactables,toast,makeMonster,removeEnemy,removeGate,destinations:townPlaces.destinations,playerPosition:()=>player.position,inDungeon:()=>!!dungeon,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Toxic gas and waste (Poison Land)'),
-createGate(o){const gm=makeGateMesh(0x92ed2a),pos=new THREE.Vector3(o.x,0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:'poison',tier:tierOf(o.level),name:o.name,persistent:o.persistent,finalBoss:o.finalBoss,poisonCity:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
+poisonLand=buildPoisonLand({scene,box,makeTex,colliders,bridgeY:BRIDGE_Y,interactables,toast,makeMonster,removeEnemy,removeGate,destinations:townPlaces.destinations,playerPosition:()=>player.position,inDungeon:()=>!!dungeon,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Toxic gas and waste (Poison Land)'),
+createGate(o){const gm=makeGateMesh(0x92ed2a),pos=new THREE.Vector3(o.x,o.y||0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:'poison',tier:tierOf(o.level),name:o.name,persistent:o.persistent,finalBoss:o.finalBoss,poisonCity:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
 buildHighlandForest({scene,colliders,insideCollider,groundY,addBird});
 volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Lava and volcanic heat')});regionalEnvironment.islands.push(volcanicIsland.island);
 ghostIsland=buildGhostIsland({scene,box,interactables,toast,stats,destinations:townPlaces.destinations,signboard,rand});regionalEnvironment.islands.push(ghostIsland.island);
@@ -8075,7 +8080,7 @@ society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPo
   resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
   arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),notebook:()=>story?.notebook()||[],lead:()=>story?.lead(),playerSurname:()=>playerUsername||'Newcomer',companyReports:()=>infoMarkets?.companyReports(),archive:()=>infoMarkets?.archive(),
   petitions:()=>worldWatch?.list||[],note:t=>worldWatch?.note(t),
-  cityAt:p=>p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
+  cityAt:p=>poisonLand?.onIsland(p.x,p.z)?'Poison Land':p.x>=120&&p.z>=640?'Capital':p.z>=600?'Riverside':p.x>=600?'Poison Land':'Ashford',
   assets:()=>(property?.worth?.()||0)+(cityServices?.ownedCars?.length||0)*8000,level:()=>prog.level,
   brokenLamps:()=>{const out=[];for(let i=0;i<lampSpots.length;i++)if(lampBroken[i]&&distXZ(lampSpots[i],player.position)<80)out.push({i,p:lampSpots[i]});return out;},fixLamp,
   askAtlas:async(question,state)=>{if(!navigator.onLine)return null;const r=await fetch('/api/atlas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,state})});return r.ok?(await r.json()).answer:null;},
@@ -8373,6 +8378,7 @@ function isRoadAt(x, z) {
   for (const r of roadGrid.get(Math.floor(x / ROAD_CELL) * 100003 + Math.floor(z / ROAD_CELL)) || []) if (x > r.minX + 0.5 && x < r.maxX - 0.5 && z > r.minZ + 0.5 && z < r.maxZ - 0.5) return true;
   return false;
 }
+intercityRail?.clearRoads?.((x,z)=>isRoadAt(x,z));   // no viaduct legs standing in a road
 roadWear = createRoadWear({ scene, makeTex, groundY, toast, interactables, isRoad: isRoadAt, roadRects: () => roadRectList, makePerson: makeHumanoid, animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
   bump(v, sev, speed) { v.health = Math.max(5, (v.health ?? 100) - sev * Math.min(4, speed / 8)); applyVehicleCondition(v); v.speed *= 0.85; shake = Math.max(shake, 0.1 * sev); },
   crewMenu(crew) { snackShop.open('Road crew', 'visit', [
