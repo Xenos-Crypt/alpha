@@ -24,7 +24,7 @@ export const STATIONS = [
   {name:'Ashford Outskirts',x:100,z:140,side:1},
   {name:'Riverside Central',x:100,z:925,side:1},   // north of the river channel that runs under the line
   {name:'Capital Central',x:460,z:810,side:1},
-  {name:'Poison Land Terminal',x:580,z:440,side:1},
+  {name:'Cinder Row Terminal',x:580,z:440,side:1},
   {name:'Northhaven Central',x:900,z:-120,side:-1},
 ];
 
@@ -48,6 +48,7 @@ export function buildIntercityRail(ctx){
 
  // ---------------------------------------------------------------- viaduct
  // Where a station is, the parapet on the platform side is left open so the train meets the platform.
+ const pillars=[];   // the viaduct's legs (moved off any road they land on: clearRoads)
  const openings=stops.map(s=>({x:s.x,z0:s.z-PLAT_LEN/2,z1:s.z+PLAT_LEN/2,side:s.side}));
  for(let i=1;i<points.length;i++){
   const a=points[i-1],b=points[i],length=a.distanceTo(b),mid=a.clone().lerp(b,.5),g=new THREE.Group();
@@ -64,7 +65,7 @@ export function buildIntercityRail(ctx){
     for(const o of openings)if(Math.abs(o.x-a.x)<.01&&o.side===worldSide){const lo=(o.z0-mid.z)*sign,hi=(o.z1-mid.z)*sign;const l0=Math.min(lo,hi),l1=Math.max(lo,hi);spans=spans.flatMap(([p,q])=>l1<=p||l0>=q?[[p,q]]:[[p,l0],[l1,q]].filter(([m,n])=>n-m>.2));}}
    for(const [p,q] of spans)part(.15,1.3,q-p,sx,.65,(p+q)/2,darkSteel,g);
   }
-  for(let d=15;d<length;d+=40){const p=a.clone().lerp(b,d/length);part(2,p.y,2,p.x,p.y/2-.8,p.z,concrete);}
+  for(let d=15;d<length;d+=40){const p=a.clone().lerp(b,d/length);pillars.push({m:part(2,p.y,2,p.x,p.y/2-.8,p.z,concrete),a,b,d,length});}
   ctx.planeBlocks?.push({minX:Math.min(a.x,b.x)-3.5,maxX:Math.max(a.x,b.x)+3.5,minZ:Math.min(a.z,b.z)-3.5,maxZ:Math.max(a.z,b.z)+3.5,bottom:Math.min(a.y,b.y)-.8,top:Math.max(a.y,b.y)+.2});
  }
 
@@ -224,7 +225,10 @@ export function buildIntercityRail(ctx){
   }
   return null;
  }
- return {stops,train,cars,get rider(){return rider;},get state(){return {distance,index,direction,wait,speed};},leave,eta,
+ // a leg standing in a road slides along the line (up to 18 m either way) to the nearest spot clear of roads
+ function clearRoads(isRoad){let moved=0;for(const p of pillars){const at=d=>p.a.clone().lerp(p.b,d/p.length);const blocked=d=>{const q=at(d);for(const dx of [-1.2,0,1.2])for(const dz of [-1.2,0,1.2])if(isRoad(q.x+dx,q.z+dz))return true;return false;};if(!blocked(p.d))continue;
+  for(let k=1;k<=18;k++)for(const d of [p.d+k,p.d-k]){if(d<2||d>p.length-2||blocked(d))continue;const q=at(d);p.m.position.x=q.x;p.m.position.z=q.z;p.d=d;moved++;k=99;break;}}return moved;}
+ return {stops,train,cars,clearRoads,get rider(){return rider;},get state(){return {distance,index,direction,wait,speed};},leave,eta,
   reset(){rider=false;},
   snapshot(){return {distance,index,direction,wait,rider};},
   restore(s){if(!s)return;distance=THREE.MathUtils.clamp(s.distance||0,0,total);index=THREE.MathUtils.clamp(s.index||0,0,stops.length-1);direction=s.direction===-1?-1:1;wait=Math.max(0,s.wait||0);rider=!!s.rider;},
