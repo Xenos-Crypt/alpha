@@ -60,6 +60,7 @@ import {buildHelipads} from './helipads.js';
 import {buildDrones} from './drones.js';
 import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
+import {buildShipMesh, buildShipyard} from './spaceships.js';
 import {buildSkyCity} from './sky-city.js';
 import {buildDeepCity} from './deep-city.js';
 import {createSolidProps} from './solid-props.js';
@@ -490,7 +491,7 @@ function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localSto
 let cityLife=null,monsterQuestKills=0;
 let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
-let skyCity = null, deepCity = null;   // Skyhaven (sky-city.js) and Deephaven (deep-city.js)
+let skyCity = null, deepCity = null, shipyard = null;   // shipyard: Orbital Forge (spaceships.js)   // Skyhaven (sky-city.js) and Deephaven (deep-city.js)
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
 const buildings = [];      // every city building, so it can be destroyed
@@ -3617,25 +3618,42 @@ function makeHelicopter({ name = 'Helicopter', color = 0x2f6f8f, x = 0, z = 0, y
   vehicles.push(v);
   return v;
 }
+// A spaceship (spaceships.js): flies like a helicopter, only much faster, climbing far quicker, and right up into
+// space (above 250 m) as far as the Aegis dome overhead. Built by Orbital Forge.
+function makeSpaceship({ name = 'Spaceship', model = 'skiff', color = 0xe8edf2, x = 0, z = 0, yaw = 0 } = {}) {
+  const ship = buildShipMesh(model, color), g = ship.group; g.rotation.order = 'YXZ'; scene.add(g);
+  g.position.set(x, groundY(x, z, 0), z); g.rotation.y = yaw;
+  const v = { kind: 'plane', heli: true, spaceship: true, model, name, group: g, wheels: [], speed: 0, radius: 3 * ship.size, wingSpan: 9 * ship.size, length: 11 * ship.size, maxSpeed: 100, takeoff: 0, turnRate: 1.1, ai: null, passengers: null,
+    alt: g.position.y, crashed: false, prop: null, exhaust: null, glow: ship.glow, shipLights: ship.lights, climb: 22,
+    ceiling: (px, pz) => Math.max(40, Math.sqrt(Math.max(0, 1350 ** 2 - ((px - 170) ** 2 + (pz - 150) ** 2))) - 25),   // the dome overhead
+    plane: { throttle: 0, pitch: 0, roll: 0, yaw }, home: { x, z, yaw } };
+  vehicles.push(v);
+  return v;
+}
 function flyHelicopter(v, dt) {
   const P = v.plane, p = v.group.position, mine = v === driving;
   const up = mine ? (keys.Space ? 1 : 0) - (keys.ShiftLeft || keys.ShiftRight ? 1 : 0) : -1;
   const fwd = mine ? (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) : 0, turn = mine ? (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0) : 0;
   P.throttle = lerp(P.throttle, mine ? 1 : 0, 1 - Math.exp(-0.8 * dt));   // rotor spins up when you're in it
   const ground = groundY(p.x, p.z, v.alt), spun = P.throttle > 0.6;   // (with your height, so roofs and rooftop helipads count as ground)
-  v.vy = lerp(v.vy || 0, spun ? up * 9 : -6, 1 - Math.exp(-2 * dt));
-  v.alt = Math.min(260, Math.max(ground, v.alt + v.vy * dt));
+  v.vy = lerp(v.vy || 0, spun ? up * (v.climb || 9) : -6, 1 - Math.exp(-2 * dt));
+  v.alt = Math.min(v.ceiling ? v.ceiling(p.x, p.z) : 260, Math.max(ground, v.alt + v.vy * dt));
   const airborne = v.alt > ground + 0.3;
   v.speed = lerp(v.speed, airborne ? fwd * v.maxSpeed : 0, 1 - Math.exp(-1.2 * (v.stats?.accel || 1) * dt));
   P.yaw += turn * v.turnRate * (v.stats?.handling || 1) * dt * (spun ? 1 : 0);
   P.pitch = lerp(P.pitch, -v.speed / v.maxSpeed * 0.25, 1 - Math.exp(-3 * dt));   // nose dips when flying forward
   P.roll = lerp(P.roll, airborne ? -turn * 0.25 : 0, 1 - Math.exp(-3 * dt));
   p.x += Math.sin(P.yaw) * v.speed * dt; p.z += Math.cos(P.yaw) * v.speed * dt;
+  if (v.spaceship) {   // the Aegis dome is the edge of the world: a ship that reaches it is held back (it's a shield, not a wall to crash into)
+    const dx = p.x - 170, dz = p.z - 150, d3 = Math.hypot(dx, dz, v.alt);
+    if (d3 > 1325) { const k = 1325 / d3; p.x = 170 + dx * k; p.z = 150 + dz * k; v.alt = Math.min(v.alt, v.alt * k); v.speed *= 0.3; }
+  }
   if (v.alt < ground + 4 && collide(p, 2.4) && Math.abs(v.speed) > 12) return crashPlane(v);
   if (planeBlocks.some(b => p.x + 3 > b.minX && p.x - 3 < b.maxX && p.z + 3 > b.minZ && p.z - 3 < b.maxZ && v.alt + 1 > (b.bottom ?? 0) && v.alt - 1 < b.top)) { if (Math.abs(v.speed) > 15) return crashPlane(v); v.speed = 0; }
   p.y = v.alt;
   v.group.rotation.set(P.pitch, P.yaw, P.roll);
-  v.rotor.rotation.y += dt * 30 * P.throttle; v.tail.rotation.x += dt * 40 * P.throttle;
+  if (v.rotor) { v.rotor.rotation.y += dt * 30 * P.throttle; v.tail.rotation.x += dt * 40 * P.throttle; }
+  if (v.glow) { const k = P.throttle * (0.5 + Math.abs(v.speed) / v.maxSpeed + Math.max(0, v.vy) / (v.climb || 9) * 0.5); for (const f of v.glow) { f.scale.set(1, 0.3 + k, 1); f.visible = P.throttle > 0.05; } for (const l of v.shipLights || []) l.intensity = k * 2; }
 }
 // Temporary: your own plane parked near home instead of the car, for testing
 // fast travel — same "for now, revert later" spirit as CHEAT_NO_NEEDS/SPEED.
@@ -6188,7 +6206,8 @@ function enterVehicle(v) {
   driving = v; inCar = true; action = null;
   if(cameraView==='first'){yaw=v.group.rotation.y+Math.PI;pitch=0;}
   player.visible = false;
-  if (v.kind === 'plane') toast(v.heli ? '🚁 Helicopter: Space climbs, Shift descends, W/S fly forward/back, A/D turn. Lift off anywhere.' : 'Q/R barrel roll in flight. W/S throttle · A/D turn · Space climb · Shift dive. Take off down the runway!');
+  if (v.spaceship) toast('🚀 Spaceship: Space climbs, Shift descends, W/S fly forward/back, A/D turn. Climb past 250 m and you are in space.');
+  else if (v.kind === 'plane') toast(v.heli ? '🚁 Helicopter: Space climbs, Shift descends, W/S fly forward/back, A/D turn. Lift off anywhere.' : 'Q/R barrel roll in flight. W/S throttle · A/D turn · Space climb · Shift dive. Take off down the runway!');
   (v.hoverBody || v.group).add(headlight, headlight.target);
   headlight.position.set(0, 0.8, v.length / 2 + 0.1);
   headlight.target.position.set(0, 0, 14);
@@ -6399,6 +6418,7 @@ function openVehicleShop(title, cats, place, { priceMult = 1, illegal = false } 
     let v;
     if (e.kind === 'car') v = makeVehicle('car', colour, e.style);
     else if (e.kind === 'heli') v = makeHelicopter({ name: e.name, color: colour });
+    else if (e.kind === 'spaceship') { v = makeSpaceship({ name: e.name, model: e.model, color: colour }); v.climb = e.climb; }
     else if (e.kind === 'plane') v = makeAircraft({ name: e.name, color: colour, accent: 0x22262b, maxSpeed: e.mph * 0.42, takeoff: e.plane.takeoff, turn: e.plane.turn, jet: e.plane.jet, home: [0, 0] });
     else v = makeVehicle(e.kind, colour);
     applyStats(v, e); v.owned = true; v.ai = null;
@@ -8055,6 +8075,7 @@ military = buildMilitary({ scene, colliders, interactables, civicBuildings, make
   playerPos: () => player.position, playerRig: () => P,
   addAircraft: a => makeAircraft(a),
   makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
+shipyard = buildShipyard({ scene, colliders, interactables, makeTex, openShop: (title, cats, place) => openVehicleShop(title, cats, place), destinations: townPlaces?.destinations, makePerson: o => makeHumanoid(o) });
 buildVehicleDealers({ openVehicleShop, scene, colliders, interactables, makeTex, makePerson: o => makeHumanoid(o), makeVehicle, makeHelicopter, makeAircraft, toast, money: () => stats.gold, sign: signboard, groundY, destinations: townPlaces.destinations,
   shopPanel: (title, items) => snackShop.open(title, 'dealer', items), registerOwned: v => cityServices?.ownedCars?.push(v) });
 drivingSchool = buildDrivingSchool({ scene, colliders, interactables, makeTex, makePerson: o => makeHumanoid(o), makeVehicle, groundY, get roadLaw() { return roadLaw; }, toast, sign: signboard, destinations: townPlaces.destinations, playerPos: () => player.position,
@@ -8119,7 +8140,7 @@ const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setIt
 worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>GRASS_TUFTS?(grass?.tufts?.()||[]):[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
-  extra:()=>[...idExtra,...(skyCity?.ids||[]),...(deepCity?.ids||[]),...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
+  extra:()=>[...idExtra,...(shipyard?.ids||[]),...(skyCity?.ids||[]),...(deepCity?.ids||[]),...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // every purchase, uniform, worn-out shirt and pram goes on the thing's record (belongings.js → world IDs)
@@ -8562,7 +8583,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); skyCity?.update(rawDt, player.position); deepCity?.update(rawDt, player.position); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); skyCity?.update(rawDt, player.position); shipyard?.update(rawDt); deepCity?.update(rawDt, player.position); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate

@@ -65,7 +65,7 @@ export const sectorOfJob = job => Object.keys(SECTORS).find(k => SECTORS[k].jobs
 export const COMPANIES = [
   ['Velo Motors', 'automotive', 'self-driving cars'], ['Spark & Pipe Utilities', 'utilities', 'smart grid'], ['Atlas Dynamics', 'tech', 'robotics'],
   ['Heartwell Health', 'health', 'new clinics'], ['Greenfield Farms', 'agriculture', 'vertical farms'], ['Deepstone Mining', 'resources', 'rare minerals'],
-  ['Brightwave Energy', 'energy', 'fusion pilot'], ['Kestrel Air', 'transport', 'electric aircraft'], ['First Crown Bank', 'finance', 'digital money'],
+  ['Brightwave Energy', 'energy', 'fusion pilot'], ['Kestrel Air', 'transport', 'electric aircraft'], ['Orbital Forge', 'transport', 'reusable spaceships'], ['First Crown Bank', 'finance', 'digital money'],
   ['Novachem Labs', 'science', 'new compounds'], ['Westhaven Builders', 'construction', 'smart homes'], ['Horizon Media', 'media', 'holo-broadcasts'],
 ];
 

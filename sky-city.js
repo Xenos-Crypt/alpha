@@ -21,6 +21,8 @@ export function buildSkyCity(ctx) {
   const { scene, K, interactables, toast, makeTex } = ctx;
   const C = SKY, Y = SKY.y, root = new THREE.Group(); root.name = 'Skyhaven (sky city)'; scene.add(root);
   const ids = [], destinations = [], grid = createWorldGrid({ cell: 1 });
+  // aircraft and spaceships can't fly through the island from below or the side (they can land on top)
+  ctx.planeBlocks?.push({ minX: C.x - C.r, maxX: C.x + C.r, minZ: C.z - C.r, maxZ: C.z + C.r, bottom: Y - 80, top: Y - 1.5 });
   const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.6, metalness: o.metal ?? 0.1, emissive: o.em ?? 0, emissiveIntensity: o.ei ?? 1, transparent: !!o.op, opacity: o.op ?? 1 });
   const box = (p, w, h, d, x, y, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; p.add(o); return o; };
   const cols = ctx.colliders, solid = (minX, maxX, minZ, maxZ, base = Y) => cols.push({ minX, maxX, minZ, maxZ, baseYAt: () => base });

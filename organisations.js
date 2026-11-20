@@ -27,7 +27,7 @@ export const ORGS = [
   ['Loomhouse Textiles', 'private', 'secondary', 'manufacturing', 'makes fabric and carpet'], ['Tarpeak Roofing', 'private', 'secondary', 'manufacturing', 'makes roof shingles'],
   ['Millstone Mills', 'private', 'secondary', 'manufacturing', 'mills flour'], ['Golden Crust Bakery', 'private', 'secondary', 'manufacturing', 'bakes bread'],
   ['Meadow Dairy', 'co-operative', 'secondary', 'manufacturing', 'makes milk, butter and cheese; owned by the dairy farmers'], ['Prime Cuts Butchers', 'private', 'secondary', 'manufacturing', 'prepares meat'],
-  ['Velo Motors', 'private', 'secondary', 'automotive', 'builds cars, buses and bikes (and self-driving ones)'], ['Harbour Shipyards', 'private', 'secondary', 'manufacturing', 'builds boats'],
+  ['Velo Motors', 'private', 'secondary', 'automotive', 'builds cars, buses and bikes (and self-driving ones)'], ['Harbour Shipyards', 'private', 'secondary', 'manufacturing', 'builds boats'], ['Orbital Forge', 'private', 'secondary', 'manufacturing', 'designs and builds spaceships at its works by the space centre'],
   ['Second Life Recycling', 'social enterprise', 'secondary', 'utilities', 'turns sorted waste back into materials; hires people who struggle to find work'],
   // tertiary
   ['Westhaven Builders', 'private', 'tertiary', 'construction', 'builds the buildings and houses'], ['Westhaven Highways', 'public', 'tertiary', 'construction', 'builds and repairs the roads'],
