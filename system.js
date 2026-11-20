@@ -307,6 +307,7 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsB
     if (ctx.admin?.on()) {   // admin tools: only for accounts the server lists as admins
       const row = box.querySelector('.row');
       const add = (label, go) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = go; row.append(b); };
+      add(ctx.admin.god?.() ? 'Admin: god mode ON' : 'Admin: god mode OFF', () => { ctx.admin.toggleGod?.(); showWindow(); });
       add('Admin: +1 level', () => { ctx.admin.levelUp(); showWindow(); });
       add('Admin: new quests now', async () => { st.day = null; await refreshDay(); showWindow(); });
       add('Admin: AI questions', () => adminQuestions());
