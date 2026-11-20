@@ -230,7 +230,7 @@ body.cinema #phoneBtn{visibility:hidden}`;
     if (a.price) ctx.stats.gold -= a.price;
     const body = frame('Cryptic Store', `<p>Downloading ${esc(a.name)}…</p><div style="height:8px;background:#ffffff22;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:0;background:#2f6fdf;transition:width 1.2s"></i></div>`);
     requestAnimationFrame(() => { const bar = body.querySelector('i'); if (bar) bar.style.width = '100%'; });
-    setTimeout(() => { if (a.device) { S.laptop = true; ctx.toast('💻 Your Cryptic Book has arrived. Switch to it in the phone's Settings.'); } else { S.installed.push(id); ctx.toast(`${a.icon} ${a.name} installed.`); } save(); go('store'); }, 1300);
+    setTimeout(() => { if (a.device) { S.laptop = true; ctx.toast('💻 Your Cryptic Book has arrived. Switch to it in your phone Settings.'); } else { S.installed.push(id); ctx.toast(`${a.icon} ${a.name} installed.`); } save(); go('store'); }, 1300);
   }
   function setLaptop(on) { if (on && !st().laptop) return ctx.toast('You need a Cryptic Book. Get one in the Cryptic Store.'); laptop = on; if (!open) toggle(true); go('home'); }
 
