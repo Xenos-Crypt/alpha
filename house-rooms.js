@@ -172,7 +172,32 @@ export function furnishHouse(ctx, h) {
   spot(1.4, s1 - 1.0, 0.7, 'Do the laundry', () => ctx.chore ? ctx.chore('laundry') : ctx.rest(-3, '👕 Clothes in, powder in, start. Your clothes are clean again.'));
 
   // the hob glows and a pan appears while something's cooking
-  return { tv, rooms, doors, update(dt = 1 / 60) { for (const d of doors) if (d.open !== d.target) {
+  // camera marks for cut-scenes (the Story Mode opening): where to look from, and what at
+  const at = (u, v, h) => ({ x: X(u), y: y + h, z: Z(v) });
+  const mirrorV = mid + 0.05 + 0.38;
+  // Each mark is a short walk: steps the camera moves through at walking pace, looking where the step says,
+  // opening a door on the way when `open` names one. Eye height 1.62 standing, lower lying or sitting.
+  const doorAt = (u, v) => doors.find(d => Math.abs((d.col.minX + d.col.maxX) / 2 - X(u)) < 0.3 && Z(v) > d.col.minZ - 0.2 && Z(v) < d.col.maxZ + 0.2);
+  const openDoor = d => { if (!d || d.target) return; d.target = 1; const i = colliders.indexOf(d.col); if (i >= 0) colliders.splice(i, 1); };
+  const bedroomDoor = doorAt(-1, mid + 0.8), bathroomDoor = doorAt(1, mid + 1.05);
+  const step = (u, v, h, lu, lv, lh, open) => ({ to: at(u, v, h), look: at(lu, lv, lh), open });
+  const spots = {
+    ceiling: [step(bu, D - 0.75, 0.95, bu, D - 1.1, 2.6)],                                   // lying in bed, staring up
+    bedroom: [step(bu, D - 1.3, 1.15, bu + 0.6, mid + 0.6, 1.05)],                           // sitting up
+    cupboard: [step(bu + 1.1, D - 1.9, 1.62, -hw + 0.4, mid + 0.95, 1.2)],                   // standing, looking at the wardrobe
+    window: [step(-hw + 1.3, 7.5, 1.62, -hw - 6, 7.5, 3.8)],                                 // over to the window, up at the sky
+    phone: [step(bu + 1.1, D - 1.7, 1.62, bu, D - 1.6, 0.56)],                               // back to the bed, looking down at the phone
+    mirror: [
+      step(-1.7, mid + 0.8, 1.62, -1, mid + 0.8, 1.3),                                       // to the bedroom door
+      step(-1.7, mid + 0.8, 1.62, 0, mid + 0.8, 1.5, bedroomDoor),                           // open it
+      step(0, mid + 1.05, 1.62, 1, mid + 1.05, 1.3),                                         // across the hall to the bathroom door
+      step(0, mid + 1.05, 1.62, 1.6, mid + 1.05, 1.5, bathroomDoor),                         // open it
+      step(1.6, mid + 1.05, 1.62, 1.06, mirrorV, 1.5),                                       // in, turning to the basin
+      step(1.75, mirrorV, 1.62, 1.06, mirrorV, 1.5),                                         // face the mirror
+    ],
+    end: { x: X(1.75), z: Z(mirrorV), facing: { x: X(1.06) - X(1.75), z: 0 } },   // stand at the basin, facing the mirror
+  };
+  return { tv, rooms, doors, spots, openDoor, update(dt = 1 / 60) { for (const d of doors) if (d.open !== d.target) {
       const n = d.open + Math.sign(d.target - d.open) * Math.min(Math.abs(d.target - d.open), dt * 3);
       if (ctx.sweep) {   // the door stops against anyone standing in its swing
         const r = ctx.sweep(d.hinge.position.x, d.hinge.position.z, 0, d.dir, d.len, d.hinge.rotation.y, d.swing * n);

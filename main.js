@@ -21,6 +21,9 @@ import {createWorldIds} from './world-ids.js';
 import {createWorldRegistry} from './world-registry.js';
 import {createInfoMarkets} from './info-markets.js';
 import {createStory} from './story.js';
+import {createSystem} from './system.js';
+import { createSystemOrb } from './system-orb.js';
+import { createVoice } from './voice.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -68,7 +71,9 @@ import {buildVehicleDealers} from './vehicle-dealers.js';
 import {createMarketPanel} from './market-panel.js';
 import {createProperty} from './property.js';
 import {buildDrivingSchool} from './driving-school.js';
-import {createForest, pickKind} from './trees.js';
+import {createForest, pickKind, FOLIAGE_TINT} from './trees.js';
+import {createSeasons, calendar as calendarFor} from './seasons.js';
+import {createPhone} from './phone.js';
 import {digPond, holeMaterial} from './ponds.js';
 import {makeBotany, LIFE, PLANTS, ANIMALS, TREE_SHAPE, plantId} from './botany.js';
 import {createGrass} from './grass.js';
@@ -109,6 +114,10 @@ import { buildGrandPark, PARK_NO_GRASS } from './grand-park.js';
 import { buildFlowerPark, FLOWER_NO_GRASS } from './flower-park.js';
 import { buildHomePark } from './home-park.js';
 import { buildBeach } from './beach.js';
+import { buildResortBeach } from './resort-beach.js';
+import { makeKit } from './leisure-kit.js';
+import { makeRundown, buildAdminEstate } from './home-styles.js';
+import { createSlum, createRent, SLUM_HOME, SLUM_HOME_Y, SLUM_HOME_YARD, slumGroundAt } from './slum.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
 import { buildRoadLinks } from './road-links.js';
@@ -135,7 +144,7 @@ const controlPrefs=loadControlPreferences();
 let specialUnlocked=localStorage.getItem('specialUnlocked')==='true';
 let villainKills = Number(localStorage.getItem('villainKills')) || 0;
 let isVillain = villainKills > 0;
-let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null,bankPanel=null;const innovationsBuilt=[];
+let adventureServices=null,bridgeTraffic=null,worldExpansion=null,npcConversations=null,society=null,worldWatch=null,atlasWorld=null,worldIds=null,registryUserId=null,infoMarkets=null,story=null,bankPanel=null,system=null;const innovationsBuilt=[];
 let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
@@ -322,7 +331,7 @@ perfBudget = createPerformanceBudget({ THREE, scene, camera, renderer, mobile: t
 perfBudget.setBasePixelRatio(renderer.getPixelRatio());
 perfBudget.setQuality(gfxQuality);
 perfBudget.attachSky(sky, [sunDisc, moonDisc]);
-if (new URLSearchParams(location.search).has('debug')) window.__aw = { renderer, scene, camera, perfBudget, get player() { return player; }, get game() { return { hunterGuilds, roadLaw, frontier, prog, stats, vehicles, trafficLights, get militaryAlert() { return militaryAlert; }, setYaw(y, p) { yaw = y; pitch = p; } }; } };
+if (new URLSearchParams(location.search).has('debug')) window.__aw = { renderer, scene, camera, perfBudget, get worldIds() { return worldIds; }, get player() { return player; }, get game() { return { hunterGuilds, roadLaw, frontier, prog, stats, vehicles, trafficLights, get militaryAlert() { return militaryAlert; }, setYaw(y, p) { yaw = y; pitch = p; } }; } };
 
 // =====================================================================
 // PROCEDURAL TEXTURES (drawn on canvases, so no image files are needed)
@@ -536,6 +545,7 @@ const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
   if (z < -9000) { const raceFloor = race?.groundAt(x, z); if (raceFloor != null) return raceFloor; }   // Ashford Racing track worlds
+  const bayFloor=resortBeach?.groundAt(x,z);if(bayFloor!=null)return bayFloor;   // Anthos Bay sand, decks and jetty (checked first: other layers treat this spot as open sea)
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const hillFloor=hills?.groundAt(x,z);if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
   const estateFloor=estate?.groundAt(x,z,bodyY??player.position.y);if(estateFloor!=null)return estateFloor;   // The Reserve: mansion upper floors and staircases
@@ -544,6 +554,7 @@ function groundY(x, z, bodyY = null) {
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
+  const slumFloor=slumGroundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player?.position.y));if(slumFloor!=null)return slumFloor;   // (the tenement's floors, stairs and balcony depend on how high you are)   // Cinder Row: dirt plots and lanes
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
   const ghostFloor=ghostIsland?.groundAt(x,z);if(ghostFloor!=null)return ghostFloor;
   const spaceFloor=spaceCentre?.groundAt(x,z,bodyY??player.position.y);if(spaceFloor!=null)return spaceFloor;
@@ -1323,17 +1334,19 @@ const RUNWAY = new THREE.Vector3(TRAIN.x, 0, 200);
 // =====================================================================
 // HOME (Sims-style house; the roof hides when you walk inside)
 // =====================================================================
-const HOME = { x: 20, z: 22, minX: 14, maxX: 26, minZ: 17, maxZ: 27 };
-const wallMat = new THREE.MeshStandardMaterial({ color: 0xf3ead8, roughness: 0.9 });
+// Your home is in Cinder Row, the slum on the edge of Poison Land (slum.js): everyone but the admin starts out broke.
+const HOME = { ...SLUM_HOME };
+const HOME_Y = SLUM_HOME_Y;   // your flat is on the top floor of a three-storey tenement (the floors below are other tenants')
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xb3a68f, roughness: 0.95 });   // dingy, stained render (a run-down house in Cinder Row)
 const WALL_Y = CURB + 1.5;
 // Real windows in the outside walls (see windows.js): glass you can see through from inside, and they open.
 const winSys = createWindows({ scene, interactables, glowMats });
 // The outside walls of a house laid out like house-rooms.js: front wall at `front` (with the door gap
 // u -1..1), `dir` pointing to the back. Window spots match the rooms (living, bedroom, kitchen sink, bathroom).
-function houseShell(cx, front, dir, W, D, wm) {
+function houseShell(cx, front, dir, W, D, wm, y0 = CURB) {
   const hw = W / 2, mid = D / 2, back = front + dir * D, b0 = mid + 0.05;
   const solid = (x0, x1, z0, z1) => colliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
-  const wall = (ax, az, bx, bz, inward, holes) => { winSys.wall({ ax, az, bx, bz, y: CURB, h: 3, t: 0.3, mat: wm, inward, holes }); solid(ax - (ax === bx ? 0.15 : 0), bx + (ax === bx ? 0.15 : 0), az - (az === bz ? 0.15 : 0), bz + (az === bz ? 0.15 : 0)); };
+  const wall = (ax, az, bx, bz, inward, holes) => { winSys.wall({ ax, az, bx, bz, y: y0, h: 3, t: 0.3, mat: wm, inward, holes }); solid(ax - (ax === bx ? 0.15 : 0), bx + (ax === bx ? 0.15 : 0), az - (az === bz ? 0.15 : 0), bz + (az === bz ? 0.15 : 0)); };
   const fw = Math.min(1.6, hw - 1.9);
   wall(cx - hw - 0.15, front, cx - 1, front, [0, dir], [{ at: (hw - 1) / 2 + 0.15, w: fw, sill: 1.0, h: 1.2 }]);     // front, living room
   wall(cx + 1, front, cx + hw + 0.15, front, [0, dir], [{ at: (hw - 1) / 2, w: fw, sill: 1.0, h: 1.2 }]);                  // front, kitchen
@@ -1341,18 +1354,20 @@ function houseShell(cx, front, dir, W, D, wm) {
   wall(cx + hw, front, cx + hw, back, [-1, 0], [{ at: 1.4, w: 1.0, sill: 1.05, h: 0.95 }, { at: b0 + 0.5, w: 0.6, sill: 1.6, h: 0.7, frosted: true }]);   // kitchen sink, bathroom
   wall(cx - hw - 0.15, back, cx + hw + 0.15, back, [0, -dir], [{ at: (-hw + 0.05 - 1) / 2 + hw + 0.15, w: 1.2, sill: 1.15, h: 1.1 }]);   // bedroom, over the bed
 }
-houseShell(HOME.x, HOME.minZ, 1, HOME.maxX - HOME.minX, HOME.maxZ - HOME.minZ, wallMat);
-box(2, 0.8, 0.3, HOME.x, CURB + 2.6, HOME.minZ, wallMat, false); // above door
+const homeCol0 = colliders.length;   // everything from here to the furniture is up on the top floor
+houseShell(HOME.x, HOME.minZ, 1, HOME.maxX - HOME.minX, HOME.maxZ - HOME.minZ, wallMat, HOME_Y);
+box(2, 0.8, 0.3, HOME.x, HOME_Y + 2.45, HOME.minZ, wallMat, false); // above door
 // A real front door in the doorway: E opens and closes it, and it's solid when shut.
-const homeDoor = new THREE.Group(); homeDoor.position.set(HOME.x - 1, CURB, HOME.minZ); scene.add(homeDoor);
+const homeDoor = new THREE.Group(); homeDoor.position.set(HOME.x - 1, HOME_Y, HOME.minZ); scene.add(homeDoor);
 { const panel = mesh(new THREE.BoxGeometry(1.96, 2.18, 0.08), 0x6b3f22, homeDoor); panel.position.set(0.99, 1.1, 0);
   for (const y of [0.55, 1.55]) mesh(new THREE.BoxGeometry(1.5, 0.75, 0.1), 0x5a3320, homeDoor).position.set(0.99, y, 0);
   const knob = mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3 }), homeDoor); knob.position.set(1.75, 1.05, -0.08);
-  box(2.3, 0.12, 0.4, HOME.x, CURB + 2.25, HOME.minZ, 0xf0ece2, false); }
+  box(2.3, 0.12, 0.4, HOME.x, HOME_Y + 2.1, HOME.minZ, 0xf0ece2, false); }
 const homeDoorCollider = { minX: HOME.x - 1, maxX: HOME.x + 1, minZ: HOME.minZ - 0.12, maxZ: HOME.minZ + 0.12 };
 colliders.push(homeDoorCollider);
 let homeDoorOpen = false;
-interactables.push({ pos: new THREE.Vector3(HOME.x, CURB, HOME.minZ), r: 2.2, get label() { return homeDoorOpen ? 'Close the front door' : 'Open the front door'; }, action: () => {
+interactables.push({ pos: new THREE.Vector3(HOME.x, HOME_Y, HOME.minZ), r: 2.2, get label() { return homeDoorOpen ? 'Close the front door' : rent?.lockedOut() && !houseAt(player.position) ? 'Padlocked by the landlord' : 'Open the front door'; }, action: () => {
+  if (!homeDoorOpen && rent?.lockedOut() && !houseAt(player.position)) return toast(`🔒 ${'Mr Kassim'} padlocked your door. Pay him the ${rent.owing()} gold you owe (he's outside Flat 1, downstairs).`);
   homeDoorOpen = !homeDoorOpen;
   const i = colliders.indexOf(homeDoorCollider);
   if (homeDoorOpen && i >= 0) colliders.splice(i, 1); else if (!homeDoorOpen && i < 0) colliders.push(homeDoorCollider);
@@ -1360,7 +1375,7 @@ interactables.push({ pos: new THREE.Vector3(HOME.x, CURB, HOME.minZ), r: 2.2, ge
 // Front garden gates: a double gate across the driveway (wide enough for the car) and a small
 // gate on the path. They swing open when you, or your car, come up to them.
 const homeGates = [];
-{ const iron = new THREE.MeshStandardMaterial({ color: 0x1f2326, metalness: 0.6, roughness: 0.4 });
+if (false) { const iron = new THREE.MeshStandardMaterial({ color: 0x1f2326, metalness: 0.6, roughness: 0.4 });   // (no gates or driveway in Cinder Row: you have no car)
   const drive = mesh(new THREE.PlaneGeometry(3.8, 9), new THREE.MeshStandardMaterial({ color: 0x6f6a62, roughness: 0.95 })); drive.rotation.x = -Math.PI / 2; drive.position.set(12.6, CURB + 0.03, 12.6); drive.castShadow = false;
   const gateLeaf = (hx, w, dir) => { const g = new THREE.Group(); g.position.set(hx, CURB, 11); scene.add(g);
     for (const y of [0.15, 0.95]) mesh(new THREE.BoxGeometry(w, 0.07, 0.07), iron, g).position.set(dir * w / 2, y, 0);
@@ -1390,23 +1405,20 @@ function updateHomeDoor(dt) {
 const houseWindowMat = new THREE.MeshStandardMaterial({ color: 0x8fb3cc, roughness: 0.1, emissive: 0xffd58a, emissiveIntensity: 0 });
 glowMats.push(houseWindowMat);
 
-const floor = mesh(new THREE.PlaneGeometry(11.7, 9.7), new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.7 }));
+const floor = mesh(new THREE.PlaneGeometry(HOME.maxX - HOME.minX - 0.3, HOME.maxZ - HOME.minZ - 0.3), new THREE.MeshStandardMaterial({ map: woodTex, color: 0x9c8f7c, roughness: 0.85 }));   // worn, stained boards
 floor.rotation.x = -Math.PI / 2;
-floor.position.set(HOME.x, CURB + 0.02, HOME.z);
+floor.position.set(HOME.x, HOME_Y + 0.02, HOME.z);
 floor.castShadow = false;
 
-const roofShape = new THREE.Shape([new THREE.Vector2(-5.6, 0), new THREE.Vector2(5.6, 0), new THREE.Vector2(0, 2.2)]);
-const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: 12.6, bevelEnabled: false });
-roofGeo.translate(0, 0, -6.3);
-roofGeo.rotateY(Math.PI / 2);
-const houseRoof = new THREE.Mesh(roofGeo, [wallMat, new THREE.MeshStandardMaterial({ map: roofTex, roughness: 0.9 })]);
-houseRoof.position.set(HOME.x, CURB + 3, HOME.z);
+// a flat, rusty tin roof, sloping a little for the rain (it hides while you're inside, like any house roof)
+const houseRoof = new THREE.Mesh(new THREE.BoxGeometry(HOME.maxX - HOME.minX + 0.7, 0.1, HOME.maxZ - HOME.minZ + 0.7), new THREE.MeshStandardMaterial({ color: 0x8a6b55, roughness: 0.75, metalness: 0.3 }));
+houseRoof.position.set(HOME.x, HOME_Y + 3.08, HOME.z); houseRoof.rotation.x = -0.05;
 houseRoof.castShadow = houseRoof.receiveShadow = true;
 scene.add(houseRoof);
-const homeDesign=detailHome({scene,box,makeTex,home:HOME,curb:CURB,wallMat,roof:houseRoof,glowMats});
+const homeDesign=detailHome({scene,box,makeTex,home:HOME,curb:CURB,wallMat,roof:houseRoof,glowMats,yard:false});
 
-// The raised pavement starts at z=8; keep the entrance path off the road.
-const doorPathStartZ = 8;
+// A dirt path from the lane to the front door.
+const doorPathStartZ = SLUM_HOME_YARD.minZ;
 const doorPathEndZ = HOME.minZ;
 const doorPath = mesh(new THREE.PlaneGeometry(2, doorPathEndZ - doorPathStartZ), homeDesign.pathMaterial);
 doorPath.rotation.x = -Math.PI / 2;
@@ -1416,17 +1428,18 @@ doorPath.castShadow = false;
 // Furniture: proper rooms (hallway, living room, bedroom, kitchen, bathroom, storage) — see house-rooms.js
 const F_Y = CURB;
 let kitchen = null, chores = null;
-const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), kitchen: () => kitchen, sleep: () => sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
-  { cx: HOME.x, front: HOME.minZ, dir: 1, W: HOME.maxX - HOME.minX, D: HOME.maxZ - HOME.minZ, y: CURB, sideWindows: [3, 7.5] });
+const homeRooms = furnishHouse({ makeTex, floorMaterial, scene, colliders, sitSpots, interactables, sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), kitchen: () => kitchen, sleep: () => rent?.lockedOut() ? toast('🔒 The landlord padlocked your flat. Pay the rent first.') : sleep(), rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); }, toast: m => toast(m) },
+  { cx: HOME.x, front: HOME.minZ, dir: 1, W: HOME.maxX - HOME.minX, D: HOME.maxZ - HOME.minZ, y: HOME_Y, sideWindows: [(HOME.maxZ - HOME.minZ) * 0.3, (HOME.maxZ - HOME.minZ) * 0.75] });
+for (const c of colliders.slice(homeCol0)) if (!c.baseYAt) c.baseYAt = () => HOME_Y;   // the flat's walls, doors and furniture only block you up on the top floor
 const houseRoomList = [homeRooms];
 
 const houseLight = new THREE.PointLight(0xffe2b0, 6, 12, 2);
-houseLight.position.set(HOME.x, CURB + 2.7, HOME.z);
+houseLight.position.set(HOME.x, HOME_Y + 2.7, HOME.z);
 scene.add(houseLight);
 
 // Garden trees in the corners, kept clear of the driveway (x 10.7–14.5) and the front path; placed
 // exactly (not nudged to the roadside, which once pushed one onto the driveway in front of the gate).
-for (const [x, z] of [[8.6, 16.5], [31.4, 13.5], [31.4, 31.4], [8.6, 31.4]]) addTree(x, z, 1.2, true);
+// (no garden trees: the yard in Cinder Row is bare dirt)
 
 // =====================================================================
 // MORE HOUSES (walk in through the door; the roof hides while you're inside)
@@ -1539,7 +1552,13 @@ const TOUCH_HINTS = [
   [/\bHold S\b/g, 'Hold ▼'], [/\bhold S\b/g, 'hold ▼'], [/\bW to go forward\b/g, '▲ to go forward'],
 ];
 const touchText = text => { if (!touchDevice || typeof text !== 'string') return text; for (const [a, b] of TOUCH_HINTS) text = text.replace(a, b); return text; };
+// Nothing from the game pops up during the opening film: messages wait until it ends (the last few are
+// shown then, one after another) and big banners (BUILDING DESTROYED, combos...) are skipped.
+const inFilm = () => document.body.classList.contains('cinema');
+const heldToasts = [];
+function releaseHeldToasts() { const list = heldToasts.splice(0); list.forEach((t, i) => setTimeout(() => toast(t), 900 + i * 3800)); }
 function toast(text) {
+  if (inFilm()) { if (!heldToasts.includes(text)) { heldToasts.push(text); if (heldToasts.length > 3) heldToasts.shift(); } return; }
   text = touchText(text);
   $('toast').textContent = text;
   $('toast').style.opacity = 1;
@@ -1586,6 +1605,7 @@ function makeLabel(name, withGuard) {
 
 let calloutTimer;
 function callout(text, color, big = false) {
+  if (inFilm()) return;
   const el = $('callout');
   el.textContent = text;
   el.style.color = '#' + new THREE.Color(color).getHexString();
@@ -1907,7 +1927,18 @@ const characters = [
     ],
     ult: { name: 'Terra Sovereign', icon: '🗿', dmg: '62', desc: 'Cinematic earthquake explosion, then +30% damage for 10 seconds.', run: terraUlt },
   },
+  {   // Story Mode only: the protagonist's one power, the Mythic Blood power. Skills unlock as he levels.
+    name: 'Blood', color: 0x2a1d1f, hair: 0x15100f, fx: 0xc8102e, jump: 9, cds: [0, 0, 0, 0], unlock: [1, 3, 4, 6], ultLevel: 10,
+    skills: [
+      { name: 'Blood Whip', icon: '🩸', cd: 3, dmg: '10', desc: 'Lash with a whip of your own blood. Costs a little health.', run: bloodWhip },
+      { name: 'Blood Blade', icon: '🗡️', cd: 5, dmg: '16', desc: 'Form a blade from your blood and cut forward. Breaks guard.', run: bloodBlade },
+      { name: 'Life Drain', icon: '❤️', cd: 9, dmg: '8', desc: 'Drain health from enemies around you to heal yourself.', run: bloodDrain },
+      { name: 'Blood Armour', icon: '🛡️', cd: 18, dmg: '-', desc: 'Harden your blood into armour: half damage for 6 seconds.', run: bloodArmourCast },
+    ],
+    ult: { name: 'Crimson Rain', icon: '🌧️', dmg: '6 × 8', desc: 'Rain sharp drops of blood over everything around you.', run: bloodUlt },
+  },
 ];
+const BLOOD_CHAR = 4;
 let charIdx = 0;
 let unlockedCharIndices = [0, 1]; // the primary/secondary pair chosen at class select; T switches only within this pair
 
@@ -1960,7 +1991,7 @@ function toggleInventory(open) {
   else requestGameControl();
 }
 
-const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
+const SPAWN = new THREE.Vector3(HOME.x, HOME_Y, HOME.minZ - 0.7);   // on the balcony outside your door
 player.position.copy(SPAWN);
 const DEFAULT_SPAWN=SPAWN.clone();
 let houseVisits=null;
@@ -1969,7 +2000,7 @@ const hosting=createHosting({client:supabase,onRoomJoined:room=>roomChat.start(r
 
 let vy = 0, onGround = true;
 const pvel = new THREE.Vector3();          // knockback velocity
-let playerStun = 0, iFrames = 0, playerBlocking = false, awaken = 0, drownWarned = false;
+let playerStun = 0, iFrames = 0, playerBlocking = false, awaken = 0, drownWarned = false, bloodArmour = 0;
 let action = null;                          // the move currently being performed
 let comboIdx = 0, lastM1 = 0, m1Cd = 0, dashCd = 0, mouseHeld = false;
 const stats = { hp: 100, hunger: 80, energy: 80, ult: 0, gold: 0 };
@@ -2278,12 +2309,23 @@ let soloMode = false, soloUserId = null, soloSaveTimer = 0;
 const soloSaveKey = userId => 'aw_solo_save_' + userId;
 function loadSolo(userId) { try { const raw = localStorage.getItem(soloSaveKey(userId)); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 function clearSolo(userId) { try { localStorage.removeItem(soloSaveKey(userId)); } catch {} }
+// Story Mode death, after the 24-hour wait: you come back as a new player. Everything about the old you is
+// wiped (save, System, phone, skills, bank phone, purchases), every resident forgets you, and the game reloads
+// straight into the opening film. The server has already opened the new life (story_run_reborn).
+function startOverAsNewPlayer(life){
+  const uid=soloUserId;soloMode=false;   // stop the old life being saved again on the way out
+  clearSolo(uid);
+  for(const k of ['system:'+uid,'cryptic:'+uid,'alignment:'+uid,'support:'+uid,'specialUnlocked','villainKills','specialTrainingKills','aw.phone.v1','aw.info.v1','anotherworld-arcade-tickets','anotherworld-fair-tickets'])try{localStorage.removeItem(k);}catch{}
+  try{society?.forgetPlayer();}catch{}
+  try{sessionStorage.setItem('storyStartOver',JSON.stringify({uid,life}));}catch{}
+  shutDownForReload();location.reload();
+}
 function saveSolo() {
   if (!soloMode || !soloUserId) return true;
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
-      kitchen:kitchen?.snapshot(),careers:careers?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
+      kitchen:kitchen?.snapshot(),rent:rent?.snapshot(),careers:careers?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
       metro:metro?.snapshot(),sewer:sewers?.snapshot(),law:roadLaw?.snapshot(),hunter:hunterGuilds?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
       navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
       driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
@@ -2299,7 +2341,7 @@ function applySoloSave(save) {
   stats.gold = save.gold ?? 0;
   stats.hp = maxHp();
   swordGrip.visible = !!origin.weapon;
-  if (Array.isArray(save.unlockedCharIndices) && save.unlockedCharIndices.length === 2) unlockedCharIndices = save.unlockedCharIndices;
+  if (Array.isArray(save.unlockedCharIndices) && save.unlockedCharIndices.length >= 1) unlockedCharIndices = save.unlockedCharIndices;
   if (Number.isInteger(save.charIdx) && characters[save.charIdx]) {
     charIdx = save.charIdx;
     const c = characters[charIdx];
@@ -2314,7 +2356,7 @@ function applySoloSave(save) {
   supportSkills?.restore(save.support);if(save.supportCounters)supportCounters=save.supportCounters;specialUnlocked=!!supportSkills?.equipped;buildHotbar();
   heroDungeonKills=save.heroDungeonKills||0;
   monsterQuestKills=save.monsterQuestKills||0;for(const q of cityLife?.quests||[]){const saved=save.questState?.find(s=>s.name===q.name);if(saved)Object.assign(q,saved);}
-  kitchen?.restore(save.kitchen);careers?.restore(save.careers);roadWear?.restore(save.roadWear);conditions?.restore(save.buildingCondition);property?.restore(save.property);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
+  kitchen?.restore(save.kitchen);rent?.restore(save.rent);careers?.restore(save.careers);roadWear?.restore(save.roadWear);conditions?.restore(save.buildingCondition);property?.restore(save.property);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
   if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
   adventureServices?.restore(save.adventure);
   roadLaw?.restore(save.law);hunterGuilds?.restore(save.hunter);
@@ -2324,17 +2366,44 @@ function applySoloSave(save) {
 
 }
 
+// Story Mode: no element pick. The protagonist is always the same poor boy, broke in a rented room,
+// and his only power is the Mythic Blood power; its skills unlock as he levels.
+function storyProtagonist() {
+  origin = { roll: null, family: null, backstory: null, stats: { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
+    perk: null, wealthTier: 'poor', housing: 'A cold rented room in the poorest district', startingGold: 12, maxHealth: 100, weapon: null };
+  stats.gold = origin.startingGold; stats.hp = maxHp(); swordGrip.visible = false;
+  charIdx = BLOOD_CHAR; unlockedCharIndices = [BLOOD_CHAR];
+  P.mats.outfit.color.set(characters[charIdx].color); P.mats.hair.color.set(characters[charIdx].hair);
+  buildHotbar();
+}
+
 function showMenu(hasSave) {
   return new Promise(resolve => {
     $('menu').style.display = 'block';
     if (hasSave) {
       $('menuOfflineLabel').textContent = 'Continue';
       $('menuOfflineSub').textContent = 'Pick up where you left off';
-      $('menuNewGame').style.display = '';
     }
-    $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
+    $('menuOffline').onclick = () => {
+      // phones only allow speech that starts from a tap: unlock it now so the opening film can narrate
+      if (!hasSave) try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch {}
+      $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
+    if (hasSave && isAdmin && !$('menuReplay')) {   // admin only: wipe this account's story and play it again from the start
+      const b = document.createElement('button'); b.id = 'menuReplay';
+      b.innerHTML = '<b>🛠 Replay story (admin)</b><span class="sub">Erase this account\'s story and start again</span>';
+      $('menuOffline').closest('div').after(b);
+      let armed = false;
+      b.onclick = async () => {
+        if (!armed) { armed = true; b.querySelector('.sub').textContent = 'Tap again to erase your story progress and replay'; return; }
+        b.disabled = true;
+        try { const r = await supabase.rpc('story_run_reset'); if (r.error) throw r.error; } catch (e) { toast('Replay failed: ' + (e.message || e)); b.disabled = false; return; }
+        const uid = registryUserId; clearSolo(uid); try { localStorage.removeItem('system:' + uid); } catch {}
+        $('menu').style.display = 'none'; resolve('new');
+      };
+    }
     $('offlineInfoBtn').onclick = (e) => { e.stopPropagation(); const box = $('offlineInfoBox'); box.style.display = box.style.display === 'none' ? 'block' : 'none'; };
-    $('menuNewGame').onclick = () => { $('menu').style.display = 'none'; resolve('new'); };
+    // There is no "New story": a Story Mode run is started once and can only be continued, so nobody can
+    // restart to dodge a death or redo choices.
     // World Mode: no servers to host or join; everyone signed in shares one world
     $('menuWorld').onclick = async () => { const b = $('menuWorld'); if (b.disabled) return; b.disabled = true; try { await hosting.enterWorld(); $('menu').style.display = 'none'; resolve('world'); } catch (e) { toast(e.message); } finally { b.disabled = false; } };
     // Create Mode: build your own world on empty land (create.html)
@@ -2345,6 +2414,31 @@ function showMenu(hasSave) {
   });
 }
 
+let isAdmin = false, phone = null;
+// Admin god mode: infinite health and energy, never hungry, level 1000, maxed stats. On by default for admins;
+// they can switch it off in the System window (to test deaths, say).
+let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{return true;}})(), adminMaxed = false;
+// Homes that fit who you are (home-styles.js): everyone else starts poor in a run-down home with no car;
+// the admin's home is a mansion with a pool, a supercar and a private airstrip on new land east of The Reserve.
+function setUpHome(){
+  if(isAdmin){
+    if(adminEstate||!homeKitCtx)return;
+    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),
+      makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
+    poolZones.push(...adminEstate.pools);
+    SPAWN.set(adminEstate.home.x,CURB,adminEstate.home.z);
+    townPlaces?.destinations?.push({name:'Your mansion (Xenos Estate)',x:adminEstate.home.x,z:adminEstate.home.z});
+  }else{
+    const bed=homeRooms.rooms.find(q=>q.name==='bedroom');
+    makeRundown({scene,makeTex,curb:CURB,floorY:HOME_Y,home:HOME,bedroom:bed?{x:(bed.minX+bed.maxX)/2,z:(bed.minZ+bed.maxZ)/2}:null});
+  }
+  scene.remove(myCar.group);const i=vehicles.indexOf(myCar);if(i>=0)vehicles.splice(i,1);myCar.disabled=true;   // nobody starts with that car: you're broke (the admin has the estate's cars)
+}
+function updateAdminGod(){
+  if(!isAdmin||!adminGod)return;
+  if(!adminMaxed){adminMaxed=true;prog.level=Math.max(prog.level,1000);prog.xp=0;prog.str=Math.max(prog.str,100);prog.def=Math.max(prog.def,100);prog.men=Math.max(prog.men,100);prog.agi=Math.max(prog.agi,25);buildHotbar();toast('🛠 Admin: god mode on (infinite health and energy, never hungry, level 1000, maxed stats).');}
+  stats.hp=maxHp();stats.energy=100;stats.hunger=100;
+}
 let playerUsername = null;   // set once the user signs in/up; null for guests or if they skipped it
 function offlinePlayerSession(){let id=localStorage.getItem('lastSoloPlayer')||localStorage.getItem('guestId');if(!id){id='guest-'+crypto.randomUUID();localStorage.setItem('guestId',id);}return {user:{id,isGuest:true}};}
 async function boot() {
@@ -2360,15 +2454,27 @@ async function boot() {
   if (!activeSession.user.isGuest) supabase.from('logins').insert({ user_id: activeSession.user.id });
   const existingSave = loadSolo(activeSession.user.id);
   const restoringUpdate=sessionStorage.getItem('resumeAfterUpdate')===activeSession.user.id&&!!existingSave;sessionStorage.removeItem('resumeAfterUpdate');
-  const mode = restoringUpdate?'continue':await showMenu(!!existingSave);
+  // the server's record of this account's Story Mode run (it outlives a cleared browser)
+  let storyRun=null;
+  if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await Promise.race([supabase.rpc('story_run_status'),new Promise(res=>setTimeout(()=>res(null),6000))]);storyRun=r?.data||null;}catch{}}
+  // admin accounts (listed privately on the server) can replay the story and use the System's admin tools
+  if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await supabase.rpc('is_admin');isAdmin=r?.data===true;}catch{}}
+  await new Promise(r=>setTimeout(r,0));   // offline there's nothing to wait for, so let the rest of the world (your car included) finish being made first
+  setUpHome();
+  // coming back from a death as a new player: no menu, straight into the opening
+  let startOver=null;try{startOver=JSON.parse(sessionStorage.getItem('storyStartOver')||'null');sessionStorage.removeItem('storyStartOver');}catch{}
+  if(startOver&&startOver.uid!==activeSession.user.id)startOver=null;
+  const mode = startOver?'new':restoringUpdate?'continue':await showMenu(!!existingSave||!!storyRun);
   window.gameLoading?.show(10,'Preparing your adventure...');
-  if (mode === 'continue') {
+  if (mode === 'continue' && !existingSave) {
+    storyProtagonist();   // the run exists on the server but this device has no save: carry on from the room, no reset
+  } else if (mode === 'continue') {
     applySoloSave(existingSave);
     wanted = 0; pursuitBackupCooldown = 0;   // a reload should never resume with police already after you
   } else if (mode === 'new') {
     clearSolo(activeSession.user.id);
     window.gameLoading?.hide();
-    await runSpawnScreen(activeSession.user.id, false);
+    storyProtagonist();
     window.gameLoading?.show(35,'Creating your character data...');
   }
   if(mode==='host'||mode==='join'||mode==='world'){
@@ -2400,8 +2506,10 @@ async function boot() {
   $('start').style.display = 'flex';
   if(mobileControls?.mobile)requestGameControl();
   else {locked=true;freeMouse=true;$('start').style.display='none';$('mouseHint').textContent='Click the game to control the camera';$('mouseHint').style.display='block';renderer.domElement.addEventListener('click',()=>{setFreeMouse(false);requestGameControl();},{once:true});}
+  // Story Mode: a new story plays the opening; a continued one restores the System (and any death wait)
+  if(soloMode&&system){if(mode==='new')system.begin(startOver?.life||storyRun?.life||1);else system.resume(storyRun);}
 }
-addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();}})());});
+addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);shutDownForReload();}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();shutDownForReload();}})());});
 boot().catch(error=>window.gameLoading?.fail(error.message));
 const maxHp = () => (origin?.maxHealth ?? 100) + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
@@ -2430,7 +2538,7 @@ function gainXp(n) {
   prog.xp += n;
   while (prog.xp >= xpToNext()) {
     prog.xp -= xpToNext();
-    prog.level++;
+    prog.level++; systemOrb?.feel('delighted', 5);
     prog.points += 3;
     stats.hp = maxHp();
     toast(`Level up! You are level ${prog.level}. Press C to spend points.`);
@@ -3689,6 +3797,7 @@ function applyHit(e, h) {
 }
 
 function killEnemy(e, byPlayer = true) {
+  if(byPlayer&&!e.npcRaid&&e.kind!=='standing')system?.note('kill',e.type||e.kind||'monster');
   if(e.npcRaid){e.alive=false;e.hp=0;e.root.visible=false;e.respawn=Infinity;return;}
   if (e.kind === 'standing') {           // the standing dummy never dies
     e.hp = e.maxHp;
@@ -4601,7 +4710,7 @@ function noteHpLoss(reason) { hpLossReason = reason; hpLossAt = performance.now(
 function hurtPlayer(dmg, from, kb, reason = 'Attacked') {
   if(inCar&&driving){monsterEnvironmentDamage(driving.group.position,dmg,2);return;}
   if (iFrames > 0) return;
-  dmg *= defMul()*(supportSkills?.defenseMultiplier||1)*(adventureServices?.armour||1);
+  dmg *= defMul()*(supportSkills?.defenseMultiplier||1)*(adventureServices?.armour||1)*(bloodArmour>0?0.5:1);
   // High defense can knock dmg down near zero; it still rounded to "0" in the
   // taken-damage popup along with a full flash/stun/knockback for nothing.
   if (dmg < 0.5) return;
@@ -4818,10 +4927,13 @@ function dash() {
 const SKILL_UNLOCK_LEVEL = [2, 2, 3, 4];
 const PSYCHIC_UNLOCK_LEVEL = 2;
 const ULT_UNLOCK_LEVEL = 5;
+// a character can set its own unlock levels (the Blood power does)
+const skillLevel = (i, c = characters[charIdx]) => (c.unlock || SKILL_UNLOCK_LEVEL)[i];
+const ultLevel = (c = characters[charIdx]) => c.ultLevel ?? ULT_UNLOCK_LEVEL;
 function useSkill(i) {
   const c = characters[charIdx];
   if (!canAct() || c.cds[i] > 0) return;
-  if (prog.level < SKILL_UNLOCK_LEVEL[i]) { toast(`${c.skills[i].name} unlocks at level ${SKILL_UNLOCK_LEVEL[i]}`); return; }
+  if (prog.level < skillLevel(i, c)) { toast(`${c.skills[i].name} unlocks at level ${skillLevel(i, c)}`); return; }
   c.cds[i] = c.skills[i].cd;
   callout(c.skills[i].name.toUpperCase(), c.fx);
   c.skills[i].run();
@@ -4829,7 +4941,7 @@ function useSkill(i) {
 function useUlt() {
   const c = characters[charIdx];
   if (!canAct()) return;
-  if (prog.level < ULT_UNLOCK_LEVEL) { toast(`${c.ult.name} unlocks at level ${ULT_UNLOCK_LEVEL}`); return; }
+  if (prog.level < ultLevel(c)) { toast(`${c.ult.name} unlocks at level ${ultLevel(c)}`); return; }
   if (stats.ult < 100) { toast(`Ultimate not ready (${Math.floor(stats.ult)}%). Land hits to charge it.`); return; }
   stats.ult = 0;
   c.ult.run();
@@ -4992,6 +5104,69 @@ function startCinematic(dur, title, color) {
   cine = { t: 0, dur };
   letterbox(true);
   callout(title, color, true);
+}
+
+// ---- Blood (Story Mode protagonist) ----
+const BLOOD = [0xc8102e, 0x7a0a1a, 0xff3b4e, 0x3a0510];
+function bloodCost(n) { if (stats.hp > n + 5) stats.hp -= n; }   // his power runs on his own blood, but never kills him
+function bloodWhip() {
+  const f = aimForward();
+  bloodCost(2);
+  startAction({ name: 'Blood Whip', dur: 0.45, pose: 'punchR', update(dt, t, a) {
+    if (t < 0.12 || a.fired) return;
+    a.fired = true;
+    for (let d = 0.8; d < 5.5; d += 0.35) spawnParticle(at(player.position, 1.2).addScaledVector(f, d), randUnit().multiplyScalar(0.8), pick(BLOOD), 0.12, 0.3, -4);
+    hitCone(player.position, f, 5.5, 0.55, a.hits, { dmg: S(10), kb: 6, up: 2, stun: 0.5 });
+  } });
+}
+function bloodBlade() {
+  const f = aimForward();
+  bloodCost(3);
+  startAction({ name: 'Blood Blade', dur: 0.5, pose: 'dash', update(dt, t, a) {
+    if (t < 0.2) player.position.addScaledVector(f, 14 * dt);
+    if (t < 0.18 || a.fired) return;
+    a.fired = true;
+    hitCone(player.position, f, 3.4, 0.25, a.hits, { dmg: S(16), kb: 9, up: 3, stun: 0.9, guardBreak: true });
+    const spot = player.position.clone().addScaledVector(f, 1.6);
+    fxRing(spot, 0xc8102e, 2.6, 0.3);
+    burst(at(spot, 1), 24, BLOOD, 7, 0.14, 0.4, 6);
+  } });
+}
+function bloodDrain() {
+  startAction({ name: 'Life Drain', dur: 0.9, pose: 'charge', update(dt, t, a) {
+    for (const e of enemies) {
+      if (!e.alive || e.hidden || distXZ(e.root.position, player.position) > 5) continue;
+      const v = player.position.clone().sub(e.root.position).setY(0).multiplyScalar(2.2);
+      spawnParticle(at(e.root.position, 1), v, pick(BLOOD), 0.12, 0.45);
+    }
+    if (t < 0.6 || a.fired) return;
+    a.fired = true;
+    const n = hitAround(player.position, 5, a.hits, { dmg: S(8), kb: 1, stun: 0.6 });
+    if (n) { stats.hp = Math.min(maxHp(), stats.hp + Math.min(20, n * 5)); toast(`Life Drain: +${Math.min(20, n * 5)} health`); }
+    fxRing(player.position, 0xc8102e, 5, 0.4);
+  } });
+}
+function bloodArmourCast() {
+  bloodCost(4);
+  bloodArmour = 6;
+  fxRing(player.position, 0x7a0a1a, 2.2, 0.4);
+  burst(at(player.position, 1), 30, BLOOD, 4, 0.14, 0.5, 2);
+  toast('Blood Armour: half damage for 6 seconds');
+}
+function bloodUlt() {
+  startCinematic(0.9, 'CRIMSON RAIN', 0xc8102e);
+  startAction({ name: 'ult', dur: 2.6, pose: 'charge', superArmor: true, update(dt, t, a) {
+    if (t < 0.9) return;
+    const wave = Math.floor((t - 0.9) / 0.2);
+    if (wave >= 8 || a['w' + wave]) return;
+    a['w' + wave] = true;
+    const pos = player.position.clone();
+    for (let i = 0; i < 26; i++) {
+      const p = pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 20, 9 + Math.random() * 3, (Math.random() - 0.5) * 20));
+      spawnParticle(p, new THREE.Vector3(0, -30, 0), pick(BLOOD), 0.1, 0.4);
+    }
+    hitAround(pos, 10, null, { dmg: S(6), from: pos, kb: 1, stun: 0.25 }, 6);
+  } });
 }
 
 // ---- Ember (Pyro) ----
@@ -5733,6 +5908,7 @@ function removeEnemy(e) {
 // =====================================================================
 let dungeon = null;
 function enterDungeon(gate) {
+  system?.note('dungeon','entered a dungeon gate');
   if (gate.tier === 'red') toast('Warning: this gate is far above your level. Survival chance is extremely low.');
   action = null;
   $('fade').style.opacity = 1;
@@ -5829,6 +6005,7 @@ function updateDungeon(dt) {
 function switchChar() {
   if(onlinePlayReady&&hosting.room){toast('Your online class is permanent for this account.');return;}
   if (!canAct()) return;
+  if (unlockedCharIndices.length < 2) { toast('You have only one power.'); return; }
   const pos = unlockedCharIndices.indexOf(charIdx);
   charIdx = unlockedCharIndices[(pos + 1) % unlockedCharIndices.length];
   const c = characters[charIdx];
@@ -6468,8 +6645,8 @@ function buildHotbar() {
     <div class="lock">🔒<span class="lvl">Lv ${lvl}</span></div></div>`;
   $('hotbar').innerHTML = slot('Q', { icon: '➤', name: 'Dash' }, 'small')
     + slot('R', { icon: 'SP', name: supportSkills?.name||(specialUnlocked?'Psychic':'Empty special') }, 'small')
-    + c.skills.map((s, i) => slot(i + 1, s, '', SKILL_UNLOCK_LEVEL[i])).join('')
-    + slot('G', c.ult, 'ult', ULT_UNLOCK_LEVEL);
+    + c.skills.map((s, i) => slot(i + 1, s, '', skillLevel(i, c))).join('')
+    + slot('G', c.ult, 'ult', ultLevel(c));
   slotEls = [...$('hotbar').children].map(el => ({ el, cd: el.querySelector('.cd'), cdt: el.querySelector('.cdt') }));
 }
 function updateHotbar() {
@@ -6481,8 +6658,8 @@ function updateHotbar() {
   set(slotEls[0], dashCd, 1.5);
   set(slotEls[1],supportSkills?.equipped?supportSkills.cooldown:psyCd,supportSkills?.equipped?12:psyCdMax());
   slotEls[1].el.classList.toggle('locked', !specialUnlocked);slotEls[1].el.querySelector('.lvl').textContent=specialUnlocked?'':'Quest';
-  c.skills.forEach((s, i) => { set(slotEls[i + 2], c.cds[i], s.cd); slotEls[i + 2].el.classList.toggle('locked', prog.level < SKILL_UNLOCK_LEVEL[i]); });
-  slotEls[slotEls.length - 1].el.classList.toggle('locked', prog.level < ULT_UNLOCK_LEVEL);
+  c.skills.forEach((s, i) => { set(slotEls[i + 2], c.cds[i], s.cd); slotEls[i + 2].el.classList.toggle('locked', prog.level < skillLevel(i, c)); });
+  slotEls[slotEls.length - 1].el.classList.toggle('locked', prog.level < ultLevel(c));
   const u = slotEls[slotEls.length - 1];
   u.cd.style.height = (100 - stats.ult) + '%';
   u.cdt.textContent = stats.ult < 100 ? Math.floor(stats.ult) + '%' : '';
@@ -6525,7 +6702,7 @@ $('closeBoard').addEventListener('click', () => toggleBoard(false));
 // SETTINGS (controls / sound / graphics)
 // =====================================================================
 // First-person is the default view; third-person is a choice in Settings (remembered once you pick it there).
-let cameraView = localStorage.getItem('cameraViewPicked') === '1' && localStorage.getItem('cameraView') === 'third' ? 'third' : 'first';
+let cameraView = 'third';   // set every frame by updateCamera(): the place decides the view, not the player
 // The view you picked in Settings; indoors the camera always goes first-person (no seeing through
 // roofs and walls), and goes back to your choice when you step outside.
 let cameraViewSetting = cameraView;
@@ -6603,7 +6780,7 @@ $('signOutBtn').addEventListener('click',()=>{if(confirm('Sign out?'))signOutAnd
 // There was no way to back out of a running game (offline/solo or hosted) to the
 // main menu short of signing out entirely. Saves first, then reloads — boot()
 // finds the existing session and goes straight to the menu, skipping sign-in.
-$('leaveToMenuBtn').addEventListener('click',async()=>{if(soloMode)saveSolo();try{if(onlinePlayReady)await onlineAccount.save();}catch(e){toast(e.message);return;}location.reload();});
+$('leaveToMenuBtn').addEventListener('click',async()=>{if(soloMode)saveSolo();try{if(onlinePlayReady)await onlineAccount.save();}catch(e){toast(e.message);return;}shutDownForReload('Saving…');location.reload();});
 $('layoutDoneBtn').addEventListener('click',()=>{setLayoutEditMode(false);freeMouse=false;requestGameControl();});
 
 // =====================================================================
@@ -6654,6 +6831,8 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyV') toggleFlashlight();
   if (e.code === 'KeyY' && !inCar) cityServices?.callTaxi(player.position.clone());
   if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
+  if (e.code === 'KeyO' && !e.repeat && system?.active()) system.toggle();
+  if (e.code === 'KeyH' && !e.repeat && (locked || phone?.open)) phone?.toggle();
   if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
   if (e.code === 'KeyJ' && military?.takeOff()) return;
   if (e.code === 'KeyE') interact();
@@ -6700,7 +6879,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||system?.open||phone?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -6716,17 +6895,17 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
 $('weatherBadge').textContent = '☀️ Clear';
-const WEATHER_CYCLE = ['clear', 'rain', 'clear', 'snow'];
+let WEATHER_CYCLE = ['clear', 'rain', 'clear', 'snow'], weatherIdx = 0;   // replaced by the season's cycle once seasons.js starts
 const WEATHER_LABEL = { clear: '☀️ Clear', rain: '🌧️ Raining', snow: '❄️ Snowing' };
 function updateWeather(dt) {
   weatherT -= dt;
   if (weatherT <= 0) {
-    const next = WEATHER_CYCLE[(WEATHER_CYCLE.indexOf(weatherState) + 1) % WEATHER_CYCLE.length];
+    weatherIdx = (weatherIdx + 1) % WEATHER_CYCLE.length; const next = WEATHER_CYCLE[weatherIdx];
     weatherState = next;
     weatherT = next === 'clear' ? 90 + rand() * 120 : next === 'snow' ? 50 + rand() * 40 : 45 + rand() * 45;
     toast(next === 'clear' ? 'The weather has cleared up.' : next === 'snow' ? 'Snow is starting to fall.' : 'Rain is moving in.');
@@ -6790,6 +6969,7 @@ let swimming = false, waterExhausted = false;
 function isSeaWater(x,z,bodyY = null) {
   if (poolZones.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)) return true;   // swimming pools
   if(navy?.groundAt(x,z)!=null)return false;
+  if(resortBeach?.groundAt(x,z)!=null)return false;   // the new sand and the jetty aren't sea
   if(regionalEnvironment?.groundAt(x,z)!=null)return false;
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
@@ -6877,6 +7057,10 @@ function updatePlayer(dt) {
   if (pose === 'slash') P.armR.pivot.rotation.x = lerp(-2.8, -0.4, clamp(action.t / 0.18, 0, 1));
   P.rig.rotation.x = lerp(P.rig.rotation.x, playerStun > 0 ? -0.3 : 0, 1 - Math.exp(-15 * dt));
 
+  if (bloodArmour > 0) {   // dark red armour glints while Blood Armour lasts
+    bloodArmour -= dt;
+    if (Math.random() < 0.5) spawnParticle(at(player.position, 0.3 + Math.random() * 1.4).add(randUnit().multiplyScalar(0.45)), new THREE.Vector3(0, 0.6, 0), pick(BLOOD), 0.1, 0.4);
+  }
   if (awaken > 0) {   // flaming aura while awakened
     awaken -= dt;
     spawnParticle(at(player.position, Math.random() * 1.8).add(randUnit().multiplyScalar(0.5)), new THREE.Vector3(0, 2.5, 0), pick(FIRE), 0.12, 0.5);
@@ -7402,6 +7586,8 @@ function updateNeeds(dt) {
   if (peace < 25) { stats.hp -= (25 - peace) / 25 * dt; noteHpLoss('Frail health (low Peace from your birth)'); }
   stats.hp = Math.min(maxHp(), stats.hp);
   if (stats.hp <= 0) {
+    const deathPos = (inCar && driving ? driving.group.position : player.position).clone();
+    const storyDeath = soloMode && !!system?.active();
     navy?.reset();intercityRail?.reset();cityServices?.reset();
     metro?.reset();
     sewers?.reset();
@@ -7414,7 +7600,8 @@ function updateNeeds(dt) {
     if (dungeon) leaveDungeon();
     action = null;
     player.position.copy(SPAWN);
-    toast(hosting.room?'You respawned in '+hosting.room.city+'.':'You fainted and woke up at home.');
+    if (storyDeath) system.died(deathPos);
+    else toast(hosting.room?'You respawned in '+hosting.room.city+'.':'You fainted and woke up at home.');
   }
 }
 
@@ -7521,11 +7708,34 @@ function updateCockpit(dt) {
   const st = carControls.state || {};
   cockpit.update(driving, { speed: driving.speed, maxSpeed: driving.maxSpeed, steer: (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0), gear: st.stalled ? '!' : transmissionAuto ? st.sel : st.gear, handbrake: !!keys.Space || st.sel === 'P', lights: st.lights && st.lights !== 'off' && lastNightGlow > 0.3, revs: st.rev }, dt);
 }
+// A cut-scene camera (the Story Mode opening): while set, the camera glides between marks and the player can't move it.
+let cutCam = null;
 function updateCamera(dt) {
+  if (cutCam) {
+    // the game is paused during a cut-scene (dt is 0 then), so the camera keeps its own clock
+    const now = performance.now(), real = Math.min(0.25, (now - (cutCam.t || now)) / 1000); cutCam.t = now;
+    const st = cutCam.steps[0];
+    if (st) {   // walk to the next step at walking pace, with a slight head bob, turning toward where it looks
+      const to = new THREE.Vector3(st.to.x, st.to.y, st.to.z), d = to.clone().sub(cutCam.pos), len = d.length();
+      const move = Math.min(len, 1.3 * real);
+      if (len > 0.001) cutCam.pos.addScaledVector(d, move / len);
+      cutCam.walked += move;
+      cutCam.look.lerp(new THREE.Vector3(st.look.x, st.look.y, st.look.z), 1 - Math.exp(-3 * real));
+      if (st.open && !st.opened && len < 0.05) { st.opened = true; homeRooms.openDoor(st.open); cutCam.hold = 0.7; }
+      if (cutCam.hold > 0) cutCam.hold -= real;
+      else if (len < 0.01 && cutCam.look.distanceTo(new THREE.Vector3(st.look.x, st.look.y, st.look.z)) < 0.05) cutCam.steps.shift();
+    }
+    const bob = Math.sin(cutCam.walked * 7) * 0.025 * (cutCam.steps.length ? 1 : 0);
+    camera.position.set(cutCam.pos.x, cutCam.pos.y + bob, cutCam.pos.z); camera.lookAt(cutCam.look);
+    return;
+  }
   { // indoors (a house, a building interior, or under any roof) -> first person
     const p = player.position;
     const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
-    const want = indoors ? 'first' : cameraViewSetting;
+    // The player doesn't pick the view: first-person indoors, third-person in a vehicle,
+    // and on foot it depends on the place (first-person in dungeons and underground, third-person outside).
+    const below = !!dungeon || !!sewers?.underground || !!metro?.underground;
+    const want = indoors ? 'first' : inCar ? 'third' : below ? 'first' : 'third';
     if (want !== cameraView) { cameraView = want; pitch = want === 'third' ? clamp(pitch, -.1, 1.2) : pitch; }
   }
   updateCockpit(dt || 0.016);
@@ -7573,9 +7783,9 @@ function updateCamera(dt) {
     shake *= Math.exp(-9 * dt);
   }
 
-  // Sims-style: hide the roof while the player is inside the house
-  const p = player.position;
-  for (const hs of houses) hs.roof.visible = hs.structure?.alive===false?false:inCar || !(p.x > hs.minX && p.x < hs.maxX && p.z > hs.minZ && p.z < hs.maxZ);
+  // Roofs stay on while you're inside: the view indoors is always first-person, so you see a ceiling, not the sky.
+  // (Only a destroyed house loses its roof.)
+  for (const hs of houses) hs.roof.visible = hs.structure?.alive !== false;
 }
 
 function updateHud(dt) {
@@ -7689,7 +7899,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
  prepareRide(){action=null;vy=0;pvel.set(0,0,0);},carry(pos){player.position.copy(pos);}
 });metro.update(0,0);
 mobileControls = setupMobileControls({
-  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !bankPanel?.open && !story?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
+  playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !bankPanel?.open && !story?.open && !system?.open && !phone?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
   look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
@@ -7806,7 +8016,7 @@ society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPo
 // residents at their desks, dinner tables and benches (seated-residents.js), drawn from the residents not walking the streets
 seatedResidents=createSeatedResidents({sitSpots,makePerson:o=>makeHumanoid(o),animate:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),citizens:()=>society.citizens,citizenOf:e=>society.citizenOf(e),peds:()=>peds,hour:()=>(6+dayTime*24)%24,
   playerSeat:()=>sitting?activeSitSpot:null,playerPos:()=>player.position,groundY,skip:s=>s.x>=HOME.minX&&s.x<=HOME.maxX&&s.z>=HOME.minZ&&s.z<=HOME.maxZ});
-npcConversations=createNpcConversations({converse:e=>society?.converse(e),nameOf:e=>society?.knownName(e),people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+npcConversations=createNpcConversations({listen:cb=>voice?.listenOnce(cb),converse:e=>society?.converse(e),nameOf:e=>society?.knownName(e),people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // Residents report what breaks the laws of the world: Rule Keepers fix it, the Lawgiver hears of it (world-watch.js).
 // What the nation's progress looks like: the ATLAS base, its robots, the temple dig, self-driving cars (atlas-world.js).
 atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,interactables,vehicles:()=>vehicles,openTab:t=>society.openTab(t),makePerson:o=>makeHumanoid(o),animate:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt)});
@@ -7824,7 +8034,7 @@ const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setIt
 worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
-  extra:()=>[...idExtra,...LIFE.things,...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
+  extra:()=>[...idExtra,...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // every purchase, uniform, worn-out shirt and pram goes on the thing's record (belongings.js → world IDs)
@@ -7850,6 +8060,55 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   flying:()=>inCar&&driving&&driving.kind==='plane'?driving:null,crash:v=>crashPlane(v),
   director:async q=>{if(!navigator.onLine)return null;const r=await fetch('/api/story-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;},
   pause:storyPause,resume:requestGameControl});
+// The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
+// Cryptic: the phone everyone carries (phone.js). The torch, taxi, map, career and city hall live on it now.
+phone=createPhone({where:()=>player.position,userId:()=>soloUserId||registryUserId||'guest',stats,toast,pause:()=>pauseForPanel(),resume:()=>requestGameControl(),premium:()=>isAdmin,
+  torch:{on:()=>flashlightOn,toggle:()=>toggleFlashlight()},
+  snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
+  openMap:()=>worldMap?.show(),callTaxi:()=>cityServices?.callTaxi(player.position.clone()),openCareer:()=>careers?.openCareer(),openCityHall:()=>society?.openHall(),
+  calendar:()=>seasons?.calendar,calendarOn:d=>calendarFor(d),weather:()=>WEATHER_LABEL[weatherState],
+  gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
+  news:()=>(society?.state?.news||[]).map(n=>n.text),quests:()=>system?.quests?.()||[],
+  openBanking:()=>{if(!bankPanel?.phone)return false;bankPanel.openPhone();return true;}});
+system=createSystem({mood:(m,s)=>systemOrb?.feel(m,s),onOpen:()=>{systemOrb?.talk(3.5);},userId:()=>soloUserId||'guest',
+  admin:{on:()=>isAdmin,god:()=>adminGod,goHome:()=>{if(!adminEstate)return;if(inCar)exitVehicle(true);player.position.set(adminEstate.home.x,CURB,adminEstate.home.z);vy=0;toast('🏛 Home: Xenos Estate.');},toggleGod:()=>{adminGod=!adminGod;adminMaxed=false;try{localStorage.setItem('adminGod',adminGod?'1':'0');}catch{}toast(adminGod?'🛠 God mode on.':'🛠 God mode off: you can get hurt, hungry and tired again.');},revive:async()=>{await supabase.rpc('story_run_revive');},levelUp:()=>{gainXp(Math.max(1,xpToNext()-prog.xp));},
+    questions:async()=>{const r=await supabase.rpc('dev_queries_open');if(r.error)throw r.error;return r.data||[];}},
+  // the opening plays like a film: the camera moves through the home, the player can't control anything,
+  // and when it ends the player is standing where the last shot was (at the bathroom mirror), not outside
+  cinema:{
+    start(){const s0=homeRooms.spots.ceiling[0],v=o=>new THREE.Vector3(o.x,o.y,o.z);cutCam={pos:v(s0.to),look:v(s0.look),steps:[],walked:0,name:'ceiling'};player.visible=false;document.body.classList.add('cinema');},
+    // a new mark: walk its steps. The same mark twice in a row stays put. busy() says whether it's still walking.
+    shot(name){const sp=homeRooms.spots[name];if(!cutCam||!sp||cutCam.name===name)return;cutCam.name=name;cutCam.steps=sp.map(x=>({...x,opened:false}));},
+    busy(){return !!cutCam?.steps.length;},
+    // skipping ahead: finish the current walk at once (doors on the way still open)
+    finish(){if(!cutCam)return;const last=cutCam.steps.at(-1);for(const x of cutCam.steps)if(x.open)homeRooms.openDoor(x.open);if(last){cutCam.pos.set(last.to.x,last.to.y,last.to.z);cutCam.look.set(last.look.x,last.look.y,last.look.z);}cutCam.steps=[];cutCam.hold=0;},
+    end(){const e=homeRooms.spots.end;player.position.set(e.x,HOME_Y,e.z);vy=0;yaw=Math.atan2(-e.facing.x,-e.facing.z);pitch=0;cutCam=null;player.visible=true;document.body.classList.remove('cinema');releaseHeldToasts();},
+  },
+  // the server keeps the run and the death wait, so clearing the browser can't restart or skip them (signed-in players)
+  server:{start:async()=>registryUserId?(await supabase.rpc('story_run_start')).data:null,
+    died:async lvl=>{if(!registryUserId)return null;let r=await supabase.rpc('story_run_died',{p_level:Math.round(lvl)||null});if(r.error)r=await supabase.rpc('story_run_died');return r.data;},
+    reborn:async()=>{if(!registryUserId||!navigator.onLine)return null;const r=await supabase.rpc('story_run_reborn');if(r.error){if(/not over/i.test(r.error.message||''))throw new Error(r.error.message);return null;}return r.data;}},
+  startOver:life=>startOverAsNewPlayer(life),interactables,toast,pause:storyPause,resume:requestGameControl,
+  fetchNodes:async keys=>{const{data,error}=await supabase.rpc('story_get',{p_keys:keys});if(error)throw error;return data||{};},
+  level:()=>prog.level,xp:()=>Math.floor(prog.xp),xpNext:()=>xpToNext(),points:()=>prog.points,gainXp:n=>gainXp(n),
+  setLevel:n=>{prog.level=n;prog.xp=Math.min(prog.xp,xpToNext()-1);},
+  energy:()=>stats.energy,spendEnergy:n=>{stats.energy=Math.max(0,stats.energy-n);},hunger:()=>stats.hunger,
+  playerPos:()=>player.position,
+  onFoot:()=>!inCar&&!riding&&!swimming&&!sitting&&!busRide&&!metro?.rider&&!transport?.rider&&!cityServices?.rider&&!intercityRail?.rider&&!navy?.rider&&!helipads?.flying&&!spaceCentre?.rider,
+  takeBelongings:()=>{const b={gold:stats.gold,items:inventory.splice(0)};stats.gold=0;renderInventory?.();return b;},
+  giveBelongings:b=>{stats.gold+=b.gold||0;inventory.push(...(b.items||[]));renderInventory?.();},
+  gold:()=>stats.gold,places:()=>townPlaces?.destinations||[],
+  // what the Quest Director sees of the player right now
+  snapshot:()=>{const p=player.position,pl=(townPlaces?.destinations||[]).reduce((b,d)=>{const dd=Math.hypot(d.x-p.x,d.z-p.z);return dd<b.d?{d:dd,name:d.name}:b;},{d:Infinity,name:''});
+    return{gold:Math.floor(stats.gold),hp:Math.round(stats.hp),maxHp:Math.round(maxHp()),hunger:Math.round(stats.hunger),energy:Math.round(stats.energy),wanted:Math.round(wanted),
+      timeOfDay:dayTime>.55&&dayTime<.95?'night':dayTime>=.95||dayTime<.2?'morning':dayTime<.4?'afternoon':'evening',near:pl.d<150?pl.name:'',inDungeon:!!dungeon,inVehicle:inCar,
+      places:(townPlaces?.destinations||[]).map(d=>d.name).slice(0,60)};},
+  director:async q=>{const r=await fetch('/api/quest-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;}});
+// The System as you see it: a glowing red orb with a face, at your shoulder, only for you (system-orb.js)
+systemOrb=createSystemOrb({scene,camera,player:()=>player,stats,active:()=>soloMode&&!!system?.active(),hidden:()=>document.body.classList.contains('cinema')||inCar||!!dungeon,wanted:()=>wanted,night:()=>{const d=dayTime%1;return d>0.52||d<0.02;}});
+// Talk out loud (voice.js): say "System" to open it; in a conversation, what you say goes to them
+voice=createVoice({toast,onSystem:()=>{if(soloMode&&system?.active())system.show();},conversation:()=>npcConversations?.open?(t=>npcConversations.say(t)):null});
+addEventListener('pointerdown',()=>voice?.resume(),{once:true});
 const worldRegistry=createWorldRegistry({client:supabase,ids:worldIds,userId:()=>registryUserId});
 worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
@@ -7903,6 +8162,21 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx); flowerPark=buildFlowerPark(leisureCtx); homePark=buildHomePark({...leisureCtx,makeVehicle,curb:CURB});
   // Ashford Beach: rippling sea, surf, parasols, sunbathers, lifeguard, volleyball, a beach bar
   beachLife=buildBeach(leisureCtx,{sea,seaZ:SEA_Z});
+  // Anthos Bay: the beach made big, with a resort, beach houses, wildlife and water sports (resort-beach.js)
+  homeKitCtx=leisureCtx;
+  resortBeach=buildResortBeach(leisureCtx,{z0:SEA_Z});poolZones.push(...resortBeach.pools);
+  // Cinder Row: the slum north of Poison Land where everyone but the admin starts out (slum.js). Built before the road scan so its lanes count as roads.
+  slum=createSlum({...leisureCtx,K:makeKit(leisureCtx),curb:CURB,drink:()=>{stats.energy=clamp(stats.energy+4,0,100);toast('💧 Warm water that tastes of the pipe. Better than nothing.');}});
+  townPlaces.destinations.push(...slum.destinations);
+  // your flat is rented: 60 gold a week to the landlord downstairs (slum.js createRent)
+  rent=createRent({day:()=>reconstructionDays,gold:{get:()=>stats.gold,add:n=>{stats.gold+=n;}},toast,interactables,at:slum.landlordAt,exempt:()=>isAdmin});
+  // Seasons and holidays from the real calendar: weather, leaf colour, and the whole city decorated (seasons.js)
+  seasons=createSeasons({scene,lampSpots,buildings,fair:FAIR,curb:CURB,home:{x:HOME.x,z:HOME.z,minZ:HOME.minZ,maxZ:HOME.maxZ},colliders,tint:FOLIAGE_TINT,toast,stats,
+    kit:makeKit(leisureCtx),openShop:leisureCtx.openShop,addItem:(name,icon)=>{inventory.push({name,icon});renderInventory?.();},marketAt:{x:420,z:-925},
+    gardenTrees:[],
+    livingCorner:(()=>{const r=homeRooms.rooms.find(q=>q.name==='living');return r?{x:r.minX+0.7,z:r.maxZ-0.7}:null;})(),
+    playerPos:()=>player.position,burst:(at,c)=>burst(at,70,[c,0xffffff],16,0.28,1.5,3,0)});
+  WEATHER_CYCLE=seasons.weatherCycle;weatherIdx=0;
   // St Mary's, the port and the naval base, brought up to date
   { const up={...leisureCtx,glowMats,maxHp:()=>maxHp()};
     hospitalPlus=upgradeHospital(up,{top:24}); HOSPITAL_POS.copy(hospitalPlus.bay);
@@ -8031,6 +8305,7 @@ roadWear = createRoadWear({ scene, makeTex, groundY, toast, interactables, isRoa
   crewMenu(crew) { snackShop.open('Road crew', 'visit', [
     { name: 'How are the roads?', icon: '🚧', price: 0, desc: `${roadWear.potholes} potholes across the city right now. Buses, lorries, tanks, frost and rain wear the roads down; we fix the worst first.`, onBuy: () => { toast(`🚧 "${roadWear.potholes} potholes out there. We'll get to them."`); return false; } },
     { name: 'Help resurface this road', icon: '🛠️', price: 0, desc: 'Grab a shovel: +40 gold, +8 XP, −15 energy, and this job finishes quickly.', onBuy: () => { if (stats.energy < 15) { toast('You are too tired to help right now.'); return false; } if (!roadWear.help(crew)) { toast('They are packing up.'); return false; } stats.gold += 40; stats.energy -= 15; gainXp(8); toast('🛠️ You help lay fresh tarmac: +40 gold, +8 XP.'); snackShop.close(); return false; } }]); } });
+roadWear.neglect?.(slum?.neglected||[]);   // Cinder Row's lanes stay broken: the council never comes
 // Westhaven Recovery: flatbed tow trucks that winch wrecks on and carry them away (see recovery.js).
 recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTex, colliders, raiseWanted, blocked: (x, z, r) => blockedAt(x, z, r), isRoad: isRoadAt, roadRects: () => roadRectList, waypoint: d => setWaypoint(d), destinations: townPlaces.destinations,
   onUnloaded(truck, w, scrap) { if (!scrap) return toast('The wreck is off the truck.');
@@ -8102,7 +8377,19 @@ if (location.hash === '#test-systems') {   // exercises building collapse, plane
 }
 const clock = new THREE.Clock();
 let slowFrameTime=0,lastFrameAt=performance.now(),perfWarmup=0;
+// Before a reload: stop the game loop and free the graphics card first, so the old page isn't still rendering
+// the whole city while the new one starts (that overlap is what made "Save and reload" lag the computer).
+let shuttingDown=false;
+function shutDownForReload(message){
+  if(shuttingDown)return;shuttingDown=true;locked=false;
+  try{document.exitPointerLock();}catch{}
+  const cover=document.createElement('div');cover.textContent=message||'Saving and reloading…';
+  cover.style.cssText='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#05070b;color:#d6e6ff;font:16px system-ui';
+  document.body.append(cover);
+  try{renderer.setAnimationLoop?.(null);renderer.dispose();renderer.forceContextLoss();}catch{}
+}
 function frame() {
+  if(shuttingDown)return;
   const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
   if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low',false);slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
   if(document.hidden&&!(onlinePlayReady&&hosting.room)){clock.getDelta();requestAnimationFrame(frame);return;}
@@ -8160,7 +8447,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons?.update(rawDt,dayTime>.55&&dayTime<.95);updateAdminGod();phone?.update(player.position,!inCar&&!swimming);systemOrb?.update(rawDt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
@@ -8177,7 +8464,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate

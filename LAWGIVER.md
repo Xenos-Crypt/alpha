@@ -2,6 +2,24 @@
 
 One entry per run: what was decided, why, and what was declined. The owner reviews and merges every change.
 
+## 2026-11-20 — Anthos Bay: the wet sand, the surf and the towels no longer flicker through each other
+
+**Decision:** In `resort-beach.js` (Anthos Bay, merged today in #64/#65) three flat layers along the shoreline were stacked only 4–6 mm apart: the dry sand (top `SAND` = 0.065), the wet-sand edge (`SAND + 0.004`), and both the surf foam and the beach towels (`SAND + 0.01`). With the camera's 0.1–1000 depth range that is below depth precision from roughly 100 m out, so the strip z-fought with the sand and the towels with the wet edge. The layers are now 1 cm apart: wet sand `SAND + 0.01`, foam `SAND + 0.02`, towels `SAND + 0.03`.
+
+**Where:** Anthos Bay beach, x 60…300, the shoreline at z ≈ 246…252. World-audit pairs cleared (13; 60 → 47 in a full scan):
+`LND-SRF-WHT.PLR-REQ-Q6KNJ0 + LND-SRF-BRN.WOD-REQ-14M6A6` (180, 248) dry sand / wet sand,
+`LND-SRF-BRN.WOD-REQ-14M6A6 + LND-SRF-WHT.GLS-REQ-1VYE1L` (180, 250) wet sand / foam,
+and wet sand + towel at (67, 247), (94, 248), (103, 247), (130, 248), (139, 247), (166, 248), (175, 247), (202, 248), (211, 247), (238, 248), (247, 247).
+(The moved surfaces' own IDs change, because the ID seed includes the surface height.)
+
+**Why:** It is the largest group of real overlaps in the newest place in the world, and the fix is at the cause: three heights, no colliders, walking floors, gameplay or save keys touched.
+
+**Input this run:** no open issues, no Petitions issue. One open PR (#58, Grand Park south gate, `grand-park.js`), so this change stays out of that file. Supabase registry (via the connector): `world_bugs`, `world_events`, `world_entities` empty. Vercel production logs: no `[world-report]` lines in the last 50 minutes.
+
+**Looked at and deferred:**
+- Cinder Row (x 596…844, z 448…598): 37 audit pairs between each lane's dark surface (top 0.04) and the grime decals (0.045, `polygonOffset`, transparent, no depth write). These are intended decals, not two floors; most are audit noise. Better solved by teaching the audit to skip polygon-offset decals than by moving the lanes. A later run.
+- Anthos Bay: some towels and the parasol row reach 1–2 m onto the wet sand at the waterline. Moving the row landward would put a parasol into the lifeguard tower at (262, 241), so it needs a careful re-layout, not a quick shift.
+- Still open from earlier runs: road paint at road height (590, -37), (-320, -808), (277, 702), (243, 702); glass/plastic at (1157, 545); far-region floors at (-5097, -7) and (-6500, 8); the funfair/karting bounding-box false positives (248, -710), (668, -953).
 ## 2026-11-17 — The Grand Park's south gate no longer paves through Ventura's wall
 
 **Decision:** In `grand-park.js`, the gravel apron outside each of the three south gates ran 8 m out of the park (to z -904). At the gate at x 540 that is 7 m from Ventura's north wall (z -905), so the apron passed under the solid wall and 0.85 m into the fun centre, where it z-fought with Ventura's tech floor (tops 0.055 and 0.06). The aprons now stop 6.5 m out (z -905.5), just short of the wall. The other two gates (x 300, 420) have open ground in front and only lose 1.5 m of apron.

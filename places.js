@@ -323,7 +323,7 @@ export function buildPlaces(ctx) {
       return y>=7.6?8:y>=3.6?4:.08;
     },
     update(player, inCar, time=0,dt=0) {
-    for (const r of rooms) r.roof.visible = inCar || !(Math.abs(player.position.x - r.x) < r.w / 2 && Math.abs(player.position.z - r.z) < r.d / 2);
+    for (const r of rooms) r.roof.visible = true;   // indoors is first-person now: keep the ceiling, never show the sky through it
     const insideTerminal=player.position.x>=ax-148&&player.position.x<=ax-74&&player.position.z>=63&&player.position.z<=97;
     for(const level of terminalLevels)level.mesh.visible=!insideTerminal||player.position.y>=level.y-.3;
     for(const item of luggage){item.bag.position.set(ax-168+Math.cos(time*.3+item.phase)*5,.95,80+Math.sin(time*.3+item.phase)*2.5);}

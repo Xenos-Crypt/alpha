@@ -750,6 +750,25 @@ export function createSociety(ctx) {
     lives, community, justice, history, systems, goods, firms, edu, law, money, update, converse, openHall, openTab, close,
     knownName(e) { const c = cit(e); return c ? lives.knownName(c) || (c.record ? c.name : null) : null; },
     remember,
+    // Story Mode death: after the 24-hour wait you come back as a stranger. Everyone forgets you, your
+    // marriage, staff, offices, savings, loans and shares are gone, and if you held office a new government forms.
+    forgetPlayer() {
+      for (const c of citizens) {
+        c.opinion = 0; c.bond = 0; c.metPlayer = false; c.knowsCrook = false; delete c.metAt;
+        c.memory = (c.memory || []).filter(m => !/newcomer|\byou\b|\byour\b/i.test(m));
+        if (c.family?.partner === 'player') c.family.partner = null;
+      }
+      S.playerPartner = null; S.staff = []; S.fame = 0; S.fameAcc = 0;
+      const A = S.playerAch; if (A) { A.list.length = 0; for (const k in A.counters) delete A.counters[k]; }
+      const L = S.legacy; if (L) for (const k of Object.keys(L)) L[k] = Array.isArray(L[k]) ? [] : 0;
+      const G = S.gov;
+      if (G?.player) Object.assign(G.player, { party: null, invites: [], running: null, office: null });
+      if (G && (G.president === 'player' || (G.cabinet || []).includes('player') || Object.values(G.mayors || {}).includes('player'))) gov.found();
+      const M = S.money?.player; if (M) Object.assign(M, { savings: 0, loans: [], shares: {}, credit: 650, dividends: 0 });
+      for (const q of Object.values(S.money?.exchange || {})) if (q?.holders) delete q.holders.player;
+      for (const f of S.firms?.list || []) if (f?.stakes) delete f.stakes.player;
+      save();
+    },
     speedOf(e) {   // how this person walks: the old slower, the young quicker, the tired dragging, the late hurrying
       const c = cit(e); if (!c) return 1; const h = hour();
       return (c.age > 70 ? .7 : c.age > 60 ? .82 : c.age < 25 ? 1.1 : 1) * (c.energy < 30 ? .8 : 1) * (h >= 7.5 && h < 9 && JOB[c.job]?.wage ? 1.25 : 1) * (c.health < 40 ? .8 : 1);

@@ -79,7 +79,7 @@ export function buildBeach(ctx, { sea, seaZ = 187, beachZ0 = 165 }) {
   walker([[244, seaZ - 3], [294, seaZ - 3]], { speed: 1.0 }); walker([[-296, seaZ - 3], [-254, seaZ - 3]], { speed: 2.6 });   // a jogger
   walker([[80, 170], [135, 170], [135, 172], [80, 172]], { speed: 1.1 });
   const swimmers = [];
-  for (let i = 0; i < 9; i++) { const x = 100 + i * 11 + (i % 2) * 4, z = seaZ + 5 + (i % 3) * 3; const h = K.person(x, z, Math.PI * (i % 2), { child: i % 3 === 0 }); if (h) { swimmers.push({ h, x, z, ph: i * 1.3 }); } }
+  for (let i = 0; i < 9; i++) { const x = -296 + i * 5 + (i % 2) * 2, z = seaZ + 5 + (i % 3) * 3; /* west end: the east shore moved out to Anthos Bay */ const h = K.person(x, z, Math.PI * (i % 2), { child: i % 3 === 0 }); if (h) { swimmers.push({ h, x, z, ph: i * 1.3 }); } }
 
   let t = 0;
   function update(dt, p) {

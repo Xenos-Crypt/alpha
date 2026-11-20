@@ -43,7 +43,7 @@ export const MADE = [
   // things people buy and wear or use (belongings.js); finished goods, so the shops only hold so many
   ['clo', 'clothes', 'Loomhouse Textiles', 'manufacturing', { fab: .6 }, 900], ['sho', 'shoes', 'Elastica Rubber', 'manufacturing', { rub: .4, fab: .2 }, 400],
   ['prm', 'pram', 'Velo Motors', 'automotive', { stl: 2, fab: 1, rub: 1, pls: 1 }, 30],
-  ['phn', 'phone', 'Atlas Dynamics', 'tech', { pls: .3, gls: .2, tch: .4, aly: .1 }, 300],
+  ['phn', 'phone', 'Cryptic', 'tech', { pls: .3, gls: .2, tch: .4, aly: .1 }, 300],
 ].map(([code, name, company, sector, inputs, max = 3000]) => ({ code, name, company, sector, inputs, max, stage: 'secondary' }));
 
 // who builds, sells, moves and services the finished things (tertiary)
@@ -53,6 +53,7 @@ export const SERVICES = [
   ['MarketWay Retail', 'retail', 'runs the supermarkets and shops'], ['Atlas Freight', 'transport', 'moves materials from mines and farms to the factories and sites'],
   ['First Crown Bank', 'finance', 'lends the money for every project'], ['Spark & Pipe Utilities', 'utilities', 'power, water and repairs'],
   ['ATLAS Foundry', 'tech', 'fabricates robots and the dungeon monsters'],
+  ['Cryptic', 'tech', 'the government phone and laptop maker, the only one in Anthos'],
 ].map(([name, sector, does]) => ({ name, sector, does, stage: 'tertiary' }));
 
 export const ALL = Object.fromEntries([...RAW, ...MADE].map(m => [m.code, m]));
