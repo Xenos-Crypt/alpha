@@ -7032,7 +7032,8 @@ function updateSwimming(dt) {
   stats.energy=Math.max(0,stats.energy-dt*(waterPower ? .12 : sprint ? 1.8 : moving ? .65 : .2));
   if(stats.energy===0){stats.hp=Math.max(0,stats.hp-12*dt);noteHpLoss('Exhausted while swimming: get to shore');if(!waterExhausted){waterExhausted=true;toast('Exhausted in the water! Get to shore or a dock ladder.');}}
   else waterExhausted=false;
-  const targetY=(stats.energy>0?-1.05:-1.35)+waterLevelAt(player.position.x,player.position.z);   // a raised pool's water is higher than the seaplayer.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
+  const targetY=(stats.energy>0?-1.05:-1.35)+waterLevelAt(player.position.x,player.position.z);   /* a raised pool's water is higher than the sea */
+  player.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
   if(moving)player.rotation.y=lerpAngle(player.rotation.y,Math.atan2(dir.x,dir.z),1-Math.exp(-5*dt));
   animateHumanoid(P,null,moving,false,false,dt);P.rig.rotation.x=-.6;
   if(!isSeaWater(player.position.x,player.position.z)){swimming=false;waterExhausted=false;P.rig.rotation.x=0;player.position.y=groundY(player.position.x,player.position.z);onGround=true;toast('Back on dry ground.');}
