@@ -22,6 +22,8 @@ import {createWorldRegistry} from './world-registry.js';
 import {createInfoMarkets} from './info-markets.js';
 import {createStory} from './story.js';
 import {createSystem} from './system.js';
+import { createSystemOrb } from './system-orb.js';
+import { createVoice } from './voice.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
@@ -2536,7 +2538,7 @@ function gainXp(n) {
   prog.xp += n;
   while (prog.xp >= xpToNext()) {
     prog.xp -= xpToNext();
-    prog.level++;
+    prog.level++; systemOrb?.feel('delighted', 5);
     prog.points += 3;
     stats.hp = maxHp();
     toast(`Level up! You are level ${prog.level}. Press C to spend points.`);
@@ -6893,7 +6895,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, slum = null, rent = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -8014,7 +8016,7 @@ society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPo
 // residents at their desks, dinner tables and benches (seated-residents.js), drawn from the residents not walking the streets
 seatedResidents=createSeatedResidents({sitSpots,makePerson:o=>makeHumanoid(o),animate:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),citizens:()=>society.citizens,citizenOf:e=>society.citizenOf(e),peds:()=>peds,hour:()=>(6+dayTime*24)%24,
   playerSeat:()=>sitting?activeSitSpot:null,playerPos:()=>player.position,groundY,skip:s=>s.x>=HOME.minX&&s.x<=HOME.maxX&&s.z>=HOME.minZ&&s.z<=HOME.maxZ});
-npcConversations=createNpcConversations({converse:e=>society?.converse(e),nameOf:e=>society?.knownName(e),people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+npcConversations=createNpcConversations({listen:cb=>voice?.listenOnce(cb),converse:e=>society?.converse(e),nameOf:e=>society?.knownName(e),people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // Residents report what breaks the laws of the world: Rule Keepers fix it, the Lawgiver hears of it (world-watch.js).
 // What the nation's progress looks like: the ATLAS base, its robots, the temple dig, self-driving cars (atlas-world.js).
 atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,interactables,vehicles:()=>vehicles,openTab:t=>society.openTab(t),makePerson:o=>makeHumanoid(o),animate:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt)});
@@ -8068,7 +8070,7 @@ phone=createPhone({where:()=>player.position,userId:()=>soloUserId||registryUser
   gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
   news:()=>(society?.state?.news||[]).map(n=>n.text),quests:()=>system?.quests?.()||[],
   openBanking:()=>{if(!bankPanel?.phone)return false;bankPanel.openPhone();return true;}});
-system=createSystem({userId:()=>soloUserId||'guest',
+system=createSystem({mood:(m,s)=>systemOrb?.feel(m,s),onOpen:()=>{systemOrb?.talk(3.5);},userId:()=>soloUserId||'guest',
   admin:{on:()=>isAdmin,god:()=>adminGod,goHome:()=>{if(!adminEstate)return;if(inCar)exitVehicle(true);player.position.set(adminEstate.home.x,CURB,adminEstate.home.z);vy=0;toast('🏛 Home: Xenos Estate.');},toggleGod:()=>{adminGod=!adminGod;adminMaxed=false;try{localStorage.setItem('adminGod',adminGod?'1':'0');}catch{}toast(adminGod?'🛠 God mode on.':'🛠 God mode off: you can get hurt, hungry and tired again.');},revive:async()=>{await supabase.rpc('story_run_revive');},levelUp:()=>{gainXp(Math.max(1,xpToNext()-prog.xp));},
     questions:async()=>{const r=await supabase.rpc('dev_queries_open');if(r.error)throw r.error;return r.data||[];}},
   // the opening plays like a film: the camera moves through the home, the player can't control anything,
@@ -8102,6 +8104,11 @@ system=createSystem({userId:()=>soloUserId||'guest',
       timeOfDay:dayTime>.55&&dayTime<.95?'night':dayTime>=.95||dayTime<.2?'morning':dayTime<.4?'afternoon':'evening',near:pl.d<150?pl.name:'',inDungeon:!!dungeon,inVehicle:inCar,
       places:(townPlaces?.destinations||[]).map(d=>d.name).slice(0,60)};},
   director:async q=>{const r=await fetch('/api/quest-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;}});
+// The System as you see it: a glowing red orb with a face, at your shoulder, only for you (system-orb.js)
+systemOrb=createSystemOrb({scene,camera,player:()=>player,stats,active:()=>soloMode&&!!system?.active(),hidden:()=>document.body.classList.contains('cinema')||inCar||!!dungeon,wanted:()=>wanted,night:()=>{const d=dayTime%1;return d>0.52||d<0.02;}});
+// Talk out loud (voice.js): say "System" to open it; in a conversation, what you say goes to them
+voice=createVoice({toast,onSystem:()=>{if(soloMode&&system?.active())system.show();},conversation:()=>npcConversations?.open?(t=>npcConversations.say(t)):null});
+addEventListener('pointerdown',()=>voice?.resume(),{once:true});
 const worldRegistry=createWorldRegistry({client:supabase,ids:worldIds,userId:()=>registryUserId});
 worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worldIds?.nearest(p,codes),playerId:()=>worldIds?.playerId,scene,toast,peds:()=>peds,vehicles:()=>vehicles,driving:()=>driving,playerPosition:()=>player.position,groundY,isWater:(x,z,y)=>isSeaWater(x,z,y),blockedAt,
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
@@ -8440,7 +8447,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons?.update(rawDt,dayTime>.55&&dayTime<.95);updateAdminGod();phone?.update(player.position,!inCar&&!swimming);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons?.update(rawDt,dayTime>.55&&dayTime<.95);updateAdminGod();phone?.update(player.position,!inCar&&!swimming);systemOrb?.update(rawDt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
