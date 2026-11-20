@@ -29,7 +29,7 @@ function tenementAt(x, z, by) {
   const [G, M, T] = LEVELS, S = STAIR, on = h => by == null || by > h - 1.1;
   if (x >= S.a0 && x <= S.a1 && z >= S.z0 && z <= S.z1) { const h = G + (z - S.z0) / (S.z1 - S.z0) * (M - G); return on(h) ? h : G; }   // first flight: up towards the back
   if (x > S.a1 && x <= S.b1 && z >= S.z0 && z <= S.z1) { const h = M + (S.z1 - z) / (S.z1 - S.z0) * (T - M); return by != null && by > h - 1.1 ? h : G; }   // second flight: up towards the front
-  if (x >= S.a0 && x <= S.b1 && z > S.z1 && z <= S.land1) return by != null && by > M - 1.1 ? M : G;   // the landing at the back
+  if (x >= S.balX0 && x <= S.b1 && z > S.z1 && z <= S.land1) return by != null && by > M - 1.1 ? M : G;   // the second-floor gallery along the back (the stairs' landing)
   if (x >= S.balX0 && x <= S.b1 && z >= S.bal0 && z < S.z0) return by != null && by > T - 1.1 ? T : G;   // the balcony along the top floor
   const H = SLUM_HOME; if (x >= H.minX && x <= H.maxX && z >= H.minZ && z <= H.maxZ) return by != null && by > T - 1.1 ? T : G;   // your flat (the floors below are other people's)
   return null;
@@ -204,7 +204,8 @@ export function createSlum(ctx) {
     box(W + 0.4, 0.14, D + 0.4, cx, M - 0.02, cz, concrete); box(W + 0.3, 0.14, D + 0.3, cx, T - 0.04, cz, concrete);   // slab edges
     level(G)(solid(H.minX, H.maxX, H.minZ, H.maxZ)); level(2.9)(solid(H.minX, H.maxX, H.minZ, H.maxZ));   // you can't walk into other people's flats
     // doors and barred windows of the flats below: two on the ground floor (one is the landlord's), one up a floor
-    for (const [dx, y, who] of [[-2.6, G, 'Flat 1 (the landlord)'], [2.6, G, 'Flat 2'], [-2.6, M, 'Flat 3']]) {
+    box(1.0, 2.05, 0.08, cx - 2.6, M + 1.03, H.maxZ + 0.04, dark); tenants.push({ x: cx - 2.6, z: H.maxZ + 0.75, y: M, who: 'Flat 3' });   // Flat 3: door on the back gallery
+    for (const [dx, y, who] of [[-2.6, G, 'Flat 1 (the landlord)'], [2.6, G, 'Flat 2']]) {
       box(1.0, 2.05, 0.08, cx + dx, y + 1.03, H.minZ - 0.04, y === G ? plank : dark);
       tenants.push({ x: cx + dx, z: H.minZ - 0.9, y, who });
     }
@@ -216,7 +217,7 @@ export function createSlum(ctx) {
     const flight = (x0, x1, za, ya, zb, yb) => { const n = 18; for (let i = 0; i < n; i++) { const t = (i + 0.5) / n, z = za + (zb - za) * t, y = ya + (yb - ya) * t; box(x1 - x0, 0.06, Math.abs(zb - za) / n + 0.02, (x0 + x1) / 2, y - 0.03, z, plank); }
       const len = Math.hypot(zb - za, yb - ya), ang = Math.atan2(yb - ya, zb - za); for (const x of [x0 + 0.04, x1 - 0.04]) box(0.08, 0.22, len, x, (ya + yb) / 2 - 0.15, (za + zb) / 2, bars, -ang, 0, 0); };
     flight(S.a0, S.a1, S.z0, G, S.z1, M); flight(S.a1, S.b1, S.z1, M, S.z0, T);
-    box(S.b1 - S.a0, 0.1, S.land1 - S.z1, (S.a0 + S.b1) / 2, M - 0.05, (S.z1 + S.land1) / 2, plank);   // the landing
+    box(S.b1 - S.balX0, 0.1, S.land1 - S.z1, (S.balX0 + S.b1) / 2, M - 0.05, (S.z1 + S.land1) / 2, plank);   // the second-floor gallery (and the stairs' landing)
     box(S.b1 - S.balX0, 0.1, S.z0 - S.bal0, (S.balX0 + S.b1) / 2, T - 0.05, (S.bal0 + S.z0) / 2, plank);   // the balcony
     for (const [x, z, h] of [[S.a0, S.z0, M], [S.b1, S.z0, T], [S.b1, S.land1, M], [S.a0, S.land1, M], [S.balX0, S.bal0, T], [S.b1, S.bal0, T], [702, S.bal0, T], [697, S.bal0, T]]) cyl(0.06, h, x, h / 2, z, bars, 6);   // rusty posts
     // railings (the gaps are missing bars: don't lean on it)
@@ -224,7 +225,19 @@ export function createSlum(ctx) {
     rail(S.balX0, S.bal0, S.b1, S.bal0, T); rail(S.balX0, S.bal0, S.balX0, S.z0, T); rail(S.a0, S.land1, S.b1, S.land1, M); rail(S.b1, S.z1, S.b1, S.land1, M);
     level(T)(solid(S.balX0, S.b1, S.bal0 - 0.06, S.bal0 + 0.06)); level(T)(solid(S.balX0 - 0.06, S.balX0 + 0.06, S.bal0, S.z0));   // the balcony rails stop you falling off
     level(M)(solid(S.a0, S.b1, S.land1 - 0.06, S.land1 + 0.06));
-    solid(S.a1 - 0.05, S.a1 + 0.05, S.z0 + 0.4, S.z1); solid(S.b1 - 0.05, S.b1 + 0.08, S.z0, S.land1);   // between the flights, and the outside edge
+    { const R2 = rng(515);
+      const rail2 = (x0, z0, x1, z1, y) => { box(Math.abs(x1 - x0) || 0.05, 0.05, Math.abs(z1 - z0) || 0.05, (x0 + x1) / 2, y + 0.95, (z0 + z1) / 2, bars); box(Math.abs(x1 - x0) || 0.04, 0.04, Math.abs(z1 - z0) || 0.04, (x0 + x1) / 2, y + 0.5, (z0 + z1) / 2, bars); const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.3); for (let i = 0; i <= n; i++) { if (R2() < 0.1) continue; const t = i / n; box(0.03, 0.95, 0.03, x0 + (x1 - x0) * t, y + 0.47, z0 + (z1 - z0) * t, bars); } };
+      // the second-floor gallery: rail along its back edge and its west end
+      rail2(S.balX0, S.land1, S.a0, S.land1, M); rail2(S.balX0, S.z1, S.balX0, S.land1, M);
+      level(M)(solid(S.balX0, S.a0, S.land1 - 0.06, S.land1 + 0.06)); level(M)(solid(S.balX0 - 0.06, S.balX0 + 0.06, S.z1, S.land1));
+      // the top balcony: close the east end and the drop down onto the first flight
+      rail2(S.b1, S.bal0, S.b1, S.z0, T); rail2(S.a0, S.z0, S.a1, S.z0, T);
+      level(T)(solid(S.b1 - 0.06, S.b1 + 0.06, S.bal0, S.z0)); level(T)(solid(S.a0, S.a1, S.z0 - 0.06, S.z0 + 0.06));
+      // handrails up both flights (between them and along the outside), with posts
+      const stairRail = (x, za, ya, zb, yb) => { const len = Math.hypot(zb - za, yb - ya), ang = Math.atan2(yb - ya, zb - za); for (const hh of [0.95, 0.5]) box(0.05, 0.05, len, x, (ya + yb) / 2 + hh, (za + zb) / 2, bars, -ang, 0, 0); for (let i = 0; i <= 8; i++) { const t = i / 8; box(0.035, 0.95, 0.035, x, ya + (yb - ya) * t + 0.47, za + (zb - za) * t, bars); } };
+      stairRail(S.a1, S.z0, G, S.z1, M); stairRail(S.a1 + 0.06, S.z1, M, S.z0, T); stairRail(S.b1, S.z1, M, S.z0, T);
+    }
+    solid(S.a1 - 0.05, S.a1 + 0.05, S.z0, S.z1); solid(S.b1 - 0.05, S.b1 + 0.08, S.z0, S.land1);   // between the flights, and the outside edge
     // washing hung over the balcony rail, and a satellite dish someone found
     for (let i = 0; i < 6; i++) plane(between(0.4, 0.8), between(0.5, 0.9), S.balX0 + 0.8 + i * 1.6, T + 0.55, S.bal0 - 0.03, pick(cloth), 0);
     put(new THREE.SphereGeometry(0.45, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), concrete, H.minX + 0.6, M + 2.5, H.minZ - 0.3, 1, 0.4, 1, -1.2, 0, 0);
@@ -283,10 +296,10 @@ export function createSlum(ctx) {
   flush();
 
   // ---------------- people: no cars, just people getting by ----------------
+  const errands = []; let nextErrand = () => {};
   if (K) {
     const y = curb + 0.05;
-    for (const [x, z] of barrels) for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 + R(); K.stander(x + Math.cos(a) * 1.1, z + Math.sin(a) * 1.1, Math.atan2(-Math.cos(a), -Math.sin(a)), { task: 'talk', y }); }
-    for (let i = 0; i < 3; i++) K.stander(715 + 0.6 + i * 0.7, 506 + 1.2, Math.PI, { y });   // queueing at the tap
+    for (const [x, z] of barrels) for (let i = 0; i < 2; i++) { const a = i / 2 * Math.PI * 2 + R(); K.stander(x + Math.cos(a) * 1.1, z + Math.sin(a) * 1.1, Math.atan2(-Math.cos(a), -Math.sin(a)), { task: 'talk', y }); }
     K.stander(647.5, 503.4, 0, { y, task: 'talk' });   // Mama Ade at her hatch
     for (const t of tenants) K.stander(t.x, t.z, Math.PI, { y: t.y + 0.05, task: t.who.includes('landlord') ? 'phone' : 'talk' });   // the landlord and your neighbours
     // kids playing football in the main lane, people walking the lanes
@@ -294,7 +307,29 @@ export function createSlum(ctx) {
     for (const x of [640, 720, 800]) { K.walker([[x - 1.5, 452], [x - 1.5, 594], [x + 1.5, 594], [x + 1.5, 452]], { speed: 0.9 + R() * 0.3, t: R() * 200 }); }
     for (const z of LANES_Z) K.walker([[602, z - 1.2], [838, z - 1.2], [838, z + 1.2], [602, z + 1.2]], { speed: 0.8 + R() * 0.3, t: R() * 400 });
     // people sat out front on crates and buckets
-    for (const [x, z] of doorSpots) if (R() < 0.12) K.sitter(x, z, Math.atan2(x - 720, z - 520), curb + 0.45, { task: R() < 0.5 ? 'talk' : 'phone' });
+    for (const [x, z] of doorSpots) if (R() < 0.025) K.sitter(x, z, Math.atan2(x - 720, z - 520), curb + 0.45, { task: R() < 0.5 ? 'talk' : 'phone' });
+    // Residents going about their day: from their door, along the alley to the lane, to the tap, Mama Ade's,
+    // the fire barrel or a neighbour's door; they stop there a while, then walk home and rest at the door.
+    const R3 = rng(9090), laneX = x => LANES_X.reduce((a, c) => Math.abs(c - x) < Math.abs(a - x) ? c : a);
+    const tenement = { minX: 689, maxX: 712, minZ: 501, maxZ: 519 };
+    const homes = doorSpots.filter(([x, z]) => { const lx = laneX(x), path = { minX: Math.min(x, lx), maxX: Math.max(x, lx), minZ: z - 0.5, maxZ: z + 0.5 }; return z > 449 && z < Z_TOP - 0.5 && !hits(path, tenement) && !clearOf.slice(1).some(c => hits(path, c)); });
+    const spots = [{ name: 'tap', at: [715.4, 505.2], laneZ: 500, task: 'idle' }, { name: 'shop', at: [647.5, 502.8], laneZ: 500, task: 'talk' }, { name: 'barrel', at: [768, 544.8], laneZ: 550, task: 'talk' }];
+    const yAt = (x, z) => (inLane(x, z) ? 0 : curb) + 0.05;
+    const routeTo = (home, dest) => { const [hx, hz] = home, lx = laneX(hx), side = (R3() - 0.5) * 1.6;
+      if (dest.at) { const [dx, dz] = dest.at; return [[hx, hz], [lx + side, hz], [lx + side, dest.laneZ + side * 0.5], [dx, dest.laneZ + side * 0.5], [dx, dz]]; }
+      const [x2, z2] = dest.home, lx2 = laneX(x2), zh = Math.abs(hz - 500) < Math.abs(hz - 550) ? 500 : 550;
+      return [[hx, hz], [lx + side, hz], [lx + side, zh + side * 0.5], [lx2 + side, zh + side * 0.5], [lx2 + side, z2], [x2, z2]]; };
+    const count = Math.min(40, homes.length);
+    for (let i = 0; i < count; i++) {
+      const home = homes[Math.floor(R3() * homes.length)], h = K.person(home[0], home[1], 0, { y: yAt(home[0], home[1]) }); if (!h) continue;
+      errands.push({ h, home, path: null, i: 0, wait: R3() * 5, task: 'idle', speed: 1.1 + R3() * 0.5, away: false });
+    }
+    function nextTrip(e) {
+      if (e.away) { e.path = e.path.slice().reverse(); e.away = false; e.task = 'idle'; return; }   // walk home
+      const r = R3(), dest = r < 0.75 ? spots[Math.floor(R3() * spots.length)] : { home: homes[Math.floor(R3() * homes.length)], task: 'talk' };
+      e.path = routeTo(e.home, dest); e.away = true; e.task = dest.task;
+    }
+    nextErrand = nextTrip;
     bot.people(K);
   }
 
@@ -302,8 +337,20 @@ export function createSlum(ctx) {
   for (const l of lanes) { const long = l.maxZ - l.minZ > l.maxX - l.minX; for (let t = 3; t < (long ? l.maxZ - l.minZ : l.maxX - l.minX); t += 6) neglected.push([long ? (l.minX + l.maxX) / 2 + (R() - 0.5) * 2 : l.minX + t, long ? l.minZ + t : (l.minZ + l.maxZ) / 2 + (R() - 0.5) * 2, Math.round(between(8, 60))]); }
 
   let ft = 0;
+  const yAt2 = (x, z) => (inLane(x, z) ? 0 : curb) + 0.05;
+  // walk a resident along their route; stop and do something at each end
+  function stepErrand(e, dt) {
+    const h = e.h, p = h.root.position;
+    if (e.wait > 0) { e.wait -= dt; ctx.animatePerson?.(h, false, dt); if (e.task === 'talk' && h.armR) h.armR.pivot.rotation.x = -0.4 + Math.sin(ft * 2.2 + e.speed * 9) * 0.35; return; }
+    if (!e.path || e.i >= e.path.length) { if (e.path) e.wait = e.away ? 4 + Math.random() * 8 : 4 + Math.random() * 12; nextErrand(e); e.i = 1; return; }
+    const [tx, tz] = e.path[e.i], dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz), step = e.speed * dt;
+    if (d <= step) { p.x = tx; p.z = tz; e.i++; } else { p.x += dx / d * step; p.z += dz / d * step; h.root.rotation.y = Math.atan2(dx, dz); }
+    p.y = yAt2(p.x, p.z); ctx.animatePerson?.(h, true, dt);
+  }
+
   return {
     bounds: SLUM, home: SLUM_HOME, homeY: SLUM_HOME_Y, landlordAt: tenants[0], lanes, neglected, shacks,
+    people: () => K?.people || [], errands,
     groundAt: slumGroundAt,
     destinations: [{ name: 'Cinder Row (slum)', x: 720, z: 520 }, { name: "Mama Ade's corner shop (Cinder Row)", x: 647.5, z: 503 }],
     update(dt, p) {
@@ -311,6 +358,9 @@ export function createSlum(ctx) {
       ft += dt; flames.forEach((f, i) => { const s = 0.85 + 0.25 * Math.sin(ft * 9 + i * 2.1) + 0.1 * Math.sin(ft * 23 + i); f.scale.set(s, s * 1.2, s); });
       glow.intensity = 2.1 + 0.6 * Math.sin(ft * 11) * Math.sin(ft * 7.3);
       K?.update?.(dt, p);
+      for (const e of errands) stepErrand(e, dt);
+      // people are solid: you bump into them instead of walking through
+      for (const h of K?.people || []) { const q = h.root.position; if (!h.root.visible || Math.abs(q.y - p.y) > 1.6) continue; const dx = p.x - q.x, dz = p.z - q.z, d = Math.hypot(dx, dz); if (d < 0.65 && d > 1e-4) { p.x = q.x + dx / d * 0.65; p.z = q.z + dz / d * 0.65; } }
     },
   };
 }
