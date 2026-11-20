@@ -48,20 +48,22 @@ export function createProperty({ scene, buildings, market, interactables, toast,
   function openShop(which = 'legal') {
     if (which === 'illegal') {
       market.open('The Fixer: off-the-books property', HIDEOUTS.map(h => ({ id: h.id, name: h.name, icon: ICON.Hideout, category: 'Hideout', price: h.price, desc: h.desc + ' Lie low here to lose the police.', sold: owned.has(h.id), stats: { Safety: Math.min(100, Math.round(h.price / 45)), Size: Math.round(h.price / 60) } })), item => {
-        if (money() < item.price) { toast('Not enough gold.'); return false; }
+        if (money() < item.price) return `Not enough gold: ${item.name} costs ${item.price.toLocaleString()} and you have ${Math.floor(money()).toLocaleString()}.`;
         spend(item.price); owned.add(item.id); buildHideout(HIDEOUTS.find(h => h.id === item.id));
         toast(`🕳️ ${item.name} is yours. No paperwork, no questions. Go there and lie low when the heat is on.`);
         if (Math.random() < 0.15) { raiseWanted(45); toast('🚨 Someone saw the cash change hands. The police are curious.'); }
+        return { ok: true, msg: `🕳️ Bought: ${item.name} for ${item.price.toLocaleString()} gold. Go there and lie low when the heat is on.` };
       }, { tag: 'BLACK MARKET' });
       return;
     }
     market.open('Ashford Property Centre: buildings for sale', getListings().map(l => ({ id: l.b.name, name: l.b.name, icon: ICON[l.kind], category: l.kind, price: l.price, sold: owned.has(l.b.name),
       desc: l.income ? `Pays ${l.income} gold rent a day.` : l.kind === 'Mansion' ? 'A gated estate at the top of Highcliff Hills.' : 'A place to call home.',
       stats: { Size: l.size, Income: Math.min(100, Math.round(l.income / 1.2)), Location: l.location } })), item => {
-      if (money() < item.price) { toast('Not enough gold.'); return false; }
+      if (money() < item.price) return `Not enough gold: ${item.name} costs ${item.price.toLocaleString()} and you have ${Math.floor(money()).toLocaleString()}.`;
       const l = getListings().find(x => x.b.name === item.id);
       spend(item.price); owned.add(l.b.name); mark(l.b);
-      toast(`${ICON[l.kind]} You bought ${l.b.name}!${l.income ? ` It pays ${l.income} gold rent every day.` : ' The keys are yours.'} (Marked with a green diamond.)`);
+      const msg = `${ICON[l.kind]} Bought: ${l.b.name} for ${item.price.toLocaleString()} gold.${l.income ? ` It pays ${l.income} gold rent every day.` : ' The keys are yours.'} It's marked with a green diamond: find it on your map.`;
+      toast(msg); return { ok: true, msg };
     }, { categories: ['All', 'House', 'Apartment', 'Shop', 'Office', 'Business', 'Mansion'] });
   }
   // hideouts: a steel door in an alley with a "lie low" action
