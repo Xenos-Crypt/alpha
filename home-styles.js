@@ -118,6 +118,46 @@ export function buildAdminEstate(ctx) {
   { const [x, z] = P(1274, 234), g = new THREE.Group(); g.position.set(x, 0, z); root.add(g); B(g, 1.6, 0.35, 2.2, 0, 0.9, 0, mat(0x0a0a0a, { rough: 0.1, metal: 0.3 })); for (const [a, b] of [[-0.6, -0.9], [0.6, -0.9], [0, 0.9]]) C(g, 0.06, 0.06, 0.8, a, 0.4, b, 0x0a0a0a, 6); }   // grand piano
   { const [x, z] = P(1275, 225), ch = new THREE.Group(); ch.position.set(x, H - 1.2, z); root.add(ch); for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; S(ch, 0.12, Math.cos(a) * 1.1, Math.sin(i) * 0.15, Math.sin(a) * 1.1, mat(0xfff4d6, { emissive: 0xffe6a8, ei: 1.2 }), 6); } C(ch, 0.03, 0.03, 1.2, 0, 0.6, 0, 0xd4af37, 6); }
   { const [bx, bz] = P(1296, 236); B(root, 2.6, 0.5, 2.2, bx, 0.35, bz, 0xf2efe9); B(root, 2.6, 1, 0.2, bx, 0.9, bz + 1.05, 0x2a2e33); spot(bx - 2, bz, 2, 'Sleep in your bed', () => ctx.sleep?.()); }
+  // ---- furnishing (old-layout coordinates through P; every piece checked against the ones above: the sofas at
+  // x 1256-1260, the coffee table, the TV on the west wall, the island at x 1287.5-1292.5 z 219-221, the dining set at
+  // x 1287-1293 z 229.8-232.4, the piano at 1274,234, the bed at x 1294.7-1297.3 z 234.9-237.1, the front door at
+  // x 1272-1278 and the garden opening at x 1268-1282)
+  {
+    const seat = (x, z, yaw, label, y = 0.5) => ctx.sitSpots?.push({ x, z, seatY: y, yaw, label });
+    const wood = mat(0x6b4a33, { rough: 0.6 }), dark = mat(0x2a2e33, { rough: 0.5 }), cream = 0xe9e4da, gold = mat(0xd4af37, { metal: 0.8, rough: 0.3 });
+    const glow = mat(0xfff1cf, { emissive: 0xffe2a0, ei: 1.3 });
+    // living room: a rug, two armchairs at the ends of the coffee table, a bookcase, a floor lamp, a sideboard under the TV
+    { const [x, z] = P(1258, 225.2); B(root, 12, 0.02, 11, x, 0.03, z, mat(0x7b2f2f, { rough: 1 }), false); }
+    for (const [ox, ry] of [[1263.2, -Math.PI / 2]]) { const [x, z] = P(ox, 225.2), g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; root.add(g); B(g, 1.1, 0.45, 1, 0, 0.3, 0, 0x8a6f55); B(g, 1.1, 0.75, 0.22, 0, 0.75, -0.42, 0x7a614a); for (const sd of [-1, 1]) B(g, 0.18, 0.6, 1, sd * 0.5, 0.55, 0, 0x7a614a); seat(x, z, ry, 'Sit in the armchair'); }
+    { const [x, z] = P(1251.3, 225.2); B(root, 0.6, 0.6, 3.6, x, 0.3, z, wood); }
+    { const [x, z] = P(1250.6, 214); B(root, 0.6, 3, 3, x, 1.5, z, wood); for (let i = 0; i < 5; i++) for (let j = 0; j < 6; j++) B(root, 0.32, 0.38, 0.12 + (i * j) % 3 * 0.04, x + 0.1, 0.45 + i * 0.58, z - 1.2 + j * 0.45, [0x8f2f2f, 0x2f5f8f, 0x3f6f3f, 0xb8902f, 0x5a3f6f][(i + j) % 5], false); }
+    { const [x, z] = P(1251.5, 230.8); C(root, 0.04, 0.04, 1.7, x, 0.85, z, gold, 6); C(root, 0.25, 0.35, 0.4, x, 1.8, z, glow, 12); C(root, 0.25, 0.25, 0.04, x, 0.02, z, gold, 12); }
+    // kitchen along the east wall: base units, a worktop, wall cupboards, a tall fridge, and stools at the island
+    { const [x, z] = P(1299.2, 216.5); B(root, 0.7, 0.9, 9, x, 0.45, z, mat(0xf5f5f5, { rough: 0.3 })); B(root, 0.75, 0.06, 9.1, x, 0.93, z, mat(0x222222, { rough: 0.1, metal: 0.3 })); B(root, 0.4, 0.8, 9, x + 0.15, 2.3, z, mat(0xf5f5f5, { rough: 0.3 }), false); B(root, 0.5, 0.05, 0.5, x - 0.05, 0.97, z + 1.5, mat(0x9aa3ad, { metal: 0.8 }), false); }
+    { const [x, z] = P(1299.1, 222.4); B(root, 0.85, 2.1, 1, x, 1.05, z, mat(0xbfc5ca, { metal: 0.6, rough: 0.3 })); }
+    for (const ox of [1288.5, 1290, 1291.5]) { const [x, z] = P(ox, 221.4); C(root, 0.22, 0.22, 0.08, x, 0.78, z, dark, 12); C(root, 0.04, 0.04, 0.75, x, 0.38, z, gold, 6); seat(x, z, Math.PI, 'Sit at the kitchen island', 0.82); }
+    for (const ox of [1288.5, 1291.5]) { const [x, z] = P(ox, 220); C(root, 0.01, 0.01, 1.6, x, H - 0.8, z, dark, 4); S(root, 0.2, x, H - 1.7, z, glow, 10); }
+    // dining: a sideboard against the back wall and a painting over it
+    { const [x, z] = P(1289, 239.3); B(root, 2.6, 0.9, 0.5, x, 0.45, z, wood); B(root, 0.3, 0.4, 0.3, x - 0.8, 1.1, z, mat(0x3f6f8f, { rough: 0.2 }), false); }
+    // the bedroom: walled off in the south-east corner with a doorway, nightstands, a wardrobe and a rug
+    const bw = mat(0xf6f3ee, { rough: 0.8 });
+    const wallP = (ax, az, bx, bz) => { const [x0, z0] = P(ax, az), [x1, z1] = P(bx, bz), w = Math.max(0.2, x1 - x0), d = Math.max(0.2, z1 - z0); ctx.camBlockers?.push(B(root, w, H - 0.1, d, (x0 + x1) / 2, (H - 0.1) / 2, (z0 + z1) / 2, bw)); solid(x0 - (w === 0.2 ? 0.1 : 0), x1 + (w === 0.2 ? 0.1 : 0), z0 - (d === 0.2 ? 0.1 : 0), z1 + (d === 0.2 ? 0.1 : 0)); };
+    wallP(1292, 234, 1293.2, 234); wallP(1294.8, 234, 1299.8, 234); wallP(1292, 234, 1292, 239.8);
+    { const [x, z] = P(1296, 236.6); B(root, 3.6, 0.02, 3, x, 0.03, z, mat(0xcfc6b5, { rough: 1 }), false); }
+    for (const ox of [1294.2, 1297.8]) { const [x, z] = P(ox, 237.3); B(root, 0.5, 0.55, 0.45, x, 0.28, z, wood); S(root, 0.12, x, 0.72, z, glow, 8); }
+    { const [x, z] = P(1299.3, 235.6); B(root, 0.6, 2.3, 2, x, 1.15, z, wood); }
+    // a study corner (south-west): desk, chair and a second bookcase
+    { const [x, z] = P(1256, 238.6); B(root, 2, 0.06, 0.9, x, 0.76, z, wood); for (const [a, b] of [[-0.9, -0.35], [0.9, -0.35], [-0.9, 0.35], [0.9, 0.35]]) B(root, 0.06, 0.74, 0.06, x + a, 0.37, z + b, wood, false); B(root, 0.5, 0.35, 0.03, x, 1, z + 0.2, mat(0x050505, { emissive: 0x0d2a4a, ei: 0.6 }), false);
+      B(root, 0.5, 0.45, 0.5, x, 0.25, z - 0.8, dark); B(root, 0.5, 0.6, 0.08, x, 0.75, z - 1.05, dark); seat(x, z - 0.8, 0, 'Sit at the desk', 0.5); }
+    { const [x, z] = P(1250.6, 236); B(root, 0.6, 3, 3, x, 1.5, z, wood); }
+    // plants by the front door and the garden opening, paintings on the walls
+    for (const [ox, oz] of [[1266, 211.5], [1284, 211.5], [1266.5, 238.8], [1283.5, 238.8]]) { const [x, z] = P(ox, oz); C(root, 0.35, 0.28, 0.6, x, 0.3, z, mat(0xd8d2c4), 12); S(root, 0.6, x, 1.15, z, mat(0x3f7f3a, { rough: 0.9 }), 10); }
+    const art = (cols, x, z, ry) => { const t = makeTex(128, 96, g => { g.fillStyle = cols[0]; g.fillRect(0, 0, 128, 96); for (let i = 0; i < 7; i++) { g.fillStyle = cols[1 + i % (cols.length - 1)]; g.beginPath(); g.arc(20 + i * 15, 30 + (i * 37) % 50, 10 + (i * 7) % 18, 0, 7); g.fill(); } }); const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshStandardMaterial({ map: t })); m.position.set(x, 2.8, z); m.rotation.y = ry; root.add(m); B(root, ry ? 0.05 : 2.4, 1.8, ry ? 2.4 : 0.05, x + (ry ? -Math.sign(ry) * 0.03 : 0), 2.8, z + (ry ? 0 : 0.03), gold, false); };
+    art(['#1f3b57', '#d4af37', '#e8e2d6', '#8f2f2f'], ...P(1289, 239.75), Math.PI); art(['#e8e2d6', '#2f5f8f', '#3f6f3f', '#b8902f'], ...P(1258, 239.75), Math.PI);
+    art(['#2a2e33', '#d4af37', '#7b2f2f'], P(1250.25, 0)[0], P(0, 231)[1], Math.PI / 2); art(['#f2efe9', '#5a3f6f', '#2f5f8f'], P(1299.75, 0)[0], P(0, 228)[1], -Math.PI / 2);
+    for (const [n, x, z, m] of [['Armchair', 1263.2, 225.2, 'LTH'], ['Bookcase', 1250.6, 214, 'WOD'], ['Kitchen units and fridge', 1299.2, 217, 'WOD.STL'], ['Bar stools', 1290, 221.4, 'STL'], ['Wardrobe', 1299.3, 235.6, 'WOD'], ['Study desk', 1256, 238.6, 'WOD'], ['Living-room rug', 1258, 225.2, 'TXT']])
+      tag('PRD', 'FUR', m, n, ...P(x, z), 'Atelier Furniture');
+  }
   spot(cx, hz0 - 1.5, 2.5, 'Your mansion', () => toast('🏛 Your mansion: marble floors, the pool out back, the garage to the east and your airstrip on the west side.'));
   // the forecourt and the supercar out front, two more in the garage
   { const [x, z] = P(1275, 195); B(root, 14, 0.06, 26, x, 0.04, z, mat(0xd9d2c3, { rough: 0.8 }), false); tag('LND', 'ROD', 'STN', 'Mansion forecourt', x, z); }

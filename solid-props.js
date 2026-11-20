@@ -27,7 +27,7 @@ export function createSolidProps(THREE) {
   function build(scene, opts = {}) {
     grid.clear(); list.length = 0;
     const skip = opts.skip || new Set(), stairs = opts.stairs || [], seats = opts.seats || [], cols = opts.colliders || [];
-    const hidden = o => { for (let p = o; p && p !== scene; p = p.parent) if (!p.visible || skip.has(p) || /hover|vehicle|door|gate leaf|person|npc/i.test(p.name || '')) return true; return false; };
+    const hidden = o => { for (let p = o; p && p !== scene; p = p.parent) if (!p.visible || skip.has(p) || /hover|vehicle|door|gate leaf|person|npc|lift cab/i.test(p.name || '')) return true; return false; };
     const covered = (x, z, hx, hz) => { for (const c of near(cols, x, z)) if (c.minX <= x - hx * 0.7 && c.maxX >= x + hx * 0.7 && c.minZ <= z - hz * 0.7 && c.maxZ >= z + hz * 0.7) return true; return false; };
     // the existing colliders, bucketed so "is this already solid?" is quick
     const cgrid = new Map(); for (const c of cols) { if (c.baseYAt || c.circleRadius != null) continue; for (let i = Math.floor(c.minX / 16); i <= Math.floor(c.maxX / 16); i++) for (let k = Math.floor(c.minZ / 16); k <= Math.floor(c.maxZ / 16); k++) { const kk = key(i, k); let l = cgrid.get(kk); if (!l) cgrid.set(kk, l = []); l.push(c); } }

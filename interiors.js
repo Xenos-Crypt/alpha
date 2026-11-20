@@ -11,12 +11,19 @@
 import * as THREE from 'three';
 import { createWindows, windowView } from './windows.js';
 import { floorMaterial } from './floor-textures.js';
+import { createLift } from './lifts.js';
 const FLOOR_KIND = { home: 'wood', 'home-up': 'carpet', shop: 'checker', office: 'carpet', 'office-up': 'carpet', cyber: 'tech', court: 'parquet', arcade: 'carpet', gov: 'marble', library: 'parquet', pub: 'wood', nightclub: 'tech', restaurant: 'terracotta', casino: 'carpet', church: 'stone', hotel: 'marble', 'hotel-room': 'carpet', community: 'wood', mosque: 'carpet', university: 'parquet', jobcentre: 'tiles', cinema: 'carpet' };
 
 const W = 24, D = 18, H = 3.6;            // shell size: x from -12 to 12, z from -9 to 9
+const HS = H + 0.2;                       // one storey: the room plus the slab between floors (upper floors stand right on top)
 const DOOR_W = 1.2;
 
-export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, makeTex, tvMaterial, hooks, makePerson, animatePerson }) {
+export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, makeTex, tvMaterial, hooks, makePerson, animatePerson, ramps = [] }) {
+  // Upper floors stand right on top of the floor below, so every wall and piece of furniture only blocks you at its
+  // own floor's height: each collider made while a floor is being built gets that floor's height (baseYAt).
+  const worldColliders = colliders; let floorY = 0;
+  colliders = { push: (...cs) => { for (const c of cs) { if (!c.baseYAt) { const y = floorY; c.baseYAt = () => y; } worldColliders.push(c); } return worldColliders.length; }, indexOf: c => worldColliders.indexOf(c), splice: (...a) => worldColliders.splice(...a) };
+  const lifts = [], uppers = [];   // real lifts; upper floors (for the ground under you)
   const mats = new Map();
   const mat = (c, o = {}) => {
     const k = c + '|' + JSON.stringify({ ...o, map: o.map?.uuid });
@@ -45,15 +52,17 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
   const layouts = {};
   const windowSets = []; let viewTex = null;
 
-  function makeLayout(key, x0, z0, wallColor, floorColor, { exit = true } = {}) {
-    const L = { key, origin: new THREE.Vector3(x0, 0, z0), spawn: new THREE.Vector3(x0, 0, z0 + 5.6), spots: [], lights: [] };   // a few steps inside, so the camera stays in the room
+  function makeLayout(key, x0, z0, wallColor, floorColor, { exit = true, y0 = 0, holes = [] } = {}) {
+    floorY = y0;
+    const L = { key, y0, holes, origin: new THREE.Vector3(x0, y0, z0), spawn: new THREE.Vector3(x0, y0, z0 + 5.6), spots: [], lights: [] };
+    if (y0 > 0) uppers.push(L);   // a few steps inside, so the camera stays in the room
     // ---- primitives (local coords) ----
     const B = (w, h, d, x, y, z, c, collide = false, o, parent) => {
       const m = new THREE.Mesh(boxGeo, c instanceof THREE.Material ? c : mat(c, o));
       m.scale.set(w, h, d); m.position.set(x, y, z); m.receiveShadow = true;
       if (parent) parent.add(m);
       else {
-        m.position.x += x0; m.position.z += z0; scene.add(m);
+        m.position.x += x0; m.position.y += y0; m.position.z += z0; scene.add(m);
         if (collide) colliders.push({ minX: x0 + x - w / 2, maxX: x0 + x + w / 2, minZ: z0 + z - d / 2, maxZ: z0 + z + d / 2 });
       }
       return m;
@@ -61,13 +70,13 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     const Cyl = (rt, rb, h, x, y, z, c, parent, seg = 14, o) => {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), c instanceof THREE.Material ? c : mat(c, o));
       m.position.set(x, y, z); (parent || scene).add(m);
-      if (!parent) { m.position.x += x0; m.position.z += z0; }
+      if (!parent) { m.position.x += x0; m.position.y += y0; m.position.z += z0; }
       return m;
     };
     // A furniture piece built in its own local space (front faces +z), then rotated.
     // fw/fd is its footprint, used for a solid collider when `solid` is set.
     const piece = (x, z, rot, fw, fd, build, solid = true) => {
-      const g = new THREE.Group(); g.position.set(x0 + x, 0.1, z0 + z); g.rotation.y = rot; scene.add(g);
+      const g = new THREE.Group(); g.position.set(x0 + x, y0 + 0.1, z0 + z); g.rotation.y = rot; scene.add(g);
       build(g);
       if (solid) {
         const swap = Math.abs(Math.sin(rot)) > 0.5, w = swap ? fd : fw, d = swap ? fw : fd;
@@ -76,19 +85,25 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       return g;
     };
     const P = (g, w, h, d, x, y, z, c, o) => B(w, h, d, x, y, z, c, false, o, g);
-    const spot = (x, z, r, label, action) => { const it = { pos: new THREE.Vector3(x0 + x, 0, z0 + z), r, action }; if (typeof label === 'function') Object.defineProperty(it, 'label', { get: label, enumerable: true }); else it.label = label; L.spots.push(it); return it; };
+    const spot = (x, z, r, label, action) => { const it = { pos: new THREE.Vector3(x0 + x, y0, z0 + z), r, action }; if (typeof label === 'function') Object.defineProperty(it, 'label', { get: label, enumerable: true }); else it.label = label; L.spots.push(it); return it; };
     L.auto = []; L.lifts = [];   // walk-through stairs/escalators, and lifts with real cabs (see update())
-    const seat = (x, z, yaw, seatY, label) => sitSpots.push({ x: x0 + x, z: z0 + z, yaw, seatY, label });
+    const seat = (x, z, yaw, seatY, label) => sitSpots.push({ x: x0 + x, z: z0 + z, yaw, seatY: seatY + y0, label });
 
     // ---- shell: floor, walls with a front door, skirting ----
-    B(W, 0.1, D, 0, 0.05, 0, floorMaterial(makeTex, FLOOR_KIND[key] || 'tiles', floorColor, W, D));   // patterned floor, not a flat slab
+    { const fm = floorMaterial(makeTex, FLOOR_KIND[key] || 'tiles', floorColor, W, D);   // patterned floor, not a flat slab
+      if (!holes.length) B(W, 0.1, D, 0, 0.05, 0, fm);
+      else {   // an upper floor: open over the stairs and the lift shaft
+        const xs = [...new Set([-W / 2, W / 2, ...holes.flatMap(h => [h.x0, h.x1])])].sort((a, b) => a - b), zs = [...new Set([-D / 2, D / 2, ...holes.flatMap(h => [h.z0, h.z1])])].sort((a, b) => a - b);
+        for (let i = 0; i + 1 < xs.length; i++) for (let k = 0; k + 1 < zs.length; k++) { const cx = (xs[i] + xs[i + 1]) / 2, cz = (zs[k] + zs[k + 1]) / 2; if (holes.some(h => cx > h.x0 && cx < h.x1 && cz > h.z0 && cz < h.z1)) continue; B(xs[i + 1] - xs[i], 0.1, zs[k + 1] - zs[k], cx, 0.05, cz, fm); }
+        B(W, 0.1, D, 0, -0.15, 0, mat(0xf1efe9), false).visible = false;
+      } }
     const wallMat = mat(wallColor);
     const wall = (w, d, x, z) => { const m = B(w, H, d, x, H / 2, z, wallMat, true); camBlockers.push(m); return m; };
     wall(W, 0.3, 0, -D / 2);                                                   // back
     // side walls with real windows (a painted city view outside them), which open like any other
     for (const sx of [-1, 1]) {
-      const win = windowSets[windowSets.length] = createWindows({ scene, interactables: L.spots });
-      const x = x0 + sx * W / 2, r = win.wall({ ax: x, az: z0 - D / 2, bx: x, bz: z0 + D / 2, y: 0, h: H, t: 0.3, mat: wallMat, inward: [-sx, 0], holes: [{ at: 4.5, w: 1.6, sill: 1.2, h: 1.6 }, { at: 12.5, w: 1.6, sill: 1.2, h: 1.6 }], view: viewTex || (viewTex = windowView(makeTex)) });
+      const win = windowSets[windowSets.length] = createWindows({ scene, interactables: L.spots });   // (y0: upper floors)
+      const x = x0 + sx * W / 2, r = win.wall({ ax: x, az: z0 - D / 2, bx: x, bz: z0 + D / 2, y: y0, h: H, t: 0.3, mat: wallMat, inward: [-sx, 0], holes: [{ at: 4.5, w: 1.6, sill: 1.2, h: 1.6 }, { at: 12.5, w: 1.6, sill: 1.2, h: 1.6 }], view: viewTex || (viewTex = windowView(makeTex)) });
       camBlockers.push(...r.meshes); colliders.push({ minX: x - 0.15, maxX: x + 0.15, minZ: z0 - D / 2, maxZ: z0 + D / 2 });
     }
     if (!exit) wall(W, 0.3, 0, D / 2);                                         // upper floors: no street door
@@ -142,7 +157,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (b - z > 0.05) camBlockers.push(B(0.16, H, b - z, x, H / 2, (z + b) / 2, m, true));
     };
     L.light = (x, z, intensity = 1.1, dist = 16, color = 0xfff1dc) => {
-      const l = new THREE.PointLight(color, intensity, dist, 1.4); l.position.set(x0 + x, H - 0.4, z0 + z); l.visible = false; scene.add(l); L.lights.push(l);
+      const l = new THREE.PointLight(color, intensity, dist, 1.4); l.position.set(x0 + x, y0 + H - 0.4, z0 + z); l.visible = false; scene.add(l); L.lights.push(l);
       B(0.7, 0.05, 0.7, x, H - 0.03, z, 0xffffff, false, { emissive: 0xfff6e0, ei: 1.2 });   // ceiling panel
     };
 
@@ -177,29 +192,27 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       cooler: (x, z) => piece(x, z, 0, 0.4, 0.4, g => { P(g, 0.35, 1.0, 0.35, 0, 0.5, 0, 0xeeeeee); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.4, 12), mat(0x9fd3ff, { opacity: 0.6 })); b.position.y = 1.2; g.add(b); }),
       screen: (x, z, rot) => piece(x, z, rot, 2.5, 0.1, g => { P(g, 2.5, 1.4, 0.06, 0, 1.7, 0, 0x111111); P(g, 2.35, 1.27, 0.01, 0, 1.7, 0.035, 0x1f3f5a, { emissive: 0x1d4b6e, ei: 0.7 }); }, false),
       vending: (x, z, rot) => { piece(x, z, rot, 0.9, 0.8, g => { P(g, 0.9, 1.9, 0.8, 0, 0.95, 0, 0xc0392b); P(g, 0.6, 1.2, 0.02, -0.1, 1.15, 0.41, 0x222a33, { emissive: 0x2a4a6a, ei: 0.6 }); for (let r = 0; r < 4; r++) P(g, 0.55, 0.05, 0.02, -0.1, 0.7 + r * 0.3, 0.42, 0xffd23f, { emissive: 0xffd23f, ei: 0.4 }); P(g, 0.12, 0.3, 0.03, 0.33, 1.2, 0.41, 0x111111); }); const f = new THREE.Vector3(Math.sin(rot), 0, Math.cos(rot)); spot(x + f.x * 0.9, z + f.z * 0.9, 1.3, 'Use the vending machine', () => hooks.shop('Vending machine', 'vending')); },
-      art: (x, y, z, rot, c) => { const g = new THREE.Group(); g.position.set(x0 + x, y, z0 + z); g.rotation.y = rot; scene.add(g); P(g, 1.1, 0.8, 0.04, 0, 0, 0, 0x2a2a2a); P(g, 0.98, 0.68, 0.01, 0, 0, 0.025, c); },
+      art: (x, y, z, rot, c) => { const g = new THREE.Group(); g.position.set(x0 + x, y0 + y, z0 + z); g.rotation.y = rot; scene.add(g); P(g, 1.1, 0.8, 0.04, 0, 0, 0, 0x2a2a2a); P(g, 0.98, 0.68, 0.01, 0, 0, 0.025, c); },
     };
     // ---- getting between floors ----
     // A straight staircase, `len` long, rising toward dir (+1 = +z, -1 = -z). (sx, sz) is
     // where you stand to use it.
-    L.stairs = (x, z, len, dir, label, onUse, sx, sz) => {
-      const n = 14, rise = H / n, run = len / n, stepMat = mat(0xb08a63), side = mat(0xe6e0d4);
-      for (let i = 0; i < n; i++) {
-        const top = (i + 1) * rise;
-        B(1.2, top, run, x, top / 2, z + dir * (-len / 2 + (i + 0.5) * run), stepMat);
-      }
-      for (const s of [-1, 1]) { const r = B(0.06, 0.06, Math.hypot(len, H), x + s * 0.63, H / 2 + 0.95, z, side); r.rotation.x = -dir * Math.atan2(H, len); }
-      colliders.push({ minX: x0 + x - 0.65, maxX: x0 + x + 0.65, minZ: z0 + z - len / 2, maxZ: z0 + z + len / 2 });
-      L.auto.push(spot(sx, sz, 1.8, label, onUse));   // just walk up to the foot of the stairs
+    L.stairs = (x, z, len, dir) => {
+      // A straight staircase you walk up, `len` long, rising toward dir (+1 = +z, -1 = -z) to the floor above
+      // (which has an opening over it). Its sides are solid; you go up and down it like any outdoor stair.
+      const n = 16, rise = HS / n, run = len / n, stepMat = mat(0xb08a63), side = mat(0xe6e0d4);
+      for (let i = 0; i < n; i++) { const top = (i + 1) * rise; B(1.2, top, run, x, top / 2, z + dir * (-len / 2 + (i + 0.5) * run), stepMat); }
+      for (const sd of [-1, 1]) { const r = B(0.06, 0.06, Math.hypot(len, HS), x + sd * 0.63, HS / 2 + 0.95, z, side); r.rotation.x = -dir * Math.atan2(HS, len); }
+      const foot = z - dir * len / 2, top = z + dir * len / 2;
+      ramps.push({ interior: true, x0: x0 + x - 0.62, x1: x0 + x + 0.62, z0: z0 + Math.min(foot, top), z1: z0 + Math.max(foot, top), y0: y0 + (dir > 0 ? 0 : HS), y1: y0 + (dir > 0 ? HS : 0) });
+      for (const sd of [-1, 1]) for (const base of [0, 1.7]) worldColliders.push({ minX: x0 + x + sd * 0.66 - 0.05, maxX: x0 + x + sd * 0.66 + 0.05, minZ: z0 + z - len / 2, maxZ: z0 + z + len / 2, baseYAt: () => y0 + base });
+      worldColliders.push({ minX: x0 + x - 0.66, maxX: x0 + x + 0.66, minZ: z0 + top - 0.05 * dir - 0.05, maxZ: z0 + top - 0.05 * dir + 0.05, baseYAt: () => y0 });   // no walking under the top
     };
-    // Upstairs, the stairs show as an opening in the floor with railings round it.
-    L.stairwell = (x, z, len, label, onUse, sx, sz) => {
-      B(1.3, 0.02, len, x, 0.11, z, 0x1c1814);
+    // Upstairs, the stairs show as an opening in the floor with railings round it (open at the top step).
+    L.stairwell = (x, z, len, dir = 1) => {
       const rail = mat(0xe6e0d4);
-      for (const s of [-1, 1]) { B(0.06, 1.0, len, x + s * 0.68, 0.6, z, rail); B(0.06, 0.06, len, x + s * 0.68, 1.1, z, rail); }
-      B(1.4, 1.0, 0.06, x, 0.6, z - len / 2, rail);
-      colliders.push({ minX: x0 + x - 0.7, maxX: x0 + x + 0.7, minZ: z0 + z - len / 2, maxZ: z0 + z + len / 2 });
-      L.auto.push(spot(sx, sz, 1.8, label, onUse));
+      for (const sd of [-1, 1]) { B(0.06, 1.0, len, x + sd * 0.68, 0.6, z, rail); B(0.06, 0.06, len, x + sd * 0.68, 1.1, z, rail); worldColliders.push({ minX: x0 + x + sd * 0.68 - 0.06, maxX: x0 + x + sd * 0.68 + 0.06, minZ: z0 + z - len / 2, maxZ: z0 + z + len / 2, baseYAt: () => y0 }); }
+      const low = z - dir * len / 2; B(1.4, 1.0, 0.06, x, 0.6, low, rail); worldColliders.push({ minX: x0 + x - 0.7, maxX: x0 + x + 0.7, minZ: z0 + low - 0.06, maxZ: z0 + low + 0.06, baseYAt: () => y0 });
     };
     // Lift doors set into a wall facing `rot` (front faces +z at rot 0), with a call button.
     // A lift: a real cab standing against the wall (front faces +z at rot 0). E opens the doors;
@@ -226,17 +239,18 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       const f = W(0, D + 0.9); spot(f.x - x0, f.z - z0, 1.6, () => lift.target ? 'The lift doors are open: step inside' : 'Call the lift (open the doors)', () => { lift.target = 1; lift.idle = 0; });
     };
     // An escalator: a sloped moving stairway with glass sides, bottom end at (x, zBottom).
-    L.escalator = (x, zBottom, len, dir, label, onUse, goingUp = true) => {
-      const g = new THREE.Group(); g.position.set(x0 + x, 0, z0 + zBottom + dir * len / 2); scene.add(g);
-      const ang = Math.atan2(H, len), slope = Math.hypot(H, len);
-      const belt = new THREE.Mesh(boxGeo, mat(0x3a3f45, { metal: 0.5, rough: 0.4 })); belt.scale.set(1.1, 0.25, slope); belt.position.y = H / 2; belt.rotation.x = -dir * ang; g.add(belt);
-      for (const s of [-1, 1]) {
-        const glass = new THREE.Mesh(boxGeo, mat(0xbfe6ff, { opacity: 0.3, rough: 0.05 })); glass.scale.set(0.04, 0.9, slope); glass.position.set(s * 0.6, H / 2 + 0.55, 0); glass.rotation.x = -dir * ang; g.add(glass);
-        const rail = new THREE.Mesh(boxGeo, mat(0x1a1a1a)); rail.scale.set(0.08, 0.06, slope); rail.position.set(s * 0.6, H / 2 + 1.0, 0); rail.rotation.x = -dir * ang; g.add(rail);
+    L.escalator = (x, zBottom, len, dir) => {
+      // An escalator up to the floor above, bottom end at (x, zBottom): step on and it carries you up (or walk it).
+      const g = new THREE.Group(); g.position.set(x0 + x, y0, z0 + zBottom + dir * len / 2); scene.add(g);
+      const ang = Math.atan2(HS, len), slope = Math.hypot(HS, len);
+      const belt = new THREE.Mesh(boxGeo, mat(0x3a3f45, { metal: 0.5, rough: 0.4 })); belt.scale.set(1.1, 0.25, slope); belt.position.y = HS / 2 - 0.12; belt.rotation.x = -dir * ang; g.add(belt);
+      for (const sd of [-1, 1]) {
+        const glass = new THREE.Mesh(boxGeo, mat(0xbfe6ff, { opacity: 0.3, rough: 0.05 })); glass.scale.set(0.04, 0.9, slope); glass.position.set(sd * 0.6, HS / 2 + 0.55, 0); glass.rotation.x = -dir * ang; g.add(glass);
+        const rail = new THREE.Mesh(boxGeo, mat(0x1a1a1a)); rail.scale.set(0.08, 0.06, slope); rail.position.set(sd * 0.6, HS / 2 + 1.0, 0); rail.rotation.x = -dir * ang; g.add(rail);
+        for (const base of [0, 1.7]) worldColliders.push({ minX: x0 + x + sd * 0.62 - 0.05, maxX: x0 + x + sd * 0.62 + 0.05, minZ: z0 + Math.min(zBottom, zBottom + dir * len), maxZ: z0 + Math.max(zBottom, zBottom + dir * len), baseYAt: () => y0 + base });
       }
-      colliders.push({ minX: x0 + x - 0.7, maxX: x0 + x + 0.7, minZ: z0 + Math.min(zBottom, zBottom + dir * len), maxZ: z0 + Math.max(zBottom, zBottom + dir * len) });
-      const at = goingUp ? zBottom - dir * 0.9 : zBottom + dir * (len + 0.9);
-      L.auto.push(spot(x, at, 1.7, label, onUse));
+      const zt = zBottom + dir * len;
+      ramps.push({ interior: true, x0: x0 + x - 0.55, x1: x0 + x + 0.55, z0: z0 + Math.min(zBottom, zt), z1: z0 + Math.max(zBottom, zt), y0: y0 + (dir > 0 ? 0 : HS), y1: y0 + (dir > 0 ? HS : 0), moving: { dir, speed: 0.55 } });
     };
     // ---- people working here ----
     // sit: seated at a desk/chair (seatY = top of the seat); task: 'type' | 'idle' | 'talk' | 'read'
@@ -244,7 +258,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.worker = (x, z, rot, { sit = true, seatY = 0.58, outfit = 0x3b4a5a, pants = 0x2a2f36, hair = [0x2b1d14, 0x5a3d26, 0x1a1a1a, 0xc9a24a, 0x8a3b1f][L.workers.length % 5], skin = [0xffdcc0, 0xd9a07a, 0x8d5a3b, 0xf0c8a0, 0x6b4430][(L.workers.length * 3) % 5], task = 'type' } = {}) => {
       if (!makePerson) return;
       const h = makePerson({ outfit, pants, hair, skin });
-      h.root.position.set(x0 + x, sit ? seatY + 0.1 - 0.88 : 0.1, z0 + z); h.root.rotation.y = rot; h.root.visible = false; scene.add(h.root);
+      h.root.position.set(x0 + x, y0 + (sit ? seatY + 0.1 - 0.88 : 0.1), z0 + z); h.root.rotation.y = rot; h.root.visible = false; scene.add(h.root);
       if (sit) for (const leg of [h.legL, h.legR]) leg.pivot.rotation.x = -Math.PI / 2;
       L.workers.push({ h, sit, task, phase: Math.random() * 6 });
     };
@@ -257,7 +271,18 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
   // (0 = facing away from the front door). `upFrom` remembers which downstairs you
   // came from, so the flat above a shop takes you back down into the shop.
   let upFrom = null, liftFrom = null;
-  const go = (to, lx, lz, yaw, msg) => hooks.travel(new THREE.Vector3(to.x0 + lx, 0, to.z0 + lz), yaw, msg, () => api.enter(to));
+  const go = (to, lx, lz, yaw, msg) => hooks.travel(new THREE.Vector3(to.x0 + lx, to.y0 || 0, to.z0 + lz), yaw, msg, () => api.enter(to));
+  // the opening in an upper floor over a staircase (x, z, len) or a lift shaft (cab at x, z turned rot)
+  const stairHole = (x, z, len) => ({ x0: x - 0.66, x1: x + 0.66, z0: z - len / 2, z1: z + len / 2 });
+  const liftHole = (x, z, rot) => { const c = Math.cos(rot), s2 = Math.sin(rot), pts = [[-1.32, -0.05], [1.32, -0.05], [-1.32, 2.15], [1.32, 2.15]].map(([lx, lz]) => [x + lx * c + lz * s2, z - lx * s2 + lz * c]); return { x0: Math.min(...pts.map(p => p[0])), x1: Math.max(...pts.map(p => p[0])), z0: Math.min(...pts.map(p => p[1])), z1: Math.max(...pts.map(p => p[1])) }; };
+  // a real lift between a ground floor and the floor on top of it (lifts.js)
+  function stackLift(lower, upper, lx, lz, rot, canGo) {
+    const lift = createLift({ scene, colliders: worldColliders, x: lower.x0 + lx, z: lower.z0 + lz, rot, floors: [{ y: lower.y0, name: 'Ground floor' }, { y: upper.y0, name: upper.floorName || 'Floor 1' }], canGo, toast: hooks.toast, resume: hooks.resume, floorH: H });
+    lifts.push(lift); lift.layouts = [lower, upper];
+    lift.spots.forEach((sp, i) => [lower, upper][i].spots.push(sp)); for (const sp of lift.cabSpots) { lower.spots.push(sp); upper.spots.push(sp); }
+    return lift;
+  }
+  const stack = (...ls) => { for (const l of ls) l.stack = ls; };
   // Seat `n` workers at the desk clusters built with the 4-desk pattern used below.
   const staffDesks = (L, xs, zs, n, outfit) => {
     let k = 0;
@@ -307,7 +332,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.bed(10.8, -7.8, 0, false, 0x8f5b3e); F.desk(5.9, -5.2, Math.PI / 2); F.officeChair(6.8, -5.2, -Math.PI / 2);
     F.bookshelf(11.6, -3.0, -Math.PI / 2); F.plant(11.3, -1.6);
     L.light(-6.5, 4); L.light(6.5, 4); L.light(-6, -5, 0.9, 12); L.light(2.5, -5, 0.8, 9, 0xffffff); L.light(8.5, -5, 0.8, 10);
-    L.stairs(-2.6, 6.3, 4.2, 1, 'Go upstairs', () => { upFrom = { L, x: -2.6, z: 3.0 }; go(layouts['home-up'], -1.2, 7.4, 0, 'Upstairs'); }, -2.6, 3.3);
+    L.stairs(-2.6, 5.8, 4.2, -1);   // up to the bedrooms (walk it; room to step on at the foot)
     L.worker(-6.8, 3.4, -Math.PI / 2, { seatY: 0.52, outfit: 0x8a5a4a, task: 'idle' });          // watching TV
     L.worker(10.6, 4.15, Math.PI / 2, { sit: false, outfit: 0xd96a3d, pants: 0x3a3a3a, task: 'type' });   // cooking
   }
@@ -333,7 +358,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.table(8.5, -4.6, 1.4, 0.9); F.chair(8.0, -3.9, Math.PI); F.chair(9.0, -3.9, Math.PI);
     spot(-5.5, -5.8, 2.2, 'Check the stock', () => hooks.toast('Boxes of crisps, tins and toilet roll waiting to go out on the shelves.'));
     L.light(-6, 4, 1.2, 16, 0xffffff); L.light(6, 4, 1.2, 16, 0xffffff); L.light(-4, -5.5, 0.8, 14, 0xfff1dc); L.light(6, -5.5, 0.8, 12, 0xfff1dc);
-    L.stairs(-11.2, -5.5, 4.2, -1, 'Go upstairs to the flat', () => { upFrom = { L, x: -9.8, z: -3.0 }; go(layouts['home-up'], -1.2, 7.4, 0, 'The flat above the shop'); }, -9.8, -3.0);
+    L.stairs(-11.2, -5.5, 4.2, -1);   // up to the flat above the shop (walk it)
     const uniform = { outfit: 0xc0392b, pants: 0x2a2f36 };
     L.worker(7.2, 5.7, 0, { sit: false, ...uniform, task: 'type' });            // on the till
     L.worker(-5.4, 1.4, -Math.PI / 2, { sit: false, ...uniform, task: 'type' }); // stacking shelves
@@ -372,8 +397,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.vending(11.4, -7.0, -Math.PI / 2);
     L.light(-6, 0.6, 1.1, 14, 0xf4f8ff); L.light(5.5, 0.6, 1.1, 14, 0xf4f8ff); L.light(0, 6, 0.9, 10, 0xf4f8ff);
     L.light(-7, -6, 0.9, 10, 0xf4f8ff); L.light(1.5, -6, 0.8, 9); L.light(8.5, -6, 0.8, 9);
-    L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
-    L.escalator(-9.5, 7.6, 5, -1, 'Ride the escalator up', () => { liftFrom = L; go(layouts['office-up'], -9.5, 1.3, 0, 'Floor 1'); });
+    L.escalator(-9.5, 7.6, 5, -1);   // up to floor 1 (the lift is by the right-hand wall: see the end)
     staffDesks(L, [-6.5, 5.5], [0.6], 6, 0x3b4a5a);
     L.worker(-1, 3.7, 0, { outfit: 0x2f6f8f, task: 'type' });                                   // receptionist
     for (const x of [-8.5, -7, -5.5]) L.worker(x, -7.15, 0, { outfit: 0x4a4a4a, seatY: 0.55, task: 'talk' });   // meeting
@@ -383,12 +407,12 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
 
   // =========================== UPSTAIRS: HOME / FLAT ===========================
   {
-    const L = makeLayout('home-up', -5100, 60, 0xe9e2d6, 0x9c7a55, { exit: false }), { F, spot, seat } = L;
-    L.partZ(-4, 1, 9, [5]); L.partZ(4, 1, 9, [5]);
+    const L = makeLayout('home-up', -5100, 0, 0xe9e2d6, 0x9c7a55, { exit: false, y0: HS, holes: [stairHole(-2.6, 5.8, 4.2)] }), { F, spot, seat } = L;
+    L.partZ(-4, 1, 9, [2.4]); L.partZ(4, 1, 9, [5]);
     L.partX(1, -12, 12, [-8, 0, 8]);
     L.partZ(-4, -9, 1); L.partZ(4, -9, 1);
     // Landing
-    L.stairwell(-2.6, 6.3, 4.2, 'Go downstairs', () => { const b = upFrom || { L: layouts.home, x: -2.6, z: 3.0 }; go(b.L, b.x, b.z, 0, 'Downstairs'); }, -1.2, 5.6);
+    L.stairwell(-2.6, 5.8, 4.2, -1);
     F.plant(3.2, 8.4); F.art(0, 1.8, 8.82, Math.PI, 0xb57a5a); F.rug(1.2, 4.5, 1.6, 4.2, 0x7a5a8a);
     // Kids' bedroom (front left)
     F.bed(-10.7, 3.2, Math.PI / 2, false, 0xd96a8a); F.bedside(-11.5, 4.7, Math.PI / 2);
@@ -414,12 +438,13 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
   }
 
   // =========================== UPSTAIRS: OFFICE FLOOR 1 ===========================
-  {
-    const L = makeLayout('office-up', -5300, 60, 0xe9edf1, 0x6f7a86, { exit: false }), { F, spot, seat } = L;
+  // (on top of the office, and the same floor plan on top of the tech company and the council offices)
+  function officeUp(key, x0, z0, lift, escalator) {
+    const holes = [liftHole(lift[0], lift[1], lift[2])]; if (escalator) holes.push(stairHole(-9.5, 5.1, 5));
+    const L = makeLayout(key, x0, z0, 0xe9edf1, 0x6f7a86, { exit: false, y0: HS, holes }), { F, spot, seat } = L;
     L.partX(-2.5, -12, 12, [-7, 1.5, 8.5]);
     L.partZ(-2, -9, -2.5); L.partZ(5, -9, -2.5);
-    L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift down to reception', () => { const b = liftFrom || layouts.office; go(b, 10.0, 3.0, Math.PI / 2, 'Ground floor'); });
-    L.stairwell(-9.5, 5.1, 5, 'Ride the escalator down', () => { const b = liftFrom || layouts.office; go(b, -8.2, 8.3, 0, 'Ground floor'); }, -9.5, 1.6);
+    if (escalator) L.stairwell(-9.5, 5.1, 5, -1);
     L.B(1.6, 0.4, 0.04, -9.5, 2.6, 8.82, 0x2f6f8f, false, { emissive: 0x2f6f8f, ei: 0.4 });   // "FLOOR 1" plate
     for (const cx of [-5, 5]) for (const [dx, dz, rot] of [[-0.75, -0.42, Math.PI], [0.75, -0.42, Math.PI], [-0.75, 0.42, 0], [0.75, 0.42, 0]]) {
       for (const cz of [1.0, 5.6]) { F.desk(cx + dx, cz + dz, rot); F.officeChair(cx + dx, cz + dz * 2.6, rot + Math.PI); }
@@ -440,6 +465,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     staffDesks(L, [-5, 5], [1.0, 5.6], 9, 0x4a5a6a);
     for (const x of [-8.7, -5.9]) { L.worker(x, -7.3, 0, { outfit: 0x2a2a2a, task: 'talk' }); L.worker(x, -4.7, Math.PI, { outfit: 0x5a4a3a, task: 'talk' }); }
     L.worker(7.6, -7.4, Math.PI, { sit: false, outfit: 0x2f4f6f, task: 'type' });   // IT in the server room
+    return L;
   }
 
 
@@ -482,7 +508,6 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     spot(8.5, -6.8, 1.8, 'Play on the console', () => hooks.rest(10, 'You play a quick match on the big screen. Victory!'));
     spot(4, -4.2, 1.4, 'Try the VR headset', () => hooks.toast('You put on the headset and you\'re standing on the moon. Then you walk into a desk.'));
     F.vending(11.4, -3.6, -Math.PI / 2);
-    L.lift(11.75, 3.0, -Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
     L.light(-6, 0.6, 0.9, 14, 0x9fe8ff); L.light(5.5, 0.6, 0.9, 14, 0xd9a0ff); L.light(0, 6, 0.8, 10, 0x9fe8ff); L.light(-7, -6, 0.8, 10, 0x8affc8); L.light(1.5, -6, 0.8, 9, 0x9fe8ff); L.light(8.5, -6, 0.8, 9, 0xff9ae8);
     staffDesks(L, [-6.5, 5.5], [0.6], 7, 0x1a1f2a);
     L.worker(-1, 3.7, 0, { outfit: 0x0b0f16, task: 'type' });
@@ -595,7 +620,6 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.reception(-1, 4.4); L.worker(-2, 3.5, 0, { outfit: 0x233e54, task: 'type' }); F.officeChair(-2, 3.5, 0);
     spot(-1, 5.4, 1.8, 'Ask at the front desk', () => hooks.toast('"Welcome to the council offices. Records library is through the left door, the mayor\'s office is on the right."'));
     F.plant(11.3, 8.4); F.plant(-11.3, 3.2); F.vending(-11.3, 8.3, Math.PI / 2);
-    L.lift(-11.75, 1.8, Math.PI / 2, 'Take the lift up to floor 1', () => { liftFrom = L; go(layouts['office-up'], 10.0, 3.0, Math.PI / 2, 'Floor 1'); });
     // Records library (back left)
     for (const z of [-3.2, -5.4, -7.6]) for (let x = -11; x <= -6; x += 1.25) F.bookshelf(x, z, 0, 1.2);
     F.table(-4.4, -5.5, 1.0, 2.2); F.chair(-4.4, -4.6, Math.PI); L.worker(-4.4, -6.4, 0, { outfit: 0x5a4a3a, task: 'read' }); F.chair(-4.4, -6.4, 0);
@@ -874,10 +898,8 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.counter(0, -6.2, 0, 7, 0x2a1a10, 0x3a2414); B(7, 0.06, 0.9, 0, 1.12, -6.2, gold);
     for (let i = 0; i < 12; i++) Cyl(0.06, 0.06, 0.02, -2.5 + (i % 6) * 1, 1.6 + Math.floor(i / 6) * 0.4, -8.8, gold);
     L.worker(-1.5, -7.2, 0, { sit: false, outfit: 0x1a2a3a, pants: 0x1a1a1a, task: 'type' }); L.worker(1.5, -7.2, 0, { sit: false, outfit: 0x1a2a3a, pants: 0x1a1a1a, task: 'talk' });
-    spot(0, -4.8, 2.4, 'Check in at reception (book a room)', () => hooks.hotel?.(() => go(layouts['hotel-room'], 0, 6.5, 0, 'Your room. Sleep, order room service, or take the lift back down.')));
+    spot(0, -4.8, 2.4, 'Check in at reception (book a room)', () => hooks.hotel?.(() => hooks.toast('🛎️ Your room is on the first floor. Take the lift by the stairs (back left).')));
     // lifts and a grand staircase look
-    for (const x of [-9, -6.5]) { B(2, 2.6, 0.12, x, 1.3, -8.85, mat(0xb8c1c5, { metal: 0.8, rough: 0.25 })); B(0.6, 0.2, 0.05, x, 2.8, -8.8, mat(0xffd23f, { emissive: 0xffd23f, ei: 1 })); }
-    spot(-7.75, -7.6, 2.0, 'Call the lift to your room', () => hooks.hotelRoom?.(() => go(layouts['hotel-room'], 0, 6.5, 0, 'Your room.')) ?? hooks.toast('Book a room at reception first.'));
     // lounge: sofas, coffee tables, plants, chandelier, piano
     for (const [x, z, r] of [[-8, 1, Math.PI / 2], [-8, 5, Math.PI / 2], [8, 1, -Math.PI / 2]]) { F.sofa(x, z, r, 0x7a1f2a, 2.6); F.coffeeTable(x + (x < 0 ? 1.4 : -1.4), z, r); }
     L.worker(-8, 1, Math.PI / 2, { outfit: 0x5b8a72, task: 'read', seatY: 0.58 }); L.worker(8, 1, -Math.PI / 2, { outfit: 0x8a5b72, task: 'talk', seatY: 0.58 });
@@ -892,17 +914,15 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.light(0, 0, 1.2, 16, 0xffe6b0); L.light(-8, 3, 0.8, 10, 0xffd9a0); L.light(8, -2, 0.8, 10, 0xffd9a0);
   }
   {
-    const L = makeLayout('hotel-room', -6600, 0, 0xdcd6c8, 0x6b5a48, { exit: false }), { F, spot, B } = L;
+    const L = makeLayout('hotel-room', -6500, 0, 0xdcd6c8, 0x6b5a48, { exit: false, y0: HS, holes: [liftHole(-7.75, -8.85, 0)] }), { F, spot, B } = L;   // right on top of the lobby
     B(23.6, 3, 0.1, 0, 1.5, 3.2, 0xdcd6c8, true);   // the room is the back part of the floor: a wall with the corridor beyond
     B(4, 0.6, 2.4, -3, 0.45, -5.5, 0x6b4a2f); B(3.9, 0.25, 2.3, -3, 0.85, -5.5, 0xf4f4f4); B(3.9, 0.12, 0.6, -3, 1.0, -6.4, 0xffffff); B(4, 1.4, 0.12, -3, 1.0, -6.75, 0x4a2c18);
     spot(-3, -3.6, 2.2, 'Sleep until morning', () => hooks.sleep());
     B(2.6, 1.5, 0.08, 4.5, 1.6, -8.85, mat(0x111111)); B(2.4, 1.3, 0.02, 4.5, 1.6, -8.8, mat(0x22324a, { emissive: 0x2a4a7a, ei: 0.5 }));
     spot(4.5, -6.5, 1.8, 'Watch TV', () => hooks.rest(8, 'You flick through the channels. Nothing on, as usual.'));
     B(1.8, 0.8, 0.6, 6.5, 0.5, -1.5, 0x6b4a2f); spot(6.5, -0.4, 1.5, 'Order room service (12 gold)', () => hooks.eat(55, 12, '🛎️ Room service! A club sandwich and a pot of tea arrive at the door.'));
-    B(3, 2.4, 0.08, -9, 1.6, -8.9, mat(0x9fd3ff, { emissive: 0x6fa8ff, ei: 0.4 }));   // big window
-    spot(-9, -7.6, 1.6, 'Look out of the window', () => hooks.toast('🌆 The city lights stretch all the way to the dome.'));
-    B(2.4, 2.6, 0.1, 9, 1.3, 2.9, mat(0xb8c1c5, { metal: 0.8, rough: 0.25 }));
-    spot(9, 1.8, 1.8, 'Take the lift down to the lobby', () => go(layouts.hotel, -7.75, -6.4, Math.PI, 'Back in the lobby.'));
+    B(3, 2.4, 0.08, 9, 1.6, -8.9, mat(0x9fd3ff, { emissive: 0x6fa8ff, ei: 0.4 }));   // big window
+    spot(9, -7.6, 1.6, 'Look out of the window', () => hooks.toast('🌆 The city lights stretch all the way to the dome.'));
     F.plant(-10.8, 2.2); L.light(0, -3, 0.8, 12, 0xffe6b0);
   }
 
@@ -954,9 +974,53 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     L.light(0, 4, 0.5, 14, 0xffd9a0); L.light(-8, 6.5, 0.7, 8, 0xfff2c0); L.light(8, 6.5, 0.6, 8, 0xfff2c0);
   }
 
+  // =========================== THE FLAT ABOVE THE SHOP ===========================
+  {
+    const L = makeLayout('shop-up', -5200, 0, 0xe6dfd2, 0x8f6f4f, { exit: false, y0: HS, holes: [stairHole(-11.2, -5.5, 4.2)] }), { F, spot, seat } = L;
+    L.floorName = 'The flat';
+    L.partX(-1, -12, 12, [-6, 6]); L.partZ(4, -9, -1, [-5]);
+    L.stairwell(-11.2, -5.5, 4.2, -1);
+    // living room and kitchen (front)
+    F.rug(-6, 4, 4.4, 3, 0x7a6a8a); F.tvUnit(-11.55, 4, Math.PI / 2); F.sofa(-7, 4, -Math.PI / 2, 0x6a5a4a); seat(-7, 4, -Math.PI / 2, 0.9, 'Sit on the sofa'); F.coffeeTable(-9, 4, Math.PI / 2);
+    F.counter(11.4, 3, -Math.PI / 2, 3.6); F.sink(11.4, 3, -Math.PI / 2); F.cooker(11.4, 5.2, -Math.PI / 2); F.fridge(11.4, 7.4, -Math.PI / 2);
+    F.table(6, 4, 1.6, 0.9); for (const cx of [5.6, 6.4]) { F.chair(cx, 3.2, 0); F.chair(cx, 4.8, Math.PI); }
+    spot(10.8, 7.4, 1.2, 'Open the fridge', () => hooks.kitchen ? hooks.kitchen().openFridge() : hooks.eat(25, 0, 'You grab a snack from the fridge.'));
+    spot(10.8, 5.2, 0.9, () => hooks.kitchen ? hooks.kitchen().cookerLabel() : 'Cook a meal', () => hooks.kitchen?.().openCooker());
+    // bathroom (back middle) and bedroom (back right)
+    F.bath(1.5, -8.4, 0); F.toilet(3.4, -4.2, -Math.PI / 2); F.basin(-0.6, -4.6, Math.PI / 2);
+    spot(1.5, -7.4, 1.6, 'Take a bath', () => hooks.rest(15, 'A warm bath. You feel refreshed.'));
+    F.bed(8, -7.6, 0, true, 0x8a4a5a); F.bedside(6.6, -8.5, 0); F.bedside(9.4, -8.5, 0); F.wardrobe(11.5, -3.5, -Math.PI / 2);
+    spot(8, -6, 2.0, 'Sleep in the bed', () => hooks.sleep());
+    // the landing (back left): a coat rack and a plant
+    F.plant(-6, -8.3); F.rug(-7.5, -5, 2.4, 3, 0x6b5a48);
+    L.light(-6, 4); L.light(6, 4); L.light(1.5, -5, 0.8, 9, 0xffffff); L.light(8, -5, 0.9, 10); L.light(-8, -5, 0.8, 10);
+    L.worker(-7, 4.6, -Math.PI / 2, { seatY: 0.52, outfit: 0x6a8a5a, task: 'idle' });
+  }
+
+  // =========================== UPPER FLOORS AND LIFTS ===========================
+  // Every upper floor stands right on top of its ground floor: walk the stairs or the escalator, or ride a lift.
+  const officeUpper = officeUp('office-up', -5300, 0, [11.75, 3.0, -Math.PI / 2], true);
+  const cyberUpper = officeUp('cyber-up', -5400, 0, [11.75, 3.0, -Math.PI / 2], false);
+  const govUpper = officeUp('gov-up', -5700, 0, [-11.75, 1.8, Math.PI / 2], false);
+  stack(layouts.home, layouts['home-up']); stack(layouts.shop, layouts['shop-up']);
+  stack(layouts.office, officeUpper); stackLift(layouts.office, officeUpper, 11.75, 3.0, -Math.PI / 2);
+  stack(layouts.cyber, cyberUpper); stackLift(layouts.cyber, cyberUpper, 11.75, 3.0, -Math.PI / 2);
+  stack(layouts.gov, govUpper); stackLift(layouts.gov, govUpper, -11.75, 1.8, Math.PI / 2);
+  layouts['hotel-room'].floorName = 'Rooms (first floor)';
+  stack(layouts.hotel, layouts['hotel-room']);
+  stackLift(layouts.hotel, layouts['hotel-room'], -7.75, -8.85, 0, i => i === 0 || hooks.hotelRoom?.(() => {}) === true || (hooks.toast('Book a room at reception first.'), false));
+  floorY = 0;
+
   let active = null, time = 0, autoCool = 0;
   const api = {
-    layouts,
+    layouts, lifts,
+    /** The floor under you on an upper storey (null if you're on the ground floor or over an opening). */
+    floorAt(x, z, bodyY) {
+      if (x > -4900 || bodyY == null) return null;
+      for (const l of lifts) { const g = l.groundAt(x, z, bodyY); if (g != null) return g; }
+      for (const L of uppers) if (bodyY >= L.y0 - 1.2 && Math.abs(x - L.x0) <= W / 2 && Math.abs(z - L.z0) <= D / 2) { if (L.holes.some(h => x > L.x0 + h.x0 && x < L.x0 + h.x1 && z > L.z0 + h.z0 && z < L.z0 + h.z1)) return null; return L.y0; }
+      return null;
+    },
     /** Which layout a building type uses. Unknown non-civic types count as homes. */
     layoutFor(type = '') {
       const t = String(type).toLowerCase();
@@ -989,6 +1053,12 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       for (const w of windowSets) w.update(dt);
       if (!active) return;
       const pp = hooks.playerPos?.();
+      if (pp && active.stack) {   // which floor of the building you're on now (you walked up or rode the lift)
+        let on = active.stack[0]; for (const l of active.stack) if (pp.y >= l.y0 - 1) on = l;
+        if (on !== active) { for (const l of active.lights) l.visible = false; for (const w of active.workers) w.h.root.visible = false; active = on; for (const l of on.lights) l.visible = true; for (const w of on.workers) w.h.root.visible = true; }
+      }
+      for (const l of lifts) if (l.layouts.includes(active)) l.update(dt, pp);
+      if (pp) for (const r of ramps) if (r.moving && pp.x > r.x0 && pp.x < r.x1 && pp.z > r.z0 && pp.z < r.z1) pp.z += r.moving.dir * r.moving.speed * dt;   // the escalator carries you
       if (pp) {
         // stairs and escalators: walk up to them and you go; you must step away after arriving first
         let nearAny = false;
@@ -1027,7 +1097,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     nearest(p) {
       if (!active) return null;
       let best = null, bestD = Infinity;
-      for (const s of active.spots) { const d = Math.hypot(p.x - s.pos.x, p.z - s.pos.z); if (d < s.r && d < bestD) { best = s; bestD = d; } }
+      for (const s of active.spots) { const d = Math.hypot(p.x - s.pos.x, p.z - s.pos.z); if (d < s.r && d < bestD && Math.abs(p.y - s.pos.y) < 2) { best = s; bestD = d; } }
       return best;
     },
   };

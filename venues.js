@@ -234,10 +234,11 @@ export function buildVenues(ctx) {
   company({ name: 'Skyline Suites', type: 'hotel', x: 520, z: 1200, w: 28, d: 24, floors: 9, face: -1, base: '#22303c', win: '#9fd3ff', sign: '#15232e', fg: '#9fd3ff', sub: 'MODERN HOTEL · ROOFTOP VIEWS', neon: 0x5fd4ff });
   company({ name: 'The Boulevard Inn', type: 'hotel', x: 820, z: 1200, w: 26, d: 22, floors: 5, face: -1, base: '#7a4a2a', win: '#ffe6b0', sign: '#3a1f10', fg: '#ffe6b0', sub: 'HOTEL · ROOMS FROM 40 GOLD', neon: 0xffb36b });
   dest('Grand Parade (hotels)', 520, 1168);
-  // Community halls in Ashford, Riverside and the Capital
+  // Community halls in Ashford, Riverside and the Capital (the Capital's stood inside the space centre at 420,740;
+  // it's on clear, dry land just north of the Capital now, its door facing the city: checked empty with a 3 m margin)
   company({ name: 'Ashford Community Hall', type: 'community_hall', x: -60, z: -180, w: 24, d: 18, floors: 2, face: 1, base: '#c8b89a', win: '#fff1d0', sign: '#2d5d3a', fg: '#ffffff', sub: 'BINGO · YOGA · COFFEE MORNINGS' });
   company({ name: 'Riverside Community Centre', type: 'community_hall', x: -140, z: 820, w: 22, d: 18, floors: 2, face: -1, base: '#b8a88a', win: '#fff1d0', sign: '#2f4a6b', fg: '#ffffff', sub: 'EVENTS · FOOD BANK · CLUBS' });
-  company({ name: 'Capital Civic Hall', type: 'community_hall', x: 420, z: 740, w: 24, d: 18, floors: 2, face: -1, base: '#d9d2c0', win: '#fff1d0', sign: '#5a1f1f', fg: '#ffffff', sub: 'COMMUNITY · MEETINGS · PARTIES' });
+  company({ name: 'Capital Civic Hall', type: 'community_hall', x: 380, z: 648, w: 24, d: 18, floors: 2, face: 1, base: '#d9d2c0', win: '#fff1d0', sign: '#5a1f1f', fg: '#ffffff', sub: 'COMMUNITY · MEETINGS · PARTIES' });
 
   // Entertainment Quarter at the west end of the boulevard: casinos, arcades and a church.
   company({ name: 'Golden Palace Casino', type: 'casino', x: -150, z: 1068, w: 26, d: 18, floors: 4, face: 1, base: '#3a0f1f', win: '#ffd23f', sign: '#2a0814', fg: '#ffd23f', sub: 'SLOTS · ROULETTE · BLACKJACK · POKER', neon: 0xffd23f });
