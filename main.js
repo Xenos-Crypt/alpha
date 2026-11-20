@@ -125,7 +125,7 @@ import { buildBeach } from './beach.js';
 import { buildResortBeach } from './resort-beach.js';
 import { makeKit } from './leisure-kit.js';
 import { makeRundown, buildAdminEstate } from './home-styles.js';
-import { createSlum, createRent, SLUM_HOME, SLUM_HOME_Y, SLUM_HOME_YARD, slumGroundAt } from './slum.js';
+import { createSlum, createRent, SLUM_HOME, SLUM_HOME_Y, SLUM_HOME_YARD, slumGroundAt, RENT } from './slum.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
 import { buildRoadLinks } from './road-links.js';
@@ -2061,7 +2061,7 @@ const SPAWN = new THREE.Vector3(HOME.x, HOME_Y, HOME.minZ - 0.7);   // on the ba
 player.position.copy(SPAWN);
 const DEFAULT_SPAWN=SPAWN.clone();
 let houseVisits=null;
-const roomChat=createRoomChat({onGame:p=>{if(p?.kind==='versus')sportsGames?.receive(p);else houseVisits?.receive(p);},client:supabase,name:()=>playerUsername||'Player',alignment:playerAlignment,playerState:()=>({position:player.position.toArray(),yaw:player.rotation.y,classIndex:charIdx}),onPlayer:data=>onlinePlayers?.receive(data),onPlayerLeft:id=>{onlinePlayers?.remove(id);houseVisits?.playerLeft(id);},onClearPlayers:()=>onlinePlayers?.clear(),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
+const roomChat=createRoomChat({onGame:p=>{if(p?.kind==='versus')sportsGames?.receive(p);else if(p?.kind==='dm'){if(p.to===roomChat.self&&p.text)phone?.receive({id:'p:'+p.from,name:p.fromName||'Player',icon:'🧑',player:true,pid:p.from},String(p.text).slice(0,300));}else houseVisits?.receive(p);},client:supabase,name:()=>playerUsername||'Player',alignment:playerAlignment,playerState:()=>({position:player.position.toArray(),yaw:player.rotation.y,classIndex:charIdx}),onPlayer:data=>onlinePlayers?.receive(data),onPlayerLeft:id=>{onlinePlayers?.remove(id);houseVisits?.playerLeft(id);},onClearPlayers:()=>onlinePlayers?.clear(),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:()=>requestGameControl()});
 const hosting=createHosting({client:supabase,onRoomJoined:room=>roomChat.start(room),onRoomLeft:()=>roomChat.stop(),beforeRoomLeave:()=>onlineAccount?.save(),toast,setSpawn(city){SPAWN.set(city.x,groundY(city.x,city.z),city.z);},resetSpawn(){SPAWN.copy(DEFAULT_SPAWN);}});
 
 let vy = 0, onGround = true;
@@ -2752,6 +2752,13 @@ function nextNode(cur, prev) {
   return pick(opts);
 }
 const nearestNode = p => [clamp(Math.round(p.x / 40), -4, 4), clamp(Math.round(p.z / 40), -4, 4)];
+// the next junction on the way to `goal` (a police car sent to you follows the streets, it doesn't fly straight)
+function towardNode(cur, prev, goal) {
+  const opts = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([di, dj]) => [cur[0] + di, cur[1] + dj]).filter(([i, j]) => i >= -4 && i <= 4 && j >= -4 && j <= 4);
+  const score = ([i, j]) => Math.abs(i - goal[0]) + Math.abs(j - goal[1]) + (prev && i === prev[0] && j === prev[1] ? 0.5 : 0);
+  return opts.sort((a, b) => score(a) - score(b))[0];
+}
+const policeTarget = () => inCar && driving ? driving.group.position : player.position;
 function laneFrame(ai) {
   const A = nodePos(...ai.from);
   const dir = nodePos(...ai.to).sub(A).normalize();
@@ -7444,7 +7451,7 @@ function roadTravelLimit(p,dir,distance,v){
 function trafficDrive(v, dt) {
   const ai = v.ai;
   let f = laneFrame(ai);
-  let desired = ai.cruise*conditionFactors(v.health).topSpeed;
+  let desired = (ai.dispatch ? 17 : ai.cruise)*conditionFactors(v.health).topSpeed;   // (sent to a call: lights and siren, faster)
   ai.ignoreT -= dt;
   if (ai.stopTimer > 0) { ai.stopTimer -= dt; desired = 0; }
   else if (trafficBlocked(v, v.group.position, f.dir, f.left)) {
@@ -7465,6 +7472,7 @@ function trafficDrive(v, dt) {
     ai.s -= 40;
     ai.prev = ai.from; ai.from = ai.to; ai.stopped = false;
     if (ai.route) { ai.routeIdx = (ai.routeIdx + 1) % ai.route.length; ai.to = ai.route[(ai.routeIdx + 1) % ai.route.length]; }
+    else if (ai.dispatch) { const goal = nearestNode(policeTarget()); if (ai.from[0] === goal[0] && ai.from[1] === goal[1]) { ai.dispatch = null; ai.alerted = true; } ai.to = towardNode(ai.from, ai.prev, goal); }
     else ai.to = nextNode(ai.from, ai.prev);
     f = laneFrame(ai);
   } else f = laneFrame(ai);
@@ -7491,24 +7499,35 @@ function policeCanSee(v, target) {
   }
   return true;
 }
+// A police car only comes after you when it knows where you are: it saw you, it's close by, or it was sent from a
+// station and has driven there along the streets. Nobody appears out of nowhere.
+function policeEngaged(v) {
+  const t = policeTarget(), d = distXZ(v.group.position, t);
+  if (v.ai.alerted) { if (d > 170 && !policeCanSee(v, t)) { v.ai.alerted = false; v.ai.dispatch = { station: 'patrol' }; v.ai.from = null; return false; } return true; }   // lost you: back to the streets to find you again
+  if (d < 55 || (d < 140 && policeCanSee(v, t))) { v.ai.alerted = true; v.ai.dispatch = null; return true; }
+  return false;
+}
+// Backup comes from the nearest police station: a car parked there if it has one, otherwise one out of its garage.
+// It follows the roads to you, so it takes a while (the further the station, the longer).
 function requestPoliceBackup() {
   if (pursuitBackupCooldown > 0) return;
-  const target = inCar && driving ? driving.group.position : player.position;
-  const nearby = vehicles.filter(v => v.kind === 'police' && v.ai && !v.disabled && distXZ(v.group.position, target) < 140);
-  if (nearby.length >= 3) return;
-  // Limit the total fleet instead of spawning endlessly during long pursuits.
-  if (vehicles.filter(v => v.kind === 'police').length >= 6) return;
-  const unit = spawnTraffic('police', 0xf5f6fa);
-  if (target.x > 1000 || distXZ(unit.group.position, target) > 140) {
-    unit.group.position.copy(target).add(new THREE.Vector3(60, 0, 35));
-    collide(unit.group.position, unit.radius); unit.group.position.y = groundY(unit.group.position.x, unit.group.position.z);
-  }
-  unit.ai.chasing = true; pursuitBackupCooldown = 15;
+  const target = policeTarget();
+  if (vehicles.filter(v => v.kind === 'police' && v.ai && !v.disabled && (v.ai.alerted || v.ai.dispatch)).length >= 3) return;
+  const st = civicBuildings.filter(b => b.type === 'police' && b.alive !== false).sort((a, b) => distXZ(a, target) - distXZ(b, target))[0];
+  if (!st) return;
+  let unit = vehicles.find(v => v.kind === 'police' && v.ai?.parked && !v.disabled && distXZ(v.group.position, st) < 45);   // the station's own car
+  if (!unit) { if (vehicles.filter(v => v.kind === 'police' && !v.ai?.parked).length >= 8) return; unit = spawnTraffic('police', 0xf5f6fa); }
+  const node = nearestNode(st), goal = nearestNode(target);
+  Object.assign(unit.ai, { parked: false, chasing: false, alerted: false, from: node, prev: null, to: towardNode(node, null, goal), s: 0, dispatch: { station: st.name } });
+  if (!unit.stationHome) { const f = laneFrame(unit.ai); unit.group.position.copy(f.pos); unit.group.rotation.y = Math.atan2(f.dir.x, f.dir.z); }   // it pulls out of the station onto the street
+  const eta = Math.max(10, Math.round((Math.abs(node[0] - goal[0]) + Math.abs(node[1] - goal[1])) * 40 / 15 + distXZ(nodePos(...goal), target) / 15));
+  toast(`🚓 ${st.name} has sent a car after you. It's driving over (about ${eta} s).`);
+  pursuitBackupCooldown = 25;
 }
 function updatePursuit(dt) {
   if(wanted>0&&transitArrestTarget(transport))wanted=Math.max(wanted,30);
   pursuitBackupCooldown = Math.max(0, pursuitBackupCooldown - dt);
-  if (wanted <= 0) return;
+  if (wanted <= 0) { for (const v of vehicles) if (v.kind === 'police' && v.ai && (v.ai.alerted || v.ai.dispatch)) { v.ai.alerted = false; v.ai.dispatch = null; } return; }
   const target = inCar && driving ? driving.group.position : player.position;
   const seen = !dungeon && !inCivicInterior && !sewers?.underground && !metro?.underground && vehicles.some(v => v.kind === 'police' && v.ai && !v.disabled && policeCanSee(v, target));
   if (seen) { policeLastSeen.copy(target); wanted = Math.max(wanted, 30); }
@@ -7642,12 +7661,13 @@ function updateVehicles(dt) {
     if(v.taskDriven)continue;
     if(v.bridgeFlight){driveVehicle(v,dt);continue;}
     if(v.routeTraffic&&v!==driving)continue;
-    if (v.disabled || (v.ai?.parked && !(v.kind==='police'&&wanted>0) && !(v.kind === 'tank' && militaryAlert > 0))) { v.speed = 0; continue; }
+    if (v.disabled || (v.ai?.parked && !(v.kind==='police'&&wanted>0&&(v.ai.dispatch||v.ai.alerted)) && !(v.kind === 'tank' && militaryAlert > 0))) { v.speed = 0; continue; }
     v.crashCooldown = Math.max(0, (v.crashCooldown || 0) - dt);
     const roadStart = v.group.position.clone();
     if (v.ai?.officer?.out && !(v.kind === 'police' && wanted > 0)) { const o = v.ai.officer; o.out = false; o.h.root.visible = false; if (o.e) { o.e.hidden = true; if (!o.e.alive) { o.e.alive = true; o.e.hp = o.e.maxHp; o.e.respawn = 0; o.h.rig.rotation.set(0, 0, 0); o.h.rig.position.y = 0; } o.e.copAngry = 0; } o.downNoted = false; }   // chase over: the officer is back in the car
     if (v === driving || !v.ai) driveVehicle(v, dt);
-    else if (v.kind === 'police' && wanted > 0 && !dungeon) policeChase(v, dt);
+    else if (v.kind === 'police' && wanted > 0 && !dungeon && policeEngaged(v)) policeChase(v, dt);
+    else if (v.kind === 'police' && v.ai.dispatch) { if (!v.ai.from) { v.ai.from = nearestNode(v.group.position); v.ai.to = towardNode(v.ai.from, null, nearestNode(policeTarget())); v.ai.s = 0; } v.ai.parked = false; trafficDrive(v, dt); }   // on the way from the station
     else if (!v.ai.from && !v.ai.chasing && v.kind !== 'tank' && !(v.kind === 'police' && v.stationHome)) { v.speed = 0; continue; }   // no lane route: just wait (never crash the traffic code)
     else if (v.kind === 'tank' && militaryAlert > 0 && !dungeon) tankChase(v, dt);
     else if(v.kind==='police'&&v.stationHome){const delta=v.stationHome.clone().sub(v.group.position).setY(0),distance=delta.length();if(distance<3){v.ai.parked=true;v.ai.chasing=false;v.speed=0;}else{v.group.rotation.y=Math.atan2(delta.x,delta.z);v.speed=Math.min(10,distance);v.group.position.addScaledVector(delta.normalize(),v.speed*dt);v.group.position.y=groundY(v.group.position.x,v.group.position.z);}}
@@ -8205,7 +8225,21 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   pause:storyPause,resume:requestGameControl});
 // The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
 // Cryptic: the phone everyone carries (phone.js). The torch, taxi, map, career and city hall live on it now.
-phone=createPhone({where:()=>player.position,userId:()=>soloUserId||registryUserId||'guest',stats,toast,pause:()=>pauseForPanel(),resume:()=>requestGameControl(),premium:()=>isAdmin,
+// Phone messages: people you know, and players in your room. People reply in their own time (a few seconds).
+function phoneContacts(){
+  const out=[{id:'kassim',name:`${RENT.landlord} (landlord)`,icon:'🏠',about:'Your landlord in Cinder Row'},{id:'mama-ade',name:"Mama Ade",icon:'🍲',about:"The corner shop in Cinder Row"},{id:'police',name:'Ashford Police (non-emergency)',icon:'👮',about:'Report something, ask for help'}];
+  try{if(roomChat.connected)for(const p of roomChat.people())out.push({id:'p:'+p.id,name:p.name,icon:'🧑',player:true,pid:p.id,about:'In your room right now'});}catch{}
+  return out;
+}
+function phoneSend(c,text){
+  if(c.player){if(!roomChat.connected){toast('Not connected to your room right now.');return;}roomChat.sendGame({kind:'dm',to:c.pid,text}).catch(()=>toast('The message didn\'t send.'));return;}
+  const t=text.toLowerCase(),any=a=>a[Math.floor(Math.random()*a.length)];let reply;
+  if(c.id==='kassim')reply=/rent|pay|owe|money/.test(t)?`Rent is ${RENT.amount} gold every ${RENT.every} days. Pay on time or it's ${RENT.lateFee} extra.`:/fix|broken|leak|water|light|repair/.test(t)?any(["I'll send someone. Next week. Maybe.","It worked fine when you moved in.","Fix it yourself, it's cheaper."]):any(["What now?","If this is about the rent, just pay it.","I'm busy. Make it quick.","Don't call me after 9."]);
+  else if(c.id==='mama-ade')reply=/food|hungry|eat|rice|bread|menu/.test(t)?"Come to the hatch, my dear. Rice and beans is 3 gold, bread is 1.":/open|time|close/.test(t)?"I'm open from early till late. Knock if the hatch is down.":any(["God bless you. Come by, I'll put the kettle on.","Eh! Long time. You're eating well?","Mind yourself out there tonight."]);
+  else if(c.id==='police')reply=wanted>0?"We know who you are. Hand yourself in at the nearest station and it'll go easier.":/report|crime|stole|attack|help|robbed/.test(t)?"Thank you for your report. An officer will look into it. If it's an emergency, get somewhere safe.":any(["Ashford Police. How can we help?","Noted. Stay safe.","For emergencies, get to a police station or a hospital."]);
+  if(reply)setTimeout(()=>phone?.receive(c,reply),1800+Math.random()*3500);
+}
+phone=createPhone({contacts:()=>phoneContacts(),sendMessage:(c,text)=>phoneSend(c,text),where:()=>player.position,userId:()=>soloUserId||registryUserId||'guest',stats,toast,pause:()=>pauseForPanel(),resume:()=>requestGameControl(),premium:()=>isAdmin,
   torch:{on:()=>flashlightOn,toggle:()=>toggleFlashlight()},
   snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
   openMap:()=>worldMap?.show(),callTaxi:()=>cityServices?.callTaxi(player.position.clone()),openCareer:()=>careers?.openCareer(),openCityHall:()=>society?.openHall(),
@@ -8508,7 +8542,14 @@ const grass = createGrass({ scene, count: touchDevice ? 3000 : 6000, radius: tou
 const GRASS_TUFTS = false;
 if (!GRASS_TUFTS) { grass.mesh.visible = false; grass.setCount(0); }
 const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
-worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
+worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,layers:()=>{const cops=vehicles.filter(v=>v.kind==='police'&&!v.disabled),me=inCar&&driving?driving.group.position:player.position,P=o=>({x:o.x,z:o.z});   // map filters: green safe, blue police, red pursuit, and the rest
+ return [{key:'safe',label:'Safe places',color:0x2ecc71,points:[{x:HOME.x,z:(HOME.minZ+HOME.maxZ)/2,r:14},...civicBuildings.filter(b=>b.type==='hospital').map(b=>({x:b.x,z:b.z,r:Math.max(b.maxX-b.minX,b.maxZ-b.minZ)/2+8}))]},
+  {key:'police',label:'Police cars',color:0x2e86de,points:cops.map(v=>P(v.group.position))},
+  {key:'pursuit',label:'Police after you',color:0xe74c3c,points:wanted>0?[{x:me.x,z:me.z,ring:true},...cops.filter(v=>v.ai?.alerted||v.ai?.dispatch).map(v=>P(v.group.position))]:[]},
+  {key:'gates',label:'Dungeon gates',color:0x9b59b6,points:gates.filter(g=>g.pos&&!g.cleared).map(g=>P(g.pos))},
+  {key:'shops',label:'Shops',color:0xe67e22,on:false,points:civicBuildings.filter(b=>b.type==='shop'&&b.alive!==false).map(b=>P(b))},
+  {key:'car',label:'Your car',color:0xf1c40f,points:[P(myCar.group.position)]}];},
+ waypoint:d=>setWaypoint(d),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosition:()=>player.position});worldAdvertising.update(0);adBalloon.visible=false;
 const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>openMap();document.body.append(mapButton);
 for(const it of interactables)if(it.label==='Open town travel board')it.action=()=>worldMap.show();
