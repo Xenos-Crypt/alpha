@@ -10,7 +10,7 @@ import { makeBotany } from './botany.js';
 
 // ---------------- the run-down home ----------------
 export function makeRundown(ctx) {
-  const { scene, makeTex, home, curb } = ctx;
+  const { scene, makeTex, home, curb } = ctx, fy = ctx.floorY ?? curb;   // fy: the floor your home is on (the top floor of the tenement)
   const root = new THREE.Group(); root.name = 'run-down home'; scene.add(root);
   // every bit of the mess has an ID too (world-ids.js)
   const bot = makeBotany(ctx, 'your home'), tag = (cls, kind, mat, maker, name, x, z, owner = 'PLR') => bot.fixture(cls, kind, mat, maker, name, x, z, owner);
@@ -33,31 +33,32 @@ export function makeRundown(ctx) {
   });
   const grimeMat = new THREE.MeshStandardMaterial({ map: grime, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2 });
   const W = home.maxX - home.minX, D = home.maxZ - home.minZ, H = 3;
-  const wall = (w, x, z, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, H), grimeMat); m.position.set(x, curb + H / 2, z); m.rotation.y = ry; root.add(m); };
+  const wall = (w, x, z, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, H), grimeMat); m.position.set(x, fy + H / 2, z); m.rotation.y = ry; root.add(m); };
   wall(W, home.x, home.minZ - 0.03, Math.PI); wall(W, home.x, home.maxZ + 0.03, 0); wall(D, home.minX - 0.03, (home.minZ + home.maxZ) / 2, -Math.PI / 2); wall(D, home.maxX + 0.03, (home.minZ + home.maxZ) / 2, Math.PI / 2);
   // boarded-up windows: rough planks nailed across
   const plank = new THREE.MeshStandardMaterial({ color: 0x7a6248, roughness: 1 });
-  for (const wx of [home.x - 3.6, home.x + 3.6]) for (const [dy, rz] of [[0.25, 0.18], [-0.2, -0.12], [0.05, 0.4]]) {
-    const p = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.22, 0.04), plank); p.position.set(wx, curb + 1.55 + dy, home.minZ - 0.08); p.rotation.z = rz; p.castShadow = true; root.add(p);
+  const winX = (W / 2 + 1) / 2;   // the front windows sit halfway between the door and each corner
+  for (const wx of [home.x - winX, home.x + winX]) for (const [dy, rz] of [[0.25, 0.18], [-0.2, -0.12], [0.05, 0.4]]) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.22, 0.04), plank); p.position.set(wx, fy + 1.55 + dy, home.minZ - 0.08); p.rotation.z = rz; p.castShadow = true; root.add(p);
   }
   // a blue tarp weighed down over a leak in the roof
   const tarp = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 3.2), new THREE.MeshStandardMaterial({ color: 0x1c6fb8, roughness: 0.6, side: THREE.DoubleSide }));
-  tarp.position.set(home.x + 1.5, curb + 4.15, home.z - 2.7); tarp.rotation.set(-Math.PI / 2 + 0.37, 0, 0.05); root.add(tarp);
-  for (const dx of [-1.6, 1.6]) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.25), new THREE.MeshStandardMaterial({ color: 0x8a8a8a })); t.position.set(home.x + 1.5 + dx, curb + 3.7, home.z - 4.1); root.add(t); }   // tyres holding it down
+  tarp.position.set(home.x + 1.5, fy + 3.2, home.z - 1.2); tarp.rotation.set(-Math.PI / 2 - 0.05, 0, 0.05); root.add(tarp);
+  for (const dx of [-1.6, 1.6]) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.25), new THREE.MeshStandardMaterial({ color: 0x8a8a8a })); t.position.set(home.x + 1.5 + dx, fy + 3.3, home.z - 2.6); root.add(t); }   // tyres holding it down
   // rubbish bags by the door, a broken chair, weeds through the garden
   const bagMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.35 });
-  for (const [dx, dz, s] of [[2.6, -1.0, 0.45], [3.2, -0.7, 0.38], [2.9, -1.5, 0.33]]) { const b = new THREE.Mesh(new THREE.SphereGeometry(s, 9, 7), bagMat); b.scale.y = 0.8; b.position.set(home.x + dx, curb + s * 0.7, home.minZ + dz); root.add(b); }
-  const chair = new THREE.Group(); chair.position.set(home.x - 4.2, curb, home.minZ - 2.2); chair.rotation.set(0, 0.6, 1.2); root.add(chair);
+  for (const [dx, dz, s] of [[2.0, -0.5, 0.3], [2.5, -0.8, 0.26], [2.3, -1.05, 0.22]]) { const b = new THREE.Mesh(new THREE.SphereGeometry(s, 9, 7), bagMat); b.scale.y = 0.8; b.position.set(home.x + dx, fy + s * 0.7, home.minZ + dz); root.add(b); }   // bags piled on the balcony
+  const chair = new THREE.Group(); chair.position.set(home.x - 3.2, fy, home.minZ - 0.7); chair.rotation.set(0, 0.6, 0); root.add(chair);   // a cracked plastic chair on the balcony
   for (const [w, h, d, x, y, z] of [[0.5, 0.05, 0.5, 0, 0.45, 0], [0.5, 0.5, 0.05, 0, 0.7, -0.22], [0.04, 0.45, 0.04, 0.22, 0.22, 0.22]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0xd8d2c4 })); m.position.set(x, y, z); chair.add(m); }
   const weedMat = new THREE.MeshStandardMaterial({ color: 0x6b7a2a, roughness: 1 }), weedGeo = new THREE.ConeGeometry(0.12, 0.55, 4);
   const weeds = new THREE.InstancedMesh(weedGeo, weedMat, 90), o = new THREE.Object3D();
-  for (let i = 0; i < 90; i++) { const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 10; o.position.set(home.x + Math.cos(a) * r * 1.2, curb + 0.25, home.minZ - 3 + Math.sin(a) * r * 0.5); if (Math.abs(o.position.x - home.x) < 1.2) o.position.x += 2.4; o.rotation.set((Math.random() - 0.5) * 0.4, 0, (Math.random() - 0.5) * 0.4); o.scale.setScalar(0.6 + Math.random()); o.updateMatrix(); weeds.setMatrixAt(i, o.matrix); }
+  for (let i = 0; i < 90; i++) { o.position.set(home.x - 6 + Math.random() * 12, curb + 0.25, home.minZ - 3.8 + Math.random() * 3.5); /* weeds in the strip of dirt out front */ if (Math.abs(o.position.x - home.x) < 1.2) o.position.x += 2.4; o.rotation.set((Math.random() - 0.5) * 0.4, 0, (Math.random() - 0.5) * 0.4); o.scale.setScalar(0.6 + Math.random()); o.updateMatrix(); weeds.setMatrixAt(i, o.matrix); }
   root.add(weeds);
   // the water stain shaped like a hand, on the bedroom ceiling
   if (ctx.bedroom) {
     const stain = makeTex(128, 128, g => { g.clearRect(0, 0, 128, 128); g.fillStyle = 'rgba(120,95,50,0.45)'; g.beginPath(); g.ellipse(64, 74, 26, 30, 0, 0, 7); g.fill(); for (let f = 0; f < 5; f++) { g.save(); g.translate(64, 60); g.rotate(-0.9 + f * 0.42); g.beginPath(); g.ellipse(0, -34, 7, 20, 0, 0, 7); g.fill(); g.restore(); } g.strokeStyle = 'rgba(90,70,35,0.5)'; g.lineWidth = 3; g.beginPath(); g.arc(64, 70, 40, 0, 7); g.stroke(); });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), new THREE.MeshBasicMaterial({ map: stain, transparent: true, depthWrite: false }));
-    m.position.set(ctx.bedroom.x, curb + 2.97, ctx.bedroom.z); m.rotation.x = Math.PI / 2; root.add(m);
+    m.position.set(ctx.bedroom.x, fy + 2.97, ctx.bedroom.z); m.rotation.x = Math.PI / 2; root.add(m);
   }
   return root;
 }
