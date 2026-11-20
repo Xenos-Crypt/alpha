@@ -38,14 +38,14 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   sand.rotation.x = -Math.PI / 2; sand.position.set((x0 + x1) / 2, SAND, (z0 + shore) / 2 - 1); sand.receiveShadow = true; root.add(sand);
   floor(x0, x1, z0 - 0.5, shore, SAND);
   fx('LND', 'BCH', 'SND', PARKS, 'Beach sand (the bay)', (x0 + x1) / 2, (z0 + shore) / 2);
-  const wet = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 3.5), mat(0xb59a6a, { rough: 0.45 })); wet.rotation.x = -Math.PI / 2; wet.position.set((x0 + x1) / 2, SAND + 0.004, shore - 1.6); root.add(wet);
+  const wet = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 3.5), mat(0xb59a6a, { rough: 0.45 })); wet.rotation.x = -Math.PI / 2; wet.position.set((x0 + x1) / 2, SAND + 0.01, shore - 1.6); root.add(wet);   // 1 cm above the dry sand: at 4 mm the wet edge flickered through it
   const shallowTex = makeTex(8, 64, g => { const grd = g.createLinearGradient(0, 0, 0, 64); grd.addColorStop(0, 'rgba(110,232,215,0.9)'); grd.addColorStop(0.6, 'rgba(60,190,205,0.45)'); grd.addColorStop(1, 'rgba(31,111,168,0)'); g.fillStyle = grd; g.fillRect(0, 0, 8, 64); });
   const shallow = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 30), new THREE.MeshStandardMaterial({ map: shallowTex, transparent: true, depthWrite: false, roughness: 0.08 }));
   shallow.rotation.x = -Math.PI / 2; shallow.position.set((x0 + x1) / 2, seaY + 0.02, shore + 15); root.add(shallow);
   const foamTex = makeTex(256, 32, g => { g.clearRect(0, 0, 256, 32); for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(255,255,255,${0.4 + Math.random() * 0.5})`; g.beginPath(); g.arc(Math.random() * 256, 8 + Math.random() * 16, 1 + Math.random() * 4, 0, 7); g.fill(); } });
   foamTex.wrapS = THREE.RepeatWrapping; foamTex.repeat.set(14, 1);
   const foam = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 2.6), new THREE.MeshBasicMaterial({ map: foamTex, transparent: true, depthWrite: false, opacity: 0.85 }));
-  foam.rotation.x = -Math.PI / 2; foam.position.set((x0 + x1) / 2, SAND + 0.01, shore + 0.6); root.add(foam);
+  foam.rotation.x = -Math.PI / 2; foam.position.set((x0 + x1) / 2, SAND + 0.02, shore + 0.6); root.add(foam);   // 1 cm above the wet sand: at 6 mm the two flickered through each other at a distance
 
   // ---------------- granite boulders closing the west end of the bay (Seychelles, Boulders Beach) ----------------
   const granite = [mat(0xa8958a, { rough: 0.9 }), mat(0x8f7f78, { rough: 0.9 }), mat(0xb9a597, { rough: 0.85 })];
@@ -212,7 +212,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     const z = 244 + ((x * 7) % 4);
     C(root, 0.04, 0.04, 2.4, x, 1.2, z, 0xeeeeee, 6);
     const top = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.55, 8, 1, true), parasolMats[k % parasolMats.length]); top.position.set(x, 2.45, z); root.add(top);
-    const towel = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.8), mat(towelCols[k % towelCols.length])); towel.rotation.x = -Math.PI / 2; towel.position.set(x + 1.2, SAND + 0.01, z + 0.6); root.add(towel);
+    const towel = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.8), mat(towelCols[k % towelCols.length])); towel.rotation.x = -Math.PI / 2; towel.position.set(x + 1.2, SAND + 0.03, z + 0.6); root.add(towel);   // towels reach onto the wet sand and under the foam's landward swing: keep them 2 cm / 1 cm above so they don't flicker
     if (k % 2 === 0) sitter(x + 1.2, z + 0.6, Math.PI, 0.12, { task: k % 4 ? 'talk' : 'eat' });
     fx('PRD', 'PAR', 'FAB.STL', 'MarketWay Retail', 'Beach parasol', x, z, 'RES'); fx('PRD', 'TWL', 'FAB', 'Loomhouse Textiles', 'Beach towel', x + 1.2, z + 0.6, 'RES');
     k++;
