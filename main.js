@@ -6332,7 +6332,7 @@ const market = createMarketPanel({ money: () => stats.gold, toast, pause: () => 
 function openVehicleShop(title, cats, place, { priceMult = 1, illegal = false } = {}) {
   market.open(title, marketItems(cats, { priceMult, tag: illegal ? 'Stolen, re-sprayed, fake plates.' : '' }), (item, colour) => {
     const e = item.entry;
-    if (stats.gold < item.price) { toast('Not enough gold.'); return false; }
+    if (stats.gold < item.price) return `Not enough gold: ${e.name} costs ${item.price.toLocaleString()} and you have ${Math.floor(stats.gold).toLocaleString()}.`;
     stats.gold -= item.price;
     let v;
     if (e.kind === 'car') v = makeVehicle('car', colour, e.style);
@@ -6344,8 +6344,10 @@ function openVehicleShop(title, cats, place, { priceMult = 1, illegal = false } 
     place(v, e);
     if (v.kind === 'plane') { v.alt = v.group.position.y; v.plane.yaw = v.group.rotation.y; v.home = { x: v.group.position.x, z: v.group.position.z, yaw: v.group.rotation.y }; }
     if (isRoadVehicle(v) || v.kind === 'bicycle') cityServices?.ownedCars?.push(v);
-    toast(`${item.icon} ${e.name} is yours!${illegal ? ' Keep your head down: the plates are hot.' : ''} It's waiting outside.`);
-    return true;
+    const need = v.kind === 'plane' || v.kind === 'helicopter' ? 'pilot' : v.kind === 'boat' ? 'boat' : isRoadVehicle(v) && v.kind !== 'bicycle' ? 'driving' : null;
+    const lic = need && !licences.has(need) ? ` You'll need a ${need === 'pilot' ? "pilot's" : need === 'boat' ? 'boat' : 'driving'} licence to use it legally (City Hall, or your phone).` : '';
+    const msg = `${item.icon} Bought: ${e.name} for ${item.price.toLocaleString()} gold. It's parked outside ${title}.${illegal ? ' Keep your head down: the plates are hot.' : ''}${lic}`;
+    toast(msg); return { ok: true, msg };
   }, { tag: illegal ? 'BLACK MARKET' : '' });
 }
 const casino = createCasino({ money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, earn: n => { stats.gold += n; }, toast, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
