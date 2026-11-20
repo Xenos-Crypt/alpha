@@ -116,9 +116,9 @@ export function createSeasons(ctx) {
 
   const live = cal.holidays;
   if (live.includes('christmas')) {
-    for (const p of lamps) bulbs(spiral(p.x, base(p) + 0.4, p.z, 0.16, 3.4, 6, 22), [0xff3b30, 0x34c759, 0xffd60a, 0xffffff]);
+    bulbs(lamps.flatMap(p => spiral(p.x, base(p) + 0.4, p.z, 0.15, 3.4, 6, 22)), [0xff3b30, 0x34c759, 0xffd60a, 0xffffff], 0.05);   // every lamp's lights in one draw call
     bulbs(eaves, [0xff3b30, 0x34c759, 0xffd60a, 0x0a84ff, 0xffffff], 0.06);
-    for (const tr of garden) bulbs(spiral(tr.x, ctx.curb + 2.2, tr.z, 1.9, 3.5, 4, 46), [0xffd60a, 0xffffff, 0xff3b30]);
+    bulbs(garden.flatMap(tr => spiral(tr.x, ctx.curb + 2.2, tr.z, 1.9, 3.5, 4, 46)), [0xffd60a, 0xffffff, 0xff3b30]);
     if (ctx.livingCorner) christmasTree(ctx.livingCorner.x, ctx.curb, ctx.livingCorner.z, 2.1);   // the tree indoors
     christmasTree(home.x + 4.5, ctx.curb, home.minZ - 3.2, 3.2);                                   // and one in the front garden
     ctx.colliders?.push({ minX: home.x + 3.9, maxX: home.x + 5.1, minZ: home.minZ - 3.8, maxZ: home.minZ - 2.6 });
@@ -131,7 +131,7 @@ export function createSeasons(ctx) {
     const heart = new THREE.Shape(); heart.moveTo(0, -0.5); heart.bezierCurveTo(-0.9, 0.1, -0.5, 0.75, 0, 0.35); heart.bezierCurveTo(0.5, 0.75, 0.9, 0.1, 0, -0.5);
     const heartGeo = new THREE.ExtrudeGeometry(heart, { depth: 0.08, bevelEnabled: false }); heartGeo.center();
     instanced(heartGeo, new THREE.MeshStandardMaterial({ color: 0xe0245e, emissive: 0x5a0a20, roughness: 0.5 }), lamps.map(p => ({ x: p.x, y: base(p) + 3.4, z: p.z + 0.12, s: 0.45 })));
-    for (const p of lamps) bulbs(spiral(p.x, base(p) + 0.4, p.z, 0.16, 2.8, 5, 16), [0xff2d55, 0xff9ec1, 0xffffff]);
+    bulbs(lamps.flatMap(p => spiral(p.x, base(p) + 0.4, p.z, 0.15, 2.8, 5, 16)), [0xff2d55, 0xff9ec1, 0xffffff], 0.05);
     bulbs(eaves, [0xff2d55, 0xff9ec1], 0.06);
     instanced(heartGeo, new THREE.MeshStandardMaterial({ color: 0xff2d55, roughness: 0.5 }), [{ x: home.x - 0.5, y: ctx.curb + 1.6, z: home.minZ - 0.1, s: 0.55 }]);
   }
