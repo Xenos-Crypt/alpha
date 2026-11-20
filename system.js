@@ -71,7 +71,8 @@ export function createSystem(ctx) {
 #sysPage .bar{height:6px;background:#ffffff1f;border-radius:3px;overflow:hidden;margin-top:6px}#sysPage .bar i{display:block;height:100%;background:#6fa8ff}
 #sysBtn{position:fixed;right:16px;top:96px;z-index:12;color:#d6e6ff;font:12px system-ui;background:#0b1422cc;border:1px solid #4d7fd1;border-radius:10px;padding:7px 12px;cursor:pointer}
 #sysBtn[hidden]{display:none}
-#sysPage.cine{background:none;align-items:flex-end;padding:0 16px 9vh;pointer-events:none}
+#sysPage.cine{background:none;align-items:center;padding:0 16px 9vh;cursor:pointer;flex-direction:column;justify-content:flex-end}
+#sysPage.cine .hint{position:fixed;right:18px;bottom:calc(11vh + 10px);z-index:1;font:12px system-ui;color:#fff9;letter-spacing:.04em}
 #sysPage.cine::before,#sysPage.cine::after{content:'';position:fixed;left:0;right:0;height:11vh;background:#000}#sysPage.cine::before{top:0}#sysPage.cine::after{bottom:0}
 #sysPage.cine .sub{position:relative;z-index:1;width:min(760px,100%);text-align:center;color:#fff;font:18px/1.6 Georgia,serif;text-shadow:0 2px 6px #000,0 0 2px #000}
 #sysPage.cine .sub.sys{font:15px/1.6 ui-monospace,Menlo,monospace;color:#d6e6ff;background:#0b1422e6;border:1px solid #4d7fd1;border-radius:12px;padding:16px 20px;text-shadow:none;box-shadow:0 0 40px #2a5fbf66;margin-bottom:6vh}
@@ -98,17 +99,56 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsB
   // Plays a chain of pieces: scenes (pages of text), System messages, choices.
   // The opening plays like a film: no buttons, the camera moves through the home (ctx.cinema), text appears as
   // subtitles and moves on by itself. Which camera mark each page uses; a node can also set its own `shots`.
-  const SHOTS = { 'ch1.start': ['ceiling', 'ceiling'], 'ch1.room': ['bedroom', 'bedroom', 'window'], 'ch1.phone': ['phone', 'phone'], 'ch1.mirror': ['mirror', 'mirror'], 'ch1.system': ['mirror', 'mirror'] };
+  const SHOTS = { 'ch1.start': ['ceiling', 'ceiling'], 'ch1.room': ['bedroom', 'cupboard', 'window'], 'ch1.phone': ['phone', 'phone'], 'ch1.mirror': ['mirror', 'mirror'], 'ch1.system': ['mirror', 'mirror'] };
   const readMs = t => 2600 + String(t).split(/\s+/).length * 330;   // about three words a second, plus a beat
   function subtitle(title, text, system) {
     page.innerHTML = ''; page.className = 'cine';
     const box = document.createElement('div'); box.className = 'sub' + (system ? ' sys' : '');
     if (title && system) { const h = document.createElement('h2'); h.textContent = title; box.append(h); }
     const p = document.createElement('p'); p.textContent = text; box.append(p);
-    page.append(box); page.hidden = false;
+    const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = 'Click or tap to continue';
+    page.append(box, hint); page.hidden = false;
     if (!open) { open = true; ctx.pause(); }
   }
+  // Narration: the device's own voice reads each line (free, no AI call). System lines sound flatter.
+  function speak(text, system) {
+    return new Promise(done => {
+      const tts = window.speechSynthesis;
+      if (!tts || typeof SpeechSynthesisUtterance === 'undefined') return done(false);
+      tts.cancel();
+      const u = new SpeechSynthesisUtterance(String(text).replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim());
+      const voices = tts.getVoices(), en = voices.filter(v => /^en(-|_|$)/i.test(v.lang));
+      u.voice = (system ? en.find(v => /google uk english male|daniel|male/i.test(v.name)) : en.find(v => /google uk english|serena|samantha|natural/i.test(v.name))) || en[0] || null;
+      u.rate = system ? 1.0 : 0.95; u.pitch = system ? 0.7 : 1;
+      let over = false, began = false; const end = ok => { if (!over) { over = true; done(ok); } };
+      u.onstart = () => { began = true; }; u.onend = () => end(true); u.onerror = () => end(false);
+      setTimeout(() => { if (!began) { tts.cancel(); end(false); } }, 2500);   // no voice on this device: fall back to reading time
+      setTimeout(() => end(false), 60000);
+      tts.speak(u);
+    });
+  }
+  // Waits for a line to be finished: the voice has read it and the camera has stopped walking, or the player
+  // clicks (or taps, or presses Space/Enter) to move on to the next part.
+  function lineDone(text, system) {
+    return new Promise(res => {
+      let skipped = false, spoke = null;
+      const go = () => { if (skipped) return; skipped = true; window.speechSynthesis?.cancel(); ctx.cinema.finish(); cleanup(); res(); };
+      const key = e => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); go(); } };
+      const cleanup = () => { page.removeEventListener('pointerdown', go); removeEventListener('keydown', key, true); };
+      page.addEventListener('pointerdown', go); addEventListener('keydown', key, true);
+      const started = Date.now(), minMs = readMs(text) * (system ? 1.1 : 1);
+      speak(text, system).then(ok => { spoke = ok; });
+      const wait = () => {
+        if (skipped) return;
+        const voiceDone = spoke !== null && (spoke ? true : Date.now() - started > minMs);
+        if (voiceDone && !ctx.cinema.busy() && Date.now() - started > 1200) { skipped = true; cleanup(); setTimeout(res, 500); return; }
+        setTimeout(wait, 150);
+      };
+      wait();
+    });
+  }
   async function film(key) {
+    try { window.speechSynthesis?.getVoices(); } catch {}   // voices load in the background on some browsers
     ctx.cinema.start();
     let k = key;
     while (k) {
@@ -119,7 +159,7 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsB
       for (let i = 0; i < pages.length; i++) {
         if (shots[i]) ctx.cinema.shot(shots[i]);
         subtitle(n.title, pages[i], n.type === 'system');
-        await new Promise(r => setTimeout(r, readMs(pages[i]) + (n.type === 'system' ? 1200 : 0)));
+        await lineDone(pages[i], n.type === 'system');
       }
       if (n.enable === 'system') { st.on = true; btn.hidden = false; }
       // a film has no choices: it follows the first path
