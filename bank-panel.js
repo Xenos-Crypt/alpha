@@ -45,7 +45,7 @@ export function createBankPanel(ctx) {
 #bankPanel .apps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}#bankPanel .apps button{height:84px;font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1c222b;border-radius:18px}
 #bankPanel .apps b{font-size:28px;font-weight:400}#bankPanel input{width:90px;min-height:34px;border-radius:8px;border:1px solid #8886;padding:0 8px;font:inherit}
 #bankPanel .up{color:#1b9a4d}#bankPanel .down{color:#d04040}#bankPanel .dim{opacity:.7}
-#phoneBtn{position:fixed;left:12px;bottom:max(96px,14vh);z-index:30;width:48px;height:48px;border-radius:14px;border:0;background:#121418cc;color:#fff;font-size:24px;cursor:pointer}#phoneBtn[hidden]{display:none}`;
+`;
   document.head.append(css);
   let tab = 'account', msg = '', asPhone = false, pick = null;
   const gold = { get: () => ctx.gold(), add: n => ctx.addGold(n) };

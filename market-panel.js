@@ -39,7 +39,8 @@ export function createMarketPanel({ money, toast, pause, resume }) {
       #marketPanel .card{padding:7px;gap:4px}#marketPanel .card .desc{display:none}
       #marketPanel .filters input[type=range]{width:90px}#marketPanel .grid{grid-auto-rows:max-content}#marketPanel .bar{min-height:15px;line-height:15px}#marketPanel .sw span{width:18px;height:18px}
     }
-  </style><div class="wrap"><header><h2></h2><span class="tag" hidden></span><span class="gold"></span><button class="close" type="button">Close</button></header>
+    #marketPanel button.short{opacity:.75;background:#5a2a2a}#marketPanel .notice{margin:8px 16px 0;padding:10px 14px;border-radius:10px;font-size:14px;background:#1d3b2a;border:1px solid #3fae6a}#marketPanel .notice.bad{background:#3b1d1d;border-color:#d0504a}
+  </style><div class="wrap"><header><h2></h2><span class="tag" hidden></span><span class="gold"></span><button class="close" type="button">Close</button></header><div class="notice" role="status" aria-live="polite" hidden></div>
   <div class="chips"></div>
   <div class="filters"><label>Sort by <select class="sort"></select></label><label>Max price <input class="max" type="range"><span class="maxv"></span></label><label>At least <select class="minStat"></select><input class="min" type="range" min="0" max="100" step="5" value="0"><span class="minv">0</span></label></div>
   <div class="grid"></div></div>`;
@@ -49,8 +50,9 @@ export function createMarketPanel({ money, toast, pause, resume }) {
   addEventListener('keydown', e => { if (!root.hidden && e.code === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); } }, true);
   let items = [], onBuy = null, cat = 'All', statNames = [];
   const colourOf = new Map();
+  function notice(msg, bad = false) { const n = $('.notice'); if (!n) return; n.hidden = !msg; n.textContent = msg || ''; n.classList.toggle('bad', !!bad); }
   function open(title, list, buy, { tag = '', categories = null } = {}) {
-    items = list; onBuy = buy; cat = 'All';
+    items = list; onBuy = buy; cat = 'All'; notice('');
     $('h2').textContent = title; const t = $('.tag'); t.hidden = !tag; t.textContent = tag;
     statNames = [...new Set(list.flatMap(i => Object.keys(i.stats || {})))];
     const cats = categories || ['All', ...new Set(list.map(i => i.category))];
@@ -85,8 +87,14 @@ export function createMarketPanel({ money, toast, pause, resume }) {
       const row = document.createElement('div'); row.className = 'buy';
       row.innerHTML = `<b>${i.price.toLocaleString()} gold</b>`;
       const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'go';
-      btn.textContent = i.sold ? 'Owned' : 'Buy'; btn.disabled = !!i.sold || money() < i.price;
-      btn.onclick = () => { if (money() < i.price) return toast('Not enough gold.'); if (onBuy(i, colourOf.get(i.id)) !== false) render(); };
+      btn.textContent = i.sold ? 'Owned' : money() < i.price ? "Can't afford" : 'Buy'; btn.disabled = !!i.sold; if (!i.sold && money() < i.price) btn.classList.add('short');   // still clickable: it tells you why
+      btn.onclick = () => {
+        // say why it can't be bought, or what was bought, right here in the shop (the game's own messages sit behind this panel)
+        if (money() < i.price) return notice(`Not enough gold: ${i.name} costs ${i.price.toLocaleString()} and you have ${Math.floor(money()).toLocaleString()}.`, true);
+        const r = onBuy(i, colourOf.get(i.id));
+        if (r === false) return notice(`You couldn't buy ${i.name}.`, true);
+        if (typeof r === 'string') return notice(r, true);   // a reason it can't be bought (a requirement you don't meet)
+        notice(r?.msg || `Bought: ${i.name}.`); render(); };
       row.append(btn); c.append(row); return c;
     }));
   }

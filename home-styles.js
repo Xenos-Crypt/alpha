@@ -2,9 +2,9 @@
 // - Everyone starts poor, so the ordinary home is run-down: grimy, cracked walls, boarded-up windows, a blue tarp
 //   over a leaking roof, rubbish bags by the door, weeds in the garden, a water stain on the bedroom ceiling (the
 //   one the opening film mentions). There's no car on the drive: you start with no vehicle.
-// - The admin's home is a mansion on new land east of The Reserve: a walk-in house with marble floors, an
-//   infinity pool and hot tub, a garage with a supercar you can drive, and a private airstrip with a hangar and
-//   a private jet. A private road links it to The Reserve's avenue.
+// - The admin's mansion stands on empty land south of Northhaven (checked clear of everything, inside the dome):
+//   a walk-in house with marble floors, an infinity pool and hot tub, a garage with supercars, and a private
+//   airstrip with a hangar and a jet. Its drive joins Northhaven's south road.
 import * as THREE from 'three';
 import { makeBotany } from './botany.js';
 
@@ -63,7 +63,7 @@ export function makeRundown(ctx) {
   return root;
 }
 
-// ---------------- the admin's mansion, on new land ----------------
+// ---------------- the admin's mansion, on empty land south of Northhaven ----------------
 export function buildAdminEstate(ctx) {
   const { scene, K, makeTex, toast, curb } = ctx;
   const root = new THREE.Group(); root.name = "admin's estate"; scene.add(root);
@@ -71,96 +71,97 @@ export function buildAdminEstate(ctx) {
   const bot = makeBotany(ctx, 'Xenos Estate'), EST = 'Westhaven Builders';
   const tag = (cls, kind, mat, name, x, z, maker = EST) => bot.fixture(cls, kind, mat, maker, name, x, z, 'ADM');
   const { B, C, S, mat, solid, sign, place, spot, stander, sitter, hall } = K;
-  const X0 = 1215, X1 = 1580, Z0 = 110, Z1 = 820;   // the new land, east of The Reserve
+  // The land: empty, flat ground south of Northhaven and east of Fort Halberd, inside the dome, checked clear
+  // of every building, wall, road and landmark (with a 20 m gap). The drive joins Northhaven's south road.
+  const X0 = 820, X1 = 1060, Z0 = -810, Z1 = -350, GX = 960, ROAD_Z = -320;   // (the corner of Northhaven's junction at x 952-968: the drive fills the gap there)
+  const DX = -275, DZ = -660;   // the house, garage and pools keep their old layout, moved here
   const floors = [];
 
-  // new ground: lawn, a private road from the north end of The Reserve's avenue, and a walled boundary
+  // ground: lawn, the drive in from Northhaven, and a wall all the way round with the gate in the north wall
   const lawnTex = makeTex(128, 128, g => { g.fillStyle = '#5f8f3e'; g.fillRect(0, 0, 128, 128); for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(${60 + Math.random() * 40},${110 + Math.random() * 50},${40 + Math.random() * 30},0.5)`; g.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 3); } });
-  lawnTex.wrapS = lawnTex.wrapT = THREE.RepeatWrapping; lawnTex.repeat.set(60, 110);
+  lawnTex.wrapS = lawnTex.wrapT = THREE.RepeatWrapping; lawnTex.repeat.set(40, 76);
   const lawn = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, Z1 - Z0), new THREE.MeshStandardMaterial({ map: lawnTex, roughness: 1 }));
   lawn.rotation.x = -Math.PI / 2; lawn.position.set((X0 + X1) / 2, 0.02, (Z0 + Z1) / 2); lawn.receiveShadow = true; root.add(lawn);
   const tarmac = mat(0x3c4247, { rough: 0.9 });
-  B(root, X0 + 60 - 1025, 0.06, 9, (1025 + X0 + 60) / 2, 0.04, 125, tarmac, false);   // private road east from the avenue
-  B(root, 9, 0.06, 100, X0 + 60, 0.04, 175, tarmac, false);                         // and south to the house
+  // the drive: from the road, through the gate, south to z -465.5; then east along z -470 to the forecourt's
+  // west edge (x 993). The two pieces meet edge to edge, never overlapping (no flicker).
+  B(root, 9, 0.06, ROAD_Z + 465.5, GX, 0.04, (ROAD_Z - 465.5) / 2, tarmac, false);
+  B(root, 993 - (GX - 4.5), 0.06, 9, (993 + GX - 4.5) / 2, 0.04, -470, tarmac, false);
   const wallC = mat(0xe8e2d6, { rough: 0.8 });
-  for (const [w, d, x, z] of [[X1 - X0, 0.5, (X0 + X1) / 2, Z1], [0.5, Z1 - Z0, X1, (Z0 + Z1) / 2]]) { B(root, w, 2.2, d, x, 1.1, z, wallC); solid(x - w / 2, x + w / 2, z - d / 2, z + d / 2); }
+  const wall = (x0, x1, z0, z1) => { const w = Math.max(0.5, x1 - x0), d = Math.max(0.5, z1 - z0), x = (x0 + x1) / 2, z = (z0 + z1) / 2; B(root, w, 2.2, d, x, 1.1, z, wallC); solid(x - w / 2, x + w / 2, z - d / 2, z + d / 2); };
+  wall(X0, GX - 6, Z1, Z1); wall(GX + 6, X1, Z1, Z1); wall(X0, X1, Z0, Z0); wall(X0, X0, Z0, Z1); wall(X1, X1, Z0, Z1);
   tag('LND', 'LWN', 'GRS', 'Estate lawn', (X0 + X1) / 2, (Z0 + Z1) / 2);
-  tag('LND', 'ROD', 'ASP', 'Private road to the estate', (1025 + X0 + 60) / 2, 125);
-  tag('LND', 'ROD', 'ASP', 'Estate drive', X0 + 60, 175);
-  tag('LND', 'FEN', 'STN', 'Estate boundary wall', (X0 + X1) / 2, Z1);
-  tag('LND', 'GAT', 'STN', 'Estate gate posts and name sign', X0 + 60, 128);
-  // gate posts and a name sign at the drive
-  for (const s of [-1, 1]) B(root, 0.8, 3, 0.8, X0 + 60 + s * 6, 1.5, 128, 0xd6c8a8);
-  place(sign(ctx.title || 'PRIVATE ESTATE', 'residence · airstrip', 6, '#111111', '#d4af37', 'Georgia, serif'), X0 + 60, 3.6, 128, 0);
+  tag('LND', 'ROD', 'ASP', 'Estate drive', GX, -410);
+  tag('LND', 'FEN', 'STN', 'Estate boundary wall', (X0 + X1) / 2, Z0);
+  tag('LND', 'GAT', 'STN', 'Estate gate posts and name sign', GX, Z1);
+  for (const sd of [-1, 1]) B(root, 0.8, 3, 0.8, GX + sd * 6, 1.5, Z1, 0xd6c8a8);
+  place(sign(ctx.title || 'PRIVATE ESTATE', 'residence · airstrip', 6, '#111111', '#d4af37', 'Georgia, serif'), GX, 3.6, Z1 + 0.5, 0);   // facing the road (north), so it reads the right way round
 
   // ---------------- the mansion: walk in on marble floors ----------------
-  const hx0 = 1250, hx1 = 1300, hz0 = 210, hz1 = 240, H = 6;
-  hall({ x0: hx0, x1: hx1, z0: hz0, z1: hz1, H, wall: 0xf6f3ee, floor: 0xf2efe9, floorKind: 'marble', roof: 0x2a2e33, gaps: { n: [[1272, 1278]], s: [[1268, 1282]] } });
-  // a second storey on top, a glass front and gold trim, so it reads as a mansion from outside
-  B(root, hx1 - hx0 + 6, 5, hz1 - hz0 - 6, (hx0 + hx1) / 2, H + 3, (hz0 + hz1) / 2, mat(0xf6f3ee, { rough: 0.6 }));
-  B(root, hx1 - hx0 + 8, 0.4, hz1 - hz0 - 2, (hx0 + hx1) / 2, H + 5.7, (hz0 + hz1) / 2, 0x2a2e33);
-  for (let x = hx0 + 2; x < hx1 - 1; x += 4) B(root, 3, 3.6, 0.1, x, H + 3, hz1 - 2.95, mat(0x3c6e8f, { rough: 0.05, metal: 0.5 }), false);
-  B(root, hx1 - hx0 + 6.2, 0.18, 0.2, (hx0 + hx1) / 2, H + 0.6, hz1 + 0.05, 0xd4af37);
-  tag('BLD', 'MAN', 'MRB.GLS', 'The mansion', (hx0 + hx1) / 2, (hz0 + hz1) / 2);
-  for (const [n, x, z, m, mk] of [['Sofa', 1258, 222, 'LTH', 'Atelier Furniture'], ['Sofa', 1258, 228.5, 'LTH', 'Atelier Furniture'], ['Coffee table', 1258, 225.2, 'GLS', 'Atelier Furniture'], ['Wall TV', hx0 + 0.3, 225.2, 'GLS', 'Cryptic'],
+  const hx0 = 1250 + DX, hx1 = 1300 + DX, hz0 = 210 + DZ, hz1 = 240 + DZ, H = 6, cx = (hx0 + hx1) / 2;
+  hall({ x0: hx0, x1: hx1, z0: hz0, z1: hz1, H, wall: 0xf6f3ee, floor: 0xf2efe9, floorKind: 'marble', roof: 0x2a2e33, gaps: { n: [[cx - 3, cx + 3]], s: [[cx - 7, cx + 7]] } });
+  B(root, hx1 - hx0 + 6, 5, hz1 - hz0 - 6, cx, H + 3, (hz0 + hz1) / 2, mat(0xf6f3ee, { rough: 0.6 }));
+  B(root, hx1 - hx0 + 8, 0.4, hz1 - hz0 - 2, cx, H + 5.7, (hz0 + hz1) / 2, 0x2a2e33);
+  for (let x = hx0 + 2; x < hx1 - 1; x += 4) B(root, 3, 3.6, 0.1, x, H + 3, hz0 + 2.95, mat(0x3c6e8f, { rough: 0.05, metal: 0.5 }), false);   // glass front (faces the forecourt)
+  B(root, hx1 - hx0 + 6.2, 0.18, 0.2, cx, H + 0.6, hz0 - 0.05, 0xd4af37);
+  tag('BLD', 'MAN', 'MRB.GLS', 'The mansion', cx, (hz0 + hz1) / 2);
+  const P = (x, z) => [x + DX, z + DZ];
+  for (const [n, x, z, m, mk] of [['Sofa', 1258, 222, 'LTH', 'Atelier Furniture'], ['Sofa', 1258, 228.5, 'LTH', 'Atelier Furniture'], ['Coffee table', 1258, 225.2, 'GLS', 'Atelier Furniture'], ['Wall TV', 1250.3, 225.2, 'GLS', 'Cryptic'],
     ['Kitchen island', 1290, 220, 'MRB', 'Atelier Furniture'], ['Dining table and six chairs', 1290, 231, 'WOD', 'Atelier Furniture'], ['Grand piano', 1274, 234, 'WOD', 'Atelier Furniture'], ['Chandelier', 1275, 225, 'GLS.GLD', 'Atelier Furniture'], ['Bed', 1296, 236, 'WOD', 'Atelier Furniture']])
-    tag('PRD', 'FUR', m, n, x, z, mk);
-  // inside: a lounge, a kitchen island, a dining table, a grand piano, a huge TV, a chandelier and a bed
+    tag('PRD', 'FUR', m, n, ...P(x, z), mk);
   const sofa = (x, z, ry) => { const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; root.add(g); B(g, 3.2, 0.45, 1.1, 0, 0.35, 0, 0xf2efe9); B(g, 3.2, 0.7, 0.25, 0, 0.75, -0.45, 0xe9e4da); };
-  sofa(1258, 222, 0); sofa(1258, 228.5, Math.PI); B(root, 1.6, 0.4, 1, 1258, 0.25, 225.2, mat(0x1a1a1a, { rough: 0.2, metal: 0.4 }));
-  B(root, 0.15, 2.4, 4.2, hx0 + 0.3, 2.6, 225.2, mat(0x050505, { rough: 0.1, emissive: 0x0d2a4a, ei: 0.6 }), false);   // the TV
-  sitter(1258, 222.4, 0, 0.6, { task: 'talk' });
-  B(root, 5, 1, 1.4, 1290, 0.5, 220, mat(0xf5f5f5, { rough: 0.15 })); B(root, 5.2, 0.08, 1.6, 1290, 1.04, 220, mat(0x222222, { rough: 0.1, metal: 0.3 }));   // kitchen island
-  B(root, 6, 0.1, 1.6, 1290, 0.85, 231, 0x5a3b26); for (let i = 0; i < 6; i++) B(root, 0.5, 0.9, 0.5, 1287.5 + i % 3 * 2.5, 0.45, 229.8 + Math.floor(i / 3) * 2.4, 0xd8d2c4);   // dining
-  { const g = new THREE.Group(); g.position.set(1274, 0, 234); root.add(g); B(g, 1.6, 0.35, 2.2, 0, 0.9, 0, mat(0x0a0a0a, { rough: 0.1, metal: 0.3 })); for (const [x, z] of [[-0.6, -0.9], [0.6, -0.9], [0, 0.9]]) C(g, 0.06, 0.06, 0.8, x, 0.4, z, 0x0a0a0a, 6); }   // grand piano
-  { const ch = new THREE.Group(); ch.position.set(1275, H - 1.2, 225); root.add(ch); for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; S(ch, 0.12, Math.cos(a) * 1.1, Math.sin(i) * 0.15, Math.sin(a) * 1.1, mat(0xfff4d6, { emissive: 0xffe6a8, ei: 1.2 }), 6); } C(ch, 0.03, 0.03, 1.2, 0, 0.6, 0, 0xd4af37, 6); }
-  { const bx = 1296, bz = 236; B(root, 2.6, 0.5, 2.2, bx, 0.35, bz, 0xf2efe9); B(root, 2.6, 1, 0.2, bx, 0.9, bz + 1.05, 0x2a2e33);
-    spot(bx - 2, bz, 2, 'Sleep in your bed', () => ctx.sleep?.()); }
-  spot(1275, hz0 - 1.5, 2.5, 'Your mansion', () => toast('🏛 Your mansion: marble floors, a pool out back, the garage to the east and your airstrip beyond it.'));
-  // the drive and the supercar out front, two more in the garage
-  B(root, 14, 0.06, 26, 1275, 0.04, 195, mat(0xd9d2c3, { rough: 0.8 }), false);
-  const garage = { x0: 1306, x1: 1326, z0: 212, z1: 238 };
-  hall({ x0: garage.x0, x1: garage.x1, z0: garage.z0, z1: garage.z1, H: 4, wall: 0xf6f3ee, floor: 0xcfd4d8, floorKind: 'tiles', roof: 0x2a2e33, gaps: { n: [[1309, 1323]] } });
-  tag('LND', 'ROD', 'STN', 'Mansion forecourt', 1275, 195);
+  sofa(...P(1258, 222), 0); sofa(...P(1258, 228.5), Math.PI); B(root, 1.6, 0.4, 1, ...[P(1258, 225.2)].map(([x, z]) => [x, 0.25, z])[0], mat(0x1a1a1a, { rough: 0.2, metal: 0.4 }));
+  B(root, 0.15, 2.4, 4.2, hx0 + 0.3, 2.6, P(0, 225.2)[1], mat(0x050505, { rough: 0.1, emissive: 0x0d2a4a, ei: 0.6 }), false);   // the TV
+  sitter(...P(1258, 222.4), 0, 0.6, { task: 'talk' });
+  { const [x, z] = P(1290, 220); B(root, 5, 1, 1.4, x, 0.5, z, mat(0xf5f5f5, { rough: 0.15 })); B(root, 5.2, 0.08, 1.6, x, 1.04, z, mat(0x222222, { rough: 0.1, metal: 0.3 })); }   // kitchen island
+  { const [x, z] = P(1290, 231); B(root, 6, 0.1, 1.6, x, 0.85, z, 0x5a3b26); for (let i = 0; i < 6; i++) B(root, 0.5, 0.9, 0.5, x - 2.5 + i % 3 * 2.5, 0.45, z - 1.2 + Math.floor(i / 3) * 2.4, 0xd8d2c4); }   // dining
+  { const [x, z] = P(1274, 234), g = new THREE.Group(); g.position.set(x, 0, z); root.add(g); B(g, 1.6, 0.35, 2.2, 0, 0.9, 0, mat(0x0a0a0a, { rough: 0.1, metal: 0.3 })); for (const [a, b] of [[-0.6, -0.9], [0.6, -0.9], [0, 0.9]]) C(g, 0.06, 0.06, 0.8, a, 0.4, b, 0x0a0a0a, 6); }   // grand piano
+  { const [x, z] = P(1275, 225), ch = new THREE.Group(); ch.position.set(x, H - 1.2, z); root.add(ch); for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; S(ch, 0.12, Math.cos(a) * 1.1, Math.sin(i) * 0.15, Math.sin(a) * 1.1, mat(0xfff4d6, { emissive: 0xffe6a8, ei: 1.2 }), 6); } C(ch, 0.03, 0.03, 1.2, 0, 0.6, 0, 0xd4af37, 6); }
+  { const [bx, bz] = P(1296, 236); B(root, 2.6, 0.5, 2.2, bx, 0.35, bz, 0xf2efe9); B(root, 2.6, 1, 0.2, bx, 0.9, bz + 1.05, 0x2a2e33); spot(bx - 2, bz, 2, 'Sleep in your bed', () => ctx.sleep?.()); }
+  spot(cx, hz0 - 1.5, 2.5, 'Your mansion', () => toast('🏛 Your mansion: marble floors, the pool out back, the garage to the east and your airstrip on the west side.'));
+  // the forecourt and the supercar out front, two more in the garage
+  { const [x, z] = P(1275, 195); B(root, 14, 0.06, 26, x, 0.04, z, mat(0xd9d2c3, { rough: 0.8 }), false); tag('LND', 'ROD', 'STN', 'Mansion forecourt', x, z); }
+  const garage = { x0: 1306 + DX, x1: 1326 + DX, z0: 212 + DZ, z1: 238 + DZ };
+  hall({ x0: garage.x0, x1: garage.x1, z0: garage.z0, z1: garage.z1, H: 4, wall: 0xf6f3ee, floor: 0xcfd4d8, floorKind: 'tiles', roof: 0x2a2e33, gaps: { n: [[garage.x0 + 3, garage.x1 - 3]] } });
   tag('BLD', 'GAR', 'STN', 'Garage', (garage.x0 + garage.x1) / 2, (garage.z0 + garage.z1) / 2);
   const cars = [];
-  if (ctx.makeVehicle) {
-    for (const [style, col, x, z, ry] of [['supercar', 0xd4af37, 1275, 200, Math.PI], ['supercar', 0xc0392b, 1312, 228, Math.PI], ['sports', 0x111111, 1320, 228, Math.PI]]) {
-      const v = ctx.makeVehicle('car', col, style); v.group.position.set(x, 0.06, z); v.group.rotation.y = ry; v.ownedId = 'admin-' + style + '-' + x; cars.push(v);
-    }
+  if (ctx.makeVehicle) for (const [style, col, x, z] of [['supercar', 0xd4af37, 1275, 200], ['supercar', 0xc0392b, 1312, 228], ['sports', 0x111111, 1320, 228]]) {
+    const v = ctx.makeVehicle('car', col, style); v.group.position.set(x + DX, 0.06, z + DZ); v.group.rotation.y = Math.PI; v.ownedId = 'admin-' + style + '-' + x; cars.push(v);
   }
-  // infinity pool, hot tub and loungers behind the house
-  const px0 = 1252, px1 = 1298, pz0 = 246, pz1 = 258;
+  // infinity pool, hot tub and loungers behind the house (between it and the north wall)
+  const px0 = 1252 + DX, px1 = 1298 + DX, pz0 = 246 + DZ, pz1 = 258 + DZ, tub = P(1305, 252);
   B(root, px1 - px0 + 1.4, 0.45, pz1 - pz0 + 1.4, (px0 + px1) / 2, 0.22, (pz0 + pz1) / 2, mat(0xeae6dd, { rough: 0.6 }));
   B(root, px1 - px0, 0.05, pz1 - pz0, (px0 + px1) / 2, 0.43, (pz0 + pz1) / 2, mat(0x29b6e0, { rough: 0.05, metal: 0.2, opacity: 0.85 }), false);
-  C(root, 1.8, 1.8, 0.6, 1305, 0.3, 252, mat(0xeae6dd)); C(root, 1.6, 1.6, 0.05, 1305, 0.6, 252, mat(0x5fd3f3, { opacity: 0.85, emissive: 0x0b5f80, ei: 0.4 }));
+  C(root, 1.8, 1.8, 0.6, tub[0], 0.3, tub[1], mat(0xeae6dd)); C(root, 1.6, 1.6, 0.05, tub[0], 0.6, tub[1], mat(0x5fd3f3, { opacity: 0.85, emissive: 0x0b5f80, ei: 0.4 }));
   for (let x = px0 + 2; x < px1; x += 5) { const g = new THREE.Group(); g.position.set(x, 0, pz1 + 3); root.add(g); B(g, 0.75, 0.1, 2, 0, 0.35, 0, 0xffffff); B(g, 0.75, 0.55, 0.1, 0, 0.65, -0.95, 0xffffff); }
-  tag('LND', 'POL', 'WTR.TIL', 'Infinity pool', (px0 + px1) / 2, (pz0 + pz1) / 2); tag('LND', 'POL', 'WTR.TIL', 'Hot tub', 1305, 252);
+  tag('LND', 'POL', 'WTR.TIL', 'Infinity pool', (px0 + px1) / 2, (pz0 + pz1) / 2); tag('LND', 'POL', 'WTR.TIL', 'Hot tub', ...tub);
   for (let x = px0 + 2; x < px1; x += 5) tag('PRD', 'LNG', 'PLS', 'Pool lounger', x, pz1 + 3, 'Atelier Furniture');
-  const pools = [{ minX: px0, maxX: px1, minZ: pz0, maxZ: pz1 }, { minX: 1303.4, maxX: 1306.6, minZ: 250.4, maxZ: 253.6 }];
+  // waterY: where the water's surface is (the pool sits up on its deck, so you swim at that height, not the sea's)
+  const pools = [{ minX: px0, maxX: px1, minZ: pz0, maxZ: pz1, waterY: 0.44 }, { minX: tub[0] - 1.6, maxX: tub[0] + 1.6, minZ: tub[1] - 1.6, maxZ: tub[1] + 1.6, waterY: 0.6 }];
+  const deck = { minX: px0 - 0.7, maxX: px1 + 0.7, minZ: pz0 - 0.7, maxZ: pz1 + 0.7 };
 
-  // ---------------- the private airstrip, hangar and jet ----------------
-  const rx = 1440, rz0 = 180, rz1 = 790;
+  // ---------------- the private airstrip (west side), hangar and jet ----------------
+  const rx = 870, rz0 = -800, rz1 = -480;
   B(root, 32, 0.06, rz1 - rz0, rx, 0.05, (rz0 + rz1) / 2, mat(0x2f3439, { rough: 0.9 }), false);
   for (let z = rz0 + 10; z < rz1 - 10; z += 18) B(root, 0.8, 0.02, 9, rx, 0.09, z, 0xffffff, false);   // centre line
-  for (const s of [-1, 1]) for (let z = rz0; z <= rz1; z += 20) S(root, 0.18, rx + s * 16.5, 0.25, z, mat(0xffffff, { emissive: s > 0 ? 0x2b8a3e : 0xc92a2a, ei: 1 }), 6);   // edge lights
+  for (const sd of [-1, 1]) for (let z = rz0; z <= rz1; z += 20) S(root, 0.18, rx + sd * 16.5, 0.25, z, mat(0xffffff, { emissive: sd > 0 ? 0x2b8a3e : 0xc92a2a, ei: 1 }), 6);   // edge lights
   for (let i = 0; i < 8; i++) B(root, 1.4, 0.02, 12, rx - 12 + i * 3.4, 0.09, rz0 + 8, 0xffffff, false);   // threshold stripes
-  // the hangar
-  const hgx0 = 1470, hgx1 = 1510, hgz0 = 200, hgz1 = 240;
+  const hgx0 = 892, hgx1 = 932, hgz0 = -790, hgz1 = -750;
   hall({ x0: hgx0, x1: hgx1, z0: hgz0, z1: hgz1, H: 10, wall: 0xdfe3e6, floor: 0xbfc5ca, floorKind: 'tech', roof: 0x9aa3ab, gaps: { w: [[hgz0 + 4, hgz1 - 4]] } });
   place(sign('PRIVATE HANGAR', 'authorised aircraft only', 6, '#111111', '#d4af37', 'sans-serif'), hgx0 - 0.3, 8.5, (hgz0 + hgz1) / 2, -Math.PI / 2);
-  B(root, 30, 0.06, 40, (rx + hgx0) / 2 + 1, 0.05, 220, mat(0x2f3439, { rough: 0.9 }), false);   // taxiway to the runway
+  B(root, hgx0 - (rx + 16), 0.06, 40, (rx + 16 + hgx0) / 2, 0.05, (hgz0 + hgz1) / 2, mat(0x2f3439, { rough: 0.9 }), false);   // taxiway
   tag('LND', 'RWY', 'ASP', 'Private runway', rx, (rz0 + rz1) / 2); tag('PRD', 'DEC', 'GLS', 'Runway edge lights', rx + 16.5, rz0);
-  tag('BLD', 'HGR', 'STL', 'Private hangar', (hgx0 + hgx1) / 2, (hgz0 + hgz1) / 2); tag('LND', 'ROD', 'ASP', 'Taxiway', (rx + hgx0) / 2 + 1, 220);
+  tag('BLD', 'HGR', 'STL', 'Private hangar', (hgx0 + hgx1) / 2, (hgz0 + hgz1) / 2); tag('LND', 'ROD', 'ASP', 'Taxiway', (rx + 16 + hgx0) / 2, (hgz0 + hgz1) / 2);
   let jet = null;
   if (ctx.makeAircraft) { jet = ctx.makeAircraft({ name: 'Private jet', color: 0xf7f7f7, accent: 0xd4af37, maxSpeed: 92, takeoff: 34, turn: 0.8, jet: true, home: [rx, rz0 + 22] }); jet.ownedId = 'admin-jet'; }
-  stander(hgx0 - 4, 226, -Math.PI / 2, { outfit: 0x1c2a4a, task: 'talk' });
-  spot(hgx0 - 4, 222, 2, 'Your private jet', () => toast('✈️ Your private jet is waiting on the runway. Walk up to it to fly. Take off down the runway (south).'));
+  stander(hgx0 - 3, (hgz0 + hgz1) / 2 + 4, -Math.PI / 2, { outfit: 0x1c2a4a, task: 'talk' });
+  spot(hgx0 - 3, (hgz0 + hgz1) / 2, 2, 'Your private jet', () => toast('✈️ Your private jet is waiting on the runway. Walk up to it to fly. Take off up the runway, northwards.'));
 
   bot.people(K);   // the friend on the sofa and the pilot
   return {
-    pools, cars, jet,
-    home: { x: 1275, z: hz0 - 3 },   // where you appear when you go home: the front door
-    groundAt: () => null,
+    pools, cars, jet, bounds: { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 },
+    home: { x: cx, z: hz0 - 3 },   // where you appear when you go home: the front door
+    // you stand on the pool's deck (it's raised); inside the water you swim
+    groundAt: (x, z) => (x >= deck.minX && x <= deck.maxX && z >= deck.minZ && z <= deck.maxZ && !(x > px0 && x < px1 && z > pz0 && z < pz1)) ? 0.45 : null,
   };
 }

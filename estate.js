@@ -389,6 +389,16 @@ export function buildEstate(ctx) {
   // ================= per frame: gates, doors, roller doors, the barrier, films =================
   const tmp = new THREE.Vector3();
   let filmDraw = 0;
+  // Gate leaves are solid: a swinging leaf shoves you out of its way (and you can't walk through a closed gate).
+  const _ga = new THREE.Vector3(), _gb = new THREE.Vector3();
+  function pushFromLeaf(l, q, r) {
+    l.leaf.updateMatrixWorld(true); _ga.set(0, 0, 0).applyMatrix4(l.leaf.matrixWorld); _gb.set(-l.sd * 6, 0, 0).applyMatrix4(l.leaf.matrixWorld);
+    const abx = _gb.x - _ga.x, abz = _gb.z - _ga.z, len2 = abx * abx + abz * abz || 1, t = Math.max(0, Math.min(1, ((q.x - _ga.x) * abx + (q.z - _ga.z) * abz) / len2));
+    const cx = _ga.x + abx * t, cz = _ga.z + abz * t, dx = q.x - cx, dz = q.z - cz, d = Math.hypot(dx, dz);
+    if (d >= r || q.y > 2.4) return false;
+    const L = Math.sqrt(len2), nx = d > 1e-4 ? dx / d : -abz / L, nz = d > 1e-4 ? dz / d : abx / L;
+    q.x = cx + nx * r; q.z = cz + nz * r; return true;
+  }
   function update(dt, p, driving) {
     const who = driving ? driving.group.position : p;
     if (who.x < 900 || who.x > 1320 || who.z < 100 || who.z > 830) return;
@@ -402,7 +412,9 @@ export function buildEstate(ctx) {
       const gw = who.distanceTo(h.gate.pos) < (driving ? 16 : 6);
       h.gate.open += THREE.MathUtils.clamp((gw ? 1 : 0) - h.gate.open, -dt * 0.8, dt * 0.8);
       for (const l of h.gate.leaves) l.leaf.rotation.y = l.sd * h.gate.open * 1.5;
-      const gi = colliders.indexOf(h.gate.collider); if (h.gate.open > 0.6 && gi >= 0) colliders.splice(gi, 1); else if (h.gate.open < 0.3 && gi < 0) colliders.push(h.gate.collider);
+      // shut: the gate is a wall; moving or open: the leaves themselves block and push
+      const gi = colliders.indexOf(h.gate.collider); if (h.gate.open > 0.03 && gi >= 0) colliders.splice(gi, 1); else if (h.gate.open <= 0.03 && gi < 0) colliders.push(h.gate.collider);
+      if (!driving && h.gate.open > 0.03 && p.distanceTo(h.gate.pos) < 9) for (const l of h.gate.leaves) pushFromLeaf(l, p, 0.45);
       // front door (swings inward)
       const dn = !driving && p.distanceTo(h.fd.pos) < 3.6 && p.y < 2;
       const want = dn ? 1 : 0;
