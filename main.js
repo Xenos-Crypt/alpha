@@ -492,6 +492,7 @@ function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localSto
 let cityLife=null,monsterQuestKills=0;
 let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
+let interiorFloorAt = null;   // upper floors, lifts and stairs inside buildings (interiors.js)
 let skyCity = null, deepCity = null, shipyard = null, spaceWing = null;   // shipyard: Orbital Forge (spaceships.js)   // Skyhaven (sky-city.js) and Deephaven (deep-city.js)
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
@@ -574,6 +575,10 @@ const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
   if (z < -9000) { const raceFloor = race?.groundAt(x, z); if (raceFloor != null) return raceFloor; }   // Ashford Racing track worlds
+  if (x < -5080 && x > -7100 && interiorFloorAt) {   // inside buildings: upper floors, lift cabs, staircases and escalators
+    const f = interiorFloorAt(x, z, bodyY ?? player?.position.y ?? 0); if (f != null) return f;
+    for (const r of stairRamps) if (r.interior && x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.y0 + (z - r.z0) / (r.z1 - r.z0) * (r.y1 - r.y0);
+  }
   if (skyCity || deepCity) { const by = bodyY ?? (inCar && driving ? driving.group.position.y : player?.position.y ?? 0);
     const sky = skyCity?.groundAt(x, z, by); if (sky != null) return sky;      // Skyhaven, 200 m up (only when you're up there)
     const deep = deepCity?.groundAt(x, z, by); if (deep != null) return deep; } // Deephaven, on the sea floor (only when you're down there)
@@ -2467,7 +2472,7 @@ let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{re
 function setUpHome(){
   if(isAdmin){
     if(adminEstate||!homeKitCtx)return;
-    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),
+    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),
       makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
     poolZones.push(...adminEstate.pools);
     townPlaces?.destinations?.push({name:'Your mansion (Xenos Estate)',x:adminEstate.home.x,z:adminEstate.home.z});
@@ -6455,12 +6460,13 @@ function doChore(kind, o) {
   if (who) { const what = { laundry: 'the laundry', dishes: 'the dishes', handwash: 'the towels and soap' }[kind] || 'it'; toast(`🧹 ${who}, your housekeeper, has already done ${what} today.`); if (kind === 'laundry') gainXp(1); else if (kind === 'dishes') kitchen?.washUp(); return; }
   return chores?.open(kind, o);
 }
-const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex,
+const interiors = buildInteriors({ scene, colliders, camBlockers, sitSpots, makeTex, ramps: stairRamps,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
   tvMaterial: new THREE.MeshBasicMaterial({ map: civicTvTexture }),
   hooks: {
     toast: m => toast(m),
     playerPos: () => player.position,
+    resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
     kitchen: () => kitchen,
     chore: (k, o) => doChore(k, o),
     careers: what => { if (!careers) return; if (what === 'university') careers.openUniversity(currentVenueName); else if (what === 'jobs') careers.openJobs(); else if (what === 'school') careers.openSchool(); else careers[what]?.(); },
@@ -6828,6 +6834,8 @@ $('dropBagBtn').addEventListener('click', () => {
   toast('You dropped your bag. Its contents are gone.');
   renderInventory();
 });
+interiorFloorAt = (x, z, y) => interiors.floorAt(x, z, y);
+
 $('wearBagBtn').addEventListener('click', () => {
   if (hasBag) { toast('Already wearing your bag.'); return; }
   hasBag = true; backpack.visible = true;
@@ -7962,7 +7970,7 @@ capitalServiceBuildings=buildCapitalServices({cityHall:()=>society?.openHall(),s
 blackMarket = buildBlackMarket({ openVehicleShop: (t, cats, place, o) => openVehicleShop(t, cats, place, o), openPropertyShop: kind => property?.openShop(kind), forgeLicence: id => { if (id === 'driving') { roadLaw.licence.held = true; roadLaw.licence.theory = true; roadLaw.licence.forged = true; roadLaw.licence.banned = false; } else licences.forge(id); }, hasLicence: id => id === 'driving' ? !!roadLaw?.licence.held : licences.has(id), scene, colliders, interactables, sitSpots, makePerson: makeHumanoid, animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, groundY, toast, raiseWanted, stats, destinations: townPlaces.destinations, openMenu: (name, items) => snackShop.open(name, 'black', items) });
 statSources.push(blackMarket);
 addEventListener('aw-clear-wanted', () => { wanted = 0; pursuitBackupCooldown = 0; });
-spaceCentre=buildSpaceCentre({safeFence:fenceRect,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
+spaceCentre=buildSpaceCentre({safeFence:fenceRect,colliders,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
@@ -8105,7 +8113,7 @@ property = createProperty({ scene, buildings: civicBuildings, market, interactab
 houseVisits = createHouseVisits({ send: p => roomChat.sendGame(p), online: () => !!roomChat.connected, myId: () => roomChat.self, owned: () => property?.snapshot() || [],
   toast, raiseWanted: n => { raiseWanted(n); careers?.convict('Reported for breaking into a home'); }, enter: b => enterCivicBuilding(b), menu: (title, items) => snackShop.open(title, 'visit', items) });
 navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast });
-intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex});
+intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex,playerPosition:()=>player.position,resume:()=>{if(!boardOpen&&!settingsOpen)requestGameControl();}});
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
 for(const v of cityServices.traffic)if(v.kind==='car'&&(v.group.position.z>640&&v.group.position.x<500))detailVehicle(v,'luxury');
 regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareSite(x,z,w,d){for(const b of buildings)if(b.alive&&Math.abs(b.x-x)<(b.w+w)/2&&Math.abs(b.z-z)<(b.d+d)/2){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[])m.visible=false;for(const [list,item]of [[colliders,b.collider],[planeBlocks,b.planeBlock]]){const i=list.indexOf(item);if(i>=0)list.splice(i,1);}for(const block of b.blocks||[]){const i=planeBlocks.indexOf(block);if(i>=0)planeBlocks.splice(i,1);}}},civicBuildings,fence:fenceRect,reception:()=>{if(wanted>0)arrestPlayer();else toast('Police reception: reporting desk, patrol office and custody suite.');},addPolice(x,z){const v=makeVehicle('police',0xf5f6fa);v.group.position.set(x,groundY(x,z),z);v.stationHome=v.group.position.clone();v.ai={parked:true,cruise:12,ramCd:0,stopTimer:0};}});
@@ -8285,7 +8293,7 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // (a lift on the west shore and a glass tunnel). Both checked clear of everything before they were placed.
   { const ride={board(){action=null;vy=0;pvel.set(0,0,0);},carry(p){player.position.copy(p);vy=0;pvel.set(0,0,0);},leave(p){player.position.copy(p);vy=0;pvel.set(0,0,0);onGround=true;}};
     skyCity=buildSkyCity({...leisureCtx,K:makeKit(leisureCtx),colliders,interactables,toast,makeTex,...ride,canBoard:()=>!inCar&&!sitting&&!action&&!swimming&&!navy?.rider&&!intercityRail?.rider&&!transport?.rider&&!metro?.rider&&!helipads?.flying,hurt:(d,p)=>hurtPlayer(d,p,0,'Shot by the Gravity Core turrets (Skyhaven)')});
-    deepCity=buildDeepCity({...leisureCtx,K:makeKit(leisureCtx),colliders,interactables,toast,makeTex,move(x,y,z,face,msg){teleportPlayer(new THREE.Vector3(x,y,z),msg);setTimeout(()=>{yaw=face;},700);}});
+    deepCity=buildDeepCity({...leisureCtx,K:makeKit(leisureCtx),colliders,interactables,toast,makeTex,resume:()=>{if(!boardOpen&&!settingsOpen)requestGameControl();},move(x,y,z,face,msg){teleportPlayer(new THREE.Vector3(x,y,z),msg);setTimeout(()=>{yaw=face;},700);}});
     townPlaces.destinations.push(...skyCity.destinations,...deepCity.destinations); }
   // your flat is rented: 60 gold a week to the landlord downstairs (slum.js createRent)
   rent=createRent({day:()=>reconstructionDays,gold:{get:()=>stats.gold,add:n=>{stats.gold+=n;}},toast,interactables,at:slum.landlordAt,exempt:()=>isAdmin});

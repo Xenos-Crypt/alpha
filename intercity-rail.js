@@ -1,7 +1,7 @@
 // Intercity overhead railway: a maglev line on its own viaduct, 6 m up (18 m where it
 // climbs over the river crossing). Every station sits on a straight, level stretch, with:
 //   * a platform level with the train floor, alongside the track
-//   * stairs from the street up to the platform (walkable), and a lift for one-tap access
+//   * stairs from the street up to the platform (walkable), and a lift that really moves (call it, step in, choose a floor)
 //   * railings, a canopy, benches, a live arrival board and name signs
 // The train is three cars that follow the track separately, so it bends round corners.
 // It stops at each station for 15 s with its doors open: press E on the platform to board,
@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import {makeHover} from './hover.js';
 import {arrivalBoard,formatWait} from './arrival-boards.js';
+import {createLift} from './lifts.js';
 
 const Y = 6;                 // track height at stations
 const DECK = Y + 0.6;        // platform top = train floor height
@@ -100,7 +101,7 @@ export function buildIntercityRail(ctx){
 
  // ---------------------------------------------------------------- stations
  const railMats=mat(0xc9d1d6,{metal:.7,rough:.3}),glassWall=mat(0x9fd3ff,{opacity:.22,double:true,rough:.1});
- const stationColliders=[];
+ const stationColliders=[],lifts=[];
  const ground=ctx.groundY||(()=>0);
  for(const s of stops){
   const v=s.side;   // world x direction of the platform side
@@ -125,7 +126,7 @@ export function buildIntercityRail(ctx){
   rail(X(PLAT_OUT),X(PLAT_OUT),s.z+LIFT_U0,s.z+PLAT_LEN/2,DECK);                   // outer edge, after the lift walkway
   for(const end of [-1,1])rail(lo(PLAT_IN,PLAT_OUT),hi(PLAT_IN,PLAT_OUT),s.z+end*PLAT_LEN/2,s.z+end*PLAT_LEN/2,DECK);
   rail(X(STAIR_V1),X(STAIR_V1),s.z+STAIR_TOP,s.z+LIFT_U0,DECK);                    // landing + walkway outer edge
-  rail(lo(STAIR_V0,STAIR_V1),hi(STAIR_V0,STAIR_V1),s.z+LIFT_U0,s.z+LIFT_U0,DECK);  // end of the walkway (lift door)
+  // (the end of the walkway is the lift's own landing doors: solid unless the cab is there with its doors open)
   // stair landing (level with the platform), the stairs, and the walkway to the lift
   const sx=P((STAIR_V0+STAIR_V1)/2),sxLo=lo(STAIR_V0,STAIR_V1),sxHi=hi(STAIR_V0,STAIR_V1);
   part(3,.45,LIFT_U0-STAIR_TOP,sx,DECK-.225,s.z+(STAIR_TOP+LIFT_U0)/2,0xb9beb9);
@@ -137,12 +138,15 @@ export function buildIntercityRail(ctx){
   // street level: the high part of the stairs and the platform columns are solid
   rail(sxLo,sxHi,s.z+STAIR_BOT+STAIR_RUN*.45,s.z+STAIR_TOP,0);
   for(const dz of [-16,-5,6,17])rail(cx-.5,cx+.5,s.z+dz-.5,s.z+dz+.5,0);
-  // lift shaft at the other end, with call points top and bottom
+  // a real lift at the other end: call it, step in, press a button and ride up or down with it (lifts.js)
   const lx=P((STAIR_V0+STAIR_V1)/2),lz=s.z+(LIFT_U0+LIFT_U1)/2;
-  part(3,DECK+3,3,lx,(DECK+3)/2,lz,glassWall);
+  part(3,DECK+3,.06,lx,(DECK+3)/2,s.z+LIFT_U1,glassWall);
+  for(const dv of [-1.5,1.5])part(.06,DECK+3,3,lx+dv,(DECK+3)/2,lz,glassWall);
+  part(3,DECK-3.4,.06,lx,(3.4+DECK)/2,s.z+LIFT_U0,glassWall);
   for(const [dx,dz] of [[-1.5,-1.5],[1.5,-1.5],[-1.5,1.5],[1.5,1.5]])part(.12,DECK+3,.12,lx+dx,(DECK+3)/2,lz+dz,darkSteel);
-  const cab=part(2.6,2.4,2.6,lx,1.25,lz,mat(0xd9dde0,{metal:.5,rough:.35}));
-  rail(lx-1.5,lx+1.5,lz-1.5,lz+1.5,0);
+  const lift=createLift({scene,colliders:ctx.colliders||[],x:lx,z:s.z+LIFT_U0+1.9,rot:Math.PI,depth:1.9,floors:[{y:0,name:'Street'},{y:DECK,name:'Platform'}],name:'Lift',toast:ctx.toast,resume:ctx.resume});
+  for(const sp of [...lift.spots,...lift.cabSpots])ctx.interactables.push(sp);
+  lifts.push(lift);const cab=lift.cab;
   // street-level entrance: sign, ticket machine
   ctx.sign?.(s.name.toUpperCase()+' STATION',sx,4.2,s.z+STAIR_BOT-1.6,10);
   part(.7,1.6,.5,P(STAIR_V1+1.4),.8,s.z+STAIR_BOT-.8,mat(0x2f6f8f));part(.5,.35,.02,P(STAIR_V1+1.4),1.2,s.z+STAIR_BOT-.54,mat(0x9fe8ff,{emissive:0x9fe8ff,ei:.8}));
@@ -155,9 +159,6 @@ export function buildIntercityRail(ctx){
   for(const dz of [-14,-2,12]){part(.6,.12,2.4,P(PLAT_OUT-1.1),DECK+.5,s.z+dz,0x6e6051);part(.1,.5,2.4,P(PLAT_OUT-.8),DECK+.8,s.z+dz,0x6e6051);ctx.sitSpots?.push({x:P(PLAT_OUT-1.1),z:s.z+dz,yaw:v>0?-Math.PI/2:Math.PI/2,seatY:DECK+.85,label:'Sit and wait for the train'});}
   ctx.destinations?.push({name:s.name+' railway station',x:sx,z:s.z+STAIR_BOT-3});
   // interactions
-  const liftBottom=new THREE.Vector3(P(STAIR_V1+1.6),.3,lz),liftTop=new THREE.Vector3(lx,DECK,s.z+LIFT_U0-1.2);
-  ctx.interactables.push({pos:liftBottom,r:2.6,label:'Take the lift up to the '+s.name+' platform',action:()=>{ctx.move(new THREE.Vector3(lx,DECK,s.z+LIFT_U0-1.6));ctx.toast(s.name+': platform level. The arrival board shows when the next train comes.');}});
-  ctx.interactables.push({pos:liftTop,r:2.2,label:'Take the lift down to the street',action:()=>ctx.move(new THREE.Vector3(P(STAIR_V1+2),.3,lz))});
   const boardSpot={pos:new THREE.Vector3(P(PLAT_IN+1.2),DECK,s.z),r:PLAT_LEN/2+1,label:'Board the intercity train',action:()=>boardAt(s)};
   // the boarding spot covers the whole platform edge: it only reaches when you stand near the edge
   s.boardSpot=boardSpot;ctx.interactables.push(boardSpot);
@@ -193,6 +194,7 @@ export function buildIntercityRail(ctx){
  let boardT=0;
  const setCar=(c,d)=>{const p=positionAt(d),a=positionAt(d+1),b=positionAt(d-1);c.g.position.copy(p);if(a.distanceTo(b)>.01){c.g.rotation.y=Math.atan2(a.x-b.x,a.z-b.z);c.g.rotation.x=-Math.atan2(a.y-b.y,Math.hypot(a.x-b.x,a.z-b.z));}};
  function update(dt){
+  const pp=ctx.playerPosition?.();for(const l of lifts)l.update(dt,pp);
   if(wait>0){
    wait-=dt;speed=0;
    if(wait<=0){direction=index===stops.length-1?-1:index===0?1:direction;index+=direction;if(rider)ctx.toast('Doors closing. Next stop: '+stops[index].name+'.');}
@@ -213,6 +215,7 @@ export function buildIntercityRail(ctx){
  // Floors: platforms, landings and stairs count only when you're at (or just below) their height,
  // so the street underneath stays walkable.
  function groundAt(x,z,bodyY=0){
+  for(const l of lifts){const g=l.groundAt(x,z,bodyY);if(g!=null)return g;}
   for(const s of stops){
    const v=(x-s.x)*s.side,u=z-s.z;
    if(u<STAIR_BOT-.5||u>PLAT_LEN/2+.5||v<-3.6||v>STAIR_V1+.4)continue;
@@ -232,5 +235,5 @@ export function buildIntercityRail(ctx){
   reset(){rider=false;},
   snapshot(){return {distance,index,direction,wait,rider};},
   restore(s){if(!s)return;distance=THREE.MathUtils.clamp(s.distance||0,0,total);index=THREE.MathUtils.clamp(s.index||0,0,stops.length-1);direction=s.direction===-1?-1:1;wait=Math.max(0,s.wait||0);rider=!!s.rider;},
-  groundAt,update};
+  lifts,groundAt,update};
 }

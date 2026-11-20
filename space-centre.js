@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createLift} from './lifts.js';
 export function buildSpaceCentre(ctx){
  const root=new THREE.Group();ctx.scene.add(root);
  const add=(geometry,color,x,y,z,parent=root)=>{const m=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color,roughness:.65}));m.position.set(x,y,z);parent.add(m);return m;};
@@ -7,17 +8,24 @@ export function buildSpaceCentre(ctx){
  let interior=false,floor=0,badge=false,state='idle',destination=0,elapsed=0,away=false;
  const destinations=[['Moon',0xb3b2a7,true],['Mars',0xb36745,true],['Earth orbit',0x397bb9,false],['Jupiter orbit',0xb99c79,false],['Saturn orbit',0xcbb885,false],['Sun observatory',0xffb32f,false]];
  function label(text,x,y,z,w=15){const map=ctx.makeTex(512,96,g=>{g.fillStyle='#122c42';g.fillRect(0,0,512,96);g.fillStyle='white';g.font='bold 24px sans-serif';g.textAlign='center';g.fillText(text,256,60);});const m=new THREE.Mesh(new THREE.PlaneGeometry(w,2),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));m.position.set(x,y,z);root.add(m);}
- // Nine distinct floors, windows, workstations and a public lift.
+ // Nine distinct floors, windows, workstations and a real lift (call it, step in, choose a floor: lifts.js).
+ // The lift shaft runs up the east wall (x 431.5-434, z 732.5-735.5), so every slab above the ground has a hole there.
+ const SHAFT={minX:431.5,maxX:434,minZ:732.5,maxZ:735.5},cols=ctx.colliders||[];
+ const slab=(h,y,c)=>{cube(25.5,h,28,418.75,y,740,c);cube(2.5,h,6.5,432.75,y,729.25,c);cube(2.5,h,18.5,432.75,y,744.75,c);};
+ const wall=(minX,maxX,minZ,maxZ,y)=>cols.push({minX,maxX,minZ,maxZ,baseYAt:()=>y});
  for(let level=0;level<9;level++){const y=.4+level*4;
- cube(28,.3,28,420,y-.15,740,0x8b939d);cube(28,.25,28,420,y+3.8,740,0xa9b0b7);
- for(const side of [-1,1]){cube(.3,3.8,28,420+side*14,y+1.9,740,0x526a81);cube(10,3.8,.3,420+side*9,y+1.9,726,0x526a81);}
- cube(28,3.8,.3,420,y+1.9,754,0x526a81);
+ if(level)slab(.3,y-.15,0x8b939d);else cube(28,.3,28,420,y-.15,740,0x8b939d);
+ if(level<8)slab(.25,y+3.8,0xa9b0b7);else cube(28,.25,28,420,y+3.8,740,0xa9b0b7);
+ for(const side of [-1,1]){cube(.3,3.8,28,420+side*14,y+1.9,740,0x526a81);cube(10,3.8,.3,420+side*9,y+1.9,726,0x526a81);wall(420+side*14-.2,420+side*14+.2,726,754,y);wall(Math.min(420+side*4,420+side*14),Math.max(420+side*4,420+side*14),725.8,726.2,y);}
+ cube(28,3.8,.3,420,y+1.9,754,0x526a81);wall(406,434,753.8,754.2,y);
+ if(level){cube(8,3.8,.06,420,y+1.9,726,new THREE.MeshStandardMaterial({color:0x9fd3ff,transparent:true,opacity:.25}));wall(416,424,725.8,726.2,y);}   // upstairs the front gap is a glass wall
  for(let x=410;x<=430;x+=5){cube(3,1.8,.08,x,y+2,725.8,0x8bc3d9);cube(3,1.8,.08,x,y+2,754.2,0x8bc3d9);}
  label((level+1)+' / '+floors[level],420,y+2.8,726-0.25,18);
  for(const side of [-1,1]){cube(5,.2,2,420+side*8,y+.9,746,0x5f6875);cube(1.4,.9,.15,420+side*8,y+1.45,746.5,0x183b55);
  const h=ctx.makePerson({outfit:level===7?0x293445:level===0?0x243b50:0xe0dfd7,hair:0x3b2c23,pants:0x344352});h.root.position.set(420+side*8,y,748);staff.push({h,x:420+side*8,y,z:748,level,phase:side});}
- ctx.interactables.push({pos:new THREE.Vector3(420,y,734),r:3,label:'Space centre lift: floor '+(level+1),action:()=>lift()});
  }
+ const lift=createLift({scene:root,colliders:cols,x:433.8,z:734,rot:-Math.PI/2,floorH:4,floors:floors.map((name,i)=>({y:.4+i*4,name})),first:1,name:'Lift',toast:ctx.toast,resume:ctx.resume});
+ for(const sp of [...lift.spots,...lift.cabSpots])ctx.interactables.push(sp);
  label('ASHFORD SPACE CENTRE',420,37,725.5,24);
  const guard=ctx.makePerson({outfit:0x23384b,hair:0x322a26,pants:0x162637});guard.root.position.set(423,.4,728);staff.push({h:guard,x:423,y:.4,z:728,level:0,phase:0,guard:true});
  ctx.interactables.push({pos:new THREE.Vector3(423,.4,729),r:2.5,label:'Register visitor with security',action:()=>{badge=true;ctx.toast('Visitor badge issued. Assembly viewing and crew training are open.');}});
@@ -36,7 +44,6 @@ export function buildSpaceCentre(ctx){
  const panel=document.createElement('div');panel.id='spaceMissionPanel';panel.style.cssText='position:fixed;inset:10%;z-index:25;display:none;overflow:auto;background:#0b1429f5;color:white;padding:24px;border-radius:16px;font:16px system-ui';document.body.append(panel);
  function close(){panel.style.display='none';if(state==='boarding'){state='idle';ctx.moveTo(home.x,home.y,home.z);}ctx.resume?.();}
  function show(title,choices){document.exitPointerLock();panel.replaceChildren();const heading=document.createElement('h2');heading.textContent=title;panel.append(heading);for(const [name,action]of choices){const b=document.createElement('button');b.textContent=name;b.style.cssText='padding:12px;margin:6px;border:0;border-radius:8px;background:#315583;color:white';b.onclick=()=>{close();action();};panel.append(b);}const b=document.createElement('button');b.textContent='Close';b.onclick=close;panel.append(b);panel.style.display='block';}
- function lift(){if(!ctx.canTravel())return;show('Space centre lift',floors.map((name,i)=>[(i+1)+' / '+name,()=>{interior=true;floor=i;ctx.moveTo(420,.4+i*4,736);} ]));}
  function launch(index,returning=false){interior=false;destination=index;elapsed=0;state=returning?'returning':'countdown';rocket.visible=true;rocket.position.copy(returning?new THREE.Vector3(420+index*70,1200,710):new THREE.Vector3(420,.55,700));ctx.toast(returning?'Return flight started.':'Launch countdown. Interact to abort before liftoff.');}
  ctx.interactables.push({pos:home,r:4,label:'Board rocket and select mission',action:()=>{if(!ctx.canTravel())return;show('Choose a rocket mission',destinations.map(([name],i)=>[name,()=>launch(i)]));}});
  ctx.safeFence?.(410,430,690,710,{h:2.6,gate:{side:'z0',from:417,to:423}});
@@ -49,7 +56,7 @@ export function buildSpaceCentre(ctx){
  ctx.interactables.push({pos:new THREE.Vector3(x,1200,710),r:5,label:'Board return rocket to Earth',action:()=>{if(away&&state==='idle'&&ctx.canTravel())launch(i,true);}});});
  function update(dt=0){
  for(const s of staff){if(!s.guard){s.h.root.position.x=s.x+Math.sin(elapsed*.4+s.phase)*.7;ctx.animatePerson?.(s.h,true,dt);}else ctx.animatePerson?.(s.h,false,dt);}
- elapsed+=dt;const p=ctx.playerPosition();
+ elapsed+=dt;const p=ctx.playerPosition();lift.update(dt,p);
  if(state!=='idle'){
  status.style.display='block';flame.visible=state!=='countdown';
  if(state==='boarding'){status.textContent='Rocket cabin: choose a mission on the console.';}
@@ -59,8 +66,8 @@ export function buildSpaceCentre(ctx){
  else if(state==='landing'){rocket.position.y=1240-Math.min(40,elapsed*5);status.textContent='LANDING | Interact after touchdown to explore';if(elapsed>=8){state='landed';away=true;flame.visible=false;}}
  else if(state==='returning'){rocket.position.lerp(new THREE.Vector3(420,.55,700),Math.min(1,dt*.25));status.textContent='RETURN TO EARTH | '+Math.max(0,Math.ceil(25-elapsed))+'s';if(elapsed>=25){rocket.position.set(420,.55,700);state='idle';away=false;flame.visible=false;ctx.moveTo(home.x,home.y,home.z);status.style.display='none';}}
  if(state!=='idle')ctx.moveTo(rocket.position.x,rocket.position.y+10,rocket.position.z);
- }else{status.style.display='none';if(away&&p.y>1100){p.x=THREE.MathUtils.clamp(p.x,420+destination*70-25,420+destination*70+25);p.z=THREE.MathUtils.clamp(p.z,685,735);}if(interior){p.x=THREE.MathUtils.clamp(p.x,407,433);p.z=THREE.MathUtils.clamp(p.z,727,753);}}
+ }else{status.style.display='none';if(away&&p.y>1100){p.x=THREE.MathUtils.clamp(p.x,420+destination*70-25,420+destination*70+25);p.z=THREE.MathUtils.clamp(p.z,685,735);}if(interior){p.x=THREE.MathUtils.clamp(p.x,407,433.6);p.z=THREE.MathUtils.clamp(p.z,727,753);}}
  }
  ctx.destinations.push({name:'Nine-storey Space Centre',x:420,z:722},{name:'Rocket launch pad',x:420,z:684});
- return {root,rocket,panel,staff,floors,destinations,snapshot(){return {interior,floor,badge,state,destination,elapsed,away,position:rocket.position.toArray()};},restore(save){if(!save)return;interior=!!save.interior;floor=Math.max(0,Math.min(8,save.floor||0));badge=!!save.badge;state=['idle','boarding','countdown','ascent','transfer','landing','landed','returning'].includes(save.state)?save.state:'idle';destination=Math.max(0,Math.min(5,save.destination||0));elapsed=save.elapsed||0;away=!!save.away;if(save.position)rocket.position.fromArray(save.position);},get inSpace(){return ctx.playerPosition().y>250;},get rider(){return state!=='idle';},get state(){return state;},launch,update,interact(){if(state==='boarding'||state==='countdown'){state='idle';flame.visible=false;ctx.moveTo(home.x,home.y,home.z);ctx.toast('Launch aborted.');}else if(state==='landed'){state='idle';ctx.moveTo(420+destination*70,1200,716);ctx.toast('Explore '+destinations[destination][0]+'. Return to the rocket when ready.');}else ctx.toast('Remain aboard until touchdown.');},groundAt(x,z,y){if(interior&&Math.abs(x-420)<14&&z>726&&z<754)return .4+floor*4;if(y>1100)for(let i=0;i<destinations.length;i++)if(Math.abs(x-(420+i*70))<=27&&Math.abs(z-710)<=27)return 1200;return null;}};
+ return {root,rocket,panel,staff,floors,destinations,lift,snapshot(){return {interior,floor,badge,state,destination,elapsed,away,position:rocket.position.toArray()};},restore(save){if(!save)return;interior=!!save.interior;floor=Math.max(0,Math.min(8,save.floor||0));badge=!!save.badge;state=['idle','boarding','countdown','ascent','transfer','landing','landed','returning'].includes(save.state)?save.state:'idle';destination=Math.max(0,Math.min(5,save.destination||0));elapsed=save.elapsed||0;away=!!save.away;if(save.position)rocket.position.fromArray(save.position);},get inSpace(){return ctx.playerPosition().y>250;},get rider(){return state!=='idle';},get state(){return state;},launch,update,interact(){if(state==='boarding'||state==='countdown'){state='idle';flame.visible=false;ctx.moveTo(home.x,home.y,home.z);ctx.toast('Launch aborted.');}else if(state==='landed'){state='idle';ctx.moveTo(420+destination*70,1200,716);ctx.toast('Explore '+destinations[destination][0]+'. Return to the rocket when ready.');}else ctx.toast('Remain aboard until touchdown.');},groundAt(x,z,y){if(x>406&&x<434&&z>725.8&&z<754){const g=lift.groundAt(x,z,y);if(g!=null)return g;if(y>36)return 36.33;const hole=x>SHAFT.minX&&x<SHAFT.maxX&&z>SHAFT.minZ&&z<SHAFT.maxZ;for(let i=8;i>=0;i--){if(i&&hole)continue;const f=.4+i*4;if(y>=f-1.2)return f;}return interior?.4:null;}if(y>1100)for(let i=0;i<destinations.length;i++)if(Math.abs(x-(420+i*70))<=27&&Math.abs(z-710)<=27)return 1200;return null;}};
 }

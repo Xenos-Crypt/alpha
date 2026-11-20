@@ -2,7 +2,7 @@
 // (20 m down), between Driftwood Island and the ghost island, held against the weight of the sea by space magic:
 // the Space Core in the middle, a sphere of starlight with six star anchors round the dome's rim.
 //
-// You walk there: the Deephaven Lift on the west shore takes you down, and a glass tunnel runs along the sea floor
+// You walk there: the Deephaven Lift on the west shore (a real lift you ride) takes you down, and a glass tunnel runs along the sea floor
 // into the dome. Submarines dock at the port on the dome's north tip.
 //
 // Checked before placing: nothing in the bay reaches below 3 m deep there (the islands sit on the surface, the
@@ -11,10 +11,11 @@
 // grid and fits under the glass.
 import * as THREE from 'three';
 import { createWorldGrid } from './world-grid.js';
+import { createLift } from './lifts.js';
 
 export const DEEP = { x: -155, z: 492, rx: 38, rz: 58, floor: -19.5, h: 15.5 };
 export const DEEP_TUNNEL = { x0: -318, x1: -170, z: 445, half: 3 };
-export const DEEP_LIFT = { x: -324, z: 445 };
+export const DEEP_LIFT = { x: -318, z: 445 };   // on the flat beach (the shore embankment rises west of x -322; the sea starts at x -300)
 
 export function buildDeepCity(ctx) {
   const { scene, K, interactables, toast, makeTex } = ctx;
@@ -96,7 +97,10 @@ export function buildDeepCity(ctx) {
   for (let x = T.x0 + 4; x < T.x1; x += 8) box(tg, 0.8, 0.12, 0.8, x, Y + T.half + 0.1, T.z, lamp);
   id('LND', 'TUN', 'GLS', 'GOV', 'Deephaven glass tunnel', (T.x0 + T.x1) / 2, T.z);
   // the lift at the bottom of the shaft, and the lift house up on the shore
-  box(tg, 4, 4, 4, T.x0 - 2.5, Y + 2, T.z, mat(0x2b2f45, { metal: 0.6 }));
+  // the lobby at the bottom of the shaft (x -320.6 to -318): a small steel room the tunnel opens out of
+  { const lm = mat(0x2b2f45, { metal: 0.6 }); box(tg, 2.6, 0.2, T.half * 2, -319.3, Y - 0.1, T.z, path); box(tg, 3, 0.3, T.half * 2 + 0.6, -319.3, Y + 4.1, T.z, lm);
+    for (const sd of [-1, 1]) { box(tg, 3, 4, 0.3, -319.3, Y + 2, T.z + sd * (T.half + 0.15), lm); solid(-320.8, -317.8, T.z + sd * (T.half + 0.15) - 0.2, T.z + sd * (T.half + 0.15) + 0.2); }
+    box(tg, 0.3, 4, T.half * 2, -320.65, Y + 2, T.z, lm); solid(-320.9, -320.4, T.z - T.half, T.z + T.half); }
   const L = DEEP_LIFT, house = new THREE.Group(); house.name = 'Deephaven Lift'; scene.add(house);
   const hm = mat(0xdfe8ec, { rough: 0.5 }), hg = mat(0x6fd3ea, { rough: 0.1, metal: 0.3, em: 0x0a3a4a, ei: 0.5 });
   box(house, 8, 4, 0.3, L.x, 2, L.z - 4, hm); box(house, 8, 4, 0.3, L.x, 2, L.z + 4, hm); box(house, 0.3, 4, 8.3, L.x - 4, 2, L.z, hm);   // open on the east side (the shore path)
@@ -107,8 +111,9 @@ export function buildDeepCity(ctx) {
   { const m = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), new THREE.MeshBasicMaterial({ map: hs })); m.position.set(L.x + 4.35, 3.4, L.z); m.rotation.y = Math.PI / 2; house.add(m); }
   id('BLD', 'GEN', 'GLS.STL', 'GOV', 'Deephaven Lift (shore)', L.x, L.z);
   destinations.push({ name: 'Deephaven Lift (to the underwater city)', x: L.x + 6, z: L.z });
-  interactables.push({ pos: new THREE.Vector3(L.x, 0, L.z), r: 3.5, label: 'Take the lift down to Deephaven', action: () => ctx.move(T.x0 + 1.5, Y, T.z, -Math.PI / 2, '⬇️ Down to the sea floor. Follow the glass tunnel east to Deephaven.') });
-  interactables.push({ pos: new THREE.Vector3(T.x0 + 1, Y, T.z), r: 3, label: 'Take the lift up to the shore', action: () => ctx.move(L.x + 5.5, 0.1, L.z, Math.PI / 2, '⬆️ Back up on the shore.') });
+  // a real lift: call it, step in, choose the floor and ride the 20 m down with it (lifts.js). Its doors face the shore path.
+  const lift = createLift({ scene, colliders: ctx.colliders, x: L.x - 2, z: L.z, rot: Math.PI / 2, floors: [{ y: Y, name: 'Sea floor (Deephaven tunnel)' }, { y: 0, name: 'Shore' }], name: 'Deephaven Lift', toast, resume: ctx.resume });
+  for (const sp of [...lift.spots, ...lift.cabSpots]) interactables.push(sp);
 
   // ---------------------------------------------------------------- the submarine port on the north tip
   const port = new THREE.Group(); port.name = 'Deephaven submarine port'; root.add(port);
@@ -128,22 +133,22 @@ export function buildDeepCity(ctx) {
   destinations.push({ name: 'Deephaven (underwater city)', x: D.x, z: D.z - 10 });
 
   // ---------------------------------------------------------------- where you can stand
-  const inTunnel = (x, z) => x >= T.x0 - 0.5 && x <= T.x1 + 6 && Math.abs(z - T.z) <= T.half;
+  const inTunnel = (x, z) => x >= -320.5 && x <= T.x1 + 6 && Math.abs(z - T.z) <= T.half;
   const inside = (x, z, y) => y != null && y < Y + 12 && (inDome(x, z) || inTunnel(x, z));
-  function groundAt(x, z, bodyY) { return bodyY != null && bodyY < -8 && (inDome(x, z) || inTunnel(x, z)) ? Y : null; }
+  function groundAt(x, z, bodyY) { const g = lift.groundAt(x, z, bodyY); if (g != null) return g; return bodyY != null && bodyY < -8 && (inDome(x, z) || inTunnel(x, z)) ? Y : null; }
   let t = 0;
   function update(dt, p) {
-    t += dt;
+    t += dt; lift.update(dt, p);
     orb.rotation.y += dt * 0.2; halo.rotation.x = Math.sin(t * 0.4) * 0.6; halo.rotation.y += dt * 0.5; motes.rotation.y -= dt * 0.15; light.intensity = 2.4 + Math.sin(t * 1.3) * 0.4;
     for (const a of anchors) a.rotation.y += dt * 1.5;
     for (const f of fish) { f.a += f.s * dt; const x = D.x + Math.cos(f.a) * (D.rx + 6) * f.r, z = D.z + Math.sin(f.a) * (D.rz + 6) * f.r; f.f.position.set(x, Y + f.y, z); f.f.rotation.y = -f.a; }
     sub.position.y = Y + 3 + Math.sin(t * 0.7) * 0.15;
     if (p && p.y < -8) {
       // the glass and the tunnel walls: you stay inside
-      if (inTunnel(p.x, p.z) || Math.abs(p.z - T.z) <= T.half + 0.6 && p.x >= T.x0 - 0.5 && p.x <= T.x1 + 6) { p.z = Math.max(T.z - T.half + 0.5, Math.min(T.z + T.half - 0.5, p.z)); p.x = Math.max(T.x0 + 0.5, p.x); }
+      if (inTunnel(p.x, p.z) || Math.abs(p.z - T.z) <= T.half + 0.6 && p.x >= -321 && p.x <= T.x1 + 6) { p.z = Math.max(T.z - T.half + 0.5, Math.min(T.z + T.half - 0.5, p.z)); p.x = Math.max(-320.1, p.x); }   // (-320.1: the lift lobby's back wall)
       else if (!inDome(p.x, p.z, 0.6) && p.x > T.x1 - 2) { const dx = (p.x - D.x) / (D.rx - 0.6), dz = (p.z - D.z) / (D.rz - 0.6), k = Math.hypot(dx, dz); if (k > 1) { p.x = D.x + (p.x - D.x) / k; p.z = D.z + (p.z - D.z) / k; } }
     }
     K.update?.(dt, p || { x: D.x, z: D.z }, 160);
   }
-  return { root, ids, destinations, groundAt, update, inside, center: D, cityAt: (x, z, y) => inside(x, z, y) || Math.hypot(x - DEEP_LIFT.x, z - DEEP_LIFT.z) < 8 };
+  return { root, ids, destinations, groundAt, update, inside, center: D, lift, cityAt: (x, z, y) => inside(x, z, y) || Math.hypot(x - DEEP_LIFT.x, z - DEEP_LIFT.z) < 8 };
 }
