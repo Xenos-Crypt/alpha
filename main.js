@@ -8010,7 +8010,7 @@ for(const pet of parkPets.filter(a=>a.kind==='dog').slice(0,2)){
 }
 const companion=parkPets.filter(a=>a.kind==='dog')[2];
 interactables.push({pos:companion.home.clone(),r:3,label:'Adopt companion dog',action:()=>{if(companion.owner){toast('Your companion dog follows you around town.');return;}companion.owner=player;companion.leash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xa68752}));scene.add(companion.leash);toast('You adopted a dog. Your companion will follow you.');}});
-harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex});
+harbourBridge=buildBridge({scene,box,colliders,planeBlocks,makeTex,camBlockers});
 townPlaces.destinations.push({name:'Harbour bridge',x:220,z:85});
 transport=buildTransport({scene,box,makeTex,sitSpots,interactables,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,
  tramTravelLimit(p,dir,distance,s){return junctionControl.limitTravel(p,dir,distance,{kind:'tram',length:s.length});},
@@ -8451,6 +8451,7 @@ function isRoadAt(x, z) {
   for (const r of roadGrid.get(Math.floor(x / ROAD_CELL) * 100003 + Math.floor(z / ROAD_CELL)) || []) if (x > r.minX + 0.5 && x < r.maxX - 0.5 && z > r.minZ + 0.5 && z < r.maxZ - 0.5) return true;
   return false;
 }
+harbourBridge?.addPiers((x, z) => isRoadAt(x, z) || isRoadAt(x - 0.7, z) || isRoadAt(x + 0.7, z));   // the harbour bridge's piers, clear of the roads under it
 intercityRail?.clearRoads?.((x,z)=>isRoadAt(x,z));   // no viaduct legs standing in a road
 roadWear = createRoadWear({ scene, makeTex, groundY, toast, interactables, isRoad: isRoadAt, roadRects: () => roadRectList, makePerson: makeHumanoid, animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
   bump(v, sev, speed) { v.health = Math.max(5, (v.health ?? 100) - sev * Math.min(4, speed / 8)); applyVehicleCondition(v); v.speed *= 0.85; shake = Math.max(shake, 0.1 * sev); },
