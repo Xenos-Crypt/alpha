@@ -61,6 +61,7 @@ import {buildDrones} from './drones.js';
 import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
 import {buildShipMesh, buildShipyard} from './spaceships.js';
+import {buildSpaceWing, buildMilitaryShip} from './space-wing.js';
 import {buildSkyCity} from './sky-city.js';
 import {buildDeepCity} from './deep-city.js';
 import {createSolidProps} from './solid-props.js';
@@ -491,7 +492,7 @@ function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localSto
 let cityLife=null,monsterQuestKills=0;
 let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
-let skyCity = null, deepCity = null, shipyard = null;   // shipyard: Orbital Forge (spaceships.js)   // Skyhaven (sky-city.js) and Deephaven (deep-city.js)
+let skyCity = null, deepCity = null, shipyard = null, spaceWing = null;   // shipyard: Orbital Forge (spaceships.js)   // Skyhaven (sky-city.js) and Deephaven (deep-city.js)
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
 const buildings = [];      // every city building, so it can be destroyed
@@ -521,7 +522,7 @@ function rebuildSolidProps() {
     const before = new Map(); scene.traverse(o => { if (o.isMesh) { const e = o.matrixWorld.elements; before.set(o, e[12] + e[13] * 7 + e[14] * 13 + e[0] * 17 + e[2] * 19); } });
     setTimeout(() => {
       scene.updateMatrixWorld(true);
-      const skip = new Set([player, ...vehicles.map(v => v.group), skyCity?.ship].filter(Boolean)), box = new THREE.Box3();
+      const skip = new Set([player, ...vehicles.map(v => v.group), skyCity?.ship, ...(spaceWing?.patrols || []).map(s => s.group)].filter(Boolean)), box = new THREE.Box3();
       for (const [o, h] of before) { const e = o.matrixWorld.elements; if (Math.abs(e[12] + e[13] * 7 + e[14] * 13 + e[0] * 17 + e[2] * 19 - h) < 1e-4) continue;
         let q = o; while (q.parent && q.parent !== scene) { box.setFromObject(q.parent); const sz = box.getSize(new THREE.Vector3()); if (Math.max(sz.x, sz.z) > 12) break; q = q.parent; } skip.add(q); }
       const n = solidProps.build(scene, { skip, groundY: (x, z, y) => groundY(x, z, y), colliders, stairs: stairRamps.map(r => ({ minX: r.x0, maxX: r.x1, minZ: r.z0, maxZ: r.z1 })), seats: sitSpots });
@@ -3620,8 +3621,8 @@ function makeHelicopter({ name = 'Helicopter', color = 0x2f6f8f, x = 0, z = 0, y
 }
 // A spaceship (spaceships.js): flies like a helicopter, only much faster, climbing far quicker, and right up into
 // space (above 250 m) as far as the Aegis dome overhead. Built by Orbital Forge.
-function makeSpaceship({ name = 'Spaceship', model = 'skiff', color = 0xe8edf2, x = 0, z = 0, yaw = 0 } = {}) {
-  const ship = buildShipMesh(model, color), g = ship.group; g.rotation.order = 'YXZ'; scene.add(g);
+function makeSpaceship({ name = 'Spaceship', model = 'skiff', color = 0xe8edf2, x = 0, z = 0, yaw = 0, military = false } = {}) {
+  const ship = military ? buildMilitaryShip(model) : buildShipMesh(model, color), g = ship.group; g.rotation.order = 'YXZ'; scene.add(g);
   g.position.set(x, groundY(x, z, 0), z); g.rotation.y = yaw;
   const v = { kind: 'plane', heli: true, spaceship: true, model, name, group: g, wheels: [], speed: 0, radius: 3 * ship.size, wingSpan: 9 * ship.size, length: 11 * ship.size, maxSpeed: 100, takeoff: 0, turnRate: 1.1, ai: null, passengers: null,
     alt: g.position.y, crashed: false, prop: null, exhaust: null, glow: ship.glow, shipLights: ship.lights, climb: 22,
@@ -8075,6 +8076,10 @@ military = buildMilitary({ scene, colliders, interactables, civicBuildings, make
   playerPos: () => player.position, playerRig: () => P,
   addAircraft: a => makeAircraft(a),
   makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
+// the military's spaceships: the Air Force Space Wing at Eastern Command (space-wing.js)
+spaceWing = buildSpaceWing({ scene, colliders, interactables, makeTex, toast, makePerson: o => makeHumanoid(o), addSpaceship: o => makeSpaceship(o),
+  alert: () => militaryAlert, wanted: () => wanted, target: () => (inCar && driving ? driving.group.position : player.position),
+  hurt: (d, from) => hurtPlayer(d, from, 0, 'Shot by an Air Force Space Wing patrol ship') });
 shipyard = buildShipyard({ scene, colliders, interactables, makeTex, openShop: (title, cats, place) => openVehicleShop(title, cats, place), destinations: townPlaces?.destinations, makePerson: o => makeHumanoid(o) });
 buildVehicleDealers({ openVehicleShop, scene, colliders, interactables, makeTex, makePerson: o => makeHumanoid(o), makeVehicle, makeHelicopter, makeAircraft, toast, money: () => stats.gold, sign: signboard, groundY, destinations: townPlaces.destinations,
   shopPanel: (title, items) => snackShop.open(title, 'dealer', items), registerOwned: v => cityServices?.ownedCars?.push(v) });
@@ -8140,7 +8145,7 @@ const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setIt
 worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>GRASS_TUFTS?(grass?.tufts?.()||[]):[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
-  extra:()=>[...idExtra,...(shipyard?.ids||[]),...(skyCity?.ids||[]),...(deepCity?.ids||[]),...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
+  extra:()=>[...idExtra,...(shipyard?.ids||[]),...(spaceWing?.ids||[]),...(skyCity?.ids||[]),...(deepCity?.ids||[]),...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // every purchase, uniform, worn-out shirt and pram goes on the thing's record (belongings.js → world IDs)
@@ -8533,7 +8538,7 @@ function frame() {
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
     blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); if (GRASS_TUFTS) grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
-    military?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
+    military?.update(dt); spaceWing?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);
