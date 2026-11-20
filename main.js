@@ -69,7 +69,8 @@ import {buildVehicleDealers} from './vehicle-dealers.js';
 import {createMarketPanel} from './market-panel.js';
 import {createProperty} from './property.js';
 import {buildDrivingSchool} from './driving-school.js';
-import {createForest, pickKind} from './trees.js';
+import {createForest, pickKind, FOLIAGE_TINT} from './trees.js';
+import {createSeasons} from './seasons.js';
 import {digPond, holeMaterial} from './ponds.js';
 import {makeBotany, LIFE, PLANTS, ANIMALS, TREE_SHAPE, plantId} from './botany.js';
 import {createGrass} from './grass.js';
@@ -6840,12 +6841,12 @@ let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
 $('weatherBadge').textContent = '☀️ Clear';
-const WEATHER_CYCLE = ['clear', 'rain', 'clear', 'snow'];
+let WEATHER_CYCLE = ['clear', 'rain', 'clear', 'snow'], weatherIdx = 0;   // replaced by the season's cycle once seasons.js starts
 const WEATHER_LABEL = { clear: '☀️ Clear', rain: '🌧️ Raining', snow: '❄️ Snowing' };
 function updateWeather(dt) {
   weatherT -= dt;
   if (weatherT <= 0) {
-    const next = WEATHER_CYCLE[(WEATHER_CYCLE.indexOf(weatherState) + 1) % WEATHER_CYCLE.length];
+    weatherIdx = (weatherIdx + 1) % WEATHER_CYCLE.length; const next = WEATHER_CYCLE[weatherIdx];
     weatherState = next;
     weatherT = next === 'clear' ? 90 + rand() * 120 : next === 'snow' ? 50 + rand() * 40 : 45 + rand() * 45;
     toast(next === 'clear' ? 'The weather has cleared up.' : next === 'snow' ? 'Snow is starting to fall.' : 'Rain is moving in.');
@@ -8000,6 +8001,12 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   director:async q=>{if(!navigator.onLine)return null;const r=await fetch('/api/story-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;},
   pause:storyPause,resume:requestGameControl});
 // The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
+// Seasons and holidays from the real calendar: weather, leaf colour, and decorations (seasons.js)
+const seasons=createSeasons({scene,lampSpots,curb:CURB,home:{x:HOME.x,z:HOME.z,minZ:HOME.minZ,maxZ:HOME.maxZ},colliders,tint:FOLIAGE_TINT,toast,
+  gardenTrees:[[8.6,16.5],[31.4,13.5],[31.4,31.4],[8.6,31.4]].map(([x,z])=>({x,z})),
+  livingCorner:(()=>{const r=homeRooms.rooms.find(q=>q.name==='living');return r?{x:r.minX+0.7,z:r.maxZ-0.7}:null;})(),
+  playerPos:()=>player.position,burst:(at,c)=>burst(at,70,[c,0xffffff],16,0.28,1.5,3,0)});
+WEATHER_CYCLE=seasons.weatherCycle;weatherIdx=0;
 system=createSystem({userId:()=>soloUserId||'guest',
   admin:{on:()=>isAdmin,revive:async()=>{await supabase.rpc('story_run_revive');},levelUp:()=>{gainXp(Math.max(1,xpToNext()-prog.xp));},
     questions:async()=>{const r=await supabase.rpc('dev_queries_open');if(r.error)throw r.error;return r.data||[];}},
@@ -8353,7 +8360,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons.update(rawDt,dayTime>.55&&dayTime<.95);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
