@@ -137,7 +137,9 @@ export function buildAdminEstate(ctx) {
   for (let x = px0 + 2; x < px1; x += 5) { const g = new THREE.Group(); g.position.set(x, 0, pz1 + 3); root.add(g); B(g, 0.75, 0.1, 2, 0, 0.35, 0, 0xffffff); B(g, 0.75, 0.55, 0.1, 0, 0.65, -0.95, 0xffffff); }
   tag('LND', 'POL', 'WTR.TIL', 'Infinity pool', (px0 + px1) / 2, (pz0 + pz1) / 2); tag('LND', 'POL', 'WTR.TIL', 'Hot tub', 1305, 252);
   for (let x = px0 + 2; x < px1; x += 5) tag('PRD', 'LNG', 'PLS', 'Pool lounger', x, pz1 + 3, 'Atelier Furniture');
-  const pools = [{ minX: px0, maxX: px1, minZ: pz0, maxZ: pz1 }, { minX: 1303.4, maxX: 1306.6, minZ: 250.4, maxZ: 253.6 }];
+  // waterY: where the water's surface is (the pool sits up on its deck, so you swim at that height, not the sea's)
+  const pools = [{ minX: px0, maxX: px1, minZ: pz0, maxZ: pz1, waterY: 0.44 }, { minX: 1303.4, maxX: 1306.6, minZ: 250.4, maxZ: 253.6, waterY: 0.6 }];
+  const deck = { minX: px0 - 0.7, maxX: px1 + 0.7, minZ: pz0 - 0.7, maxZ: pz1 + 0.7 };
 
   // ---------------- the private airstrip, hangar and jet ----------------
   const rx = 1440, rz0 = 180, rz1 = 790;
@@ -161,6 +163,7 @@ export function buildAdminEstate(ctx) {
   return {
     pools, cars, jet,
     home: { x: 1275, z: hz0 - 3 },   // where you appear when you go home: the front door
-    groundAt: () => null,
+    // you stand on the pool's deck (it's raised); inside the water you swim
+    groundAt: (x, z) => (x >= deck.minX && x <= deck.maxX && z >= deck.minZ && z <= deck.maxZ && !(x > px0 && x < px1 && z > pz0 && z < pz1)) ? 0.45 : null,
   };
 }
