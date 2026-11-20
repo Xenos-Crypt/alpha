@@ -388,6 +388,7 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsB
       btn.hidden = !st.on; placeDropped(); if (st.deadUntil > Date.now()) deathScreen(); else if (st.on) refreshDay(); },
     died,
     note,
+    quests: () => st.quests.filter(q => !q.failed),
     toggle() { if (open && page.dataset.view === 'window') close(); else showWindow(); },
     update(dt) {
       if (!st.on || open) { lastPos = null; return; }

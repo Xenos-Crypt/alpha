@@ -16,12 +16,12 @@ export const GOODS = {
   bottom: { kind: 'BTM', name: 'trousers', stock: 'clo', mat: 'FAB', materials: ['fab'], maker: 'Loomhouse Textiles', shop: 'MarketWay Retail', price: 22, life: [90, 170] },
   shoes: { kind: 'SHO', name: 'shoes', stock: 'sho', mat: 'RUB.FAB', materials: ['rub', 'fab'], maker: 'Elastica Rubber', shop: 'MarketWay Retail', price: 30, life: [120, 220] },
   // phones: Atlas Dynamics makes them from plastic, glass, tech tile (circuitry) and alloy; three models
-  phone: { kind: 'PHN', name: 'phone', stock: 'phn', mat: 'TCH.GLS.PLS', materials: ['tch', 'gls', 'pls', 'aly'], maker: 'Atlas Dynamics', shop: 'MarketWay Retail', price: 120, life: [400, 800] },
+  phone: { kind: 'PHN', name: 'phone', stock: 'phn', mat: 'TCH.GLS.PLS', materials: ['tch', 'gls', 'pls', 'aly'], maker: 'Cryptic', shop: 'Cryptic', price: 120, life: [400, 800] },
   pram: { kind: 'PRM', name: 'pram', stock: 'prm', mat: 'STL.FAB.RUB', materials: ['stl', 'fab', 'rub', 'pls'], maker: 'Velo Motors', shop: 'Velo Motors', price: 140, life: [2000, 4000] },
 };
 export const WEAR = ['top', 'bottom', 'shoes'];
 // the phone models in the shops: [name, price, how long it lasts (×), screen]
-export const PHONES = { lite: ['Atlas Lite', 120, 1, 'small'], one: ['Atlas One', 350, 1.3, 'bright'], pro: ['Atlas Pro', 900, 1.6, 'large'] };
+export const PHONES = { lite: ['Cryptic C1', 120, 1, 'small'], one: ['Cryptic C2', 350, 1.3, 'bright'], pro: ['Cryptic Prime', 900, 1.6, 'large'] };   // Cryptic: the government's phone company, the only one in Anthos
 // what the shops have on the rails (people pick to their taste)
 const RAILS = {
   top: [0x2f5d8a, 0x8a3b3b, 0xe8e2d4, 0x3a6b35, 0x2a2a2a, 0xc98a2a, 0x6b4f8a, 0x4f7f8a, 0xb5651d, 0x7a8a99, 0xd9c27a, 0x9a4f6b],
