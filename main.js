@@ -2426,6 +2426,7 @@ let isAdmin = false, phone = null;
 let adminFlying = false, lastSpaceTap = 0;
 // admin flight: double-tap Space to take off or land (only with god mode on)
 document.addEventListener('keydown', e => { if (e.code !== 'Space' || e.repeat || !isAdmin || !adminGod || !soloMode) return; const t = performance.now(); if (t - lastSpaceTap < 320) { adminFlying = !adminFlying; vy = 0; toast(adminFlying ? '🕊️ Flying. Space up, Z down, Shift to go fast. Double-tap Space to land.' : '🕊️ Landing.'); lastSpaceTap = 0; } else lastSpaceTap = t; }, true);
+let adminCityHome = null;
 let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{return true;}})(), adminMaxed = false;
 // Homes that fit who you are (home-styles.js): everyone else starts poor in a run-down home with no car;
 // the admin has a house in the city (where they start) and a mansion with a pool, supercars and a private airstrip
@@ -2437,11 +2438,12 @@ function setUpHome(){
       makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
     poolZones.push(...adminEstate.pools);
     townPlaces?.destinations?.push({name:'Your mansion (Xenos Estate)',x:adminEstate.home.x,z:adminEstate.home.z});
-    // ...and a proper house in the city, on the old lot in Ashford, where the admin starts out (the mansion is still theirs)
-    buildHouse(20,22,-1,21,0xf3ead8,0x6b4a3a);
-    { const v=makeVehicle('car',0xd4af37,'supercar'); v.group.position.set(13,CURB,13.5); v.group.rotation.y=Math.PI; v.ownedId='admin-city-supercar'; }
-    SPAWN.set(20,CURB,15.5);
-    townPlaces?.destinations?.push({name:'Your city house (Ashford)',x:20,z:15});
+    // ...and a house in the city where the admin starts out (the mansion is still theirs): one of the town's existing
+    // houses, the one nearest the middle of Ashford, so nothing new is built on top of anything
+    const cityHome=houses.slice(1).reduce((b,h)=>{const d=Math.hypot((h.minX+h.maxX)/2-20,h.maxZ-0);return !b||d<b.d?{h,d}:b;},null)?.h;
+    if(cityHome){ const hx=(cityHome.minX+cityHome.maxX)/2, hz=cityHome.maxZ; adminCityHome={x:hx,z:hz+1};
+      SPAWN.set(hx,CURB,hz+1);   // on the garden path, just outside the front door
+      townPlaces?.destinations?.push({name:'Your city house (Ashford)',x:hx,z:hz+1}); }
   }else{
     const bed=homeRooms.rooms.find(q=>q.name==='bedroom');
     makeRundown({scene,makeTex,curb:CURB,floorY:HOME_Y,home:HOME,bedroom:bed?{x:(bed.minX+bed.maxX)/2,z:(bed.minZ+bed.maxZ)/2}:null});
@@ -7867,6 +7869,7 @@ townPlaces = buildPlaces({ makePerson: makeHumanoid, animatePerson: (h,moving,dt
   pause() { if (mobileControls?.mobile) { locked = false; mouseHeld = false; $('start').style.display = 'none'; } },
   resume() { requestGameControl(); }
 });
+townPlaces?.destinations?.push({name:'Ashford Charging Station',x:19.5,z:9});   // (chargers.js: the old empty lot)
 // The bridge/Riverside were hand-built directly in this file, not through places.js's
 // room() helper, so they never auto-registered on the travel map like everything else.
 townPlaces.destinations.push({ name: 'Riverside (across the bridge)', x: BRIDGE_X, z: RIVERSIDE_Z0 + 40 });
