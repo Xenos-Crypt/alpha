@@ -244,10 +244,23 @@ body.cinema #phoneBtn{visibility:hidden}`;
   function close() { if (open) toggle(false); }
   // count distance on foot for the Fit Tracker
   let last = null;
+  // ---------------- IDs (world-ids.js): your phone, your laptop and every app on it ----------------
+  // They go where you go, so their position is yours. The objects are kept so the registry sees each one once.
+  const things = new Map();
+  const thing = (key, t) => { let x = things.get(key); if (!x) { x = { ...t, get pos() { return last || ctx.where?.() || { x: 0, z: 0 }; } }; things.set(key, x); } return x; };
+  function devices() {
+    const who = ctx.premium?.() ? 'ADM' : 'PLR', u = uid(), out = [];
+    out.push(thing('phone:' + who, { cls: 'PRD', kind: 'PHN', mat: 'GLS.ALU', owner: who, seed: 'cryptic-phone:' + u, maker: 'Cryptic', name: ctx.premium?.() ? 'Cryptic Prime (your phone)' : 'Cryptic C1, cracked screen (your phone)' }));
+    if (st().laptop) out.push(thing('laptop', { cls: 'PRD', kind: 'LPT', mat: 'ALU.GLS', owner: who, seed: 'cryptic-book:' + u, maker: 'Cryptic', name: 'Cryptic Book (your laptop)' }));
+    for (const [id, a] of Object.entries(APPS)) if (!a.device && has(id)) out.push(thing('app:' + id, { cls: 'PRD', kind: 'APP', mat: 'NON', owner: who, seed: 'app:' + id + ':' + u, maker: 'Cryptic', name: `${a.name} app${a.pre ? ' (built in)' : ''}` }));
+    return out;
+  }
+
   return {
+    devices,
     get open() { return open; },
     toggle, close, openLaptop: () => setLaptop(true),
-    reset() { S = null; },   // a different player signed in
+    reset() { S = null; things.clear(); },   // a different player signed in
     update(p, onFoot) { if (onFoot && last) { const d = Math.hypot(p.x - last.x, p.z - last.z); if (d < 3) { st().steps += d; } } last = onFoot ? { x: p.x, z: p.z } : null; },
     save,
   };

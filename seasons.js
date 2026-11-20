@@ -5,6 +5,7 @@
 //   and fireworks on New Year's Eve and Bonfire Night. Everything is instanced so it costs very little.
 // For testing, ?debug&date=2026-12-25 pretends it's that day.
 import * as THREE from 'three';
+import { makeBotany } from './botany.js';
 
 // Easter Sunday (Anonymous Gregorian algorithm). Returns [month 1-12, day].
 export function easter(y) {
@@ -118,6 +119,9 @@ export function createSeasons(ctx) {
   const now = forced ? new Date(forced + 'T12:00:00') : new Date();
   const cal = calendar(now);
   const root = new THREE.Group(); root.name = 'seasonal decorations'; ctx.scene.add(root);
+  // every decoration, stall and helper gets an ID (world-ids.js); fireworks are only sparks, so they don't
+  const bot = makeBotany(ctx, 'the city'), DEC = 'Westhaven Parks & Gardens';
+  const tag = (kind, mat, name, x, z, maker = DEC, owner = 'GOV', cls = 'PRD') => bot.fixture(cls, kind, mat, maker, name, x, z, owner);
   const tint = ctx.tint;   // { value: Vector4 } shared with the tree and grass materials
   const t = SEASON_TINT[cal.season]; tint.value.set(t[0], t[1], t[2], t[3]);
 
@@ -164,12 +168,13 @@ export function createSeasons(ctx) {
     bulbs(lamps.flatMap(p => spiral(p.x, base(p) + 0.4, p.z, 0.15, 3.4, 6, 22)), [0xff3b30, 0x34c759, 0xffd60a, 0xffffff], 0.05);   // every lamp's lights in one draw call
     bulbs(eaves, [0xff3b30, 0x34c759, 0xffd60a, 0x0a84ff, 0xffffff], 0.06);
     bulbs(garden.flatMap(tr => spiral(tr.x, ctx.curb + 2.2, tr.z, 1.9, 3.5, 4, 46)), [0xffd60a, 0xffffff, 0xff3b30]);
-    if (ctx.livingCorner) christmasTree(ctx.livingCorner.x, ctx.curb, ctx.livingCorner.z, 2.1);   // the tree indoors
-    christmasTree(home.x + 4.5, ctx.curb, home.minZ - 3.2, 3.2);                                   // and one in the front garden
+    if (ctx.livingCorner) { christmasTree(ctx.livingCorner.x, ctx.curb, ctx.livingCorner.z, 2.1); tag('XMT', 'FIR.GLS', 'Christmas tree (indoors)', ctx.livingCorner.x, ctx.livingCorner.z, 'MarketWay Retail', 'PLR'); }   // the tree indoors
+    christmasTree(home.x + 4.5, ctx.curb, home.minZ - 3.2, 3.2); tag('XMT', 'FIR.GLS', 'Christmas tree (front garden)', home.x + 4.5, home.minZ - 3.2, 'MarketWay Retail', 'PLR');   // and one in the front garden
     ctx.colliders?.push({ minX: home.x + 3.9, maxX: home.x + 5.1, minZ: home.minZ - 3.8, maxZ: home.minZ - 2.6 });
     // a wreath on the front door
     const wreath = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.08, 6, 14), new THREE.MeshStandardMaterial({ color: 0x1f5a32, roughness: 0.8 }));
-    wreath.position.set(home.x - 0.5, ctx.curb + 1.6, home.minZ - 0.08); root.add(wreath);
+    wreath.position.set(home.x - 0.5, ctx.curb + 1.6, home.minZ - 0.08); root.add(wreath); tag('DEC', 'FIR', 'Christmas wreath on the front door', home.x - 0.5, home.minZ, 'MarketWay Retail', 'PLR');
+    tag('DEC', 'GLS.CPR', 'Roof lights, home', home.x, home.z, 'MarketWay Retail', 'PLR'); for (const tr of garden) tag('DEC', 'GLS.CPR', 'Lights round a garden tree', tr.x, tr.z, 'MarketWay Retail', 'PLR');
     bulbs([0, 1, 2, 3, 4, 5].map(i => new THREE.Vector3(home.x - 0.5 + Math.cos(i) * 0.28, ctx.curb + 1.6 + Math.sin(i) * 0.28, home.minZ - 0.14)), [0xff3b30]);
   }
   if (live.includes('valentine')) {
@@ -237,17 +242,20 @@ export function createSeasons(ctx) {
       for (let i = 0; i <= steps; i++) { const f = i / steps; lights.push(new THREE.Vector3(p.x + dx * f, y0 + (y1 - y0) * f - Math.sin(f * Math.PI) * 0.9, p.z + dz * f)); }
       const mid = { x: p.x + dx / 2, y: (y0 + y1) / 2 - 1.5, z: p.z + dz / 2, ry: dx ? 0 : Math.PI / 2, s: 1.3 };
       (look.motif2 && n++ % 2 ? motifs2 : motifs).push(mid);
+      tag('DEC', 'GLS.CPR', `Garland of lights across the road (${theme})`, mid.x, mid.z); tag('DEC', 'PLS', `Hanging ${look.motif[0]} ornament`, mid.x, mid.z + 0.01);
     }
     bulbsLow(lights, look.lights, 0.07);
     instanced(motifGeo[look.motif[0]], new THREE.MeshBasicMaterial({ color: look.motif[1] }), motifs);
     if (look.motif2) instanced(motifGeo[look.motif2[0]], new THREE.MeshBasicMaterial({ color: look.motif2[1] }), motifs2);
     // 2. lights round every lamp post (every one now, not every other)
     bulbsLow(ctx.lampSpots.flatMap(p => spiral(p.x, base(p) + 0.4, p.z, 0.15, 3.4, 6, 18)), look.lights, 0.05);
+    for (const p of ctx.lampSpots) tag('DEC', 'GLS.CPR', `Lights round a lamp post (${theme})`, p.x, p.z + 0.01);
     // 3. a line of light along the top of every building in town, front and back
     const roofs = [];
     for (const b of ctx.buildings || []) {
       if (!b.alive || !(b.top > 2)) continue;
       for (const s of [-1, 1]) roofs.push({ x: b.x, y: b.top + 0.05, z: b.z + s * b.d / 2, len: b.w }, { x: b.x + s * b.w / 2, y: b.top + 0.05, z: b.z, len: b.d, ry: Math.PI / 2 });
+      tag('DEC', 'GLS.CPR', `Roofline lights${theme === 'christmas' ? ' and icicles' : ''} (${theme})`, b.x, b.z);
     }
     if (roofs.length) {
       const strip = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.09, 0.09), new THREE.MeshBasicMaterial({ color: look.roof }), roofs.length), o = new THREE.Object3D();
@@ -265,11 +273,11 @@ export function createSeasons(ctx) {
       const F = ctx.fair, fence = [];
       for (let x = F.minX; x <= F.maxX; x += 1.6) fence.push(new THREE.Vector3(x, ctx.curb + 2.6, F.minZ), new THREE.Vector3(x, ctx.curb + 2.6, F.maxZ));
       for (let z = F.minZ; z <= F.maxZ; z += 1.6) fence.push(new THREE.Vector3(F.minX, ctx.curb + 2.6, z), new THREE.Vector3(F.maxX, ctx.curb + 2.6, z));
-      bulbsLow(fence, look.lights, 0.09);
+      bulbsLow(fence, look.lights, 0.09); tag('DEC', 'GLS.CPR', `Funfair fence lights (${theme})`, (F.minX + F.maxX) / 2, F.maxZ);
       for (const [g0, g1] of F.gates || []) {
         const cx = (g0 + g1) / 2, arch = [];
         for (let i = 0; i <= 30; i++) { const a = Math.PI * i / 30; arch.push(new THREE.Vector3(cx - Math.cos(a) * (g1 - g0) / 2, ctx.curb + 3 + Math.sin(a) * 3, F.maxZ)); }
-        bulbsLow(arch, look.lights, 0.14);
+        bulbsLow(arch, look.lights, 0.14); tag('DEC', 'GLS.STL', `Light arch over the funfair gate (${theme})`, cx, F.maxZ);
         if (ctx.kit) ctx.kit.place(ctx.kit.sign(MARKET[theme].fair, MARKET[theme].fairSub, 7, MARKET[theme].bg, '#ffffff', 'Georgia, serif'), cx, ctx.curb + 6.4, F.maxZ + 0.2, 0);
       }
     }
@@ -289,12 +297,12 @@ export function createSeasons(ctx) {
       bulbsLow(front, LOOK[theme].lights, 0.06);
       K.place(K.sign(st.name, st.sub, 2.8, M.bg, '#ffffff', 'Georgia, serif'), x + side * -0.0, ctx.curb + 2.5, z, side > 0 ? -Math.PI / 2 : Math.PI / 2).position.x = x + (side > 0 ? -1.25 : 1.25);
       K.stander(x + (side > 0 ? 0.6 : -0.6), z, side > 0 ? -Math.PI / 2 : Math.PI / 2, { task: 'cook', outfit: st.outfit });
-      K.solid(x - 1.7, x + 1.7, z - 1.7, z + 1.7);
+      K.solid(x - 1.7, x + 1.7, z - 1.7, z + 1.7); tag('KSK', 'WOD', `Market stall: ${st.name}`, x, z, 'Westhaven Builders', 'REQ', 'BLD');
       K.spot(x + (side > 0 ? -2.6 : 2.6), z, 2, st.name, () => ctx.openShop?.(st.name, st.items.map(it => it.gift ? { ...it, desc: 'goes in your bag', onBuy: () => { if (ctx.stats.gold < it.price) return false; ctx.stats.gold -= it.price; ctx.addItem(it.name, it.icon); ctx.toast(`${it.icon} ${it.name} is in your bag.`); return false; } } : it)));
     });
     // the centrepiece at the end of the stalls
     const cz = at.z - 4 - Math.ceil(M.stalls.length / 2) * 6 - 4;
-    if (theme === 'christmas') { christmasTree(at.x, ctx.curb, cz, 14); K.circle(at.x, cz, 3); }
+    if (theme === 'christmas') { christmasTree(at.x, ctx.curb, cz, 14); K.circle(at.x, cz, 3); tag('XMT', 'FIR.GLS', 'Giant Christmas tree, holiday market', at.x, cz); }
     else if (M.centre) { const c = new THREE.Mesh(motifGeo[M.centre], new THREE.MeshBasicMaterial({ color: LOOK[theme].motif[1] })); c.scale.setScalar(7); c.position.set(at.x, ctx.curb + 4.5, cz); root.add(c); C2(at.x, cz); }
     function C2(x, z) { K.C(root, 0.15, 0.2, 2.5, x, ctx.curb + 1.25, z, 0x444444, 8); K.circle(x, z, 0.6); }
     if (M.host) K.stander(at.x + 2.5, cz + 3, 0, { outfit: M.host.outfit, task: 'talk' });
@@ -302,6 +310,8 @@ export function createSeasons(ctx) {
     // a crowd enjoying it (they also count down at New Year)
     for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2, r = 7 + (i % 3); crowd.push(K.stander(at.x + Math.cos(a) * r, cz + Math.sin(a) * r * 0.6, Math.atan2(-Math.cos(a), -Math.sin(a)), { task: i % 3 ? 'talk' : 'swing', child: i % 5 === 0 })); }
     walkers.push(K.walker([[at.x - 3, at.z], [at.x - 3, cz + 6], [at.x + 3, cz + 6], [at.x + 3, at.z]], { speed: 0.9 }));
+    if (M.centre) tag('DEC', 'PLS', `Giant ${M.centre} (${theme} market centrepiece)`, at.x, cz);
+    bot.people(K);   // the stallholders, the host and the crowd each have an ID
   }
 
   // ---- the New Year countdown: at real midnight, everyone counts 10 to 1, then HAPPY NEW YEAR and a sky full of fireworks

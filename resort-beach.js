@@ -15,6 +15,7 @@
 //   - surfers riding in, jet skis, kayaks, paddleboards, a banana boat, swimmers
 import * as THREE from 'three';
 import { makeKit } from './leisure-kit.js';
+import { makeBotany } from './botany.js';
 
 export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250, seaY = 0.03 } = {}) {
   const K = makeKit(ctx), { B, C, S, mat, solid, sign, place, spot, stander, sitter, walker } = K;
@@ -25,6 +26,10 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   // a slope along z, from height ya at z = za to yb at z = zb, so you walk up onto decks instead of popping up
   const ramp = (a, b, za, zb, ya, yb) => floors.push({ minX: Math.min(a, b), maxX: Math.max(a, b), minZ: Math.min(za, zb), maxZ: Math.max(za, zb), y: (x, z) => ya + (yb - ya) * Math.min(1, Math.max(0, (z - za) / (zb - za))) });
   const pools = [];    // swimmable rectangles handed back to the game
+  // every thing here gets an ID (world-ids.js): built things, people, animals and boats
+  const bot = makeBotany(ctx, 'Anthos Bay'), PARKS = 'Westhaven Parks & Gardens', BUILD = 'Westhaven Builders';
+  const fx = (cls, kind, mat, maker, name, x, z, owner = 'GOV') => bot.fixture(cls, kind, mat, maker, name, x, z, owner);
+  const moving = (cls, kind, mat, owner, seed, maker, name, obj) => bot.thing({ cls, kind, mat, owner, seed: 'bay:' + seed, maker, name: name + ', Anthos Bay', get pos() { const q = obj.position; return { x: q.x, z: q.z }; } });
 
   // ---------------- the new sand, wet edge, shallows and surf ----------------
   const sandTex = makeTex(256, 256, g => { g.fillStyle = '#e6cf9c'; g.fillRect(0, 0, 256, 256); for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(${150 + Math.random() * 90},${120 + Math.random() * 70},${70 + Math.random() * 50},0.35)`; g.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 1.5); } });
@@ -32,6 +37,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   const sand = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, shore - z0 + 2), new THREE.MeshStandardMaterial({ map: sandTex, roughness: 1 }));
   sand.rotation.x = -Math.PI / 2; sand.position.set((x0 + x1) / 2, SAND, (z0 + shore) / 2 - 1); sand.receiveShadow = true; root.add(sand);
   floor(x0, x1, z0 - 0.5, shore, SAND);
+  fx('LND', 'BCH', 'SND', PARKS, 'Beach sand (the bay)', (x0 + x1) / 2, (z0 + shore) / 2);
   const wet = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 3.5), mat(0xb59a6a, { rough: 0.45 })); wet.rotation.x = -Math.PI / 2; wet.position.set((x0 + x1) / 2, SAND + 0.004, shore - 1.6); root.add(wet);
   const shallowTex = makeTex(8, 64, g => { const grd = g.createLinearGradient(0, 0, 0, 64); grd.addColorStop(0, 'rgba(110,232,215,0.9)'); grd.addColorStop(0.6, 'rgba(60,190,205,0.45)'); grd.addColorStop(1, 'rgba(31,111,168,0)'); g.fillStyle = grd; g.fillRect(0, 0, 8, 64); });
   const shallow = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 30), new THREE.MeshStandardMaterial({ map: shallowTex, transparent: true, depthWrite: false, roughness: 0.08 }));
@@ -49,6 +55,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     const s = 1.6 + rnd() * 2.2, m = new THREE.Mesh(rockGeo, granite[Math.floor(rnd() * 3)]);
     m.scale.set(s * (1 + rnd() * 0.6), s * (0.7 + rnd() * 0.5), s); m.position.set(x0 + 1.5 + rnd() * 2, s * 0.35, z); m.rotation.set(rnd(), rnd() * 6, rnd()); m.castShadow = true; root.add(m);
     if (z < shore) K.circle?.(m.position.x, z, s * 0.9);
+    fx('LND', 'BOU', 'GRN', 'nature', 'Granite boulder', m.position.x, z, 'WLD');
   }
   for (const [x, z, s] of [[x0 + 8, shore - 6, 2.4], [x0 + 12, shore + 4, 1.8], [x0 + 6, shore + 10, 2.8], [x1 - 6, shore - 4, 2.2], [x1 - 4, shore + 6, 3]]) {
     const m = new THREE.Mesh(rockGeo, granite[1]); m.scale.set(s * 1.4, s, s * 1.2); m.position.set(x, s * 0.3, z); m.castShadow = true; root.add(m);
@@ -60,6 +67,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   waveTex.wrapS = THREE.RepeatWrapping; waveTex.repeat.set(60, 1);
   const prom = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 1.7), new THREE.MeshStandardMaterial({ map: waveTex, roughness: 0.8 }));
   prom.rotation.x = -Math.PI / 2; prom.position.set((x0 + x1) / 2, 0.035, 166.05); root.add(prom);
+  fx('LND', 'PRM', 'STN', BUILD, 'Wave mosaic promenade', (x0 + x1) / 2, 166);
 
   // ---------------- Anthos Bay Resort: hotel, infinity pool, cabanas ----------------
   {
@@ -67,7 +75,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     B(root, hx1 - hx0, H, hz1 - hz0, (hx0 + hx1) / 2, H / 2, (hz0 + hz1) / 2, mat(0xf4f1ea, { rough: 0.6 }));
     for (let f = 1; f <= 4; f++) { B(root, hx1 - hx0 + 0.6, 0.25, 1.4, (hx0 + hx1) / 2, f * 3 - 0.1, hz1 + 0.6, 0xdedad2); B(root, hx1 - hx0 - 1, 1.6, 0.06, (hx0 + hx1) / 2, f * 3 + 0.7, hz1 + 1.28, mat(0x7fc8e8, { rough: 0.1, metal: 0.3, opacity: 0.6 })); }
     for (let x = hx0 + 2; x < hx1 - 1; x += 3.4) for (let f = 0; f < 4; f++) B(root, 2.2, 2, 0.1, x, f * 3 + 1.6, hz1 + 0.02, mat(0x2a5d7a, { rough: 0.1, metal: 0.4 }), false);
-    solid(hx0, hx1, hz0, hz1);
+    solid(hx0, hx1, hz0, hz1); fx('BLD', 'HTL', 'CON.GLS', BUILD, 'Anthos Bay Resort (hotel)', (hx0 + hx1) / 2, (hz0 + hz1) / 2, 'REQ');
     place(sign('ANTHOS BAY RESORT', 'rooms · spa · infinity pool', 9, '#0e4a63', '#ffffff'), (hx0 + hx1) / 2, H + 1.2, hz1 + 0.2, 0);
     spot((hx0 + hx1) / 2, hz1 + 2.5, 2.5, 'Anthos Bay Resort reception', () => ctx.openShop?.('Anthos Bay Resort', [
       { name: 'Day pass: pool and lounger', icon: '🏖️', price: 15, energy: 30 }, { name: 'Spa massage', icon: '💆', price: 40, energy: 60 },
@@ -76,10 +84,10 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     const px0 = 74, px1 = 122, pz0 = 205, pz1 = 213;
     B(root, px1 - px0 + 1.2, 0.5, pz1 - pz0 + 1.2, (px0 + px1) / 2, 0.25, (pz0 + pz1) / 2, mat(0xe8e2d6, { rough: 0.7 }));
     B(root, px1 - px0, 0.06, pz1 - pz0, (px0 + px1) / 2, 0.47, (pz0 + pz1) / 2, mat(0x2fb5d6, { rough: 0.05, metal: 0.2, opacity: 0.85 }), false);
-    pools.push({ minX: px0, maxX: px1, minZ: pz0, maxZ: pz1 });
-    for (let x = px0; x <= px1; x += 4) { const g = new THREE.Group(); g.position.set(x, 0, pz1 + 3.2); root.add(g); B(g, 0.7, 0.1, 1.9, 0, 0.35, 0, 0xffffff); B(g, 0.7, 0.5, 0.1, 0, 0.6, -0.9, 0xffffff); if (x % 8 === 2) sitter(x, pz1 + 3.4, Math.PI, 0.45, { task: 'talk' }); }
+    pools.push({ minX: px0, maxX: px1, minZ: pz0, maxZ: pz1 }); fx('LND', 'POL', 'TIL', BUILD, 'Infinity pool, Anthos Bay Resort', (px0 + px1) / 2, (pz0 + pz1) / 2, 'REQ');
+    for (let x = px0; x <= px1; x += 4) { const g = new THREE.Group(); g.position.set(x, 0, pz1 + 3.2); root.add(g); B(g, 0.7, 0.1, 1.9, 0, 0.35, 0, 0xffffff); B(g, 0.7, 0.5, 0.1, 0, 0.6, -0.9, 0xffffff); if (x % 8 === 2) sitter(x, pz1 + 3.4, Math.PI, 0.45, { task: 'talk' }); fx('PRD', 'LNG', 'PLS', 'MarketWay Retail', 'Sun lounger', x, pz1 + 3.2, 'REQ'); }
     for (const x of [130, 135.5, 141]) { const g = new THREE.Group(); g.position.set(x, 0, 207); root.add(g); for (const [dx, dz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) C(g, 0.06, 0.06, 2.6, dx, 1.3, dz, 0xffffff, 6);
-      B(g, 4.3, 0.1, 4.3, 0, 2.6, 0, 0xffffff); B(g, 3.2, 0.4, 2.2, 0, 0.3, 0, 0xf2efe8); for (const s of [-1, 1]) B(g, 0.05, 2.4, 4, s * 2.1, 1.4, 0, mat(0xffffff, { opacity: 0.55 }), false); sitter(x, 207.4, Math.PI, 0.55, { task: 'eat' }); }
+      B(g, 4.3, 0.1, 4.3, 0, 2.6, 0, 0xffffff); B(g, 3.2, 0.4, 2.2, 0, 0.3, 0, 0xf2efe8); for (const s of [-1, 1]) B(g, 0.05, 2.4, 4, s * 2.1, 1.4, 0, mat(0xffffff, { opacity: 0.55 }), false); sitter(x, 207.4, Math.PI, 0.55, { task: 'eat' }); fx('PRD', 'CAB', 'FAB.WOD', 'MarketWay Retail', 'Cabana', x, 207, 'REQ'); }
   }
 
   // ---------------- Brighton beach huts ----------------
@@ -88,7 +96,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     const g = new THREE.Group(); g.position.set(x, 0, 191.5); root.add(g);
     B(g, 2.8, 2.4, 2.4, 0, 1.2 + SAND, 0, hutCols[i % hutCols.length]); B(g, 1.1, 1.9, 0.06, 0, 1.0 + SAND, 1.22, 0xffffff);
     const roof = new THREE.Mesh(new THREE.ConeGeometry(2.1, 1.1, 4), mat(0xf4f1ea)); roof.position.set(0, 2.95 + SAND, 0); roof.rotation.y = Math.PI / 4; roof.scale.z = 0.85; roof.castShadow = true; g.add(roof);
-    solid(x - 1.4, x + 1.4, 190.3, 192.7);
+    solid(x - 1.4, x + 1.4, 190.3, 192.7); fx('BLD', 'HUT', 'WOD', BUILD, 'Beach hut', x, 191.5, 'REQ');
     if (i % 3 === 1) sitter(x + 0.6, 193.6, 0, 0.45, { task: 'talk' });
   }
   spot(196, 194.5, 3, 'Rent a beach hut for the day', () => ctx.openShop?.('Beach huts', [{ name: 'Beach hut for the day', icon: '🛖', price: 12, energy: 20 }, { name: 'Deckchair', icon: '🪑', price: 3, energy: 6 }]));
@@ -101,7 +109,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     B(g, 6.4, 2.2, 0.06, 0, 2.6, 2.02, mat(0x8fd3f0, { rough: 0.05, metal: 0.3, opacity: 0.7 }), false);
     const roof = new THREE.Mesh(new THREE.ConeGeometry(5.6, 1.6, 4), mat(0x6b4a30, { rough: 1 })); roof.position.set(0, 5.2, -0.8); roof.rotation.y = Math.PI / 4; roof.scale.set(1.15, 1, 0.9); roof.castShadow = true; g.add(roof);
     { const r = B(g, 1.6, 0.1, 3.2, 3.2, 0.72, 5.6, 0xc9a26a); r.rotation.x = -Math.atan2(1.36, 3); }   // a ramp down to the sand
-    solid(x - 3.5, x + 3.5, 203 - 3.6, 203 + 2);
+    solid(x - 3.5, x + 3.5, 203 - 3.6, 203 + 2); fx('BLD', 'HSE', 'WOD.GLS', BUILD, 'Beach house on stilts', x, 203, 'RES');
     floor(x - 4.5, x + 4.5, 203 + 2, 203 + 4, 1.42); ramp(x + 2.4, x + 4, 203 + 4, 203 + 7.1, 1.42, SAND);
     if (i % 2 === 0) sitter(x - 2, 206, 0, 1.9, { task: 'talk' });
   }
@@ -113,6 +121,9 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     const beanCols = [0xff6b6b, 0xffffff, 0x4dabf7, 0xffd43b, 0x63e6be];
     for (let i = 0; i < 10; i++) { const b = S(root, 0.55, cx - 9 + (i % 5) * 4.2, 0.55, cz - 3 + Math.floor(i / 5) * 5.5, beanCols[i % 5], 10); b.scale.y = 0.55; if (i % 3 === 0) sitter(cx - 9 + (i % 5) * 4.2, cz - 2.6 + Math.floor(i / 5) * 5.5, Math.PI, 0.75, { task: 'talk' }); }
     for (const dx of [-7, 0, 7]) { const g = new THREE.Group(); g.position.set(cx + dx, 0.3, cz + 4); root.add(g); B(g, 2.4, 0.45, 2.2, 0, 0.22, 0, 0xffffff); for (const [a, b] of [[-1.1, -1], [1.1, -1], [-1.1, 1], [1.1, 1]]) C(g, 0.05, 0.05, 2.2, a, 1.1, b, 0xc9a26a, 6); B(g, 2.5, 0.06, 2.3, 0, 2.2, 0, mat(0xffffff, { opacity: 0.8 }), false); }
+    fx('BLD', 'CLB', 'WOD', BUILD, 'Sunset Beach Club', cx, cz, 'REQ');
+    for (let i = 0; i < 10; i++) fx('PRD', 'FUR', 'FAB', 'MarketWay Retail', 'Bean bag', cx - 9 + (i % 5) * 4.2, cz - 3 + Math.floor(i / 5) * 5.5, 'REQ');
+    for (const dx of [-7, 0, 7]) fx('PRD', 'LNG', 'WOD.FAB', 'MarketWay Retail', 'Daybed', cx + dx, cz + 4, 'REQ');
     B(root, 2.6, 1.1, 1.2, cx, 0.85, cz - 5, 0x222222); stander(cx, cz - 5.6, 0, { task: 'swing', outfit: 0x111111, y: 0.35 });
     place(sign('SUNSET BEACH CLUB', 'daybeds · cocktails · DJ at sunset', 6, '#2b1d14', '#ffd23f', 'sans-serif'), cx, 2.4, cz - 6.2, Math.PI);
     spot(cx, cz - 7, 2.2, 'Sunset Beach Club', () => ctx.openShop?.('Sunset Beach Club', [{ name: 'Daybed for the afternoon', icon: '🛏️', price: 18, energy: 35 }, { name: 'Mojito', icon: '🍸', price: 7, energy: 10 },
@@ -126,6 +137,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     for (const s of [-1, 1]) { const gx = cx + s * 14; C(root, 0.06, 0.06, 2, gx, 1, cz - 2.5, 0xffffff, 6); C(root, 0.06, 0.06, 2, gx, 1, cz + 2.5, 0xffffff, 6); B(root, 0.1, 0.1, 5, gx, 2, cz, 0xffffff); }
     for (const [dx, dz] of [[-6, -3], [-3, 2], [4, -2], [7, 3], [0, 5]]) stander(cx + dx, cz + dz, dx > 0 ? -Math.PI / 2 : Math.PI / 2, { task: 'swing' });
     S(root, 0.12, cx + 1, SAND + 0.12, cz, 0xffffff, 10);
+    fx('LND', 'PCH', 'SND', PARKS, 'Beach soccer pitch', cx, cz); for (const s of [-1, 1]) fx('PRD', 'PLY', 'STL', PARKS, 'Beach soccer goal', cx + s * 14, cz); fx('PRD', 'PLY', 'PLS', 'MarketWay Retail', 'Football', cx + 1, cz);
   }
 
   // ---------------- kiosks: gelato, smoothies and cocktails, coconuts and fruit, corn and churros ----------------
@@ -135,7 +147,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     for (const [a, b] of [[-1.5, -1], [1.5, -1], [-1.5, 1], [1.5, 1]]) C(g, 0.05, 0.05, 1.5, a, 1.9, b, 0xffffff, 6);
     const top = new THREE.Mesh(new THREE.ConeGeometry(2.4, 0.8, 4), mat(roofCol)); top.position.y = 3.0; top.rotation.y = Math.PI / 4; g.add(top);
     place(sign(name, sub, 3.4, colour, '#ffffff', 'sans-serif'), x, 2.4, z + 1.15, 0);
-    stander(x, z - 0.4, 0, { task: 'cook' }); solid(x - 1.6, x + 1.6, z - 1.1, z + 1.1);
+    stander(x, z - 0.4, 0, { task: 'cook' }); solid(x - 1.6, x + 1.6, z - 1.1, z + 1.1); fx('BLD', 'KSK', 'WOD', BUILD, 'Kiosk: ' + name, x, z, 'REQ');
     spot(x, z + 2, 1.8, name, () => ctx.openShop?.(name, items));
   };
   kiosk(102, 231, 0xff8fb1, 'GELATERIA', 'Italian gelato · sorbet', [{ name: 'Pistachio gelato', icon: '🍨', price: 3, energy: 8 }, { name: 'Strawberry sorbet', icon: '🍧', price: 3, energy: 8 }, { name: 'Ice cream cone', icon: '🍦', price: 2, energy: 6 }, { name: 'Affogato', icon: '☕', price: 4, energy: 12 }], '#d6336c');
@@ -149,10 +161,10 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) C(root, 0.08, 0.08, 2.4, x + dx, 1.2, z + dz, 0xffffff, 6);
     B(root, 2.8, 1.8, 2.6, x, 3.3, z, c); B(root, 3.2, 0.2, 3, x, 4.3, z, 0xffffff); B(root, 1.4, 0.9, 0.05, x, 3.4, z + 1.31, mat(0x9fd3ff, { opacity: 0.6 }), false);
     const ramp = B(root, 0.8, 0.08, 3.4, x, 1.2, z - 2.6, 0xd9b07a); ramp.rotation.x = 0.55;
-    stander(x, z + 0.2, 0, { outfit: 0xe63946, y: 2.45, task: 'talk' }); solid(x - 1.3, x + 1.3, z - 1.3, z + 1.3);
+    stander(x, z + 0.2, 0, { outfit: 0xe63946, y: 2.45, task: 'talk' }); solid(x - 1.3, x + 1.3, z - 1.3, z + 1.3); fx('BLD', 'LFG', 'WOD', BUILD, 'Lifeguard tower', x, z);
   }
   const flagMat = makeTex(64, 64, g => { g.fillStyle = '#e03131'; g.fillRect(0, 0, 64, 32); g.fillStyle = '#fcc419'; g.fillRect(0, 32, 64, 32); });
-  for (const fx of [120, 150, 200, 230]) { C(root, 0.04, 0.04, 3.2, fx, 1.6, shore - 3, 0x888888, 5); const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.7), new THREE.MeshBasicMaterial({ map: flagMat, side: THREE.DoubleSide })); fl.position.set(fx + 0.46, 2.85, shore - 3); root.add(fl); }
+  for (const fx2 of [120, 150, 200, 230]) { C(root, 0.04, 0.04, 3.2, fx2, 1.6, shore - 3, 0x888888, 5); const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.7), new THREE.MeshBasicMaterial({ map: flagMat, side: THREE.DoubleSide })); fl.position.set(fx2 + 0.46, 2.85, shore - 3); root.add(fl); fx('PRD', 'SGN', 'FAB', PARKS, 'Surf flag (swim between the flags)', fx2, shore - 3); }
   spot(178, 238.5, 2, 'Talk to the lifeguard', () => toast(['🏊 "Swim between the red and yellow flags. Rips pull you out anywhere else."', '🦈 "Shark spotted past the buoys this morning. Stay in the shallows."', '🐢 "Please don\'t touch the turtles. They\'re nesting."'][Math.floor(Math.random() * 3)]));
 
   // ---------------- Bondi-style ocean pool at the water's edge ----------------
@@ -164,7 +176,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     }
     B(root, qx1 - qx0, 0.05, qz1 - qz0, (qx0 + qx1) / 2, 0.42, (qz0 + qz1) / 2, mat(0x38c6d9, { rough: 0.05, metal: 0.2, opacity: 0.85 }), false);
     for (let i = 0; i < 4; i++) B(root, 0.08, 0.02, qz1 - qz0 - 1, qx0 + 4 + i * 4, 0.46, (qz0 + qz1) / 2, 0x1971c2, false);   // lane lines
-    pools.push({ minX: qx0, maxX: qx1, minZ: qz0, maxZ: qz1 });
+    pools.push({ minX: qx0, maxX: qx1, minZ: qz0, maxZ: qz1 }); fx('LND', 'POL', 'CON', BUILD, 'Ocean pool', (qx0 + qx1) / 2, (qz0 + qz1) / 2);
     place(sign('OCEAN POOL', 'icebergs swim club · est. 1929', 4, '#1864ab', '#ffffff', 'sans-serif'), (qx0 + qx1) / 2, 1.6, qz0 - 1.2, 0);
   }
 
@@ -175,6 +187,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   // a wooden ramp up from the sand to the jetty
   { const len = 7, r = B(root, 3, 0.15, Math.hypot(len, DECK), jx, DECK / 2, shore - 1 - len / 2, deckMat); r.rotation.x = Math.atan2(DECK, len); ramp(jx - 1.5, jx + 1.5, shore - 1 - len, shore - 1, SAND, DECK); }
   for (let z = shore + 2; z < jz1; z += 4) for (const s of [-1, 1]) C(root, 0.12, 0.12, 2.4, jx + s * 1.4, 0, z, 0x5a3d26, 6);
+  fx('LND', 'JTY', 'WOD', BUILD, 'Jetty to the overwater bungalows', jx, (shore + jz1) / 2); fx('LND', 'RMP', 'WOD', BUILD, 'Ramp up to the jetty', jx, shore - 4.5);
   for (const [bx, bz] of [[jx - 9, 270], [jx + 9, 270], [jx - 9, 288], [jx + 9, 288], [jx, jz1 + 6]]) {
     const g = new THREE.Group(); g.position.set(bx, 0, bz); root.add(g);
     for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) C(g, 0.15, 0.15, 2.6, dx, 0, dz, 0x5a3d26, 6);
@@ -182,7 +195,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     B(g, 3.4, 1.8, 0.06, 0, DECK + 1.2, 1.52, mat(0x8fd3f0, { rough: 0.05, opacity: 0.7 }), false);
     const thatch = new THREE.Mesh(new THREE.ConeGeometry(4.4, 2.4, 4), mat(0xc9a86a, { rough: 1 })); thatch.position.set(0, DECK + 3.8, -0.6); thatch.rotation.y = Math.PI / 4; thatch.castShadow = true; g.add(thatch);
     B(g, 1.6, 0.1, 0.8, 0, DECK + 0.3, 3.2, 0xffffff); sitter(bx, bz + 3.2, 0, DECK + 0.4, { task: 'talk' });
-    solid(bx - 2.3, bx + 2.3, bz - 2.7, bz + 1.5);
+    solid(bx - 2.3, bx + 2.3, bz - 2.7, bz + 1.5); fx('BLD', 'BNG', 'WOD.HAY', BUILD, 'Overwater bungalow', bx, bz, 'REQ');
     floor(bx - 3.75, bx + 3.75, bz - 3.75, bz + 3.75, DECK);
     if (Math.abs(bx - jx) > 1) floor(Math.min(bx, jx), Math.max(bx, jx), bz - 0.9, bz + 0.9, DECK);   // walkway to the jetty
     if (Math.abs(bx - jx) > 1) B(root, Math.abs(bx - jx), 0.2, 1.8, (bx + jx) / 2, DECK - 0.1, bz, deckMat);
@@ -201,6 +214,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     const top = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.55, 8, 1, true), parasolMats[k % parasolMats.length]); top.position.set(x, 2.45, z); root.add(top);
     const towel = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.8), mat(towelCols[k % towelCols.length])); towel.rotation.x = -Math.PI / 2; towel.position.set(x + 1.2, SAND + 0.01, z + 0.6); root.add(towel);
     if (k % 2 === 0) sitter(x + 1.2, z + 0.6, Math.PI, 0.12, { task: k % 4 ? 'talk' : 'eat' });
+    fx('PRD', 'PAR', 'FAB.STL', 'MarketWay Retail', 'Beach parasol', x, z, 'RES'); fx('PRD', 'TWL', 'FAB', 'Loomhouse Textiles', 'Beach towel', x + 1.2, z + 0.6, 'RES');
     k++;
   }
   walker([[70, shore - 2], [290, shore - 2]], { speed: 0.9 }); walker([[288, shore - 3], [72, shore - 3]], { speed: 1.0 });
@@ -240,6 +254,19 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   const bananaRiders = [0, 1, 2].map(i => K.person(0, 0, 0, { outfit: [0xe03131, 0x1971c2, 0x2f9e44][i] }));
   const swimmers = [];
   for (let i = 0; i < 12; i++) { const x = 115 + i * 10, z = shore + 4 + (i % 3) * 2.5; if (x > 140 && x < 160) continue; const h = K.person(x, z, Math.PI, { child: i % 4 === 0 }); if (h) swimmers.push({ h, x, z, ph: i }); }
+
+  // IDs for everything that moves here: the wildlife, the boards and boats, and every person
+  turtles.forEach((t, i) => moving('CRE', 'REP', 'CHE', 'WLD', 'turtle:' + i, 'wild', 'Green sea turtle (Chelonia mydas)', t.g));
+  fishState.forEach((f, i) => bot.thing({ cls: 'CRE', kind: 'FSH', mat: 'POM', owner: 'WLD', seed: 'bay:fish:' + i, maker: 'wild', name: 'Reef fish, Anthos Bay shallows', pos: { x: f.cx, z: f.cz } }));
+  crabs.forEach((c, i) => moving('CRE', 'CRU', 'GRA', 'WLD', 'crab:' + i, 'wild', 'Shore crab', c.g));
+  sharks.forEach((s, i) => moving('CRE', 'FSH', 'CAR', 'WLD', 'shark:' + i, 'wild', 'Blacktip reef shark (Carcharhinus melanopterus)', s.f));
+  dolphins.forEach((d, i) => moving('CRE', 'MAM', 'TUR', 'WLD', 'dolphin:' + i, 'wild', 'Bottlenose dolphin (Tursiops truncatus)', d.d));
+  surfers.forEach((s, i) => moving('VEH', 'SRF', 'FIB', 'RES', 'surfboard:' + i, 'Harbour Shipyards', 'Surfboard', s.b));
+  jetSkis.forEach((j, i) => moving('VEH', 'JSK', 'FIB.STL', 'RES', 'jetski:' + i, 'Harbour Shipyards', 'Jet ski', j.g));
+  kayaks.forEach((k2, i) => moving('VEH', 'KYK', 'PLS', 'RES', 'kayak:' + i, 'Harbour Shipyards', 'Kayak', k2.b));
+  paddlers.forEach((pd, i) => moving('VEH', 'SRF', 'FIB', 'RES', 'paddleboard:' + i, 'Harbour Shipyards', 'Paddleboard', pd.b));
+  moving('VEH', 'BAN', 'PLS', 'REQ', 'banana', 'Harbour Shipyards', 'Banana boat', banana);
+  bot.people(K);   // the swimmers, surfers, sunbathers, staff and players each have an ID
 
   // the shark warning: swim too far out and the lifeguards call you in (and the shark may bite)
   let warned = 0;
