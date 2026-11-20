@@ -546,6 +546,8 @@ const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
   if (z < -9000) { const raceFloor = race?.groundAt(x, z); if (raceFloor != null) return raceFloor; }   // Ashford Racing track worlds
+  // the harbour bridge first: it crosses over Anthos Bay, and only counts when you're up on its deck (so you never drop through it onto the beach)
+  if(harbourBridge){const deck=harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player?.position.y??0));if(deck!=null&&deck>0.6)return deck;}
   const bayFloor=resortBeach?.groundAt(x,z);if(bayFloor!=null)return bayFloor;   // Anthos Bay sand, decks and jetty (checked first: other layers treat this spot as open sea)
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const hillFloor=hills?.groundAt(x,z);if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
@@ -2514,6 +2516,7 @@ async function boot() {
   onlinePlayReady=mode==='host'||mode==='join'||mode==='world';
   window.gameLoading?.show(60,'Preparing buildings, vehicles and textures...');
   await visualAssetsReady;
+  fixMirroredSigns(); setTimeout(()=>fixMirroredSigns(),20000);   // signs read the right way round from both sides
   window.gameLoading?.show(85,'Saving your progress...');
   if(soloMode&&!saveSolo())throw new Error('Unable to save progress on this device.');
   perfBudget.start();
@@ -6984,6 +6987,16 @@ function updateFirefighters(dt) {
   }
 }
 let swimming = false, waterExhausted = false;
+// Signs and banners: a flat panel showing its picture on both faces reads backwards from behind. Give every such
+// panel a proper back face (the same picture, turned round) so text reads correctly from either side.
+function fixMirroredSigns(root = scene) {
+  let n = 0; const list = [];
+  root.traverse(o => { if (!o.isMesh || o.isInstancedMesh || o.userData.twoFaced || o.userData.signBack) return; const m = o.material;
+    if (Array.isArray(m) || !m?.map || m.side !== THREE.DoubleSide || o.geometry?.type !== 'PlaneGeometry') return;
+    if (!(m.map.isCanvasTexture || m.map.image instanceof HTMLCanvasElement)) return; list.push(o); });
+  for (const o of list) { o.material.side = THREE.FrontSide; const back = new THREE.Mesh(o.geometry, o.material); back.rotation.y = Math.PI; back.userData.signBack = true; back.castShadow = o.castShadow; o.add(back); o.userData.twoFaced = true; n++; }
+  return n;
+}
 // the height of the water's surface here: a pool can sit above the ground (its waterY); the sea and lakes are at 0
 function waterLevelAt(x,z){const r=poolZones.find(r=>x>r.minX&&x<r.maxX&&z>r.minZ&&z<r.maxZ);return r?.waterY??0;}
 function isSeaWater(x,z,bodyY = null) {

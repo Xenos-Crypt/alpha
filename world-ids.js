@@ -254,6 +254,17 @@ export function createWorldIds(ctx) {
       if (ox > 1.5 && oz > 1.5) bug('building-overlap', { x: (Math.max(a.minX, c.minX) + Math.min(a.maxX, c.maxX)) / 2, z: (Math.max(a.minZ, c.minZ) + Math.min(a.maxZ, c.maxZ)) / 2 }, [byObj.get(bs[i])?.id, byObj.get(bs[j])?.id].filter(Boolean), 'Two buildings stand inside each other here.');
     }
   }
+  // Two flat surfaces at the same height flicker through each other (z-fighting). Fix it on the spot: lift the
+  // smaller one (a path, a marking, a patch, a rug) 1.5 cm so it sits cleanly on top. Purely visual: walking and
+  // driving heights come from groundY, not from these meshes.
+  let lifted = 0;
+  function liftSmaller(a, b) {
+    const area = r => (r.x1 - r.x0) * (r.z1 - r.z0), r = area(a) <= area(b) ? a : b, other = r === a ? b : a;
+    if ((r.m.userData.zLift || 0) >= 0.06) return;   // already lifted a few times: leave it
+    const dy = Math.max(0.015, other.top - r.top + 0.015);
+    if (r.m.parent && r.m.parent !== ctx.scene) { const s = r.m.parent.getWorldScale(new ctx.THREE.Vector3()).y || 1; r.m.position.y += dy / s; } else r.m.position.y += dy;
+    r.m.userData.zLift = (r.m.userData.zLift || 0) + dy; r.top += dy; lifted++;
+  }
   function moving(o) { for (let p = o; p; p = p.parent) if (scan.movers.has(p)) return true; return false; }
   function stepScan(n = 1200) {   // flat surfaces at the same height with different looks flicker through each other
     if (!scan || scan.done) return;
@@ -272,7 +283,8 @@ export function createWorldIds(ctx) {
         for (const o of list) {
           if (o === rec || Math.abs(o.top - rec.top) > .006 || o.mat === mat || o.look === rec.look) continue;
           const ox = Math.min(o.x1, rec.x1) - Math.max(o.x0, rec.x0), oz = Math.min(o.z1, rec.z1) - Math.max(o.z0, rec.z0);
-          if (ox > .5 && oz > .5) { scan.found++; bug('surface-overlap', { x: (Math.max(o.x0, rec.x0) + Math.min(o.x1, rec.x1)) / 2, z: (Math.max(o.z0, rec.z0) + Math.min(o.z1, rec.z1)) / 2 }, [surfaceId(o), surfaceId(rec)], `Two surfaces (${o.look} and ${rec.look}) lie at the same height and flicker through each other.`); }
+          if (ox > .5 && oz > .5) { scan.found++; liftSmaller(o, rec);
+            bug('surface-overlap', { x: (Math.max(o.x0, rec.x0) + Math.min(o.x1, rec.x1)) / 2, z: (Math.max(o.z0, rec.z0) + Math.min(o.z1, rec.z1)) / 2 }, [surfaceId(o), surfaceId(rec)], `Two surfaces (${o.look} and ${rec.look}) lie at the same height and flicker through each other.`); }
         }
         list.push(rec);
       }
@@ -349,7 +361,7 @@ export function createWorldIds(ctx) {
     record(obj, what, pos) { const e = byObj.get(obj); if (e) event(e, what, pos); },
     // an event for a thing known by its ID (bought, worn out, thrown away…)
     note(id, what, owner, item) { const e = reg.get(id) || (owner && item ? trackItem(owner, item) : null); if (e) { e.dirty = true; event(e, what); } },
-    nearest: nearestId, bugs: () => [...bugs.values()], scanNow() { registerStatic(); registerMoving(); startScan(); while (!scan.done) stepScan(5000); return bugs.size; },
+    nearest: nearestId, bugs: () => [...bugs.values()], lifted: () => lifted, scanNow() { registerStatic(); registerMoving(); startScan(); while (!scan.done) stepScan(5000); return bugs.size; },
     get size() { return reg.size; }, log: () => log,
     // for the back-end registry (world-registry.js): what has changed since it last asked
     takeChanges() { const ents = []; for (const e of reg.values()) if (e.dirty) { e.dirty = false; const p = e.pos?.(); ents.push({ id: e.id, cls: e.cls, kind: e.kind, mat: e.mat, owner: e.owner, name: e.name, x: p ? Math.round(p.x) : null, z: p ? Math.round(p.z) : null, maker: e.maker || null, aliases: e.aliases || null }); } return { entities: ents, events: fresh.splice(0), bugs: freshBugs.splice(0) }; },
