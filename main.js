@@ -111,6 +111,8 @@ import { buildGrandPark, PARK_NO_GRASS } from './grand-park.js';
 import { buildFlowerPark, FLOWER_NO_GRASS } from './flower-park.js';
 import { buildHomePark } from './home-park.js';
 import { buildBeach } from './beach.js';
+import { buildResortBeach } from './resort-beach.js';
+import { makeKit } from './leisure-kit.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
 import { buildRoadLinks } from './road-links.js';
@@ -557,6 +559,7 @@ function groundY(x, z, bodyY = null) {
   const sewerFloor=sewers?.groundAt(x,z);if(sewerFloor!=null)return sewerFloor;
   const platformFloor=transport?.groundAt(x,z);if(platformFloor!=null)return platformFloor;
   const urbanFloor=urban?.groundAt(x,z);if(urbanFloor!=null)return urbanFloor;
+  const bayFloor=resortBeach?.groundAt(x,z);if(bayFloor!=null)return bayFloor;   // Anthos Bay sand, decks and jetty
   if(harbourBridge){const floor=harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y));if(floor!=null)return floor;}
   const dockFloor = harbour?.groundAt(x,z); if (dockFloor != null) return dockFloor;
   const terminalFloor = townPlaces?.floorAt(x,z); if (terminalFloor != null) return terminalFloor;
@@ -6836,7 +6839,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let venueFences = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -6910,6 +6913,7 @@ let swimming = false, waterExhausted = false;
 function isSeaWater(x,z,bodyY = null) {
   if (poolZones.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)) return true;   // swimming pools
   if(navy?.groundAt(x,z)!=null)return false;
+  if(resortBeach?.groundAt(x,z)!=null)return false;   // the new sand and the jetty aren't sea
   if(regionalEnvironment?.groundAt(x,z)!=null)return false;
   if(harbourBridge&&harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player.position.y))!=null)return false;
   if (waterZones.some(w=>Math.hypot(x-w.x,z-w.z)<w.r)) return true;
@@ -8001,12 +8005,6 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   director:async q=>{if(!navigator.onLine)return null;const r=await fetch('/api/story-director',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(q)});return r.ok?r.json():null;},
   pause:storyPause,resume:requestGameControl});
 // The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
-// Seasons and holidays from the real calendar: weather, leaf colour, and decorations (seasons.js)
-const seasons=createSeasons({scene,lampSpots,curb:CURB,home:{x:HOME.x,z:HOME.z,minZ:HOME.minZ,maxZ:HOME.maxZ},colliders,tint:FOLIAGE_TINT,toast,
-  gardenTrees:[[8.6,16.5],[31.4,13.5],[31.4,31.4],[8.6,31.4]].map(([x,z])=>({x,z})),
-  livingCorner:(()=>{const r=homeRooms.rooms.find(q=>q.name==='living');return r?{x:r.minX+0.7,z:r.maxZ-0.7}:null;})(),
-  playerPos:()=>player.position,burst:(at,c)=>burst(at,70,[c,0xffffff],16,0.28,1.5,3,0)});
-WEATHER_CYCLE=seasons.weatherCycle;weatherIdx=0;
 system=createSystem({userId:()=>soloUserId||'guest',
   admin:{on:()=>isAdmin,revive:async()=>{await supabase.rpc('story_run_revive');},levelUp:()=>{gainXp(Math.max(1,xpToNext()-prog.xp));},
     questions:async()=>{const r=await supabase.rpc('dev_queries_open');if(r.error)throw r.error;return r.data||[];}},
@@ -8091,6 +8089,15 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   ventura=buildVentura(leisureCtx); recCentre=buildRecCentre(leisureCtx); grandPark=buildGrandPark(leisureCtx); flowerPark=buildFlowerPark(leisureCtx); homePark=buildHomePark({...leisureCtx,makeVehicle,curb:CURB});
   // Ashford Beach: rippling sea, surf, parasols, sunbathers, lifeguard, volleyball, a beach bar
   beachLife=buildBeach(leisureCtx,{sea,seaZ:SEA_Z});
+  // Anthos Bay: the beach made big, with a resort, beach houses, wildlife and water sports (resort-beach.js)
+  resortBeach=buildResortBeach(leisureCtx,{z0:SEA_Z});poolZones.push(...resortBeach.pools);
+  // Seasons and holidays from the real calendar: weather, leaf colour, and the whole city decorated (seasons.js)
+  seasons=createSeasons({scene,lampSpots,buildings,fair:FAIR,curb:CURB,home:{x:HOME.x,z:HOME.z,minZ:HOME.minZ,maxZ:HOME.maxZ},colliders,tint:FOLIAGE_TINT,toast,stats,
+    kit:makeKit(leisureCtx),openShop:leisureCtx.openShop,addItem:(name,icon)=>{inventory.push({name,icon});renderInventory?.();},marketAt:{x:420,z:-925},
+    gardenTrees:[[8.6,16.5],[31.4,13.5],[31.4,31.4],[8.6,31.4]].map(([x,z])=>({x,z})),
+    livingCorner:(()=>{const r=homeRooms.rooms.find(q=>q.name==='living');return r?{x:r.minX+0.7,z:r.maxZ-0.7}:null;})(),
+    playerPos:()=>player.position,burst:(at,c)=>burst(at,70,[c,0xffffff],16,0.28,1.5,3,0)});
+  WEATHER_CYCLE=seasons.weatherCycle;weatherIdx=0;
   // St Mary's, the port and the naval base, brought up to date
   { const up={...leisureCtx,glowMats,maxHp:()=>maxHp()};
     hospitalPlus=upgradeHospital(up,{top:24}); HOSPITAL_POS.copy(hospitalPlus.bay);
@@ -8360,7 +8367,7 @@ function frame() {
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons.update(rawDt,dayTime>.55&&dayTime<.95);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons?.update(rawDt,dayTime>.55&&dayTime<.95);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
@@ -8377,7 +8384,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
