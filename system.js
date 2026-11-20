@@ -6,8 +6,8 @@
 // Rules the engine enforces:
 // - Up to level 5 the System sets three daily quests; after that the quests get harder.
 // - Quests are measured, never ticked by hand: distance run on foot, exercise reps, meals eaten.
-// - Death: wait 24 real hours before you can play again. Above level 10 you drop two levels.
-//   What you carried stays where you died, and the longer you're gone the likelier someone loots it.
+// - Death: wait 24 real hours. Then you come back as a new player: the opening plays again, you're level 1
+//   with nothing, and nobody remembers you. The server records every death and every new life (story-rebirth.sql).
 // - Some numbers are hidden from the player (tracked, never shown).
 import * as THREE from 'three';
 
@@ -42,7 +42,7 @@ export function createSystem(ctx) {
   let open = false, lastPos = null, lastHunger = null, repBusy = 0;
 
   function fresh() {
-    return { on: false, day: null, quests: [], log: [], level5: false, deadUntil: 0, dropped: [], seen: [],
+    return { on: false, day: null, quests: [], log: [], level5: false, deadUntil: 0, dropped: [], seen: [], life: 1, reborn: false,
       // hidden: never shown to the player
       hidden: { bloodPower: 100, bloodMemory: 100, loyalty: 0, protagonistPoints: 0 } };
   }
@@ -326,16 +326,14 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsB
   // ---- death ----
   function died(where) {
     if (!st.on) return false;
-    const lvl = ctx.level(), to = levelAfterDeath(lvl);
-    if (to !== lvl) ctx.setLevel(to);
-    const things = ctx.takeBelongings();
-    if (things.gold > 0 || things.items.length) st.dropped.push({ x: where.x, y: where.y, z: where.z, at: Date.now(), ...things });
-    st.deadUntil = Date.now() + DEATH_WAIT_MS;
-    st.log.push({ t: Date.now(), kind: 'death', detail: 'died at level ' + lvl + (to !== lvl ? ', dropped to ' + to : '') });
-    const h = st.hidden; h.bloodPower = Math.max(0, h.bloodPower - 10); h.bloodMemory = Math.max(0, h.bloodMemory - 10); h.loyalty = Math.max(-100, h.loyalty - 15);
-    save(); placeDropped(); deathScreen();
-    // the server sets its own 24-hour wait; trust whichever ends later
-    ctx.server?.died().then(r => { const t = r?.dead_until ? Date.parse(r.dead_until) : 0; if (t > st.deadUntil) { st.deadUntil = t; save(); } }).catch(() => {});
+    if (st.reborn) return true;   // already dead
+    const lvl = ctx.level();
+    ctx.takeBelongings();   // this life is over: what you carried is gone
+    st.deadUntil = Date.now() + DEATH_WAIT_MS; st.reborn = true;
+    st.log.push({ t: Date.now(), kind: 'death', detail: `life ${st.life} ended at level ${lvl}` });
+    save(); deathScreen();
+    // the server records the death and sets its own 24-hour wait; trust whichever ends later
+    ctx.server?.died(lvl).then(r => { const t = r?.dead_until ? Date.parse(r.dead_until) : 0; if (t > st.deadUntil) { st.deadUntil = t; save(); } }).catch(() => {});
     return true;
   }
   async function adminQuestions() {
@@ -347,12 +345,25 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsB
   function deathScreen() {
     const tick = () => {
       const left = st.deadUntil - Date.now();
-      if (left <= 0) { st.deadUntil = 0; save(); clearInterval(t); close(); ctx.toast('You wake up. Your things are where you fell, if nobody has taken them.'); return; }
+      if (left <= 0) { clearInterval(t); startOver(); return; }
       const hh = Math.floor(left / 3600000), mm = Math.floor(left / 60000) % 60, ss = Math.floor(left / 1000) % 60;
-      show({ title: 'You died', text: [`You can play again in ${hh}h ${String(mm).padStart(2, '0')}m ${String(ss).padStart(2, '0')}s.`, 'Everything you carried is lying where you fell.'],
+      show({ title: 'You died', text: [`You can play again in ${hh}h ${String(mm).padStart(2, '0')}m ${String(ss).padStart(2, '0')}s.`, 'When you come back you start again as someone new. You will have nothing, and nobody will remember you.'],
         buttons: ctx.admin?.on() ? [{ label: 'Admin: end the wait', go: async () => { try { await ctx.admin.revive(); } catch {} st.deadUntil = Date.now(); save(); tick(); } }] : [] });
     };
     const t = setInterval(tick, 1000); tick();
+  }
+
+  // The wait is over: the server opens a new life, then the game wipes the old one and plays the opening.
+  let rebirthing = false;
+  async function startOver() {
+    if (rebirthing) return; rebirthing = true;
+    show({ title: 'A new life', text: ['24 hours have passed.', 'You start again as someone new. Nobody in Anthos remembers you.'], buttons: [] });
+    let run = null;
+    try { run = await ctx.server?.reborn(); }
+    catch (e) {   // the server says the wait isn't over (its clock wins): keep waiting
+      if (/not over/i.test(e?.message || '')) { rebirthing = false; st.deadUntil = Math.max(st.deadUntil, Date.now() + 60e3); save(); return deathScreen(); }
+    }
+    ctx.startOver(run?.life || st.life + 1);
   }
 
   // Belongings left where you died: walk back to them and see what's left.
@@ -378,14 +389,22 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsB
     active: () => st.on,
     dead: () => st.deadUntil > Date.now(),
     // a brand-new Story Mode game: wipe the System and play the opening
-    async begin() { st = fresh(); save(); btn.hidden = true; ctx.server?.start().catch(() => {}); if (ctx.cinema) await film(START_KEY); else await play(START_KEY); },
+    async begin(life = 1) { st = fresh(); st.life = life; save(); btn.hidden = true; ctx.server?.start().catch(() => {}); if (ctx.cinema) await film(START_KEY); else await play(START_KEY); },
     // continuing: restore the button, the markers, and the death wait if it isn't over
     // `run` is the server's record: if it exists the System stays on even when this device lost its save,
     // and its death wait counts even if the browser's was wiped
     resume(run) {
       st = load();
-      if (run) { st.on = true; const t = run.dead_until ? Date.parse(run.dead_until) : 0; if (t > st.deadUntil) st.deadUntil = t; save(); }
-      btn.hidden = !st.on; placeDropped(); if (st.deadUntil > Date.now()) deathScreen(); else if (st.on) refreshDay(); },
+      if (run) {
+        st.on = true;
+        if (run.needs_rebirth && st.life > (run.life || 1)) ctx.server?.reborn().catch(() => {});   // this device already started the new life offline: tell the server
+        else if (run.needs_rebirth) { st.reborn = true; const t = run.dead_until ? Date.parse(run.dead_until) : 0; st.deadUntil = Math.max(st.deadUntil, t || 1); }
+        else if (run.life > st.life && !st.reborn) st.life = run.life;
+        save();
+      }
+      btn.hidden = !st.on; placeDropped();
+      if (st.reborn) { if (st.deadUntil > Date.now()) deathScreen(); else startOver(); }   // died last time: wait, then start again as someone new
+      else if (st.on) refreshDay(); },
     died,
     note,
     quests: () => st.quests.filter(q => !q.failed),
