@@ -2354,7 +2354,10 @@ function showMenu(hasSave) {
       $('menuOfflineLabel').textContent = 'Continue';
       $('menuOfflineSub').textContent = 'Pick up where you left off';
     }
-    $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
+    $('menuOffline').onclick = () => {
+      // phones only allow speech that starts from a tap: unlock it now so the opening film can narrate
+      if (!hasSave) try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch {}
+      $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
     if (hasSave && isAdmin && !$('menuReplay')) {   // admin only: wipe this account's story and play it again from the start
       const b = document.createElement('button'); b.id = 'menuReplay';
       b.innerHTML = '<b>🛠 Replay story (admin)</b><span class="sub">Erase this account\'s story and start again</span>';
@@ -7650,9 +7653,19 @@ function updateCamera(dt) {
   if (cutCam) {
     // the game is paused during a cut-scene (dt is 0 then), so the camera keeps its own clock
     const now = performance.now(), real = Math.min(0.25, (now - (cutCam.t || now)) / 1000); cutCam.t = now;
-    const k = 1 - Math.exp(-1.6 * real);
-    cutCam.pos.lerp(cutCam.to.pos, k); cutCam.look.lerp(cutCam.to.look, k);
-    camera.position.copy(cutCam.pos); camera.lookAt(cutCam.look);
+    const st = cutCam.steps[0];
+    if (st) {   // walk to the next step at walking pace, with a slight head bob, turning toward where it looks
+      const to = new THREE.Vector3(st.to.x, st.to.y, st.to.z), d = to.clone().sub(cutCam.pos), len = d.length();
+      const move = Math.min(len, 1.3 * real);
+      if (len > 0.001) cutCam.pos.addScaledVector(d, move / len);
+      cutCam.walked += move;
+      cutCam.look.lerp(new THREE.Vector3(st.look.x, st.look.y, st.look.z), 1 - Math.exp(-3 * real));
+      if (st.open && !st.opened && len < 0.05) { st.opened = true; homeRooms.openDoor(st.open); cutCam.hold = 0.7; }
+      if (cutCam.hold > 0) cutCam.hold -= real;
+      else if (len < 0.01 && cutCam.look.distanceTo(new THREE.Vector3(st.look.x, st.look.y, st.look.z)) < 0.05) cutCam.steps.shift();
+    }
+    const bob = Math.sin(cutCam.walked * 7) * 0.025 * (cutCam.steps.length ? 1 : 0);
+    camera.position.set(cutCam.pos.x, cutCam.pos.y + bob, cutCam.pos.z); camera.lookAt(cutCam.look);
     return;
   }
   { // indoors (a house, a building interior, or under any roof) -> first person
@@ -7993,8 +8006,12 @@ system=createSystem({userId:()=>soloUserId||'guest',
   // the opening plays like a film: the camera moves through the home, the player can't control anything,
   // and when it ends the player is standing where the last shot was (at the bathroom mirror), not outside
   cinema:{
-    start(){const sp=homeRooms.spots.ceiling,v=o=>new THREE.Vector3(o.x,o.y,o.z);cutCam={pos:v(sp.from),look:v(sp.look),to:{pos:v(sp.from),look:v(sp.look)}};player.visible=false;document.body.classList.add('cinema');},
-    shot(name){const sp=homeRooms.spots[name];if(!cutCam||!sp)return;cutCam.to={pos:new THREE.Vector3(sp.from.x,sp.from.y,sp.from.z),look:new THREE.Vector3(sp.look.x,sp.look.y,sp.look.z)};},
+    start(){const s0=homeRooms.spots.ceiling[0],v=o=>new THREE.Vector3(o.x,o.y,o.z);cutCam={pos:v(s0.to),look:v(s0.look),steps:[],walked:0,name:'ceiling'};player.visible=false;document.body.classList.add('cinema');},
+    // a new mark: walk its steps. The same mark twice in a row stays put. busy() says whether it's still walking.
+    shot(name){const sp=homeRooms.spots[name];if(!cutCam||!sp||cutCam.name===name)return;cutCam.name=name;cutCam.steps=sp.map(x=>({...x,opened:false}));},
+    busy(){return !!cutCam?.steps.length;},
+    // skipping ahead: finish the current walk at once (doors on the way still open)
+    finish(){if(!cutCam)return;const last=cutCam.steps.at(-1);for(const x of cutCam.steps)if(x.open)homeRooms.openDoor(x.open);if(last){cutCam.pos.set(last.to.x,last.to.y,last.to.z);cutCam.look.set(last.look.x,last.look.y,last.look.z);}cutCam.steps=[];cutCam.hold=0;},
     end(){const e=homeRooms.spots.end;player.position.set(e.x,CURB,e.z);vy=0;yaw=Math.atan2(-e.facing.x,-e.facing.z);pitch=0;cutCam=null;player.visible=true;document.body.classList.remove('cinema');},
   },
   // the server keeps the run and the death wait, so clearing the browser can't restart or skip them (signed-in players)
