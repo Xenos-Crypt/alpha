@@ -77,7 +77,7 @@ export function createSystem(ctx) {
 #sysPage.cine .sub{position:relative;z-index:1;width:min(760px,100%);text-align:center;color:#fff;font:18px/1.6 Georgia,serif;text-shadow:0 2px 6px #000,0 0 2px #000}
 #sysPage.cine .sub.sys{font:15px/1.6 ui-monospace,Menlo,monospace;color:#d6e6ff;background:#0b1422e6;border:1px solid #4d7fd1;border-radius:12px;padding:16px 20px;text-shadow:none;box-shadow:0 0 40px #2a5fbf66;margin-bottom:6vh}
 #sysPage.cine .sub h2{font:700 13px system-ui;letter-spacing:.08em;margin:0 0 8px}#sysPage.cine p{margin:0}
-body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsBtn,body.cinema #sysBtn,body.cinema #crosshair,body.cinema #mouseHint{visibility:hidden}`;
+body.cinema #hud,body.cinema #hotbar,body.cinema #inventoryBtn,body.cinema #nyCountdown,body.cinema #toast,body.cinema #callout,body.cinema #minimap,body.cinema #settingsBtn,body.cinema #sysBtn,body.cinema #crosshair,body.cinema #mouseHint{visibility:hidden}`;
   document.head.append(css);
   const page = document.createElement('section'); page.id = 'sysPage'; page.hidden = true; document.body.append(page);
   const btn = document.createElement('button'); btn.id = 'sysBtn'; btn.type = 'button'; btn.textContent = '◆ System'; btn.hidden = true;
