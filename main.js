@@ -7648,7 +7648,9 @@ function updateCockpit(dt) {
 let cutCam = null;
 function updateCamera(dt) {
   if (cutCam) {
-    const k = 1 - Math.exp(-1.6 * dt);
+    // the game is paused during a cut-scene (dt is 0 then), so the camera keeps its own clock
+    const now = performance.now(), real = Math.min(0.25, (now - (cutCam.t || now)) / 1000); cutCam.t = now;
+    const k = 1 - Math.exp(-1.6 * real);
     cutCam.pos.lerp(cutCam.to.pos, k); cutCam.look.lerp(cutCam.to.look, k);
     camera.position.copy(cutCam.pos); camera.lookAt(cutCam.look);
     return;
