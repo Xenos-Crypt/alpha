@@ -4,6 +4,20 @@ import * as THREE from 'three';
 export function detailHome({scene,box,makeTex,home,curb,wallMat,roof,glowMats,yard=true}){
  const {x,z,minX,maxX,minZ,maxZ}=home;
  const ox=x-20,oz=z-22;   // the details were laid out for a house at (20, 22): shift them to wherever the house is
+ if(!yard){
+  // a slum flat (Cinder Row): rusty corrugated iron walls patched with ply, a rusty tin roof, none of the trims
+  const rust=makeTex(256,128,g=>{
+   for(let px=0;px<256;px++){const v=.72+.28*Math.sin(px/256*Math.PI*24);g.fillStyle=`rgb(${Math.round(150*v)},${Math.round(146*v)},${Math.round(140*v)})`;g.fillRect(px,0,1,128);}
+   for(let i=0;i<70;i++){g.fillStyle=`rgba(${120+Math.random()*70},${50+Math.random()*30},${18+Math.random()*15},${.3+Math.random()*.45})`;g.beginPath();g.ellipse(Math.random()*256,Math.random()*128,3+Math.random()*14,4+Math.random()*26,0,0,7);g.fill();}
+   g.fillStyle='#8f7553';g.fillRect(150,30,60,70);g.strokeStyle='rgba(40,30,20,.7)';g.lineWidth=2;g.strokeRect(150,30,60,70);   // a plywood patch
+   g.fillStyle='rgba(30,25,20,.35)';g.fillRect(0,104,256,24);   // damp along the bottom
+  });
+  rust.wrapS=rust.wrapT=THREE.RepeatWrapping;rust.repeat.set(3,1);
+  wallMat.map=rust;wallMat.color.set(0xbfae9e);wallMat.needsUpdate=true;
+  const tin=rust.clone();tin.needsUpdate=true;tin.repeat.set(4,3);
+  roof.material=new THREE.MeshStandardMaterial({map:tin,color:0x9a7d66,roughness:.75,metalness:.3});
+  return {windows:[],parts:[],pathMaterial:new THREE.MeshStandardMaterial({color:0x6e5b44,roughness:1}),entranceWidth:2};
+ }
  const trim=new THREE.MeshStandardMaterial({color:0xd8d0be,roughness:.83});
  const metal=new THREE.MeshStandardMaterial({color:0x283533,roughness:.6,metalness:.35});
  const stone=new THREE.MeshStandardMaterial({color:0x81766a,roughness:.95});
