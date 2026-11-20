@@ -69,7 +69,7 @@ export function createSystem(ctx) {
 #sysPage .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}#sysPage button{font:14px system-ui;padding:10px 16px;min-height:44px;border:0;border-radius:8px;background:#2b2b2b;color:#fff;cursor:pointer}
 #sysPage .sys button{background:#24467f}#sysPage .q{border-top:1px solid #4d7fd155;padding:10px 0}#sysPage .q.done{opacity:.55}#sysPage .q .d{opacity:.8;margin:4px 0}
 #sysPage .bar{height:6px;background:#ffffff1f;border-radius:3px;overflow:hidden;margin-top:6px}#sysPage .bar i{display:block;height:100%;background:#6fa8ff}
-#sysBtn{position:fixed;right:16px;top:56px;z-index:12;color:#d6e6ff;font:12px system-ui;background:#0b1422cc;border:1px solid #4d7fd1;border-radius:10px;padding:7px 12px;cursor:pointer}
+#sysBtn{position:fixed;right:16px;top:96px;z-index:12;color:#d6e6ff;font:12px system-ui;background:#0b1422cc;border:1px solid #4d7fd1;border-radius:10px;padding:7px 12px;cursor:pointer}
 #sysBtn[hidden]{display:none}
 #sysPage.cine{background:none;align-items:flex-end;padding:0 16px 9vh;pointer-events:none}
 #sysPage.cine::before,#sysPage.cine::after{content:'';position:fixed;left:0;right:0;height:11vh;background:#000}#sysPage.cine::before{top:0}#sysPage.cine::after{bottom:0}
