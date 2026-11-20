@@ -83,10 +83,18 @@ export function createRoadWear(ctx) {
   }
   for (let i = 0; i < 3; i++) crews.push(makeCrew(i));
   const alongOf = (x, z) => { const r = roadRects().find(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ); return r && r.maxZ - r.minZ > r.maxX - r.minX ? 0 : Math.PI / 2; };   // road direction (yaw)
+  // Neglected lanes (Cinder Row): they stay broken. Crews never go there and they never get better.
+  const neglected = new Map();   // cell key -> the best condition it can be in
+  function neglect(points) {
+    for (const [x, z, hp] of points) { const k = key(x, z); neglected.set(k, hp); let c = cells.get(k);
+      if (!c) { if (!isRoad(x, z) || cells.size >= MAX) continue; c = { hp: 100, x, z, rot: Math.random() * Math.PI * 2, patch: 0 }; cells.set(k, c); }
+      c.hp = Math.min(c.hp, hp); }
+    dirty = true;
+  }
   function pickJob(crew, playerPos) {
     let best = null, bs = Infinity;
     for (const c of cells.values()) {
-      if (c.hp >= 55 || crews.some(o => o !== crew && o.target === c)) continue;
+      if (c.hp >= 55 || neglected.has(key(c.x, c.z)) || crews.some(o => o !== crew && o.target === c)) continue;
       const score = c.hp + Math.hypot(c.x - playerPos.x, c.z - playerPos.z) / 25;
       if (score < bs) { bs = score; best = c; }
     }
@@ -153,11 +161,11 @@ export function createRoadWear(ctx) {
   }
   const worst = () => { let n = 0; for (const c of cells.values()) if (c.hp < 40) n++; return n; };
   return {
-    update, damage, blast, at, crews, cells,
+    update, damage, blast, at, crews, cells, neglect,
     get potholes() { return worst(); },
     stageAt: (x, z) => stageFor(at(x, z)?.hp ?? 100),
     help(crew) { if (crew.state !== 'work') return false; crew.timer = Math.min(crew.timer, 6); crew.helped = true; return true; },
     snapshot: () => [...cells.values()].filter(c => c.hp < 100).slice(0, 400).map(c => [Math.round(c.x * 10) / 10, Math.round(c.z * 10) / 10, Math.round(c.hp)]),
-    restore(list) { if (!Array.isArray(list)) return; cells.clear(); for (const [x, z, hp] of list) { if (!Number.isFinite(x)) continue; cells.set(key(x, z), { hp, x, z, rot: Math.random() * 6.28, patch: 0 }); } dirty = true; },
+    restore(list) { if (!Array.isArray(list)) return; cells.clear(); for (const [x, z, hp] of list) { if (!Number.isFinite(x)) continue; cells.set(key(x, z), { hp, x, z, rot: Math.random() * 6.28, patch: 0 }); } for (const [k, hp] of neglected) { const c = cells.get(k); if (c) c.hp = Math.min(c.hp, hp); } dirty = true; },
   };
 }

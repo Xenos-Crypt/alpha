@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 
 // A small, reusable architecture kit. All detail uses local geometry and textures.
-export function detailHome({scene,box,makeTex,home,curb,wallMat,roof,glowMats}){
+export function detailHome({scene,box,makeTex,home,curb,wallMat,roof,glowMats,yard=true}){
  const {x,z,minX,maxX,minZ,maxZ}=home;
+ const ox=x-20,oz=z-22;   // the details were laid out for a house at (20, 22): shift them to wherever the house is
  const trim=new THREE.MeshStandardMaterial({color:0xd8d0be,roughness:.83});
  const metal=new THREE.MeshStandardMaterial({color:0x283533,roughness:.6,metalness:.35});
  const stone=new THREE.MeshStandardMaterial({color:0x81766a,roughness:.95});
@@ -49,20 +50,23 @@ export function detailHome({scene,box,makeTex,home,curb,wallMat,roof,glowMats}){
   piece(.42,.26,maxZ-minZ+.3,px,curb+.13,z,stone);
   for(const pz of [minZ,maxZ])for(let i=0;i<7;i++)piece(.45,.3,.45,px,curb+.35+i*.39,pz);
  }
- for(const [px,width]of [[16.5,5],[23.5,5]])piece(width,.26,.38,px,curb+.13,minZ,stone);
+ for(const [px,width]of [[16.5+ox,5],[23.5+ox,5]])piece(width,.26,.38,px,curb+.13,minZ,stone);
  piece(12,.26,.38,x,curb+.13,maxZ,stone);
  // An open, framed entrance retains the existing two-metre doorway.
- for(const px of [18.94,21.06])piece(.16,2.25,.3,px,curb+1.125,minZ-.13);
+ for(const px of [18.94+ox,21.06+ox])piece(.16,2.25,.3,px,curb+1.125,minZ-.13);
  piece(2.3,.18,.34,x,curb+2.32,minZ-.16);
  piece(2,.045,.45,x,curb+.023,minZ-.1,stone);
+ // a smart canopy, lamps and a house number: only for a house with a proper front garden (not the slum)
+ if(yard){
  const canopy=piece(2.8,.14,1.05,x,curb+2.65,minZ-.45,metal);canopy.rotation.x=.07;
- for(const px of [18.72,21.28])piece(.08,.4,.7,px,curb+2.43,minZ-.36,metal);
+ for(const px of [18.72+ox,21.28+ox])piece(.08,.4,.7,px,curb+2.43,minZ-.36,metal);
  const plaque=makeTex(256,128,g=>{g.fillStyle='#283533';g.fillRect(0,0,256,128);g.strokeStyle='#b8aa8d';g.lineWidth=5;g.strokeRect(6,6,244,116);g.fillStyle='#f0e6cc';g.textAlign='center';g.font='bold 72px serif';g.fillText('20',128,90);});
  const number=new THREE.Mesh(new THREE.PlaneGeometry(.48,.24),new THREE.MeshStandardMaterial({map:plaque,roughness:.8}));
- number.position.set(21.65,curb+1.6,minZ-.175);number.rotation.y=Math.PI;scene.add(number);
- for(const px of [18.65,21.35]){
+ number.position.set(21.65+ox,curb+1.6,minZ-.175);number.rotation.y=Math.PI;scene.add(number);
+ for(const px of [18.65+ox,21.35+ox]){
   piece(.12,.4,.18,px,curb+2,minZ-.25,metal);
   piece(.1,.2,.17,px,curb+2,minZ-.36,new THREE.MeshStandardMaterial({color:0xffe7bf,emissive:0xffbf64,emissiveIntensity:.45}));
+ }
  }
  // Roof accessories belong to the roof so they disappear when walking inside.
  const roofTile=makeTex(512,512,g=>{
@@ -80,9 +84,9 @@ export function detailHome({scene,box,makeTex,home,curb,wallMat,roof,glowMats}){
   piece(12.9,.1,.12,x,curb+2.89,pz,metal,roof);
  }
  piece(12.85,.16,.26,x,curb+5.18,z,stone,roof);
- piece(.72,1.4,.78,23.5,curb+4.82,23.1,stone,roof);
- piece(.91,.14,.97,23.5,curb+5.59,23.1,trim,roof);
- piece(.48,.08,.54,23.5,curb+5.68,23.1,metal,roof);
+ piece(.72,1.4,.78,23.5+ox,curb+4.82,23.1+oz,stone,roof);
+ piece(.91,.14,.97,23.5+ox,curb+5.59,23.1+oz,trim,roof);
+ piece(.48,.08,.54,23.5+ox,curb+5.68,23.1+oz,metal,roof);
  for(const px of [minX+.35,maxX-.35])piece(.09,2.9,.09,px,curb+1.45,maxZ+.21,metal);
  // Property borders remain inside the garden, with an open entrance from the pavement.
  const fence=(a,b,pz)=>{
@@ -90,17 +94,17 @@ export function detailHome({scene,box,makeTex,home,curb,wallMat,roof,glowMats}){
   for(let px=a;px<=b+.01;px+=.42)piece(.045,.82,.045,px,curb+.43,pz,metal);
   for(const px of [a,b])piece(.15,1,.15,px,curb+.5,pz,stone);
  };
- fence(14.6,18.7,11);fence(21.3,29,11);   // gaps for the driveway gate (x 10.6-14.6) and the path gate; gates are in main.js
+ if(yard){fence(14.6+ox,18.7+ox,11+oz);fence(21.3+ox,29+ox,11+oz);}   // gaps for the driveway gate (x 10.6-14.6) and the path gate; gates are in main.js
  const turf=makeTex(256,256,g=>{
   g.fillStyle='#647644';g.fillRect(0,0,256,256);
   for(let i=0;i<4200;i++){const px=(i*73)%256,py=(i*97+Math.floor(i/256)*19)%256;g.fillStyle=['#6e8050','#5b6f3e','#738354'][i%3];g.fillRect(px,py,1,3);}
  });turf.wrapS=turf.wrapT=THREE.RepeatWrapping;turf.repeat.set(5,5);
  const lawn=new THREE.Mesh(new THREE.PlaneGeometry(20,20),new THREE.MeshStandardMaterial({map:turf,roughness:1}));
- lawn.rotation.x=-Math.PI/2;lawn.position.set(20,curb+.014,20);lawn.receiveShadow=true;scene.add(lawn);
+ lawn.rotation.x=-Math.PI/2;lawn.position.set(20+ox,curb+.014,20+oz);lawn.receiveShadow=true;if(yard)scene.add(lawn);
  // Rectangular flagstones keep the path flush with the existing walkable ground.
  const pathMap=makeTex(256,256,g=>{g.fillStyle='#a49b87';g.fillRect(0,0,256,256);for(let row=0;row<4;row++)for(let col=0;col<2;col++){g.fillStyle=(row+col)%2?'#c1b7a2':'#b5ab96';g.fillRect(col*128+2,row*64+2,124,60);}});
  pathMap.wrapS=pathMap.wrapT=THREE.RepeatWrapping;pathMap.repeat.set(1,3);
- return {windows,parts,pathMaterial:new THREE.MeshStandardMaterial({map:pathMap,roughness:.94}),entranceWidth:2};
+ return {windows,parts,pathMaterial:yard?new THREE.MeshStandardMaterial({map:pathMap,roughness:.94}):new THREE.MeshStandardMaterial({color:0x6e5b44,roughness:1}),entranceWidth:2};   // in the slum the path is trodden dirt
 }
 
 export function detailNearbyTower({box,x,z,w,h,d,baseY,parent}){
