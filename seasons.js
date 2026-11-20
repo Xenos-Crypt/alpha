@@ -326,7 +326,7 @@ export function createSeasons(ctx) {
     if (d.getMonth() === 0 && d.getDate() === 1 && d.getHours() === 0 && d.getMinutes() < 2) { show = `HAPPY NEW YEAR ${d.getFullYear()}!`; celebrateUntil = Date.now() + 4000; }
     if (show === lastShown) return;
     lastShown = show;
-    if (!countdownEl) { countdownEl = document.createElement('div'); countdownEl.style.cssText = 'position:fixed;left:0;right:0;top:28%;text-align:center;z-index:40;pointer-events:none;font:900 min(18vw,140px)/1 system-ui;color:#fff;text-shadow:0 0 24px #ffd60a,0 4px 12px #000'; document.body.append(countdownEl); }
+    if (!countdownEl) { countdownEl = document.createElement('div'); countdownEl.id = 'nyCountdown'; countdownEl.style.cssText = 'position:fixed;left:0;right:0;top:28%;text-align:center;z-index:40;pointer-events:none;font:900 min(18vw,140px)/1 system-ui;color:#fff;text-shadow:0 0 24px #ffd60a,0 4px 12px #000'; document.body.append(countdownEl); }
     countdownEl.textContent = show || ''; countdownEl.style.fontSize = show && show.length > 3 ? 'min(9vw,72px)' : '';
     if (show) {
       try { const u = new SpeechSynthesisUtterance(show.length > 3 ? 'Happy New Year!' : show); u.rate = 1.1; u.pitch = 1.1; speechSynthesis.speak(u); } catch {}

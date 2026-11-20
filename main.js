@@ -1550,7 +1550,13 @@ const TOUCH_HINTS = [
   [/\bHold S\b/g, 'Hold ▼'], [/\bhold S\b/g, 'hold ▼'], [/\bW to go forward\b/g, '▲ to go forward'],
 ];
 const touchText = text => { if (!touchDevice || typeof text !== 'string') return text; for (const [a, b] of TOUCH_HINTS) text = text.replace(a, b); return text; };
+// Nothing from the game pops up during the opening film: messages wait until it ends (the last few are
+// shown then, one after another) and big banners (BUILDING DESTROYED, combos...) are skipped.
+const inFilm = () => document.body.classList.contains('cinema');
+const heldToasts = [];
+function releaseHeldToasts() { const list = heldToasts.splice(0); list.forEach((t, i) => setTimeout(() => toast(t), 900 + i * 3800)); }
 function toast(text) {
+  if (inFilm()) { if (!heldToasts.includes(text)) { heldToasts.push(text); if (heldToasts.length > 3) heldToasts.shift(); } return; }
   text = touchText(text);
   $('toast').textContent = text;
   $('toast').style.opacity = 1;
@@ -1597,6 +1603,7 @@ function makeLabel(name, withGuard) {
 
 let calloutTimer;
 function callout(text, color, big = false) {
+  if (inFilm()) return;
   const el = $('callout');
   el.textContent = text;
   el.style.color = '#' + new THREE.Color(color).getHexString();
@@ -8073,7 +8080,7 @@ system=createSystem({userId:()=>soloUserId||'guest',
     busy(){return !!cutCam?.steps.length;},
     // skipping ahead: finish the current walk at once (doors on the way still open)
     finish(){if(!cutCam)return;const last=cutCam.steps.at(-1);for(const x of cutCam.steps)if(x.open)homeRooms.openDoor(x.open);if(last){cutCam.pos.set(last.to.x,last.to.y,last.to.z);cutCam.look.set(last.look.x,last.look.y,last.look.z);}cutCam.steps=[];cutCam.hold=0;},
-    end(){const e=homeRooms.spots.end;player.position.set(e.x,HOME_Y,e.z);vy=0;yaw=Math.atan2(-e.facing.x,-e.facing.z);pitch=0;cutCam=null;player.visible=true;document.body.classList.remove('cinema');},
+    end(){const e=homeRooms.spots.end;player.position.set(e.x,HOME_Y,e.z);vy=0;yaw=Math.atan2(-e.facing.x,-e.facing.z);pitch=0;cutCam=null;player.visible=true;document.body.classList.remove('cinema');releaseHeldToasts();},
   },
   // the server keeps the run and the death wait, so clearing the browser can't restart or skip them (signed-in players)
   server:{start:async()=>registryUserId?(await supabase.rpc('story_run_start')).data:null,
