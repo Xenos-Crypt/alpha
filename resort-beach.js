@@ -22,6 +22,8 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   const SAND = 0.065, DECK = 1.25;
   const floors = [];   // walkable rectangles: { minX, maxX, minZ, maxZ, y }
   const floor = (a, b, c, d, y) => floors.push({ minX: Math.min(a, b), maxX: Math.max(a, b), minZ: Math.min(c, d), maxZ: Math.max(c, d), y });
+  // a slope along z, from height ya at z = za to yb at z = zb, so you walk up onto decks instead of popping up
+  const ramp = (a, b, za, zb, ya, yb) => floors.push({ minX: Math.min(a, b), maxX: Math.max(a, b), minZ: Math.min(za, zb), maxZ: Math.max(za, zb), y: (x, z) => ya + (yb - ya) * Math.min(1, Math.max(0, (z - za) / (zb - za))) });
   const pools = [];    // swimmable rectangles handed back to the game
 
   // ---------------- the new sand, wet edge, shallows and surf ----------------
@@ -98,9 +100,9 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     B(g, 9, 0.25, 8, 0, 1.3, 0, 0xc9a26a); B(g, 7, 3, 5.6, 0, 2.9, -0.8, [0xf4f1ea, 0xdff3ff, 0xfff1d6, 0xe8f7e4][i]);
     B(g, 6.4, 2.2, 0.06, 0, 2.6, 2.02, mat(0x8fd3f0, { rough: 0.05, metal: 0.3, opacity: 0.7 }), false);
     const roof = new THREE.Mesh(new THREE.ConeGeometry(5.6, 1.6, 4), mat(0x6b4a30, { rough: 1 })); roof.position.set(0, 5.2, -0.8); roof.rotation.y = Math.PI / 4; roof.scale.set(1.15, 1, 0.9); roof.castShadow = true; g.add(roof);
-    B(g, 1.6, 0.1, 2.4, 3.2, 0.65, 4.8, 0xc9a26a);   // steps down to the sand
+    { const r = B(g, 1.6, 0.1, 3.2, 3.2, 0.72, 5.6, 0xc9a26a); r.rotation.x = -Math.atan2(1.36, 3); }   // a ramp down to the sand
     solid(x - 3.5, x + 3.5, 203 - 3.6, 203 + 2);
-    floor(x - 4.5, x + 4.5, 203 + 2, 203 + 4, 1.42);
+    floor(x - 4.5, x + 4.5, 203 + 2, 203 + 4, 1.42); ramp(x + 2.4, x + 4, 203 + 4, 203 + 7.1, 1.42, SAND);
     if (i % 2 === 0) sitter(x - 2, 206, 0, 1.9, { task: 'talk' });
   }
 
@@ -158,7 +160,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
     const qx0 = 272, qx1 = 292, qz0 = 244, qz1 = 258;
     const rim = mat(0xd8d2c6, { rough: 0.8 });
     for (const [w, d, x, z] of [[qx1 - qx0 + 1.2, 0.6, (qx0 + qx1) / 2, qz0 - 0.3], [qx1 - qx0 + 1.2, 0.6, (qx0 + qx1) / 2, qz1 + 0.3], [0.6, qz1 - qz0, qx0 - 0.3, (qz0 + qz1) / 2], [0.6, qz1 - qz0, qx1 + 0.3, (qz0 + qz1) / 2]]) {
-      B(root, w, 0.7, d, x, 0.35, z, rim); floor(x - w / 2, x + w / 2, z - d / 2, z + d / 2, 0.72);
+      B(root, w, 0.45, d, x, 0.22, z, rim); floor(x - w / 2, x + w / 2, z - d / 2, z + d / 2, 0.45);
     }
     B(root, qx1 - qx0, 0.05, qz1 - qz0, (qx0 + qx1) / 2, 0.42, (qz0 + qz1) / 2, mat(0x38c6d9, { rough: 0.05, metal: 0.2, opacity: 0.85 }), false);
     for (let i = 0; i < 4; i++) B(root, 0.08, 0.02, qz1 - qz0 - 1, qx0 + 4 + i * 4, 0.46, (qz0 + qz1) / 2, 0x1971c2, false);   // lane lines
@@ -170,6 +172,8 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   const jx = 150, jz1 = 306;
   const deckMat = mat(0xb5895a, { rough: 0.85 });
   B(root, 3, 0.2, jz1 - shore + 2, jx, DECK - 0.1, (shore + jz1) / 2, deckMat); floor(jx - 1.5, jx + 1.5, shore - 1, jz1, DECK);
+  // a wooden ramp up from the sand to the jetty
+  { const len = 7, r = B(root, 3, 0.15, Math.hypot(len, DECK), jx, DECK / 2, shore - 1 - len / 2, deckMat); r.rotation.x = Math.atan2(DECK, len); ramp(jx - 1.5, jx + 1.5, shore - 1 - len, shore - 1, SAND, DECK); }
   for (let z = shore + 2; z < jz1; z += 4) for (const s of [-1, 1]) C(root, 0.12, 0.12, 2.4, jx + s * 1.4, 0, z, 0x5a3d26, 6);
   for (const [bx, bz] of [[jx - 9, 270], [jx + 9, 270], [jx - 9, 288], [jx + 9, 288], [jx, jz1 + 6]]) {
     const g = new THREE.Group(); g.position.set(bx, 0, bz); root.add(g);
@@ -274,7 +278,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   return {
     pools,
     // the height of the new sand, decks, the jetty and the pool rim; null anywhere else
-    groundAt(x, z) { if (x < x0 - 1 || x > x1 + 6 || z < z0 - 1 || z > jz1 + 12) return null; let y = null; for (const f of floors) if (x >= f.minX && x <= f.maxX && z >= f.minZ && z <= f.maxZ) y = Math.max(y ?? -1, f.y); return y; },
+    groundAt(x, z) { if (x < x0 - 1 || x > x1 + 6 || z < z0 - 1 || z > jz1 + 12) return null; let y = null; for (const f of floors) if (x >= f.minX && x <= f.maxX && z >= f.minZ && z <= f.maxZ) y = Math.max(y ?? -1, typeof f.y === 'function' ? f.y(x, z) : f.y); return y; },
     update,
   };
 }
