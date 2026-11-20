@@ -20,6 +20,21 @@ and wet sand + towel at (67, 247), (94, 248), (103, 247), (130, 248), (139, 247)
 - Cinder Row (x 596…844, z 448…598): 37 audit pairs between each lane's dark surface (top 0.04) and the grime decals (0.045, `polygonOffset`, transparent, no depth write). These are intended decals, not two floors; most are audit noise. Better solved by teaching the audit to skip polygon-offset decals than by moving the lanes. A later run.
 - Anthos Bay: some towels and the parasol row reach 1–2 m onto the wet sand at the waterline. Moving the row landward would put a parasol into the lifeguard tower at (262, 241), so it needs a careful re-layout, not a quick shift.
 - Still open from earlier runs: road paint at road height (590, -37), (-320, -808), (277, 702), (243, 702); glass/plastic at (1157, 545); far-region floors at (-5097, -7) and (-6500, 8); the funfair/karting bounding-box false positives (248, -710), (668, -953).
+## 2026-11-17 — The Grand Park's south gate no longer paves through Ventura's wall
+
+**Decision:** In `grand-park.js`, the gravel apron outside each of the three south gates ran 8 m out of the park (to z -904). At the gate at x 540 that is 7 m from Ventura's north wall (z -905), so the apron passed under the solid wall and 0.85 m into the fun centre, where it z-fought with Ventura's tech floor (tops 0.055 and 0.06). The aprons now stop 6.5 m out (z -905.5), just short of the wall. The other two gates (x 300, 420) have open ground in front and only lose 1.5 m of apron.
+
+**Where:** Westhaven Grand Park south gate at (540, -912) and Ventura fun centre north wall (x 486…576, z -905). World-audit pair cleared:
+`LND-FLR-BLK.TCH-REQ-OYEP2I + LND-SRF-BRN.BRK-REQ-1QXZ9Z` (540, -904). (The apron's own surface ID changes, because the ID seed includes its extent.)
+
+**Why:** A path must not run through a building; the cause is the apron length, a one-number change with no collider, gameplay or save-key effect.
+
+**Input this run:** no open issues, no Petitions issue, no open PRs. Supabase registry (via the Supabase connector; direct REST still 403 from the sandbox): `world_bugs`, `world_events`, `world_entities` empty. Vercel production logs: no `[world-report]` lines in the last 50 minutes.
+
+**Looked at and deferred:**
+- (248, -710) funfair path vs circus sawdust ring and (668, -953) karting red vs white kerb strips: audit false positives — the audit compares bounding boxes, and the round ring / the two kerbs on opposite sides of the kart track do not actually touch. Worth teaching the audit later, not worth moving scenery.
+- Ventura Karting builds a red/white striped kerb texture (`kerbT`) and never uses it; the kerbs are plain red on one side, plain white on the other. Cosmetic, for a later run.
+- Still open: road paint at road height (590, -37), (-320, -808), (277, 702), (243, 702); glass/plastic at (1157, 545); far-region floors at (-5097, -7) and (-6500, 8).
 
 ## 2026-11-16 — The military base yard no longer swallows its own paths
 
