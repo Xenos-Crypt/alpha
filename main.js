@@ -115,6 +115,7 @@ import { buildBeach } from './beach.js';
 import { buildResortBeach } from './resort-beach.js';
 import { makeKit } from './leisure-kit.js';
 import { makeRundown, buildAdminEstate } from './home-styles.js';
+import { createSlum, SLUM_HOME, SLUM_HOME_YARD, slumGroundAt } from './slum.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
 import { buildRoadLinks } from './road-links.js';
@@ -551,6 +552,7 @@ function groundY(x, z, bodyY = null) {
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
+  const slumFloor=slumGroundAt(x,z);if(slumFloor!=null)return slumFloor;   // Cinder Row: dirt plots and lanes
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
   const ghostFloor=ghostIsland?.groundAt(x,z);if(ghostFloor!=null)return ghostFloor;
   const spaceFloor=spaceCentre?.groundAt(x,z,bodyY??player.position.y);if(spaceFloor!=null)return spaceFloor;
@@ -1330,8 +1332,9 @@ const RUNWAY = new THREE.Vector3(TRAIN.x, 0, 200);
 // =====================================================================
 // HOME (Sims-style house; the roof hides when you walk inside)
 // =====================================================================
-const HOME = { x: 20, z: 22, minX: 14, maxX: 26, minZ: 17, maxZ: 27 };
-const wallMat = new THREE.MeshStandardMaterial({ color: 0xf3ead8, roughness: 0.9 });
+// Your home is in Cinder Row, the slum on the edge of Poison Land (slum.js): everyone but the admin starts out broke.
+const HOME = { ...SLUM_HOME };
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xb3a68f, roughness: 0.95 });   // dingy, stained render (a run-down house in Cinder Row)
 const WALL_Y = CURB + 1.5;
 // Real windows in the outside walls (see windows.js): glass you can see through from inside, and they open.
 const winSys = createWindows({ scene, interactables, glowMats });
@@ -1367,7 +1370,7 @@ interactables.push({ pos: new THREE.Vector3(HOME.x, CURB, HOME.minZ), r: 2.2, ge
 // Front garden gates: a double gate across the driveway (wide enough for the car) and a small
 // gate on the path. They swing open when you, or your car, come up to them.
 const homeGates = [];
-{ const iron = new THREE.MeshStandardMaterial({ color: 0x1f2326, metalness: 0.6, roughness: 0.4 });
+if (false) { const iron = new THREE.MeshStandardMaterial({ color: 0x1f2326, metalness: 0.6, roughness: 0.4 });   // (no gates or driveway in Cinder Row: you have no car)
   const drive = mesh(new THREE.PlaneGeometry(3.8, 9), new THREE.MeshStandardMaterial({ color: 0x6f6a62, roughness: 0.95 })); drive.rotation.x = -Math.PI / 2; drive.position.set(12.6, CURB + 0.03, 12.6); drive.castShadow = false;
   const gateLeaf = (hx, w, dir) => { const g = new THREE.Group(); g.position.set(hx, CURB, 11); scene.add(g);
     for (const y of [0.15, 0.95]) mesh(new THREE.BoxGeometry(w, 0.07, 0.07), iron, g).position.set(dir * w / 2, y, 0);
@@ -1410,10 +1413,10 @@ const houseRoof = new THREE.Mesh(roofGeo, [wallMat, new THREE.MeshStandardMateri
 houseRoof.position.set(HOME.x, CURB + 3, HOME.z);
 houseRoof.castShadow = houseRoof.receiveShadow = true;
 scene.add(houseRoof);
-const homeDesign=detailHome({scene,box,makeTex,home:HOME,curb:CURB,wallMat,roof:houseRoof,glowMats});
+const homeDesign=detailHome({scene,box,makeTex,home:HOME,curb:CURB,wallMat,roof:houseRoof,glowMats,yard:false});
 
-// The raised pavement starts at z=8; keep the entrance path off the road.
-const doorPathStartZ = 8;
+// A dirt path from the lane to the front door.
+const doorPathStartZ = SLUM_HOME_YARD.minZ;
 const doorPathEndZ = HOME.minZ;
 const doorPath = mesh(new THREE.PlaneGeometry(2, doorPathEndZ - doorPathStartZ), homeDesign.pathMaterial);
 doorPath.rotation.x = -Math.PI / 2;
@@ -1433,7 +1436,7 @@ scene.add(houseLight);
 
 // Garden trees in the corners, kept clear of the driveway (x 10.7–14.5) and the front path; placed
 // exactly (not nudged to the roadside, which once pushed one onto the driveway in front of the gate).
-for (const [x, z] of [[8.6, 16.5], [31.4, 13.5], [31.4, 31.4], [8.6, 31.4]]) addTree(x, z, 1.2, true);
+// (no garden trees: the yard in Cinder Row is bare dirt)
 
 // =====================================================================
 // MORE HOUSES (walk in through the door; the roof hides while you're inside)
@@ -1978,7 +1981,7 @@ function toggleInventory(open) {
   else requestGameControl();
 }
 
-const SPAWN = new THREE.Vector3(HOME.x, CURB, 14);
+const SPAWN = new THREE.Vector3(HOME.x, CURB, HOME.minZ - 3);
 player.position.copy(SPAWN);
 const DEFAULT_SPAWN=SPAWN.clone();
 let houseVisits=null;
@@ -2418,8 +2421,8 @@ function setUpHome(){
   }else{
     const bed=homeRooms.rooms.find(q=>q.name==='bedroom');
     makeRundown({scene,makeTex,curb:CURB,home:HOME,bedroom:bed?{x:(bed.minX+bed.maxX)/2,z:(bed.minZ+bed.maxZ)/2}:null});
-    scene.remove(myCar.group);const i=vehicles.indexOf(myCar);if(i>=0)vehicles.splice(i,1);myCar.disabled=true;   // no car: you start with nothing
   }
+  scene.remove(myCar.group);const i=vehicles.indexOf(myCar);if(i>=0)vehicles.splice(i,1);myCar.disabled=true;   // nobody starts with that car: you're broke (the admin has the estate's cars)
 }
 function updateAdminGod(){
   if(!isAdmin||!adminGod)return;
@@ -6882,7 +6885,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let venueFences = null, slum = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -8147,10 +8150,13 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // Anthos Bay: the beach made big, with a resort, beach houses, wildlife and water sports (resort-beach.js)
   homeKitCtx=leisureCtx;
   resortBeach=buildResortBeach(leisureCtx,{z0:SEA_Z});poolZones.push(...resortBeach.pools);
+  // Cinder Row: the slum north of Poison Land where everyone but the admin starts out (slum.js). Built before the road scan so its lanes count as roads.
+  slum=createSlum({...leisureCtx,K:makeKit(leisureCtx),curb:CURB,drink:()=>{stats.energy=clamp(stats.energy+4,0,100);toast('💧 Warm water that tastes of the pipe. Better than nothing.');}});
+  townPlaces.destinations.push(...slum.destinations);
   // Seasons and holidays from the real calendar: weather, leaf colour, and the whole city decorated (seasons.js)
   seasons=createSeasons({scene,lampSpots,buildings,fair:FAIR,curb:CURB,home:{x:HOME.x,z:HOME.z,minZ:HOME.minZ,maxZ:HOME.maxZ},colliders,tint:FOLIAGE_TINT,toast,stats,
     kit:makeKit(leisureCtx),openShop:leisureCtx.openShop,addItem:(name,icon)=>{inventory.push({name,icon});renderInventory?.();},marketAt:{x:420,z:-925},
-    gardenTrees:[[8.6,16.5],[31.4,13.5],[31.4,31.4],[8.6,31.4]].map(([x,z])=>({x,z})),
+    gardenTrees:[],
     livingCorner:(()=>{const r=homeRooms.rooms.find(q=>q.name==='living');return r?{x:r.minX+0.7,z:r.maxZ-0.7}:null;})(),
     playerPos:()=>player.position,burst:(at,c)=>burst(at,70,[c,0xffffff],16,0.28,1.5,3,0)});
   WEATHER_CYCLE=seasons.weatherCycle;weatherIdx=0;
@@ -8282,6 +8288,7 @@ roadWear = createRoadWear({ scene, makeTex, groundY, toast, interactables, isRoa
   crewMenu(crew) { snackShop.open('Road crew', 'visit', [
     { name: 'How are the roads?', icon: '🚧', price: 0, desc: `${roadWear.potholes} potholes across the city right now. Buses, lorries, tanks, frost and rain wear the roads down; we fix the worst first.`, onBuy: () => { toast(`🚧 "${roadWear.potholes} potholes out there. We'll get to them."`); return false; } },
     { name: 'Help resurface this road', icon: '🛠️', price: 0, desc: 'Grab a shovel: +40 gold, +8 XP, −15 energy, and this job finishes quickly.', onBuy: () => { if (stats.energy < 15) { toast('You are too tired to help right now.'); return false; } if (!roadWear.help(crew)) { toast('They are packing up.'); return false; } stats.gold += 40; stats.energy -= 15; gainXp(8); toast('🛠️ You help lay fresh tarmac: +40 gold, +8 XP.'); snackShop.close(); return false; } }]); } });
+roadWear.neglect?.(slum?.neglected||[]);   // Cinder Row's lanes stay broken: the council never comes
 // Westhaven Recovery: flatbed tow trucks that winch wrecks on and carry them away (see recovery.js).
 recovery = createRecovery({ scene, vehicles, makeVehicle, toast, groundY, makeTex, colliders, raiseWanted, blocked: (x, z, r) => blockedAt(x, z, r), isRoad: isRoadAt, roadRects: () => roadRectList, waypoint: d => setWaypoint(d), destinations: townPlaces.destinations,
   onUnloaded(truck, w, scrap) { if (!scrap) return toast('The wreck is off the truck.');
@@ -8440,7 +8447,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
