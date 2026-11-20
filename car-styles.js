@@ -123,6 +123,13 @@ export function styleCar(v, style, { headMat, tailMat } = {}) {
     P(1.6, 0.3, 0.1, 0, 0.98, L / 2 + 0.01, darkMat, false);
     placeLamps(L / 2 + 0.01, -L / 2 - 0.01, 1.05, 0.78); plate(-L / 2 - 0.02);
   }
+  // These bodies were drawn to sit on wheels; a hover car has no wheels, so without this the body floated as a thin
+  // slab with nothing under it (it looked crushed). Fill the space down to the hover pads with the car's lower body:
+  // painted sills along the sides, a dark undertray between them.
+  { let low = Infinity; for (const c of body.children) if (c.isMesh && c.material === paint && c.geometry?.parameters) { const h = c.geometry.parameters.height ?? 0; low = Math.min(low, c.position.y - h / 2); }
+    if (low > 0.14 && low < 1) { const h = low - 0.06, y = 0.06 + h / 2;
+      P(1.9, h, L - 0.5, 0, y, 0, paint, true, Math.min(0.1, h / 3));
+      P(1.7, Math.min(0.08, h), L - 0.9, 0, 0.1, 0, darkMat, false); } }
   v.carStyle = style; v.length = Math.max(v.length || 4.2, L); v.maxSpeed = S.speed;
   if (S.health) v.health = Math.max(v.health ?? 100, S.health);
   if (S.battery) v.batteryCapacity = S.battery;

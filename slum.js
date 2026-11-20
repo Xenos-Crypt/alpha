@@ -19,14 +19,18 @@ export const FLOOR_H = 3.1, LEVELS = [0.15, 0.15 + FLOOR_H, 0.15 + 2 * FLOOR_H];
 export const SLUM_HOME_Y = LEVELS[2];
 export const SLUM_HOME = { x: 700, z: 511, minX: 695, maxX: 705, minZ: 507, maxZ: 515 };
 const STAIR = { a0: 705.3, a1: 706.5, b1: 707.7, z0: 507, z1: 515, land1: 516.4, bal0: 505.6, balX0: 694.8 };
+// Tenements: yours (no offset) and three more like it in other blocks, each facing its lane the same way. Offsets
+// (dx, dz) chosen so each yard sits inside its block, clear of the shop, the tap and the fire-barrel corners.
+export const TENEMENTS = [[0, 0], [-80, 0], [80, 0], [40, 50]];
 export const SLUM_HOME_YARD = { minX: 693.5, maxX: 708.6, minZ: 503, maxZ: 517.2 };
 const Z_TOP = 598, Z_BOTTOM = 447;
 
 const inLane = (x, z) => (z >= Z_BOTTOM && z <= Z_TOP && LANES_X.some(c => Math.abs(x - c) <= LANE_W / 2)) ||
   (x >= SLUM.minX && x <= SLUM.maxX && LANES_Z.some(c => Math.abs(z - c) <= LANE_W / 2));
 // the tenement's floors, stairs, landing and balcony: you're on one if your body is near its height, under it otherwise
-function tenementAt(x, z, by) {
-  const [G, M, T] = LEVELS, S = STAIR, on = h => by == null || by > h - 1.1;
+function tenementAt(x, z, by) { for (const [dx, dz] of TENEMENTS) { const r = tenementOne(x - dx, z - dz, by); if (r != null) return r; } return null; }
+function tenementOne(x, z, by) {
+  const [G, M, T] = LEVELS, S = STAIR, on = h => by == null ? h < 0.5 : by > h - 0.7;   // (from underneath you can't pop up onto it)
   if (x >= S.a0 && x <= S.a1 && z >= S.z0 && z <= S.z1) { const h = G + (z - S.z0) / (S.z1 - S.z0) * (M - G); return on(h) ? h : G; }   // first flight: up towards the back
   if (x > S.a1 && x <= S.b1 && z >= S.z0 && z <= S.z1) { const h = M + (S.z1 - z) / (S.z1 - S.z0) * (T - M); return by != null && by > h - 1.1 ? h : G; }   // second flight: up towards the front
   if (x >= S.balX0 && x <= S.b1 && z > S.z1 && z <= S.land1) return by != null && by > M - 1.1 ? M : G;   // the second-floor gallery along the back (the stairs' landing)
@@ -144,13 +148,65 @@ export function createSlum(ctx) {
   }
 
   // ---------------- shacks ----------------
-  const home = SLUM_HOME_YARD, clearOf = [home, { minX: 712, maxX: 718, minZ: 503, maxZ: 512 }, { minX: 643, maxX: 652, minZ: 503, maxZ: 511 }, { minX: 763, maxX: 773, minZ: 539, maxZ: 547 }];   // your yard, the tap, the shop, the fire barrel corner
+  const home = SLUM_HOME_YARD, clearOf = [...TENEMENTS.map(([dx, dz]) => ({ minX: home.minX + dx, maxX: home.maxX + dx, minZ: home.minZ + dz, maxZ: home.maxZ + dz })), { minX: 712, maxX: 718, minZ: 503, maxZ: 512 }, { minX: 643, maxX: 652, minZ: 503, maxZ: 511 }, { minX: 763, maxX: 773, minZ: 539, maxZ: 547 }];   // your yard, the tap, the shop, the fire barrel corner
   const hits = (a, b) => a.minX < b.maxX && a.maxX > b.minX && a.minZ < b.maxZ && a.maxZ > b.minZ;
   const shacks = [], roofSpots = [], wallSpots = [], doorSpots = [];
+  // ---- a shack's downstairs room: four thin walls with a doorway, run-down things inside ----
+  // Most have no door at all (a rag hung over the doorway, or nothing); some have a real hinged door (E) and glass in the
+  // window. Inside: a stained mattress on the dirt, a broken plastic chair, a crate for a table, buckets, a cooker...
+  const shackDoors = [], glassM = std('shackGlass', { color: 0x9fb8c4, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.2 });
+  const rag = std('rag', { color: 0x7a6a55, roughness: 1, side: THREE.DoubleSide }), foam = std('foam', { color: 0xb9ab8c }), stainedSheet = std('sheet', { color: 0x8f8a7c });
+  const plastic = std('plastic', { color: 0xd8d4c8, roughness: 0.6 }), crate = std('crate', { color: 0x8a6d47 }), lampGlow = std('lamp', { color: 0xffd08a, emissive: 0xffa040, emissiveIntensity: 1.2 });
+  function room(cx, cz, w, d, h, face, doorOff, winOff, hasDoor, wm) {
+    const t = 0.08, y0 = curb, fx = [0, 1, 0, -1][face], fz = [-1, 0, 1, 0][face];
+    // local frame: u along the front wall, v from the front wall inwards
+    const alongX = fz !== 0, hu = alongX ? w / 2 : d / 2, hv = alongX ? d / 2 : w / 2;
+    const Wp = (u, v) => alongX ? [cx + u, cz + fz * (hv - v)] : [cx + fx * (hv - v), cz + u];
+    const piece = (u0, u1, v0, v1, ya, yb, m) => { const [ax, az] = Wp(u0, v0), [bx, bz] = Wp(u1, v1); box(Math.max(0.02, Math.abs(bx - ax)), yb - ya, Math.max(0.02, Math.abs(bz - az)), (ax + bx) / 2, y0 + (ya + yb) / 2, (az + bz) / 2, m); };
+    const wallC = (u0, u1, v0, v1) => { const [ax, az] = Wp(u0, v0), [bx, bz] = Wp(u1, v1); return solid(ax, bx, az, bz); };
+    const dw = 0.95, DH = 2.0;
+    // front wall: around the doorway (and the window, which is a real opening with bars, glazed if it's a door shack)
+    const holes = [{ c: doorOff, w: dw, y0: 0, y1: DH }]; if (winOff != null) holes.push({ c: winOff, w: 0.9, y0: 1.25, y1: 1.95 });
+    holes.sort((a, b) => a.c - b.c); let u = -hu;
+    for (const o of holes) { const a = o.c - o.w / 2, b = o.c + o.w / 2; if (a > u) piece(u, a, 0, t, 0, h, wm); if (o.y0 > 0) piece(a, b, 0, t, 0, o.y0, wm); piece(a, b, 0, t, o.y1, h, wm); u = b; }
+    if (u < hu) piece(u, hu, 0, t, 0, h, wm);
+    wallC(-hu, doorOff - dw / 2, 0, t); wallC(doorOff + dw / 2, hu, 0, t);
+    piece(-hu, hu, 2 * hv - t, 2 * hv, 0, h, wm); wallC(-hu, hu, 2 * hv - t, 2 * hv);
+    piece(-hu, -hu + t, t, 2 * hv - t, 0, h, wm); wallC(-hu, -hu + t, 0, 2 * hv); piece(hu - t, hu, t, 2 * hv - t, 0, h, wm); wallC(hu - t, hu, 0, 2 * hv);
+    if (winOff != null && hasDoor) piece(winOff - 0.45, winOff + 0.45, t / 2 - 0.01, t / 2 + 0.01, 1.25, 1.95, glassM);
+    // the doorway: a real door, a rag curtain, or just a hole
+    if (hasDoor) {
+      const [hx, hz] = Wp(doorOff - dw / 2, -0.03), g = new THREE.Group(), base = alongX ? 0 : -Math.PI / 2; g.position.set(hx, y0, hz); g.rotation.y = base; scene.add(g);   // hinge on one side; the leaf runs along the wall
+      const leaf = new THREE.Mesh(boxGeo, R() < 0.5 ? plank : dark); leaf.scale.set(dw - 0.04, DH - 0.03, 0.05); leaf.position.set((dw - 0.04) / 2, DH / 2, 0); leaf.name = 'shack door'; g.add(leaf); leaf.castShadow = true;
+      const col = wallC(doorOff - dw / 2, doorOff + dw / 2, -0.03, t);
+      const D = { g, col, base, target: 0, swing: 1.4 * (alongX ? -fz : fx) };   // it swings outwards
+      const [px, pz] = Wp(doorOff, 0); shackDoors.push(D);
+      interactables.push({ pos: new THREE.Vector3(px, 0, pz), r: 1.6, door: true, col, get label() { return D.target ? 'Close the door' : 'Open the door'; }, action() { D.target = D.target ? 0 : 1; const i = colliders.indexOf(col); if (D.target && i >= 0) colliders.splice(i, 1); else if (!D.target && i < 0) colliders.push(col); } });
+    } else if (R() < 0.5) { const [px, pz] = Wp(doorOff, t / 2); plane(dw - 0.1, 0.7, px, y0 + DH - 0.35, pz, rag, alongX ? 0 : Math.PI / 2); }
+    // inside (v from t to 2hv - t), keeping the doorway's path clear
+    const U0 = -hu + t + 0.05, U1 = hu - t - 0.05, V1 = 2 * hv - t - 0.05, P = (u, v, sw, sh, sd, y, m, ry = 0, rx = 0, rz = 0) => { const [x, z] = Wp(u, v); box(alongX ? sw : sd, sh, alongX ? sd : sw, x, y0 + y, z, m, rx, ry, rz); };
+    const side = doorOff > 0 ? -1 : 1, farU = side > 0 ? U1 : U0;   // the far side from the door
+    // a stained mattress on the floor along the back wall, a heap of blankets
+    P(farU - side * 0.5, V1 - 1.0, 0.95, 0.16, 1.9, 0.08, foam); P(farU - side * 0.5, V1 - 1.4, 0.9, 0.06, 0.9, 0.19, stainedSheet, 0.2);
+    if (R() < 0.6) P(farU - side * 0.4, V1 - 0.35, 0.6, 0.18, 0.4, 0.25, pick(cloth));
+    // a broken plastic chair (leaning, one leg gone) and a crate for a table, with a lamp or a candle on it
+    const cu = (U0 + U1) / 2 + side * 0.2, cv = Math.min(V1 - 0.6, 1.6);
+    P(cu + side * 0.8, cv, 0.5, 0.4, 0.5, 0.2, crate); P(cu + side * 0.8, cv, 0.12, 0.12, 0.12, 0.46, R() < 0.5 ? lampGlow : plastic);
+    const tilt = 0.25 + R() * 0.2; P(cu, cv, 0.42, 0.04, 0.42, 0.38, plastic, 0.3, 0, tilt); P(cu, cv + 0.2, 0.42, 0.4, 0.04, 0.6, plastic, 0.3, -0.15, tilt);
+    for (const [a, b] of [[-0.17, -0.17], [0.17, -0.17], [-0.17, 0.17]]) P(cu + a, cv + b, 0.04, 0.38, 0.04, 0.19, plastic, 0, 0, tilt * 0.5);
+    { const [x, z] = Wp(cu + side * 0.8, cv); solid(x - 0.3, x + 0.3, z - 0.3, z + 0.3).baseYAt = () => y0; }
+    // buckets and a jerrycan by the door side, a camping stove, a cardboard sheet on the dirt
+    P(-farU * 0.7 + side * 0.0, V1 - 0.3, 0.3, 0.35, 0.3, 0.18, std('bucket' + (Math.abs(Math.round(cx)) % 3), { color: [0x2d7dd2, 0xe4572e, 0xf3a712][Math.abs(Math.round(cx)) % 3] }));
+    if (R() < 0.6) P(-farU * 0.7 - side * 0.4, V1 - 0.3, 0.25, 0.4, 0.15, 0.2, std('jerry', { color: 0xc9a227 }));
+    if (R() < 0.5) { P(farU - side * 0.35, 0.8, 0.5, 0.12, 0.35, 0.06, concrete); P(farU - side * 0.35, 0.8, 0.12, 0.08, 0.12, 0.16, dark); }
+    if (R() < 0.4) P((U0 + U1) / 2, V1 / 2, 1.2, 0.01, 0.9, 0.005, ply);
+    if (R() < 0.35) { P(farU - side * 0.4, V1 - 2.3, 0.6, 0.45, 0.45, 0.22, crate); P(farU - side * 0.4, V1 - 2.3, 0.5, 0.35, 0.3, 0.62, dark); }   // an old TV on a crate
+    if (R() < 0.5) { const [x, z] = Wp(0, V1 / 2); cyl(0.005, 0.5, x, y0 + h - 0.25, z, wire, 4); put(new THREE.SphereGeometry(0.06, 6, 4), R() < 0.4 ? bulb : deadBulb, x, y0 + h - 0.52, z, 1, 1, 1); }
+  }
   function shack(cx, cz, w, d, face) {
     // face: which way the door looks: 0 = -z, 1 = +x, 2 = +z, 3 = -x
     const wm = pick(wallMats), h = between(2.4, 3.1), y0 = curb, two = R() < 0.22;
-    box(w, h, d, cx, y0 + h / 2, cz, wm);
+    // the downstairs room is real: thin walls you can walk inside (built further down, once the door side is known)
     let top = y0 + h;
     if (two) { const w2 = w * between(0.6, 0.85), d2 = d * between(0.6, 0.85), h2 = between(2.2, 2.6), ox = (R() - 0.5) * (w - w2), oz = (R() - 0.5) * (d - d2); box(w2, h2, d2, cx + ox, top + h2 / 2, cz + oz, pick(wallMats)); top += h2; roofSpots.push([cx + ox, top, cz + oz, w2, d2]);
       box(0.08, 0.08, 2.4, cx + ox + w2 / 2 + 0.6, y0 + h + 0.2, cz + oz, plank, 0.9, 0, 0); }   // a rough ladder up
@@ -165,12 +221,12 @@ export function createSlum(ctx) {
     const half = face % 2 ? w / 2 : d / 2, along = face % 2 ? d : w;
     const dx = cx + fx * (half + 0.03), dz = cz + fz * (half + 0.03);
     const sideX = fz !== 0 ? 1 : 0, sideZ = fx !== 0 ? 1 : 0, doorOff = (R() - 0.5) * (along - 2.2);
-    box(fz ? 0.95 : 0.06, 2.0, fz ? 0.06 : 0.95, dx + sideX * doorOff, y0 + 1.0, dz + sideZ * doorOff, R() < 0.5 ? plank : dark);
-    const winOff = doorOff > 0 ? doorOff - 1.6 : doorOff + 1.6;
-    if (along > 3.2) { box(fz ? 0.9 : 0.05, 0.7, fz ? 0.05 : 0.9, dx + sideX * winOff, y0 + 1.6, dz + sideZ * winOff, dark); for (let k = -1; k <= 1; k++) box(fz ? 0.03 : 0.07, 0.72, fz ? 0.07 : 0.03, dx + sideX * (winOff + k * 0.25) + fx * 0.02, y0 + 1.6, dz + sideZ * (winOff + k * 0.25) + fz * 0.02, bars); }
+    const winOff = doorOff > 0 ? doorOff - 1.6 : doorOff + 1.6, hasDoor = R() < 0.3, hasWin = along > 3.2;
+    room(cx, cz, w, d, h, face, doorOff, hasWin ? winOff : null, hasDoor, wm);
+    if (hasWin && !hasDoor) { box(fz ? 0.9 : 0.05, 0.7, fz ? 0.05 : 0.9, dx + sideX * winOff, y0 + 1.6, dz + sideZ * winOff, dark); for (let k = -1; k <= 1; k++) box(fz ? 0.03 : 0.07, 0.72, fz ? 0.07 : 0.03, dx + sideX * (winOff + k * 0.25) + fx * 0.02, y0 + 1.6, dz + sideZ * (winOff + k * 0.25) + fz * 0.02, bars); }
     wallSpots.push([dx, dz, ry, along]); doorSpots.push([dx + sideX * doorOff + fx * 0.6, dz + sideZ * doorOff + fz * 0.6]);
-    solid(cx - w / 2, cx + w / 2, cz - d / 2, cz + d / 2);
-    shacks.push({ x: cx, z: cz, w, d, top });
+    if (two) solid(cx - w / 2, cx + w / 2, cz - d / 2, cz + d / 2).baseYAt = () => y0 + h;   // the upstairs room isn't reachable
+    shacks.push({ x: cx, z: cz, w, d, top, door: hasDoor, doorAt: [dx + sideX * doorOff, dz + sideZ * doorOff], out: [fx, fz] });
     tag('BLD', 'SHK', wm === iron ? 'MET.WOD' : wm === ply ? 'WOD' : 'CON.WOD', 'Built by hand (no permit)', `Shack, ${two ? 'two storeys' : 'one room'}`, cx, cz);
   }
   for (const b of blocks) {
@@ -197,21 +253,24 @@ export function createSlum(ctx) {
 
   // ---------------- the tenement: two floors of other people's flats under yours, an outside stair, a balcony ----------------
   const tenants = [];
-  { const H = SLUM_HOME, [G, M, T] = LEVELS, S = STAIR, W = H.maxX - H.minX, D = H.maxZ - H.minZ, cx = H.x, cz = (H.minZ + H.maxZ) / 2;
+  function buildTenement(dx, dz, mine) {
+    const H0 = SLUM_HOME, H = { x: H0.x + dx, z: H0.z + dz, minX: H0.minX + dx, maxX: H0.maxX + dx, minZ: H0.minZ + dz, maxZ: H0.maxZ + dz };
+    const S = { a0: STAIR.a0 + dx, a1: STAIR.a1 + dx, b1: STAIR.b1 + dx, balX0: STAIR.balX0 + dx, z0: STAIR.z0 + dz, z1: STAIR.z1 + dz, land1: STAIR.land1 + dz, bal0: STAIR.bal0 + dz };
+    const [G, M, T] = LEVELS, W = H.maxX - H.minX, D = H.maxZ - H.minZ, cx = H.x, cz = (H.minZ + H.maxZ) / 2;
     const level = base => c => { c.baseYAt = () => base; return c; };
     // the two lower storeys: breeze block downstairs, faded paint on the first floor, stains everywhere
     box(W, FLOOR_H, D, cx, G + FLOOR_H / 2, cz, breeze); box(W + 0.1, FLOOR_H - 0.05, D + 0.1, cx, M + FLOOR_H / 2 - 0.05, cz, painted[1]);
     box(W + 0.4, 0.14, D + 0.4, cx, M - 0.02, cz, concrete); box(W + 0.3, 0.14, D + 0.3, cx, T - 0.04, cz, concrete);   // slab edges
     level(G)(solid(H.minX, H.maxX, H.minZ, H.maxZ)); level(2.9)(solid(H.minX, H.maxX, H.minZ, H.maxZ));   // you can't walk into other people's flats
     // doors and barred windows of the flats below: two on the ground floor (one is the landlord's), one up a floor
-    box(1.0, 2.05, 0.08, cx - 2.6, M + 1.03, H.maxZ + 0.04, dark); tenants.push({ x: cx - 2.6, z: H.maxZ + 0.75, y: M, who: 'Flat 3' });   // Flat 3: door on the back gallery
+    box(1.0, 2.05, 0.08, cx - 2.6, M + 1.03, H.maxZ + 0.04, dark); mine && tenants.push({ x: cx - 2.6, z: H.maxZ + 0.75, y: M, who: 'Flat 3' });   // Flat 3: door on the back gallery
     for (const [dx, y, who] of [[-2.6, G, 'Flat 1 (the landlord)'], [2.6, G, 'Flat 2']]) {
       box(1.0, 2.05, 0.08, cx + dx, y + 1.03, H.minZ - 0.04, y === G ? plank : dark);
-      tenants.push({ x: cx + dx, z: H.minZ - 0.9, y, who });
+      mine && tenants.push({ x: cx + dx, z: H.minZ - 0.9, y, who });
     }
     for (const [dx, y] of [[0, G], [-0.3, M], [2.6, M]]) { box(1.2, 0.9, 0.06, cx + dx, y + 1.6, H.minZ - 0.04, dark); for (let k = -2; k <= 2; k++) box(0.03, 0.92, 0.08, cx + dx + k * 0.25, y + 1.6, H.minZ - 0.06, bars); }
     for (const [x, y] of [[H.minX - 0.04, G], [H.minX - 0.04, M]]) box(0.06, 0.9, 1.2, x, y + 1.6, cz, dark);
-    box(0.08, 2.0, 0.95, H.maxX + 0.04, M + 1.0, H.maxZ - 0.9, dark); tenants.push({ x: S.a0 + 0.6, z: S.z1 + 0.7, y: M, who: 'Flat 4 (door on the landing)' });
+    box(0.08, 2.0, 0.95, H.maxX + 0.04, M + 1.0, H.maxZ - 0.9, dark); mine && tenants.push({ x: S.a0 + 0.6, z: S.z1 + 0.7, y: M, who: 'Flat 4 (door on the landing)' });
     for (let i = 0; i < 9; i++) box(0.5 + R() * 1.4, 0.4 + R() * 1.2, 0.02, cx + (R() - 0.5) * W * 0.9, G + 0.6 + R() * 4.5, H.minZ - 0.09, std('stain', { color: 0x3a3226, transparent: true, opacity: 0.45 }));   // damp stains down the front
     // the outside stair: two steep flights of rough planks on steel posts, with a landing at the back
     const flight = (x0, x1, za, ya, zb, yb) => { const n = 18; for (let i = 0; i < n; i++) { const t = (i + 0.5) / n, z = za + (zb - za) * t, y = ya + (yb - ya) * t; box(x1 - x0, 0.06, Math.abs(zb - za) / n + 0.02, (x0 + x1) / 2, y - 0.03, z, plank); }
@@ -219,7 +278,7 @@ export function createSlum(ctx) {
     flight(S.a0, S.a1, S.z0, G, S.z1, M); flight(S.a1, S.b1, S.z1, M, S.z0, T);
     box(S.b1 - S.balX0, 0.1, S.land1 - S.z1, (S.balX0 + S.b1) / 2, M - 0.05, (S.z1 + S.land1) / 2, plank);   // the second-floor gallery (and the stairs' landing)
     box(S.b1 - S.balX0, 0.1, S.z0 - S.bal0, (S.balX0 + S.b1) / 2, T - 0.05, (S.bal0 + S.z0) / 2, plank);   // the balcony
-    for (const [x, z, h] of [[S.a0, S.z0, M], [S.b1, S.z0, T], [S.b1, S.land1, M], [S.a0, S.land1, M], [S.balX0, S.bal0, T], [S.b1, S.bal0, T], [702, S.bal0, T], [697, S.bal0, T]]) cyl(0.06, h, x, h / 2, z, bars, 6);   // rusty posts
+    for (const [x, z, h] of [[S.a0, S.z0, M], [S.b1, S.z0, T], [S.b1, S.land1, M], [S.a0, S.land1, M], [S.balX0, S.bal0, T], [S.b1, S.bal0, T], [702 + dx, S.bal0, T], [697 + dx, S.bal0, T]]) cyl(0.06, h, x, h / 2, z, bars, 6);   // rusty posts
     // railings (the gaps are missing bars: don't lean on it)
     const rail = (x0, z0, x1, z1, y) => { box(Math.abs(x1 - x0) || 0.05, 0.05, Math.abs(z1 - z0) || 0.05, (x0 + x1) / 2, y + 0.95, (z0 + z1) / 2, bars); const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.3); for (let i = 0; i <= n; i++) { if (R() < 0.15) continue; const t = i / n; box(0.03, 0.95, 0.03, x0 + (x1 - x0) * t, y + 0.47, z0 + (z1 - z0) * t, bars); } };
     rail(S.balX0, S.bal0, S.b1, S.bal0, T); rail(S.balX0, S.bal0, S.balX0, S.z0, T); rail(S.a0, S.land1, S.b1, S.land1, M); rail(S.b1, S.z1, S.b1, S.land1, M);
@@ -238,12 +297,23 @@ export function createSlum(ctx) {
       stairRail(S.a1, S.z0, G, S.z1, M); stairRail(S.a1 + 0.06, S.z1, M, S.z0, T); stairRail(S.b1, S.z1, M, S.z0, T);
     }
     solid(S.a1 - 0.05, S.a1 + 0.05, S.z0, S.z1); solid(S.b1 - 0.05, S.b1 + 0.08, S.z0, S.land1);   // between the flights, and the outside edge
+    // the space under the first flight is closed off where it's too low to stand: solid to anyone below the steps,
+    // never to someone on them (the block sits just under the steps at your spot)
+    { const h = z => G + (Math.min(S.z1, Math.max(S.z0, z)) - S.z0) / (S.z1 - S.z0) * (M - G);
+      colliders.push({ minX: S.a0, maxX: S.a1, minZ: S.z0 + 1.6, maxZ: S.z1, baseYAt: (x, z) => h(z) - 2.85 });
+      box(S.a1 - S.a0 - 0.1, 2.0, 0.06, (S.a0 + S.a1) / 2, G + 1.0, S.z1 - 0.1, plank); }   // boards nailed across the back, under the landing
     // washing hung over the balcony rail, and a satellite dish someone found
     for (let i = 0; i < 6; i++) plane(between(0.4, 0.8), between(0.5, 0.9), S.balX0 + 0.8 + i * 1.6, T + 0.55, S.bal0 - 0.03, pick(cloth), 0);
     put(new THREE.SphereGeometry(0.45, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), concrete, H.minX + 0.6, M + 2.5, H.minZ - 0.3, 1, 0.4, 1, -1.2, 0, 0);
+    if (!mine) {   // the top-floor flat (yours is built in main.js): walls, a roof, a door onto the balcony; it's somebody's home, so shut
+      box(W, FLOOR_H - 0.05, D, cx, T + FLOOR_H / 2 - 0.02, cz, pick(painted)); box(W + 0.6, 0.06, D + 0.6, cx, T + FLOOR_H + 0.1, cz, ironRoof, 0.06, 0, 0);
+      box(1.0, 2.05, 0.08, cx + 3.0, T + 1.03, H.minZ - 0.04, dark); box(1.2, 0.9, 0.06, cx - 1.5, T + 1.6, H.minZ - 0.04, dark); for (let k = -2; k <= 2; k++) box(0.03, 0.92, 0.08, cx - 1.5 + k * 0.25, T + 1.6, H.minZ - 0.06, bars);
+      level(T)(solid(H.minX, H.maxX, H.minZ, H.maxZ));
+    }
     tag('BLD', 'APT', 'CON.MET', 'Built by hand, floor by floor (no permit)', 'Tenement block (3 storeys)', cx, cz);
     tag('PRD', 'FUR', 'WOD.STL', 'Scrap wood and steel', 'Outside staircase', S.a1, (S.z0 + S.z1) / 2);
   }
+  for (const [dx, dz] of TENEMENTS) buildTenement(dx, dz, !dx && !dz);
 
   // ---------------- street life: power lines, lamps, laundry, rubbish, fire barrels ----------------
   // wooden poles along the lanes, leaning, with a tangle of wires (half of them stolen connections)
@@ -358,6 +428,7 @@ export function createSlum(ctx) {
       ft += dt; flames.forEach((f, i) => { const s = 0.85 + 0.25 * Math.sin(ft * 9 + i * 2.1) + 0.1 * Math.sin(ft * 23 + i); f.scale.set(s, s * 1.2, s); });
       glow.intensity = 2.1 + 0.6 * Math.sin(ft * 11) * Math.sin(ft * 7.3);
       K?.update?.(dt, p);
+      for (const D of shackDoors) { const want = D.target * D.swing; if (Math.abs(D.g.rotation.y - D.base - want) > 0.001) D.g.rotation.y += (D.base + want - D.g.rotation.y) * Math.min(1, dt * 6); }
       for (const e of errands) stepErrand(e, dt);
       // people are solid: you bump into them instead of walking through
       for (const h of K?.people || []) { const q = h.root.position; if (!h.root.visible || Math.abs(q.y - p.y) > 1.6) continue; const dx = p.x - q.x, dz = p.z - q.z, d = Math.hypot(dx, dz); if (d < 0.65 && d > 1e-4) { p.x = q.x + dx / d * 0.65; p.z = q.z + dz / d * 0.65; } }
