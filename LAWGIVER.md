@@ -17,7 +17,7 @@ and wet sand + towel at (67, 247), (94, 248), (103, 247), (130, 248), (139, 247)
 **Input this run:** no open issues, no Petitions issue. One open PR (#58, Grand Park south gate, `grand-park.js`), so this change stays out of that file. Supabase registry (via the connector): `world_bugs`, `world_events`, `world_entities` empty. Vercel production logs: no `[world-report]` lines in the last 50 minutes.
 
 **Looked at and deferred:**
-- Cinder Row (x 596…844, z 448…598): 34 audit pairs between each lane's dark surface (top 0.04) and the grime decals (0.045, `polygonOffset`, transparent, no depth write). These are intended decals, not two floors; most are audit noise. Better solved by teaching the audit to skip polygon-offset decals than by moving the lanes. A later run.
+- Cinder Row (x 596…844, z 448…598): 37 audit pairs between each lane's dark surface (top 0.04) and the grime decals (0.045, `polygonOffset`, transparent, no depth write). These are intended decals, not two floors; most are audit noise. Better solved by teaching the audit to skip polygon-offset decals than by moving the lanes. A later run.
 - Anthos Bay: some towels and the parasol row reach 1–2 m onto the wet sand at the waterline. Moving the row landward would put a parasol into the lifeguard tower at (262, 241), so it needs a careful re-layout, not a quick shift.
 - Still open from earlier runs: road paint at road height (590, -37), (-320, -808), (277, 702), (243, 702); glass/plastic at (1157, 545); far-region floors at (-5097, -7) and (-6500, 8); the funfair/karting bounding-box false positives (248, -710), (668, -953).
 
