@@ -328,7 +328,7 @@ perfBudget = createPerformanceBudget({ THREE, scene, camera, renderer, mobile: t
 perfBudget.setBasePixelRatio(renderer.getPixelRatio());
 perfBudget.setQuality(gfxQuality);
 perfBudget.attachSky(sky, [sunDisc, moonDisc]);
-if (new URLSearchParams(location.search).has('debug')) window.__aw = { renderer, scene, camera, perfBudget, get player() { return player; }, get game() { return { hunterGuilds, roadLaw, frontier, prog, stats, vehicles, trafficLights, get militaryAlert() { return militaryAlert; }, setYaw(y, p) { yaw = y; pitch = p; } }; } };
+if (new URLSearchParams(location.search).has('debug')) window.__aw = { renderer, scene, camera, perfBudget, get worldIds() { return worldIds; }, get player() { return player; }, get game() { return { hunterGuilds, roadLaw, frontier, prog, stats, vehicles, trafficLights, get militaryAlert() { return militaryAlert; }, setYaw(y, p) { yaw = y; pitch = p; } }; } };
 
 // =====================================================================
 // PROCEDURAL TEXTURES (drawn on canvases, so no image files are needed)
@@ -8006,7 +8006,7 @@ const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setIt
 worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>grass?.tufts?.()||[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
-  extra:()=>[...idExtra,...LIFE.things,...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
+  extra:()=>[...idExtra,...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // every purchase, uniform, worn-out shirt and pram goes on the thing's record (belongings.js → world IDs)
@@ -8034,7 +8034,7 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   pause:storyPause,resume:requestGameControl});
 // The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
 // Cryptic: the phone everyone carries (phone.js). The torch, taxi, map, career and city hall live on it now.
-phone=createPhone({userId:()=>soloUserId||registryUserId||'guest',stats,toast,pause:()=>pauseForPanel(),resume:()=>requestGameControl(),premium:()=>isAdmin,
+phone=createPhone({where:()=>player.position,userId:()=>soloUserId||registryUserId||'guest',stats,toast,pause:()=>pauseForPanel(),resume:()=>requestGameControl(),premium:()=>isAdmin,
   torch:{on:()=>flashlightOn,toggle:()=>toggleFlashlight()},
   snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
   openMap:()=>worldMap?.show(),callTaxi:()=>cityServices?.callTaxi(player.position.clone()),openCareer:()=>careers?.openCareer(),openCityHall:()=>society?.openHall(),

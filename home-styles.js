@@ -6,11 +6,22 @@
 //   infinity pool and hot tub, a garage with a supercar you can drive, and a private airstrip with a hangar and
 //   a private jet. A private road links it to The Reserve's avenue.
 import * as THREE from 'three';
+import { makeBotany } from './botany.js';
 
 // ---------------- the run-down home ----------------
 export function makeRundown(ctx) {
   const { scene, makeTex, home, curb } = ctx;
   const root = new THREE.Group(); root.name = 'run-down home'; scene.add(root);
+  // every bit of the mess has an ID too (world-ids.js)
+  const bot = makeBotany(ctx, 'your home'), tag = (cls, kind, mat, maker, name, x, z, owner = 'PLR') => bot.fixture(cls, kind, mat, maker, name, x, z, owner);
+  tag('LND', 'STN', 'PNT', 'Weather and age', 'Grime, cracks and peeling paint on the walls', home.x, home.minZ);
+  tag('PRD', 'DEC', 'WOD', 'Westhaven Builders', 'Planks nailed over the front windows', home.x, home.minZ - 0.1);
+  tag('PRD', 'TRP', 'PLS', 'MarketWay Retail', 'Blue tarp over the roof leak', home.x + 1.5, home.z - 2.7);
+  for (const dx of [-1.6, 1.6]) tag('PRD', 'TRS', 'RBR', 'Old car tyre', 'Tyre weighing the tarp down', home.x + 1.5 + dx, home.z - 4.1);
+  for (const dx of [2.6, 3.2, 2.9]) tag('PRD', 'TRS', 'PLS', 'Household rubbish', 'Rubbish bag by the door', home.x + dx, home.minZ - 1);
+  tag('PRD', 'FUR', 'PLS', 'MarketWay Retail', 'Broken plastic chair', home.x - 4.2, home.minZ - 2.2);
+  tag('LND', 'WED', 'PLT', 'Nature', 'Weeds through the front garden', home.x, home.minZ - 3);
+  if (ctx.bedroom) tag('LND', 'STN', 'WTR', 'The roof leak', 'Hand-shaped water stain on the bedroom ceiling', ctx.bedroom.x, ctx.bedroom.z);
   // grime, cracks and peeling paint drawn on a see-through texture laid over each outside wall
   const grime = makeTex(256, 128, g => {
     g.clearRect(0, 0, 256, 128);
@@ -55,6 +66,9 @@ export function makeRundown(ctx) {
 export function buildAdminEstate(ctx) {
   const { scene, K, makeTex, toast, curb } = ctx;
   const root = new THREE.Group(); root.name = "admin's estate"; scene.add(root);
+  // everything on the estate has an ID (world-ids.js); the cars and the jet get theirs as vehicles
+  const bot = makeBotany(ctx, 'Xenos Estate'), EST = 'Westhaven Builders';
+  const tag = (cls, kind, mat, name, x, z, maker = EST) => bot.fixture(cls, kind, mat, maker, name, x, z, 'ADM');
   const { B, C, S, mat, solid, sign, place, spot, stander, sitter, hall } = K;
   const X0 = 1215, X1 = 1580, Z0 = 110, Z1 = 820;   // the new land, east of The Reserve
   const floors = [];
@@ -69,6 +83,11 @@ export function buildAdminEstate(ctx) {
   B(root, 9, 0.06, 100, X0 + 60, 0.04, 175, tarmac, false);                         // and south to the house
   const wallC = mat(0xe8e2d6, { rough: 0.8 });
   for (const [w, d, x, z] of [[X1 - X0, 0.5, (X0 + X1) / 2, Z1], [0.5, Z1 - Z0, X1, (Z0 + Z1) / 2]]) { B(root, w, 2.2, d, x, 1.1, z, wallC); solid(x - w / 2, x + w / 2, z - d / 2, z + d / 2); }
+  tag('LND', 'LWN', 'GRS', 'Estate lawn', (X0 + X1) / 2, (Z0 + Z1) / 2);
+  tag('LND', 'ROD', 'ASP', 'Private road to the estate', (1025 + X0 + 60) / 2, 125);
+  tag('LND', 'ROD', 'ASP', 'Estate drive', X0 + 60, 175);
+  tag('LND', 'FEN', 'STN', 'Estate boundary wall', (X0 + X1) / 2, Z1);
+  tag('LND', 'GAT', 'STN', 'Estate gate posts and name sign', X0 + 60, 128);
   // gate posts and a name sign at the drive
   for (const s of [-1, 1]) B(root, 0.8, 3, 0.8, X0 + 60 + s * 6, 1.5, 128, 0xd6c8a8);
   place(sign(ctx.title || 'PRIVATE ESTATE', 'residence · airstrip', 6, '#111111', '#d4af37', 'Georgia, serif'), X0 + 60, 3.6, 128, 0);
@@ -81,6 +100,10 @@ export function buildAdminEstate(ctx) {
   B(root, hx1 - hx0 + 8, 0.4, hz1 - hz0 - 2, (hx0 + hx1) / 2, H + 5.7, (hz0 + hz1) / 2, 0x2a2e33);
   for (let x = hx0 + 2; x < hx1 - 1; x += 4) B(root, 3, 3.6, 0.1, x, H + 3, hz1 - 2.95, mat(0x3c6e8f, { rough: 0.05, metal: 0.5 }), false);
   B(root, hx1 - hx0 + 6.2, 0.18, 0.2, (hx0 + hx1) / 2, H + 0.6, hz1 + 0.05, 0xd4af37);
+  tag('BLD', 'MAN', 'MRB.GLS', 'The mansion', (hx0 + hx1) / 2, (hz0 + hz1) / 2);
+  for (const [n, x, z, m, mk] of [['Sofa', 1258, 222, 'LTH', 'Atelier Furniture'], ['Sofa', 1258, 228.5, 'LTH', 'Atelier Furniture'], ['Coffee table', 1258, 225.2, 'GLS', 'Atelier Furniture'], ['Wall TV', hx0 + 0.3, 225.2, 'GLS', 'Cryptic'],
+    ['Kitchen island', 1290, 220, 'MRB', 'Atelier Furniture'], ['Dining table and six chairs', 1290, 231, 'WOD', 'Atelier Furniture'], ['Grand piano', 1274, 234, 'WOD', 'Atelier Furniture'], ['Chandelier', 1275, 225, 'GLS.GLD', 'Atelier Furniture'], ['Bed', 1296, 236, 'WOD', 'Atelier Furniture']])
+    tag('PRD', 'FUR', m, n, x, z, mk);
   // inside: a lounge, a kitchen island, a dining table, a grand piano, a huge TV, a chandelier and a bed
   const sofa = (x, z, ry) => { const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; root.add(g); B(g, 3.2, 0.45, 1.1, 0, 0.35, 0, 0xf2efe9); B(g, 3.2, 0.7, 0.25, 0, 0.75, -0.45, 0xe9e4da); };
   sofa(1258, 222, 0); sofa(1258, 228.5, Math.PI); B(root, 1.6, 0.4, 1, 1258, 0.25, 225.2, mat(0x1a1a1a, { rough: 0.2, metal: 0.4 }));
@@ -97,6 +120,8 @@ export function buildAdminEstate(ctx) {
   B(root, 14, 0.06, 26, 1275, 0.04, 195, mat(0xd9d2c3, { rough: 0.8 }), false);
   const garage = { x0: 1306, x1: 1326, z0: 212, z1: 238 };
   hall({ x0: garage.x0, x1: garage.x1, z0: garage.z0, z1: garage.z1, H: 4, wall: 0xf6f3ee, floor: 0xcfd4d8, floorKind: 'tiles', roof: 0x2a2e33, gaps: { n: [[1309, 1323]] } });
+  tag('LND', 'ROD', 'STN', 'Mansion forecourt', 1275, 195);
+  tag('BLD', 'GAR', 'STN', 'Garage', (garage.x0 + garage.x1) / 2, (garage.z0 + garage.z1) / 2);
   const cars = [];
   if (ctx.makeVehicle) {
     for (const [style, col, x, z, ry] of [['supercar', 0xd4af37, 1275, 200, Math.PI], ['supercar', 0xc0392b, 1312, 228, Math.PI], ['sports', 0x111111, 1320, 228, Math.PI]]) {
@@ -109,6 +134,8 @@ export function buildAdminEstate(ctx) {
   B(root, px1 - px0, 0.05, pz1 - pz0, (px0 + px1) / 2, 0.43, (pz0 + pz1) / 2, mat(0x29b6e0, { rough: 0.05, metal: 0.2, opacity: 0.85 }), false);
   C(root, 1.8, 1.8, 0.6, 1305, 0.3, 252, mat(0xeae6dd)); C(root, 1.6, 1.6, 0.05, 1305, 0.6, 252, mat(0x5fd3f3, { opacity: 0.85, emissive: 0x0b5f80, ei: 0.4 }));
   for (let x = px0 + 2; x < px1; x += 5) { const g = new THREE.Group(); g.position.set(x, 0, pz1 + 3); root.add(g); B(g, 0.75, 0.1, 2, 0, 0.35, 0, 0xffffff); B(g, 0.75, 0.55, 0.1, 0, 0.65, -0.95, 0xffffff); }
+  tag('LND', 'POL', 'WTR.TIL', 'Infinity pool', (px0 + px1) / 2, (pz0 + pz1) / 2); tag('LND', 'POL', 'WTR.TIL', 'Hot tub', 1305, 252);
+  for (let x = px0 + 2; x < px1; x += 5) tag('PRD', 'LNG', 'PLS', 'Pool lounger', x, pz1 + 3, 'Atelier Furniture');
   const pools = [{ minX: px0, maxX: px1, minZ: pz0, maxZ: pz1 }, { minX: 1303.4, maxX: 1306.6, minZ: 250.4, maxZ: 253.6 }];
 
   // ---------------- the private airstrip, hangar and jet ----------------
@@ -122,11 +149,14 @@ export function buildAdminEstate(ctx) {
   hall({ x0: hgx0, x1: hgx1, z0: hgz0, z1: hgz1, H: 10, wall: 0xdfe3e6, floor: 0xbfc5ca, floorKind: 'tech', roof: 0x9aa3ab, gaps: { w: [[hgz0 + 4, hgz1 - 4]] } });
   place(sign('PRIVATE HANGAR', 'authorised aircraft only', 6, '#111111', '#d4af37', 'sans-serif'), hgx0 - 0.3, 8.5, (hgz0 + hgz1) / 2, -Math.PI / 2);
   B(root, 30, 0.06, 40, (rx + hgx0) / 2 + 1, 0.05, 220, mat(0x2f3439, { rough: 0.9 }), false);   // taxiway to the runway
+  tag('LND', 'RWY', 'ASP', 'Private runway', rx, (rz0 + rz1) / 2); tag('PRD', 'DEC', 'GLS', 'Runway edge lights', rx + 16.5, rz0);
+  tag('BLD', 'HGR', 'STL', 'Private hangar', (hgx0 + hgx1) / 2, (hgz0 + hgz1) / 2); tag('LND', 'ROD', 'ASP', 'Taxiway', (rx + hgx0) / 2 + 1, 220);
   let jet = null;
   if (ctx.makeAircraft) { jet = ctx.makeAircraft({ name: 'Private jet', color: 0xf7f7f7, accent: 0xd4af37, maxSpeed: 92, takeoff: 34, turn: 0.8, jet: true, home: [rx, rz0 + 22] }); jet.ownedId = 'admin-jet'; }
   stander(hgx0 - 4, 226, -Math.PI / 2, { outfit: 0x1c2a4a, task: 'talk' });
   spot(hgx0 - 4, 222, 2, 'Your private jet', () => toast('✈️ Your private jet is waiting on the runway. Walk up to it to fly. Take off down the runway (south).'));
 
+  bot.people(K);   // the friend on the sofa and the pilot
   return {
     pools, cars, jet,
     home: { x: 1275, z: hz0 - 3 },   // where you appear when you go home: the front door
