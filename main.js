@@ -7722,9 +7722,9 @@ function updateCamera(dt) {
     shake *= Math.exp(-9 * dt);
   }
 
-  // Sims-style: hide the roof while the player is inside the house
-  const p = player.position;
-  for (const hs of houses) hs.roof.visible = hs.structure?.alive===false?false:inCar || !(p.x > hs.minX && p.x < hs.maxX && p.z > hs.minZ && p.z < hs.maxZ);
+  // Roofs stay on while you're inside: the view indoors is always first-person, so you see a ceiling, not the sky.
+  // (Only a destroyed house loses its roof.)
+  for (const hs of houses) hs.roof.visible = hs.structure?.alive !== false;
 }
 
 function updateHud(dt) {
