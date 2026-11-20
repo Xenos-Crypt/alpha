@@ -48,12 +48,14 @@ export function buildBranches(ctx) {
     const C = (rt, rb, h, x, y, z, c, seg = 16) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), c instanceof THREE.Material ? c : mat(c)); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
     const sign = (text, w, y, bg, fg, sub, z = -D / 2 - 0.08) => { const t = signTex(text, bg, fg, sub); const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.1875), new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.3 })); m.position.set(0, y, z); m.rotation.y = Math.PI; g.add(m); return m; };
     const glass = mat(0x7ea6bd, { rough: 0.1, metal: 0.4, emissive: 0xffd58a, ei: 0, glow: true });
+    // a shop window either side of the door (the glass stops at the door frame: you walk in through the door, not the glass)
+    const shopWindow = (w, h, y, m, dw) => { const sw = (w - dw) / 2 - 0.15; if (sw > 0.2) for (const s of [-1, 1]) B(sw, h, 0.1, s * (dw / 2 + 0.15 + sw / 2), y, -D / 2 - 0.03, m); };
     const door = (w = 2.2, h = 2.6, c = 0x2c3e50) => { B(w, h, 0.12, 0, h / 2, -D / 2 - 0.02, c, { rough: 0.3 }); B(w + 0.4, 0.2, 0.25, 0, h + 0.1, -D / 2 - 0.05, 0x333333); };
     const box = (h, c, o) => B(W, h, D, 0, h / 2, 0, c, o);
     let H = 4;
     switch (b.kind) {
       case 'local': case 'shop': case 'pharmacy': {
-        H = 4.2; box(H, b.kind === 'pharmacy' ? 0xe9f3ee : 0xe8e4dc); B(W - 2, 2.4, 0.1, 0, 1.6, -D / 2 - 0.03, glass); door(2.4, 2.6, 0x9fd3ff);
+        H = 4.2; box(H, b.kind === 'pharmacy' ? 0xe9f3ee : 0xe8e4dc); shopWindow(W - 2, 2.4, 1.6, glass, 2.4); door(2.4, 2.6, 0x9fd3ff);
         const col = b.kind === 'local' ? ['#0f5132', '#ffffff'] : b.kind === 'pharmacy' ? ['#1b8a3a', '#ffffff'] : ['#b03a2e', '#ffffff'];
         B(W + 0.4, 1.0, 0.4, 0, H - 0.3, -D / 2 - 0.2, parseInt(col[0].slice(1), 16));
         sign(b.kind === 'local' ? 'WESTHAVEN LOCAL' : b.kind === 'pharmacy' ? 'PHARMACY' : 'NEWS & GROCER', 9, H - 0.3, col[0], col[1], b.kind === 'local' ? 'groceries · fresh food · open late' : b.kind === 'pharmacy' ? 'prescriptions · health · beauty' : 'papers · snacks · groceries', -D / 2 - 0.42);
@@ -65,7 +67,7 @@ export function buildBranches(ctx) {
       case 'arcade': {
         H = 5; box(H, 0x1c1030); const neon = c => mat(c, { emissive: c, ei: 2.2 });
         for (const [y, c] of [[0.5, 0xff2bd6], [H - 0.4, 0x22e5ff]]) B(W + 0.1, 0.12, D + 0.1, 0, y, 0, neon(c));
-        B(W - 4, 2.6, 0.1, 0, 1.7, -D / 2 - 0.03, mat(0x221a3a, { emissive: 0x6a2bff, ei: 0.5 })); door(2.6, 2.7, 0x111111);
+        shopWindow(W - 4, 2.6, 1.7, mat(0x221a3a, { emissive: 0x6a2bff, ei: 0.5 }), 2.6); door(2.6, 2.7, 0x111111);
         sign('PIXEL PALACE', 12, H - 1.2, '#1c1030', '#ffd23f', 'arcade · games · prizes');
         for (let i = 0; i < 6; i++) B(0.35, 0.35, 0.1, -W / 2 + 2 + i * 0.8, 3.2 + (i % 2) * 0.4, -D / 2 - 0.08, neon([0xff2bd6, 0x22e5ff, 0xffd23f][i % 3]));
         break; }
@@ -107,7 +109,7 @@ export function buildBranches(ctx) {
         door(2.4, 3, 0x2c2c2c); sign('MERIDIAN BANK', 8, H - 0.2, '#0b2545', '#d4af37', '', -D / 2 - 2.62);
         B(0.8, 1.6, 0.4, W / 2 - 2, 0.8, -D / 2 - 0.2, 0x2c3e50); break; }
       case 'cafe': {
-        H = 4; box(H, 0xc96f3b); B(W - 2, 2.4, 0.1, 0, 1.6, -D / 2 - 0.03, glass); door(2, 2.6, 0x3b2b1f);
+        H = 4; box(H, 0xc96f3b); shopWindow(W - 2, 2.4, 1.6, glass, 2); door(2, 2.6, 0x3b2b1f);
         for (let i = 0; i < 6; i++) B(W / 6, 0.1, 2.4, -W / 2 + W / 12 + i * W / 6, 3.0, -D / 2 - 1.2, i % 2 ? 0xf6f1e7 : 0x2a6b4f);
         sign('BREW & BEAN', 8, H - 0.4, '#2a2116', '#f2e6c8', 'coffee · cakes · brunch', -D / 2 - 0.1);
         for (const x of [-6, -2.5, 3.5, 7]) { C(0.45, 0.45, 0.06, x, 0.75, -D / 2 - 2.6, 0xf2f2f2); C(0.05, 0.05, 0.75, x, 0.37, -D / 2 - 2.6, 0x333333); for (const s of [-1, 1]) B(0.4, 0.45, 0.4, x + s * 0.7, 0.22, -D / 2 - 2.6, 0x2a6b4f); }

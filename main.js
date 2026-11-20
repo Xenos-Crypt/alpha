@@ -60,6 +60,7 @@ import {buildHelipads} from './helipads.js';
 import {buildDrones} from './drones.js';
 import {buildHiddenPeak} from './hidden-peak.js';
 import {buildChargers} from './chargers.js';
+import {createSolidProps} from './solid-props.js';
 import {auditScene} from './world-grid.js';
 import {buildBlackMarket, NARROWS} from './black-market.js';
 import {buildMilitary, addNavyCrew} from './military.js';
@@ -505,6 +506,25 @@ function box(w, h, d, x, y, z, color, collide = true) {
   return m;
 }
 // Push a circle (p, radius r) out of every collider. Returns true if it hit something.
+// Solid props (solid-props.js): built from what's on screen once the world has loaded. Anything that moves between two
+// looks 3 seconds apart (people, monsters, animals, rides, traffic) is left out, and so are vehicles.
+const solidProps = createSolidProps(THREE);
+let solidPropsTimer = null;
+function rebuildSolidProps() {
+  clearTimeout(solidPropsTimer);
+  solidPropsTimer = setTimeout(() => {
+    scene.updateMatrixWorld(true);
+    const before = new Map(); scene.traverse(o => { if (o.isMesh) { const e = o.matrixWorld.elements; before.set(o, e[12] + e[13] * 7 + e[14] * 13 + e[0] * 17 + e[2] * 19); } });
+    setTimeout(() => {
+      scene.updateMatrixWorld(true);
+      const skip = new Set([player, ...vehicles.map(v => v.group)]), box = new THREE.Box3();
+      for (const [o, h] of before) { const e = o.matrixWorld.elements; if (Math.abs(e[12] + e[13] * 7 + e[14] * 13 + e[0] * 17 + e[2] * 19 - h) < 1e-4) continue;
+        let q = o; while (q.parent && q.parent !== scene) { box.setFromObject(q.parent); const sz = box.getSize(new THREE.Vector3()); if (Math.max(sz.x, sz.z) > 12) break; q = q.parent; } skip.add(q); }
+      const n = solidProps.build(scene, { skip, groundY: (x, z, y) => groundY(x, z, y), colliders, stairs: stairRamps.map(r => ({ minX: r.x0, maxX: r.x1, minZ: r.z0, maxZ: r.z1 })), seats: sitSpots });
+      console.log('[solid-props]', n, 'things made solid,', skip.size, 'moving things left out');
+    }, 3000);
+  }, 50);
+}
 function collide(p, r) {
   let hit = false;
   for (const c of colliders) {
@@ -524,6 +544,8 @@ function collide(p, r) {
       p.x += opts[0][0]; p.z += opts[0][1];
     }
   }
+  // everything visible that stands on the ground is solid to walk into (solid-props.js)
+  if (p === player.position && solidProps.count && !sitting && !inCar && solidProps.push(p, r)) hit = true;
   // The world ends at the rim of the Aegis Shield dome, where the border fence is.
   // (Dungeons, interiors, the subway and sewers live far outside it and aren't affected.)
   if (p === player.position && story?.clampOutside(p)) return hit;   // outside the dome: between the dome and the river
@@ -2451,6 +2473,7 @@ function setUpHome(){
     const bed=homeRooms.rooms.find(q=>q.name==='bedroom');
     makeRundown({scene,makeTex,curb:CURB,floorY:HOME_Y,home:HOME,bedroom:bed?{x:(bed.minX+bed.maxX)/2,z:(bed.minZ+bed.maxZ)/2}:null});
   }
+  if(solidProps.count)rebuildSolidProps();
   scene.remove(myCar.group);const i=vehicles.indexOf(myCar);if(i>=0)vehicles.splice(i,1);myCar.disabled=true;   // nobody starts with that car: you're broke (the admin has the estate's cars)
 }
 function updateAdminGod(){
@@ -2518,6 +2541,7 @@ async function boot() {
   window.gameLoading?.show(60,'Preparing buildings, vehicles and textures...');
   await visualAssetsReady;
   fixMirroredSigns(); setTimeout(()=>fixMirroredSigns(),20000);   // signs read the right way round from both sides
+  setTimeout(()=>rebuildSolidProps(),20000);   // once the world has finished building
   // ?audit: list every place in the world where two things overlap (world-grid.js). Changes nothing.
   if(new URLSearchParams(location.search).has('audit'))setTimeout(()=>{
     const skip=new Set([player,...vehicles.map(v=>v.group),...(transport?.services||[]).map(s=>s.g),transport?.airport?.g].filter(Boolean));
