@@ -327,6 +327,7 @@ export function createSeasons(ctx) {
   const fireworks = live.includes('newyear') || live.includes('bonfire');
   let nextBurst = 2;
   if (live.length) setTimeout(() => ctx.toast(GREETING[live[0]]), 4000);
+  if (live.includes('newyear')) setInterval(countdown, 250);   // runs on its own clock, even while the game is paused or a menu is open
 
   return {
     calendar: cal,
@@ -335,7 +336,6 @@ export function createSeasons(ctx) {
       // lights glow brighter at night and gently twinkle
       const k = night ? 1 : 0.55, tw = performance.now() / 600;
       for (let i = 0; i < twinkle.length; i++) twinkle[i].material.color.setScalar(k * (0.85 + 0.15 * Math.sin(tw + i)));
-      if (live.includes('newyear')) countdown();
       const party = Date.now() < celebrateUntil + 120000 && celebrateUntil > 0;   // two minutes of non-stop fireworks after midnight
       if ((fireworks && night) || party) {
         nextBurst -= dt;
