@@ -146,6 +146,8 @@ export function buildGrandPark(ctx) {
     for (let i = 0; i < 4; i++) { const g = swanBoat(i % 2 ? 0xffffff : 0xffd6e8); const b = { g, t: i / 4, rider: null }; boats.push(b); bot.thing({ cls: 'VEH', kind: 'BOT', mat: 'PLS.FAB', owner: 'GOV', seed: `pedalo:${i}`, maker: 'Harbour Shipyards', name: `Swan pedalo ${i + 1}, ${NAME}`, get pos() { return g.position; } }); if (i) { const h = K.person(0, 0, 0, { child: i === 2 }); if (h) { g.add(h.root); h.root.position.set(0, 0.35, -0.4); b.pass = h; } } }
   }
   const boatPos = t => { const a = t * Math.PI * 2; return { x: LAKE.island.x + Math.cos(a) * 26, z: LAKE.island.z + Math.sin(a) * 18, yaw: Math.atan2(-Math.sin(a) * 26, Math.cos(a) * 18) }; };
+  // put the pedalos on the lake straight away (they used to sit at the city's centre until you came near the park)
+  for (const b of boats) { const q = boatPos(b.t); b.g.position.set(q.x, LAKE.level + 0.05, q.z); b.g.rotation.y = q.yaw; }
   let boatRide = null;
   spot(LAKE.x, LAKE.z + LAKE.rz + 2.2, 2.0, 'Hire a swan pedalo (4 gold)', () => {
     if (boatRide) return; if (stats.gold < 4) return toast('A swan pedalo is 4 gold.'); stats.gold -= 4;
