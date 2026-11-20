@@ -72,7 +72,8 @@ import {createConditions,conditionOf} from './condition.js';
 import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
 import {createRace} from './race.js';
-import {buildDoors} from './doors.js';
+import {buildDoors,shopOpen} from './doors.js';
+import {createWalkIns,WALKIN_STOREY} from './walkin.js';
 import {buildHills, buildRidge} from './hills.js';
 import {buildVehicleDealers} from './vehicle-dealers.js';
 import {createMarketPanel} from './market-panel.js';
@@ -575,6 +576,7 @@ const ISLAND = new THREE.Vector3(-220, 0, 500), ISLAND_R = 24;
 const ROUNDABOUT_CENTRES=[];
 function groundY(x, z, bodyY = null) {
   if (z < -9000) { const raceFloor = race?.groundAt(x, z); if (raceFloor != null) return raceFloor; }   // Ashford Racing track worlds
+  { const wf = walkIns.floorAt(x, z, bodyY); if (wf != null) return wf; }   // inside a walk-in building: its floors, stairs and lift (walkin.js)
   if (x < -5080 && x > -7100 && interiorFloorAt) {   // inside buildings: upper floors, lift cabs, staircases and escalators
     const f = interiorFloorAt(x, z, bodyY ?? player?.position.y ?? 0); if (f != null) return f;
     for (const r of stairRamps) if (r.interior && x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.y0 + (z - r.z0) / (r.z1 - r.z0) * (r.y1 - r.y0);
@@ -737,6 +739,22 @@ function addTower(x, baseY, z, w, h, d, f, collide) {
 const civicBuildings = [];
 const stairRamps = []; // exterior fire-escape stairs you can actually walk/climb — see groundY()
 let buildingAddressN = 100;
+// Walk-in buildings (walkin.js): every city building has real walls, a door you open yourself (E) and a real inside on
+// every floor, built while you're near. No fading, no being moved: you walk in.
+let walkInHooks = null, suppressWalkIn = false;
+const walkIns = createWalkIns({ scene, colliders, camBlockers, interactables, playerPos: () => player.position, hooks: () => walkInHooks,
+  sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), toast: m => toast(m), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
+  hourNow: () => (6 + dayTime * 24) % 24, shopOpen, owns: n => !!property?.owns(n), gate: b => houseVisits?.gate(b) || null, makePerson: o => makeHumanoid(o),
+  onInside: W => { if (W) currentVenueName = W.name; else if (!inCivicInterior) currentVenueName = null; } });
+// the ground storey of a tower becomes real walls: its facade materials, cut to one storey high; the block above starts a storey up
+function splitTowerForWalkIn(m, x, z, w, h, d, baseY) {
+  const S = WALKIN_STOREY, [side, , , , front] = m.material, cut = src => { const c = src.clone(); for (const k of ['map', 'emissiveMap']) if (src[k]) { c[k] = src[k].clone(); c[k].repeat.y = S / 12; c[k].needsUpdate = true; } glowMats.push(c); return c; };
+  const wallSide = cut(side), wallFront = cut(front);
+  for (const src of [side, front]) for (const k of ['map', 'emissiveMap']) if (src[k]) { src[k].repeat.y = (h - S) / 12; src[k].offset.y += S / 12; src[k].needsUpdate = true; }
+  const oldY = m.position.y; m.geometry = new THREE.BoxGeometry(w, h - S, d); m.position.y = baseY + S + (h - S) / 2;
+  for (const c of [...m.children]) { if (c.position.y + oldY < baseY + 0.6) { m.remove(c); continue; } c.position.y -= m.position.y - oldY; }
+  return alongX => alongX ? wallFront : wallSide;
+}
 function addBuilding(x, z, faceX, faceZ) {
   const centreBoost = Math.max(0, 1 - Math.hypot(x, z) / 130);
   const floors = 2 + Math.floor(rand() * rand() * 10 + centreBoost * rand() * 10);
@@ -745,7 +763,9 @@ function addBuilding(x, z, faceX, faceZ) {
   const regional=z>=640&&z<=950;
   const w=8,d=8;
   const firstChild = scene.children.length, firstCollider = colliders.length, firstBlock = planeBlocks.length;
-  let top = addTower(x, CURB, z, w, floors * 3, d, f, true);
+  const walkIn = !suppressWalkIn;
+  let top = addTower(x, CURB, z, w, floors * 3, d, f, !walkIn);
+  const mainTop = top, wallMat = walkIn ? splitTowerForWalkIn(scene.children[firstChild], x, z, w, floors * 3, d, CURB) : null;
 
   if (tall && rand() < 0.5) {
     top = addTower(x, top, z, w - 3, (2 + Math.floor(rand() * 4)) * 3, d - 3, f, false);
@@ -764,13 +784,14 @@ function addBuilding(x, z, faceX, faceZ) {
   // interior pocket every civic building already uses (not a unique hand-built
   // interior per building, but a genuinely enterable one rather than a flat wall).
   const doorZ = z + faceZ * (d / 2 - 0.03);
-  box(1.5, 2.3, 0.1, x, CURB + 1.15, doorZ, 0x241f1a, false);
-  box(1.7, 0.15, 0.2, x, CURB + 2.35, doorZ, 0x3a332b, false);   // lintel
+  if (!walkIn) { box(1.5, 2.3, 0.1, x, CURB + 1.15, doorZ, 0x241f1a, false); box(1.7, 0.15, 0.2, x, CURB + 2.35, doorZ, 0x3a332b, false); }   // (a walk-in building's real door goes here instead)
   addCCTV(x + (w / 2 - 0.6) * (faceX || 1), CURB + 3.6, doorZ + faceZ * 0.1, faceZ);   // every building has CCTV
   const kind = pick(['apartment', 'shop', 'office']);
   const name = (kind === 'apartment' ? buildingAddressN + ' Ashford Apartments' : kind === 'shop' ? buildingAddressN + ' High Street Shop' : buildingAddressN + ' Ashford Offices');
   buildingAddressN += rand() < 0.5 ? 2 : 4;
   civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, cctv: true });
+  const civicRecord = civicBuildings.at(-1);
+  if (walkIn) walkIns.add({ b: civicRecord, x, z, w, d, floors, base: CURB, top: mainTop, nx: 0, nz: faceZ || 1, type: kind, name, wallMat });
   // Exterior fire-escape staircase up one side, tall buildings only — a real
   // sloped ramp registered in stairRamps (see groundY) so it's actually climbable,
   // not just decoration.
@@ -786,7 +807,8 @@ function addBuilding(x, z, faceX, faceZ) {
     stairRamps.push({ x0: sx - 0.6, x1: sx + 0.6, z0: Math.min(rz0, rz1), z1: Math.max(rz0, rz1), y0: ry0, y1: ry1 });
   }
   buildings.push({ x, z, w, d, top, alive: true, meshes: scene.children.slice(firstChild),
-                   collider: colliders[firstCollider], blocks: planeBlocks.slice(firstBlock) });
+                   collider: colliders[firstCollider], extraColliders: colliders.slice(firstCollider + 1), blocks: planeBlocks.slice(firstBlock) });
+  if (walkIn) { const rec = buildings.at(-1); Object.defineProperty(civicRecord, 'alive', { get: () => rec.alive, configurable: true, enumerable: false }); }   // a knocked-down building can't be walked into
 }
 // A small security camera mounted near a building's entrance, slowly panning.
 const cctvMat = new THREE.MeshStandardMaterial({ color: 0x24282c, roughness: 0.5 });
@@ -875,7 +897,7 @@ function addBench(x, z, rotY) {
 // the city's lists. Used to keep the city's random sequence the same when a block is left empty.
 function withoutTrace(fn) {
   const lists = [colliders, planeBlocks, camBlockers, civicBuildings, stairRamps, cctvSpots, buildings], lens = lists.map(l => l.length), first = scene.children.length;
-  fn();
+  suppressWalkIn = true; try { fn(); } finally { suppressWalkIn = false; }
   for (const o of scene.children.slice(first)) scene.remove(o);   // (geometry may be shared, so it is left to the garbage collector)
   lists.forEach((l, i) => { l.length = lens[i]; });
 }
@@ -6626,6 +6648,7 @@ function walkInThroughDoors(dt) {
 function nearestCivicBuilding() {
   let best = null, bestD = 6;
   for (const b of civicBuildings) {
+    if (b.walkIn) continue;   // walk-in buildings: you open the door yourself and walk in (walkin.js)
     // Distance to the footprint's nearest edge, not its centroid — the centroid is
     // well inside solid walls for anything bigger than a small house, which made
     // most of the city effectively unenterable (you could never get "close enough").
@@ -6835,6 +6858,7 @@ $('dropBagBtn').addEventListener('click', () => {
   renderInventory();
 });
 interiorFloorAt = (x, z, y) => interiors.floorAt(x, z, y);
+walkInHooks = interiors.hooks;   // walk-in buildings use the same shop, jobs and sleep actions
 
 $('wearBagBtn').addEventListener('click', () => {
   if (hasBag) { toast('Already wearing your bag.'); return; }
@@ -8116,7 +8140,7 @@ navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o),
 intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex,playerPosition:()=>player.position,resume:()=>{if(!boardOpen&&!settingsOpen)requestGameControl();}});
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
 for(const v of cityServices.traffic)if(v.kind==='car'&&(v.group.position.z>640&&v.group.position.x<500))detailVehicle(v,'luxury');
-regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareSite(x,z,w,d){for(const b of buildings)if(b.alive&&Math.abs(b.x-x)<(b.w+w)/2&&Math.abs(b.z-z)<(b.d+d)/2){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[])m.visible=false;for(const [list,item]of [[colliders,b.collider],[planeBlocks,b.planeBlock]]){const i=list.indexOf(item);if(i>=0)list.splice(i,1);}for(const block of b.blocks||[]){const i=planeBlocks.indexOf(block);if(i>=0)planeBlocks.splice(i,1);}}},civicBuildings,fence:fenceRect,reception:()=>{if(wanted>0)arrestPlayer();else toast('Police reception: reporting desk, patrol office and custody suite.');},addPolice(x,z){const v=makeVehicle('police',0xf5f6fa);v.group.position.set(x,groundY(x,z),z);v.stationHome=v.group.position.clone();v.ai={parked:true,cruise:12,ramCd:0,stopTimer:0};}});
+regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareSite(x,z,w,d){for(const b of buildings)if(b.alive&&Math.abs(b.x-x)<(b.w+w)/2&&Math.abs(b.z-z)<(b.d+d)/2){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[])m.visible=false;for(const [list,item]of [[colliders,b.collider],[planeBlocks,b.planeBlock],...(b.extraColliders||[]).map(c=>[colliders,c])]){const i=list.indexOf(item);if(i>=0)list.splice(i,1);}for(const block of b.blocks||[]){const i=planeBlocks.indexOf(block);if(i>=0)planeBlocks.splice(i,1);}}},civicBuildings,fence:fenceRect,reception:()=>{if(wanted>0)arrestPlayer();else toast('Police reception: reporting desk, patrol office and custody suite.');},addPolice(x,z){const v=makeVehicle('police',0xf5f6fa);v.group.position.set(x,groundY(x,z),z);v.stationHome=v.group.position.clone();v.ai={parked:true,cruise:12,ramCd:0,stopTimer:0};}});
 // Everyone in town gets a mind of their own, a shared city brain, and an elected government (society.js).
 society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPosition:()=>player.position,dayTime:()=>dayTime,
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},walk:(e,t,sp,dt)=>walkTowards(e,t,sp,dt),animate:(e,pose,moving,run,dt)=>animateHumanoid(e.h,pose,moving,run,e.onGround,dt),
@@ -8545,7 +8569,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); if (GRASS_TUFTS) grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
+    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); walkIns.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); if (GRASS_TUFTS) grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
     military?.update(dt); spaceWing?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
