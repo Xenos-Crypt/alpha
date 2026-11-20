@@ -12,7 +12,8 @@
 // Science: scientists and chemists make discoveries. Archaeology: a dig uncovers an ancient temple.
 
 export const COUNTRY = 'A.T.';
-export const CITIES = ['Ashford', 'Riverside', 'Capital', 'Poison Land'];
+// Skyhaven floats in the sky (sky-city.js) and Deephaven lies under the bay (deep-city.js)
+export const CITIES = ['Ashford', 'Riverside', 'Capital', 'Poison Land', 'Skyhaven', 'Deephaven'];
 export const YEAR = 180, TERM = 360;   // city hours (real minutes) per city year, per term of office
 
 // [name, short, economic view (-1 low tax … +1 big state), order view (-1 freedom … +1 order), major, colour, motto]
