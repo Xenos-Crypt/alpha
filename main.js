@@ -2355,6 +2355,19 @@ function showMenu(hasSave) {
       $('menuOfflineSub').textContent = 'Pick up where you left off';
     }
     $('menuOffline').onclick = () => { $('menu').style.display = 'none'; resolve(hasSave ? 'continue' : 'new'); };
+    if (hasSave && isAdmin && !$('menuReplay')) {   // admin only: wipe this account's story and play it again from the start
+      const b = document.createElement('button'); b.id = 'menuReplay';
+      b.innerHTML = '<b>🛠 Replay story (admin)</b><span class="sub">Erase this account\'s story and start again</span>';
+      $('menuOffline').closest('div').after(b);
+      let armed = false;
+      b.onclick = async () => {
+        if (!armed) { armed = true; b.querySelector('.sub').textContent = 'Tap again to erase your story progress and replay'; return; }
+        b.disabled = true;
+        try { const r = await supabase.rpc('story_run_reset'); if (r.error) throw r.error; } catch (e) { toast('Replay failed: ' + (e.message || e)); b.disabled = false; return; }
+        const uid = registryUserId; clearSolo(uid); try { localStorage.removeItem('system:' + uid); } catch {}
+        $('menu').style.display = 'none'; resolve('new');
+      };
+    }
     $('offlineInfoBtn').onclick = (e) => { e.stopPropagation(); const box = $('offlineInfoBox'); box.style.display = box.style.display === 'none' ? 'block' : 'none'; };
     // There is no "New story": a Story Mode run is started once and can only be continued, so nobody can
     // restart to dodge a death or redo choices.
@@ -2368,6 +2381,7 @@ function showMenu(hasSave) {
   });
 }
 
+let isAdmin = false;
 let playerUsername = null;   // set once the user signs in/up; null for guests or if they skipped it
 function offlinePlayerSession(){let id=localStorage.getItem('lastSoloPlayer')||localStorage.getItem('guestId');if(!id){id='guest-'+crypto.randomUUID();localStorage.setItem('guestId',id);}return {user:{id,isGuest:true}};}
 async function boot() {
@@ -2386,6 +2400,8 @@ async function boot() {
   // the server's record of this account's Story Mode run (it outlives a cleared browser)
   let storyRun=null;
   if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await Promise.race([supabase.rpc('story_run_status'),new Promise(res=>setTimeout(()=>res(null),6000))]);storyRun=r?.data||null;}catch{}}
+  // admin accounts (listed privately on the server) can replay the story and use the System's admin tools
+  if(navigator.onLine&&!activeSession.user.isGuest){try{const r=await supabase.rpc('is_admin');isAdmin=r?.data===true;}catch{}}
   const mode = restoringUpdate?'continue':await showMenu(!!existingSave||!!storyRun);
   window.gameLoading?.show(10,'Preparing your adventure...');
   if (mode === 'continue' && !existingSave) {
@@ -2431,7 +2447,7 @@ async function boot() {
   // Story Mode: a new story plays the opening; a continued one restores the System (and any death wait)
   if(soloMode&&system){if(mode==='new')system.begin();else system.resume(storyRun);}
 }
-addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();}})());});
+addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);shutDownForReload();}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();shutDownForReload();}})());});
 boot().catch(error=>window.gameLoading?.fail(error.message));
 const maxHp = () => (origin?.maxHealth ?? 100) + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
@@ -6702,7 +6718,7 @@ $('signOutBtn').addEventListener('click',()=>{if(confirm('Sign out?'))signOutAnd
 // There was no way to back out of a running game (offline/solo or hosted) to the
 // main menu short of signing out entirely. Saves first, then reloads — boot()
 // finds the existing session and goes straight to the menu, skipping sign-in.
-$('leaveToMenuBtn').addEventListener('click',async()=>{if(soloMode)saveSolo();try{if(onlinePlayReady)await onlineAccount.save();}catch(e){toast(e.message);return;}location.reload();});
+$('leaveToMenuBtn').addEventListener('click',async()=>{if(soloMode)saveSolo();try{if(onlinePlayReady)await onlineAccount.save();}catch(e){toast(e.message);return;}shutDownForReload('Saving…');location.reload();});
 $('layoutDoneBtn').addEventListener('click',()=>{setLayoutEditMode(false);freeMouse=false;requestGameControl();});
 
 // =====================================================================
@@ -7628,7 +7644,15 @@ function updateCockpit(dt) {
   const st = carControls.state || {};
   cockpit.update(driving, { speed: driving.speed, maxSpeed: driving.maxSpeed, steer: (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0), gear: st.stalled ? '!' : transmissionAuto ? st.sel : st.gear, handbrake: !!keys.Space || st.sel === 'P', lights: st.lights && st.lights !== 'off' && lastNightGlow > 0.3, revs: st.rev }, dt);
 }
+// A cut-scene camera (the Story Mode opening): while set, the camera glides between marks and the player can't move it.
+let cutCam = null;
 function updateCamera(dt) {
+  if (cutCam) {
+    const k = 1 - Math.exp(-1.6 * dt);
+    cutCam.pos.lerp(cutCam.to.pos, k); cutCam.look.lerp(cutCam.to.look, k);
+    camera.position.copy(cutCam.pos); camera.lookAt(cutCam.look);
+    return;
+  }
   { // indoors (a house, a building interior, or under any roof) -> first person
     const p = player.position;
     const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
@@ -7962,6 +7986,15 @@ story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,te
   pause:storyPause,resume:requestGameControl});
 // The System (system.js): Story Mode's quests, levels and death rules. The story text is fetched from a locked table.
 system=createSystem({userId:()=>soloUserId||'guest',
+  admin:{on:()=>isAdmin,revive:async()=>{await supabase.rpc('story_run_revive');},levelUp:()=>{gainXp(Math.max(1,xpToNext()-prog.xp));},
+    questions:async()=>{const r=await supabase.rpc('dev_queries_open');if(r.error)throw r.error;return r.data||[];}},
+  // the opening plays like a film: the camera moves through the home, the player can't control anything,
+  // and when it ends the player is standing where the last shot was (at the bathroom mirror), not outside
+  cinema:{
+    start(){const sp=homeRooms.spots.ceiling,v=o=>new THREE.Vector3(o.x,o.y,o.z);cutCam={pos:v(sp.from),look:v(sp.look),to:{pos:v(sp.from),look:v(sp.look)}};player.visible=false;document.body.classList.add('cinema');},
+    shot(name){const sp=homeRooms.spots[name];if(!cutCam||!sp)return;cutCam.to={pos:new THREE.Vector3(sp.from.x,sp.from.y,sp.from.z),look:new THREE.Vector3(sp.look.x,sp.look.y,sp.look.z)};},
+    end(){const e=homeRooms.spots.end;player.position.set(e.x,CURB,e.z);vy=0;yaw=Math.atan2(-e.facing.x,-e.facing.z);pitch=0;cutCam=null;player.visible=true;document.body.classList.remove('cinema');},
+  },
   // the server keeps the run and the death wait, so clearing the browser can't restart or skip them (signed-in players)
   server:{start:async()=>registryUserId?(await supabase.rpc('story_run_start')).data:null,died:async()=>registryUserId?(await supabase.rpc('story_run_died')).data:null},interactables,toast,pause:storyPause,resume:requestGameControl,
   fetchNodes:async keys=>{const{data,error}=await supabase.rpc('story_get',{p_keys:keys});if(error)throw error;return data||{};},
@@ -8231,7 +8264,19 @@ if (location.hash === '#test-systems') {   // exercises building collapse, plane
 }
 const clock = new THREE.Clock();
 let slowFrameTime=0,lastFrameAt=performance.now(),perfWarmup=0;
+// Before a reload: stop the game loop and free the graphics card first, so the old page isn't still rendering
+// the whole city while the new one starts (that overlap is what made "Save and reload" lag the computer).
+let shuttingDown=false;
+function shutDownForReload(message){
+  if(shuttingDown)return;shuttingDown=true;locked=false;
+  try{document.exitPointerLock();}catch{}
+  const cover=document.createElement('div');cover.textContent=message||'Saving and reloading…';
+  cover.style.cssText='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#05070b;color:#d6e6ff;font:16px system-ui';
+  document.body.append(cover);
+  try{renderer.setAnimationLoop?.(null);renderer.dispose();renderer.forceContextLoss();}catch{}
+}
 function frame() {
+  if(shuttingDown)return;
   const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
   if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low',false);slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
   if(document.hidden&&!(onlinePlayReady&&hosting.room)){clock.getDelta();requestAnimationFrame(frame);return;}

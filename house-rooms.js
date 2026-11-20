@@ -172,7 +172,18 @@ export function furnishHouse(ctx, h) {
   spot(1.4, s1 - 1.0, 0.7, 'Do the laundry', () => ctx.chore ? ctx.chore('laundry') : ctx.rest(-3, '👕 Clothes in, powder in, start. Your clothes are clean again.'));
 
   // the hob glows and a pan appears while something's cooking
-  return { tv, rooms, doors, update(dt = 1 / 60) { for (const d of doors) if (d.open !== d.target) {
+  // camera marks for cut-scenes (the Story Mode opening): where to look from, and what at
+  const at = (u, v, h) => ({ x: X(u), y: y + h, z: Z(v) });
+  const mirrorV = mid + 0.05 + 0.38;
+  const spots = {
+    ceiling: { from: at(bu, D - 0.75, 0.95), look: at(bu, D - 1.1, 2.6) },
+    bedroom: { from: at(bu, D - 1.3, 1.15), look: at(bu + 0.6, mid + 0.6, 1.05) },
+    window: { from: at(bu, 7.3, 1.55), look: at(-hw - 6, 7.5, 3.8) },
+    phone: { from: at(bu + 0.1, D - 1.35, 1.05), look: at(bu, D - 1.7, 0.56) },
+    mirror: { from: at(1.75, mirrorV, 1.62), look: at(1.06, mirrorV, 1.5) },
+    end: { x: X(1.75), z: Z(mirrorV), facing: { x: X(1.06) - X(1.75), z: 0 } },   // stand at the basin, facing the mirror
+  };
+  return { tv, rooms, doors, spots, update(dt = 1 / 60) { for (const d of doors) if (d.open !== d.target) {
       const n = d.open + Math.sign(d.target - d.open) * Math.min(Math.abs(d.target - d.open), dt * 3);
       if (ctx.sweep) {   // the door stops against anyone standing in its swing
         const r = ctx.sweep(d.hinge.position.x, d.hinge.position.z, 0, d.dir, d.len, d.hinge.rotation.y, d.swing * n);

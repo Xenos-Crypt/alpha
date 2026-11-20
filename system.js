@@ -70,14 +70,20 @@ export function createSystem(ctx) {
 #sysPage .sys button{background:#24467f}#sysPage .q{border-top:1px solid #4d7fd155;padding:10px 0}#sysPage .q.done{opacity:.55}#sysPage .q .d{opacity:.8;margin:4px 0}
 #sysPage .bar{height:6px;background:#ffffff1f;border-radius:3px;overflow:hidden;margin-top:6px}#sysPage .bar i{display:block;height:100%;background:#6fa8ff}
 #sysBtn{position:fixed;right:16px;top:56px;z-index:12;color:#d6e6ff;font:12px system-ui;background:#0b1422cc;border:1px solid #4d7fd1;border-radius:10px;padding:7px 12px;cursor:pointer}
-#sysBtn[hidden]{display:none}`;
+#sysBtn[hidden]{display:none}
+#sysPage.cine{background:none;align-items:flex-end;padding:0 16px 9vh;pointer-events:none}
+#sysPage.cine::before,#sysPage.cine::after{content:'';position:fixed;left:0;right:0;height:11vh;background:#000}#sysPage.cine::before{top:0}#sysPage.cine::after{bottom:0}
+#sysPage.cine .sub{position:relative;z-index:1;width:min(760px,100%);text-align:center;color:#fff;font:18px/1.6 Georgia,serif;text-shadow:0 2px 6px #000,0 0 2px #000}
+#sysPage.cine .sub.sys{font:15px/1.6 ui-monospace,Menlo,monospace;color:#d6e6ff;background:#0b1422e6;border:1px solid #4d7fd1;border-radius:12px;padding:16px 20px;text-shadow:none;box-shadow:0 0 40px #2a5fbf66;margin-bottom:6vh}
+#sysPage.cine .sub h2{font:700 13px system-ui;letter-spacing:.08em;margin:0 0 8px}#sysPage.cine p{margin:0}
+body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsBtn,body.cinema #sysBtn,body.cinema #crosshair,body.cinema #mouseHint{visibility:hidden}`;
   document.head.append(css);
   const page = document.createElement('section'); page.id = 'sysPage'; page.hidden = true; document.body.append(page);
   const btn = document.createElement('button'); btn.id = 'sysBtn'; btn.type = 'button'; btn.textContent = '◆ System'; btn.hidden = true;
   btn.onclick = () => showWindow(); document.body.append(btn);
 
   function show({ title, text, system, buttons }) {
-    page.innerHTML = '';
+    page.innerHTML = ''; page.className = '';
     const box = document.createElement('div'); box.className = 'box' + (system ? ' sys' : '');
     if (title) { const h = document.createElement('h2'); h.textContent = title; box.append(h); }
     for (const t of [].concat(text || [])) { const p = document.createElement('p'); p.textContent = t; box.append(p); }
@@ -90,6 +96,40 @@ export function createSystem(ctx) {
   function close() { page.hidden = true; if (open) { open = false; ctx.resume(); } }
 
   // Plays a chain of pieces: scenes (pages of text), System messages, choices.
+  // The opening plays like a film: no buttons, the camera moves through the home (ctx.cinema), text appears as
+  // subtitles and moves on by itself. Which camera mark each page uses; a node can also set its own `shots`.
+  const SHOTS = { 'ch1.start': ['ceiling', 'ceiling'], 'ch1.room': ['bedroom', 'bedroom', 'window'], 'ch1.phone': ['phone', 'phone'], 'ch1.mirror': ['mirror', 'mirror'], 'ch1.system': ['mirror', 'mirror'] };
+  const readMs = t => 2600 + String(t).split(/\s+/).length * 330;   // about three words a second, plus a beat
+  function subtitle(title, text, system) {
+    page.innerHTML = ''; page.className = 'cine';
+    const box = document.createElement('div'); box.className = 'sub' + (system ? ' sys' : '');
+    if (title && system) { const h = document.createElement('h2'); h.textContent = title; box.append(h); }
+    const p = document.createElement('p'); p.textContent = text; box.append(p);
+    page.append(box); page.hidden = false;
+    if (!open) { open = true; ctx.pause(); }
+  }
+  async function film(key) {
+    ctx.cinema.start();
+    let k = key;
+    while (k) {
+      const n = await node(k);
+      if (!n) { ctx.cinema.end(); page.className = ''; return offlineNotice(); }
+      if (!st.seen.includes(k)) st.seen.push(k);
+      const pages = n.pages || [n.text || ''], shots = n.shots || SHOTS[k] || [];
+      for (let i = 0; i < pages.length; i++) {
+        if (shots[i]) ctx.cinema.shot(shots[i]);
+        subtitle(n.title, pages[i], n.type === 'system');
+        await new Promise(r => setTimeout(r, readMs(pages[i]) + (n.type === 'system' ? 1200 : 0)));
+      }
+      if (n.enable === 'system') { st.on = true; btn.hidden = false; }
+      // a film has no choices: it follows the first path
+      k = n.choices ? n.choices[0].next : n.next;
+    }
+    save();
+    page.className = ''; ctx.cinema.end(); close();
+    if (st.on) refreshDay();
+  }
+
   async function play(key) {
     let n = await node(key);
     if (!n) return offlineNotice();
@@ -224,6 +264,13 @@ export function createSystem(ctx) {
     }
     if (!shown.length) { const p = document.createElement('p'); p.textContent = 'No quests right now.'; list.append(p); }
     box.insertBefore(list, box.querySelector('.row'));
+    if (ctx.admin?.on()) {   // admin tools: only for accounts the server lists as admins
+      const row = box.querySelector('.row');
+      const add = (label, go) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = go; row.append(b); };
+      add('Admin: +1 level', () => { ctx.admin.levelUp(); showWindow(); });
+      add('Admin: new quests now', async () => { st.day = null; await refreshDay(); showWindow(); });
+      add('Admin: AI questions', () => adminQuestions());
+    }
   }
   // One rep takes a moment and a little energy, so it can't be spammed.
   function rep(exercise, b) {
@@ -249,12 +296,19 @@ export function createSystem(ctx) {
     ctx.server?.died().then(r => { const t = r?.dead_until ? Date.parse(r.dead_until) : 0; if (t > st.deadUntil) { st.deadUntil = t; save(); } }).catch(() => {});
     return true;
   }
+  async function adminQuestions() {
+    let qs = [];
+    try { qs = await ctx.admin.questions(); } catch (e) { return show({ title: 'AI questions', text: 'Could not load: ' + (e.message || e), system: true, buttons: [{ label: 'Back', go: showWindow }] }); }
+    const text = qs.length ? qs.map((q, i) => `${i + 1}. [${q.type}] ${q.missing}\n   Why: ${q.why || '-'}\n   Decision needed: ${q.decision || '-'}`) : ['The Quest Director has no open questions.'];
+    show({ title: 'Questions from the Quest Director', text, system: true, buttons: [{ label: 'Back', go: showWindow }] });
+  }
   function deathScreen() {
     const tick = () => {
       const left = st.deadUntil - Date.now();
       if (left <= 0) { st.deadUntil = 0; save(); clearInterval(t); close(); ctx.toast('You wake up. Your things are where you fell, if nobody has taken them.'); return; }
       const hh = Math.floor(left / 3600000), mm = Math.floor(left / 60000) % 60, ss = Math.floor(left / 1000) % 60;
-      show({ title: 'You died', text: [`You can play again in ${hh}h ${String(mm).padStart(2, '0')}m ${String(ss).padStart(2, '0')}s.`, 'Everything you carried is lying where you fell.'], buttons: [] });
+      show({ title: 'You died', text: [`You can play again in ${hh}h ${String(mm).padStart(2, '0')}m ${String(ss).padStart(2, '0')}s.`, 'Everything you carried is lying where you fell.'],
+        buttons: ctx.admin?.on() ? [{ label: 'Admin: end the wait', go: async () => { try { await ctx.admin.revive(); } catch {} st.deadUntil = Date.now(); save(); tick(); } }] : [] });
     };
     const t = setInterval(tick, 1000); tick();
   }
@@ -282,7 +336,7 @@ export function createSystem(ctx) {
     active: () => st.on,
     dead: () => st.deadUntil > Date.now(),
     // a brand-new Story Mode game: wipe the System and play the opening
-    async begin() { st = fresh(); save(); btn.hidden = true; ctx.server?.start().catch(() => {}); await play(START_KEY); },
+    async begin() { st = fresh(); save(); btn.hidden = true; ctx.server?.start().catch(() => {}); if (ctx.cinema) await film(START_KEY); else await play(START_KEY); },
     // continuing: restore the button, the markers, and the death wait if it isn't over
     // `run` is the server's record: if it exists the System stays on even when this device lost its save,
     // and its death wait counts even if the browser's was wiped
