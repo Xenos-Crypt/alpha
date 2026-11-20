@@ -69,7 +69,7 @@ export function createSolidProps(THREE) {
         const h = maxY - minY; if (h < 0.45) return;                                 // step over it
         const gy = opts.groundY ? opts.groundY(x, z, maxY + 0.5) : 0;
         if (gy >= maxY - 0.35) return;                                               // you stand on it (a deck, a floor, a platform)
-        const base = opts.groundY ? opts.groundY(x, z, 0.3) : 0;
+        const base = opts.groundY ? opts.groundY(x, z, minY + 0.5) : 0;             // the floor under it (upstairs too: a tenement's top floor, Skyhaven)
         if (minY > base + 1.9) return;                                                // over your head
         const thin = Math.min(hx, hz) * 2, wide = Math.max(hx, hz) * 2;
         if (thin < 0.16 && wide > 0.7 && wide < 3.2 && h > 1.7 && h < 3.6) return;   // a door (or a pair of doors)
