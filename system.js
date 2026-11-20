@@ -309,6 +309,7 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #minimap,body.cinema #settingsB
       const add = (label, go) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = go; row.append(b); };
       add(ctx.admin.god?.() ? 'Admin: god mode ON' : 'Admin: god mode OFF', () => { ctx.admin.toggleGod?.(); showWindow(); });
       add('Admin: +1 level', () => { ctx.admin.levelUp(); showWindow(); });
+      add('Admin: go to my mansion', () => { close(); ctx.admin.goHome?.(); });
       add('Admin: new quests now', async () => { st.day = null; await refreshDay(); showWindow(); });
       add('Admin: AI questions', () => adminQuestions());
     }
