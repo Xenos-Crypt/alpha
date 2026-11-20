@@ -268,7 +268,7 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #inventoryBtn,body.cinema #nyCo
     if (changed) { save(); if (open && page.dataset.view === 'window') showWindow(); }
   }
   function complete(q, why) {
-    q.done = true;
+    q.done = true; ctx.mood?.('delighted', 4);
     ctx.toast(`◆ [SYSTEM] Quest complete: ${q.title}   +${q.xp} XP`);
     const before = ctx.level();
     ctx.gainXp(q.xp);
@@ -283,6 +283,7 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #inventoryBtn,body.cinema #nyCo
   // The System window: level, XP and the quests, with buttons for exercises.
   function showWindow() {
     if (!st.on) return;
+    ctx.onOpen?.();   // the orb comes round in front of you and talks
     const lines = [`Level ${ctx.level()}   ·   XP ${ctx.xp()} / ${ctx.xpNext()}   ·   Unspent points ${ctx.points()}`];
     const box = show({ title: '[ SYSTEM ]', text: lines, system: true, buttons: [{ label: 'Close', go: close }] });
     page.dataset.view = 'window';
@@ -409,6 +410,7 @@ body.cinema #hud,body.cinema #hotbar,body.cinema #inventoryBtn,body.cinema #nyCo
     note,
     quests: () => st.quests.filter(q => !q.failed),
     toggle() { if (open && page.dataset.view === 'window') close(); else showWindow(); },
+    show() { if (!(open && page.dataset.view === 'window')) showWindow(); },
     update(dt) {
       if (!st.on || open) { lastPos = null; return; }
       if (st.day !== dayKey()) refreshDay();
