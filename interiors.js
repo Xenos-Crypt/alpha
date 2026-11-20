@@ -1013,7 +1013,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
 
   let active = null, time = 0, autoCool = 0;
   const api = {
-    layouts, lifts,
+    layouts, lifts, hooks,
     /** The floor under you on an upper storey (null if you're on the ground floor or over an opening). */
     floorAt(x, z, bodyY) {
       if (x > -4900 || bodyY == null) return null;
