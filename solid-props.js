@@ -12,20 +12,28 @@
 // pushed.
 
 export function createSolidProps(THREE) {
-  const CELL = 4, grid = new Map(), list = [];
+  const CELL = 4; let grid = new Map(), list = [];
   const key = (i, k) => i * 100003 + k;
   const v = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(), m4 = new THREE.Matrix4(), corners = [];
   for (let i = 0; i < 8; i++) corners.push(new THREE.Vector3());
 
-  function add(o) {
+  function add(o, grid, list) {   // (into the grid and list being built)
     list.push(o);
     const r = Math.hypot(o.hx, o.hz);
     for (let i = Math.floor((o.x - r) / CELL); i <= Math.floor((o.x + r) / CELL); i++) for (let k = Math.floor((o.z - r) / CELL); k <= Math.floor((o.z + r) / CELL); k++) { const kk = key(i, k); let l = grid.get(kk); if (!l) grid.set(kk, l = []); l.push(o); }
   }
 
   // build from the scene: opts { skip:Set<Object3D>, groundY(x,z,y), colliders, stairs:[rects], seats:[{x,z}] }
-  function build(scene, opts = {}) {
-    grid.clear(); list.length = 0;
+  // Built into a fresh grid and list, swapped in when complete, so the old solids keep working meanwhile.
+  // build() does it all at once; buildInSlices() spreads the work over many frames (a few ms each) so play never
+  // freezes while it runs.
+  function build(scene, opts = {}) { const job = prepare(scene, opts); job.step(Infinity); return job.finish(); }
+  function buildInSlices(scene, opts = {}, sliceMs = 4) {
+    const job = prepare(scene, opts);
+    return new Promise(resolve => { const tick = () => { if (job.step(sliceMs)) resolve(job.finish()); else setTimeout(tick, 0); }; tick(); });
+  }
+  function prepare(scene, opts) {
+    const ng = new Map(), nl = [];
     const skip = opts.skip || new Set(), stairs = opts.stairs || [], seats = opts.seats || [], cols = opts.colliders || [];
     const hidden = o => { for (let p = o; p && p !== scene; p = p.parent) if (!p.visible || skip.has(p) || /hover|vehicle|door|gate leaf|person|npc|lift cab|walk-in interior/i.test(p.name || '')) return true; return false; };
     const covered = (x, z, hx, hz) => { for (const c of near(cols, x, z)) if (c.minX <= x - hx * 0.7 && c.maxX >= x + hx * 0.7 && c.minZ <= z - hz * 0.7 && c.maxZ >= z + hz * 0.7) return true; return false; };
@@ -36,8 +44,10 @@ export function createSolidProps(THREE) {
     const hasSeat = (x, z, hx, hz, c, sn) => { for (let i = Math.floor((x - 3) / 2); i <= Math.floor((x + 3) / 2); i++) for (let k = Math.floor((z - 3) / 2); k <= Math.floor((z + 3) / 2); k++) for (const st of seatGrid.get(key(i, k)) || []) { const dx = st.x - x, dz = st.z - z, lx = dx * c + dz * sn, lz = -dx * sn + dz * c; if (Math.abs(lx) <= hx + 0.3 && Math.abs(lz) <= hz + 0.3) return true; } return false; };
     scene.updateMatrixWorld(true);
     let added = 0;
-    scene.traverse(o => {
-      if (!o.isMesh || o.isSkinnedMesh || !o.geometry || hidden(o)) return;
+    const meshes = []; scene.traverse(o => { if (o.isMesh && !o.isSkinnedMesh && o.geometry) meshes.push(o); });
+    let next = 0;
+    const each = o => {
+      if (!o.parent || hidden(o)) return;   // (gone, or hidden, since the list was made)
       const g = o.geometry; if (/Plane|Circle|Ring|Shape|Text/.test(g.type)) return;
       const mat = Array.isArray(o.material) ? o.material[0] : o.material; if (mat && mat.transparent && mat.opacity < 0.5) return;
       if (!g.boundingBox) g.computeBoundingBox(); const bb = g.boundingBox; if (!bb || bb.isEmpty()) return;
@@ -76,12 +86,15 @@ export function createSolidProps(THREE) {
         for (const r of stairs) if (x > r.minX - 0.5 && x < r.maxX + 0.5 && z > r.minZ - 0.5 && z < r.maxZ + 0.5) return;
         if (hasSeat(x, z, hx, hz, c, sn)) return;                                     // benches, chairs and beds you sit or lie on
         if (Math.abs(c) > 0.999 || Math.abs(sn) > 0.999 ? covered(x, z, Math.abs(c) > 0.999 ? hx : hz, Math.abs(c) > 0.999 ? hz : hx) : false) return;   // already solid
-        add({ x, z, hx, hz, c, s: sn, minY, maxY, name: o.name || o.parent?.name || g.type }); added++;
+        add({ x, z, hx, hz, c, s: sn, minY, maxY, name: o.name || o.parent?.name || g.type }, ng, nl); added++;
       };
       if (o.isInstancedMesh) { for (let i = 0; i < Math.min(o.count, 6000); i++) { o.getMatrixAt(i, m4); one(m4.premultiply(o.matrixWorld)); } }
       else one(o.matrixWorld);
-    });
-    return added;
+    };
+    return {
+      step(ms) { const end = performance.now() + ms; while (next < meshes.length) { each(meshes[next++]); if ((next & 31) === 0 && performance.now() > end) return false; } return true; },
+      finish() { grid = ng; list = nl; return added; },
+    };
   }
 
   // push a body at p (feet height p.y, radius r) out of anything solid around it. Returns true if it hit.
@@ -99,5 +112,5 @@ export function createSolidProps(THREE) {
     }
     return hit;
   }
-  return { build, push, get count() { return list.length; }, at(x, z) { return (grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL))) || []).filter(o => { const dx = x - o.x, dz = z - o.z, lx = dx * o.c + dz * o.s, lz = -dx * o.s + dz * o.c; return Math.abs(lx) <= o.hx && Math.abs(lz) <= o.hz; }); } };
+  return { build, buildInSlices, push, get count() { return list.length; }, at(x, z) { return (grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL))) || []).filter(o => { const dx = x - o.x, dz = z - o.z, lx = dx * o.c + dz * o.s, lz = -dx * o.s + dz * o.c; return Math.abs(lx) <= o.hx && Math.abs(lz) <= o.hz; }); } };
 }

@@ -73,7 +73,7 @@ import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
 import {createRace} from './race.js';
 import {buildDoors,shopOpen} from './doors.js';
-import { profileDevice, createQualityGovernor } from './device-profile.js';
+import { profileDevice, createQualityGovernor, createOptimiser } from './device-profile.js';
 import {createWalkIns,WALKIN_STOREY} from './walkin.js';
 import {buildHills, buildRidge} from './hills.js';
 import {buildVehicleDealers} from './vehicle-dealers.js';
@@ -229,7 +229,8 @@ const GFX_PRESETS = {
 const savedGfx = localStorage.getItem('gfxQuality');
 // What this device can handle (device-profile.js): its graphics chip, cores, memory and screen pick the starting
 // quality, unless the player chose one in Settings.
-const deviceProfile = profileDevice(renderer.getContext()), qualityGovernor = createQualityGovernor(deviceProfile);
+const deviceProfile = profileDevice(renderer.getContext()), qualityGovernor = createQualityGovernor(deviceProfile), optimiser = createOptimiser(deviceProfile);
+const bg = (key, d, fn) => optimiser.run(key, d, fn);   // a background system, run as often as the optimiser allows (see device-profile.js)
 console.info('[device]', deviceProfile.gpu, '→', deviceProfile.tier, '(' + deviceProfile.why + ')');
 { const el = document.getElementById('gfxDevice'); if (el) el.textContent = `This device: ${deviceProfile.why} (${deviceProfile.cores} cores) — Auto starts on ${deviceProfile.tier[0].toUpperCase() + deviceProfile.tier.slice(1)} and adjusts as you play.`; }
 let gfxQuality = GFX_PRESETS[savedGfx] && localStorage.getItem('gfxQualityChosen') === '1' ? savedGfx : deviceProfile.tier;
@@ -341,7 +342,7 @@ perfBudget = createPerformanceBudget({ THREE, scene, camera, renderer, mobile: t
 perfBudget.setBasePixelRatio(renderer.getPixelRatio());
 perfBudget.setQuality(gfxQuality);
 perfBudget.attachSky(sky, [sunDisc, moonDisc]);
-if (new URLSearchParams(location.search).has('debug')) window.__aw = { renderer, scene, camera, perfBudget, get worldIds() { return worldIds; }, get player() { return player; }, get game() { return { hunterGuilds, roadLaw, frontier, prog, stats, vehicles, trafficLights, get militaryAlert() { return militaryAlert; }, setYaw(y, p) { yaw = y; pitch = p; } }; } };
+if (new URLSearchParams(location.search).has('debug')) window.__aw = { renderer, scene, camera, perfBudget, optimiser, get worldIds() { return worldIds; }, get player() { return player; }, get game() { return { hunterGuilds, roadLaw, frontier, prog, stats, vehicles, trafficLights, get militaryAlert() { return militaryAlert; }, setYaw(y, p) { yaw = y; pitch = p; } }; } };
 
 // =====================================================================
 // PROCEDURAL TEXTURES (drawn on canvases, so no image files are needed)
@@ -496,6 +497,10 @@ const facades = FACADE_STYLES.map(s => {
 // WORLD HELPERS
 // =====================================================================
 const colliders = [];      // axis-aligned boxes on the ground plane
+// Every add or remove bumps colVer, so the collider grid (collidersAround, below) knows to rebuild. (Nothing assigns
+// colliders[i] directly; code that moves a collider's bounds in place calls colliderMoved().)
+let colVer = 0; const colliderMoved = () => { colVer++; };
+for (const m of ['push', 'pop', 'shift', 'unshift', 'splice']) { const f = Array.prototype[m]; Object.defineProperty(colliders, m, { value(...a) { colVer++; return f.apply(this, a); }, enumerable: false }); }
 // Declared here (not down by updateTasks(), where it conceptually lives) because
 // addBuilding()'s CCTV cameras call addTask() during the very first world-building
 // pass, long before the code near updateTasks() would otherwise run.
@@ -547,11 +552,12 @@ function rebuildSolidProps() {
     const before = new Map(); scene.traverse(o => { if (o.isMesh) { const e = o.matrixWorld.elements; before.set(o, e[12] + e[13] * 7 + e[14] * 13 + e[0] * 17 + e[2] * 19); } });
     setTimeout(() => {
       scene.updateMatrixWorld(true);
-      const skip = new Set([player, ...vehicles.map(v => v.group), skyCity?.ship, ...(spaceWing?.patrols || []).map(s => s.group)].filter(Boolean)), box = new THREE.Box3();
+      const skip = new Set([player, ...vehicles.map(v => v.group), skyCity?.ship, ...(spaceWing?.patrols || []).map(s => s.group)].filter(Boolean)), box = new THREE.Box3(), sizes = new Map();   // (each group measured once: many moving things share one)
       for (const [o, h] of before) { const e = o.matrixWorld.elements; if (Math.abs(e[12] + e[13] * 7 + e[14] * 13 + e[0] * 17 + e[2] * 19 - h) < 1e-4) continue;
-        let q = o; while (q.parent && q.parent !== scene) { box.setFromObject(q.parent); const sz = box.getSize(new THREE.Vector3()); if (Math.max(sz.x, sz.z) > 12) break; q = q.parent; } skip.add(q); }
-      const n = solidProps.build(scene, { skip, groundY: (x, z, y) => groundY(x, z, y), colliders, stairs: stairRamps.map(r => ({ minX: r.x0, maxX: r.x1, minZ: r.z0, maxZ: r.z1 })), seats: sitSpots });
-      console.log('[solid-props]', n, 'things made solid,', skip.size, 'moving things left out');
+        let q = o; while (q.parent && q.parent !== scene) { let sz = sizes.get(q.parent); if (!sz) { box.setFromObject(q.parent); sizes.set(q.parent, sz = box.getSize(new THREE.Vector3())); } if (Math.max(sz.x, sz.z) > 12) break; q = q.parent; } skip.add(q); }
+      // built a few milliseconds per frame (no freeze while you play); the old solids work until the new set is ready
+      solidProps.buildInSlices(scene, { skip, groundY: (x, z, y) => groundY(x, z, y), colliders, stairs: stairRamps.map(r => ({ minX: r.x0, maxX: r.x1, minZ: r.z0, maxZ: r.z1 })), seats: sitSpots })
+        .then(n => console.log('[solid-props]', n, 'things made solid,', skip.size, 'moving things left out'));
     }, 3000);
   }, 50);
 }
@@ -566,7 +572,7 @@ function sweepCollide(from, p, r) {
 }
 function collide(p, r) {
   let hit = false;
-  for (const c of colliders) {
+  for (const c of collidersAround(p.x, p.z, r * 3 + 1.5)) {   // only the walls near here, not every wall in the world (wide enough for where a push could move you)
     if(p.x<c.minX-r||p.x>c.maxX+r||p.z<c.minZ-r||p.z>c.maxZ+r)continue;
     if(c.circleRadius!=null){const dx=p.x-c.circleX,dz=p.z-c.circleZ,d=Math.hypot(dx,dz),limit=r+c.circleRadius;if(d<limit){hit=true;p.x+=dx/(d||1)*(limit-d);p.z+=dz/(d||1)*(limit-d);if(d<.0001)p.x=c.circleX+limit;}continue;}
     if(c.baseYAt){const base=c.baseYAt(p.x,p.z);if(p.y<base-.8||p.y>base+2)continue;}
@@ -591,6 +597,33 @@ function collide(p, r) {
   { const dx = p.x - DOME.x, dz = p.z - DOME.z, d = Math.hypot(dx, dz);
     if (d > PLAY_R && d < PLAY_R + 60) { p.x = DOME.x + dx / d * PLAY_R; p.z = DOME.z + dz / d * PLAY_R; } }
   return hit;
+}
+// Spatial grid over the colliders, so "is there a wall here?" only looks at the walls nearby (20 m cells).
+const COL_CELL = 20; let colGridVer = -1; const colGrid = new Map(), colBig = [];
+function buildColGrid() {
+  colGrid.clear(); colBig.length = 0; colGridVer = typeof colVer === 'undefined' ? colliders.length : colVer;
+  colliders.forEach((c, n) => {
+    c._n = n;   // its place in the list, so walls are always tested in the same order
+    const x0 = Math.floor(c.minX / COL_CELL), x1 = Math.floor(c.maxX / COL_CELL), z0 = Math.floor(c.minZ / COL_CELL), z1 = Math.floor(c.maxZ / COL_CELL);
+    if (!((x1 - x0 + 1) * (z1 - z0 + 1) <= 900)) { colBig.push(c); return; }   // huge (or odd) ones are always tested
+    for (let i = x0; i <= x1; i++) for (let k = z0; k <= z1; k++) { const key = i * 100003 + k; let l = colGrid.get(key); if (!l) colGrid.set(key, l = []); l.push(c); }
+  });
+}
+function collidersNear(x, z) {
+  if (colGridVer !== (typeof colVer === 'undefined' ? colliders.length : colVer)) buildColGrid();
+  return colGrid.get(Math.floor(x / COL_CELL) * 100003 + Math.floor(z / COL_CELL)) || [];
+}
+// every collider that could touch a circle of radius r at (x, z): its grid cells plus the huge ones, each once,
+// in list order (the same walls, in the same order, that checking the whole list would find)
+const colAround = []; let colStamp = 0;
+function collidersAround(x, z, r) {
+  if (colGridVer !== (typeof colVer === 'undefined' ? colliders.length : colVer)) buildColGrid();
+  colAround.length = 0; colStamp++;
+  const x0 = Math.floor((x - r) / COL_CELL), x1 = Math.floor((x + r) / COL_CELL), z0 = Math.floor((z - r) / COL_CELL), z1 = Math.floor((z + r) / COL_CELL);
+  for (let i = x0; i <= x1; i++) for (let k = z0; k <= z1; k++) { const l = colGrid.get(i * 100003 + k); if (l) for (const c of l) if (c._s !== colStamp) { c._s = colStamp; colAround.push(c); } }
+  for (const c of colBig) if (c._s !== colStamp) { c._s = colStamp; colAround.push(c); }
+  if (colAround.length > 1) colAround.sort((a, b) => a._n - b._n);
+  return colAround.slice();   // a copy: collide() can be called again from inside a push (never share the buffer)
 }
 const insideCollider = p => colliders.some(c => c.circleRadius!=null ? Math.hypot(p.x-c.circleX,p.z-c.circleZ)<c.circleRadius : p.x>c.minX&&p.x<c.maxX&&p.z>c.minZ&&p.z<c.maxZ);
 
@@ -1891,7 +1924,7 @@ const people = createPeople({
   camera: () => camera,
   lookOf: h => { if (h.citizen) return h.citizen; if (!society) return null; if (h.pedE === undefined) h.pedE = peds.find(e => e.h === h) || null; return h.pedE ? society.citizenOf(h.pedE) : null; },
   babyOf: c => seatedResidents?.babyOf(c) || null,
-  budget: () => Math.round(({ low: 8, medium: 14, high: 22, ultra: 30 }[gfxQuality] ?? 14) * (matchMedia('(pointer: coarse)').matches ? .7 : 1)),
+  budget: () => Math.round(({ low: 8, medium: 14, high: 22, ultra: 30 }[gfxQuality] ?? 14) * (matchMedia('(pointer: coarse)').matches ? .7 : 1) * optimiser.crowd),
 });
 // The people nearest the camera get real human bodies (people.js): ordinary slim builds in everyday clothes.
 // Further away, and for heroes and monsters, the simple figures stand in. (false switches the real bodies off.)
@@ -4045,20 +4078,6 @@ function enemyPhysics(e, dt) {
   e.vel.x *= Math.max(0, 1 - fr * dt);
   e.vel.z *= Math.max(0, 1 - fr * dt);
 }
-// Spatial grid over the colliders so "is there a wall here?" checks are cheap.
-// Rebuilt whenever colliders are added or removed.
-const COL_CELL = 20; let colGridCount = -1; const colGrid = new Map();
-function collidersNear(x, z) {
-  if (colGridCount !== colliders.length) {
-    colGrid.clear(); colGridCount = colliders.length;
-    for (const c of colliders) {
-      const x0 = Math.floor(c.minX / COL_CELL), x1 = Math.floor(c.maxX / COL_CELL), z0 = Math.floor(c.minZ / COL_CELL), z1 = Math.floor(c.maxZ / COL_CELL);
-      if ((x1 - x0 + 1) * (z1 - z0 + 1) > 900) continue;
-      for (let i = x0; i <= x1; i++) for (let k = z0; k <= z1; k++) { const key = i * 100003 + k; let l = colGrid.get(key); if (!l) colGrid.set(key, l = []); l.push(c); }
-    }
-  }
-  return colGrid.get(Math.floor(x / COL_CELL) * 100003 + Math.floor(z / COL_CELL)) || [];
-}
 function blockedAt(x, z, r) {
   for (const c of collidersNear(x, z)) {
     if (c.circleRadius != null) { if (Math.hypot(x - c.circleX, z - c.circleZ) < c.circleRadius + r) return true; continue; }
@@ -4791,7 +4810,7 @@ function updateEnemies(dt) {
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i], p = e.root.position;
     const d = Math.abs(p.x - focus.x) + Math.abs(p.z - focus.z);
-    const step = d < 140 ? 1 : d < 300 ? 2 : 4;
+    const k = 1 + optimiser.level * 0.5, step = d < 140 / k ? 1 : d < 300 / k ? 2 : optimiser.level >= 2 ? 8 : 4;   // far monsters think less often, more so when the optimiser is easing the load
     e.lodDt = (e.lodDt || 0) + dt;
     if (step > 1 && (enemyLodFrame + i) % step !== 0) continue;
     const edt = Math.min(e.lodDt, 0.25);
@@ -6880,6 +6899,9 @@ function renderSettings() {
   $('stabView').style.display = settingsTab === 'view' ? '' : 'none';
   document.querySelectorAll('[data-view]').forEach(b=>{const selected=b.dataset.view===cameraViewSetting;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected));});
   document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.classList.toggle('active', b.dataset.gfx === 'auto' ? !manualGraphics : manualGraphics && b.dataset.gfx === gfxQuality));
+  { const el = $('gfxDevice'), o = optimiser.stats;
+    if (el) el.textContent = `This device: ${deviceProfile.why} (${deviceProfile.cores} cores). Auto starts on ${deviceProfile.tier[0].toUpperCase() + deviceProfile.tier.slice(1)} and adjusts as you play. ` +
+      `Optimiser: ${o.level ? `easing the load (background systems every ${o.level + 1} frames)` : 'everything at full rate'} · game ${o.simMs} ms, drawing ${o.drawMs} ms per frame.`; }
 }
 function toggleSettings(open) {
   if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
@@ -8640,16 +8662,17 @@ function shutDownForReload(message){
 function frame() {
   if(shuttingDown)return;
   const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
-  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){const next=qualityGovernor.frame(frameMs,gfxQuality);if(next)setGraphicsQuality(next,false);}   // steps down when slow, back up when there's room (never above what this device can handle)
+  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){const next=qualityGovernor.frame(optimiser.cpuHeavy?Math.min(frameMs,30):frameMs,gfxQuality);if(next)setGraphicsQuality(next,false);}   // steps down when slow, back up when there's room (never above what this device can handle)
   if(document.hidden&&!(onlinePlayReady&&hosting.room)){clock.getDelta();requestAnimationFrame(frame);return;}
   const running=locked||(onlinePlayReady&&!!hosting.room);
   const rawDt = Math.min(clock.getDelta(), 0.05);
   let dt = rawDt;
+  optimiser.beginFrame(); const simStart = performance.now();
   if (hitStop > 0) { hitStop -= rawDt; dt = 0; }   // freeze the world for a split second on big hits
   if (running) {
     dayTime = (dayTime + dt / DAY_LEN) % 1;
     reconstructionDays += dt / DAY_LEN;
-    reconstruction.update(reconstructionDays, dt);
+    bg('reconstruction', dt, d => reconstruction.update(reconstructionDays, d));
     for (const c of characters) c.cds = c.cds.map(v => Math.max(0, v - dt));
     dashCd = Math.max(0, dashCd - dt);
     psyCd = Math.max(0, psyCd - dt);
@@ -8662,8 +8685,8 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); walkIns.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); if (GRASS_TUFTS) grass.setCount(GRASS_DENSITY[gfxQuality] ?? 7000), grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
-    military?.update(dt); spaceWing?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
+    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); walkIns.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); bg('forest', dt, d => forest.update(d)); if (GRASS_TUFTS) { grass.setCount(Math.round((GRASS_DENSITY[gfxQuality] ?? 7000) * optimiser.crowd)); bg('grass', dt, d => grass.update(d, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior)); } drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
+    bg('military', dt, d => military?.update(d)); bg('spaceWing', dt, d => spaceWing?.update(d)); bg('navyCrew', dt, d => navyCrew?.update(d, (h, m, dd) => animateHumanoid(h, null, m, false, true, dd)));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
     updateCityStreaming(dt);
@@ -8673,30 +8696,30 @@ function frame() {
     updateTrafficLights(dt);
     updateVehicles(dt);
     race?.update(dt);
-    updateParkLife(dt);
+    bg('parkLife', dt, updateParkLife);
     updateBridgeLift(dt);
     if(inCar&&driving&&isRoadVehicle(driving))roadLaw.monitorDriving(driving,dt);
-    hunterGuilds.update(dt);
+    bg('hunterGuilds', dt, d => hunterGuilds.update(d));
     frontier.update(dt,{sky,camera,inSpace:!!spaceCentre?.inSpace,underground:!!(metro?.underground||sewers?.underground||dungeon||inCivicInterior||navy?.rider?.depth>2)});
     updateMilitary(dt);
     border?.update(dt, player.position);
-    powerGrid?.update(dt); helipads?.update(dt, player.position); drones?.update(dt); lostPeak?.update(dt);
+    bg('powerGrid', dt, d => powerGrid?.update(d)); helipads?.update(dt, player.position); bg('drones', dt, d => drones?.update(d)); bg('lostPeak', dt, d => lostPeak?.update(d));
     venues?.update(dt, { playerPos: player.position, driving: inCar && driving ? driving : null });
     interiors.update(dt);
     walkInThroughDoors(dt);
     updateWeather(dt);
     updateFirefighters(dt);
     updateFireDamage(dt);
-    updateBats(dt);
-    updateForestInsects(dt);
-    updatePlanes(dt);
-    updateAdBalloon(dt);
+    bg('bats', dt, updateBats);
+    bg('insects', dt, updateForestInsects);
+    bg('planes', dt, updatePlanes);
+    bg('adBalloon', dt, updateAdBalloon);
     updateShips(dt);
     spaceCentre?.update(dt);
     transport.update(dt);
     activeRoadUsers.update(dt);
     for(const v of vehicles)resolveRailCollision(v,v.group.position.clone());
-    metro.update(dt,reconstructionDays*DAY_LEN);regionalEnvironment.update(reconstructionDays*DAY_LEN);volcanicIsland?.update(reconstructionDays*DAY_LEN,dt);ghostIsland?.update(reconstructionDays*DAY_LEN,dt);poisonLand?.update(dt);cityLife?.update(dt);supportSkills?.update(dt);cityServices?.update(dt);bridgeTraffic?.update(dt);adventureServices?.update(dt);navy?.update(dt);intercityRail?.update(dt);regionalFacilities?.update(dt);worldExpansion?.update(dt);npcConversations?.update(dt);society?.update(dt);story?.update(dt);system?.update(dt);seasons?.update(rawDt,dayTime>.55&&dayTime<.95);updateAdminGod();phone?.update(player.position,!inCar&&!swimming);systemOrb?.update(rawDt);worldIds?.update(dt);worldRegistry?.update(dt);atlasWorld?.update(dt,player.position);worldWatch?.update(dt);for(const b of innovationsBuilt)b.update(dt);
+    metro.update(dt,reconstructionDays*DAY_LEN);bg('regionalEnv',dt,()=>regionalEnvironment.update(reconstructionDays*DAY_LEN));bg('volcanic',dt,d=>volcanicIsland?.update(reconstructionDays*DAY_LEN,d));bg('ghostIsland',dt,d=>ghostIsland?.update(reconstructionDays*DAY_LEN,d));poisonLand?.update(dt);bg('cityLife',dt,d=>cityLife?.update(d));bg('supportSkills',dt,d=>supportSkills?.update(d));bg('cityServices',dt,d=>cityServices?.update(d));bridgeTraffic?.update(dt);bg('adventure',dt,d=>adventureServices?.update(d));navy?.update(dt);intercityRail?.update(dt);bg('regionalFac',dt,d=>regionalFacilities?.update(d));bg('worldExp',dt,d=>worldExpansion?.update(d));npcConversations?.update(dt);bg('society',dt,d=>society?.update(d));story?.update(dt);system?.update(dt);seasons?.update(rawDt,dayTime>.55&&dayTime<.95);updateAdminGod();phone?.update(player.position,!inCar&&!swimming);systemOrb?.update(rawDt);bg('worldIds',dt,d=>worldIds?.update(d));bg('worldRegistry',dt,d=>worldRegistry?.update(d));bg('atlas',dt,d=>atlasWorld?.update(d,player.position));bg('worldWatch',dt,d=>worldWatch?.update(d));for(const b of innovationsBuilt)b.update(dt);
     urban.update(dayTime,dt);
     updateGates(dt);
     updateDungeon(dt);
@@ -8713,17 +8736,18 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); skyCity?.update(rawDt, player.position); shipyard?.update(rawDt); deepCity?.update(rawDt, player.position); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); grandPark?.update(rawDt, player.position, night); flowerPark?.update(rawDt, player.position, night); homePark?.update(rawDt, player.position, night); beachLife?.update(rawDt, player.position); resortBeach?.update(rawDt, player.position, swimming); hospitalPlus?.update(rawDt, player.position); portPlus?.update(rawDt, night); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); skyCity?.update(rawDt, player.position); bg('shipyard', rawDt, d => shipyard?.update(d)); bg('deepCity', rawDt, d => deepCity?.update(d, player.position)); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); bg('grandPark', rawDt, d => grandPark?.update(d, player.position, night)); bg('flowerPark', rawDt, d => flowerPark?.update(d, player.position, night)); bg('homePark', rawDt, d => homePark?.update(d, player.position, night)); bg('beachLife', rawDt, d => beachLife?.update(d, player.position)); resortBeach?.update(rawDt, player.position, swimming); bg('hospitalPlus', rawDt, d => hospitalPlus?.update(d, player.position)); bg('portPlus', rawDt, d => portPlus?.update(d, night)); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
-    recovery?.update(rawDt, { driving: inCar ? driving : null, employed: !!careers?.job?.tow }); university?.update(rawDt, player.position);
+    recovery?.update(rawDt, { driving: inCar ? driving : null, employed: !!careers?.job?.tow }); bg('university', rawDt, d => university?.update(d, player.position));
     roadWear?.update(rawDt, { vehicles, playerPos: player.position, weather: weatherState, driving: inCar ? driving : null, extraWear });
   }
   if(running) harbour.update(reconstructionDays * DAY_LEN, rawDt);
   movieTv?.update();
   onlineAccount?.update(rawDt);
   roomChat.update(rawDt);
+  const simMs = performance.now() - simStart;
   updateCamera(running ? rawDt : 0);
   updateWorldLight(running ? dt : 0);
   updatePops(running ? rawDt : 0);
@@ -8736,7 +8760,8 @@ function frame() {
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
   seatedResidents?.update(rawDt); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt);
-  if(!coveredByOverlay()){if(++shadowFrame%2===0)renderer.shadowMap.needsUpdate=true;renderer.render(scene, camera);}
+  let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
+  optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);
 }
 const OVERLAY_IDS=['auth','menu','spawn','classSelect','gameLoading'];
