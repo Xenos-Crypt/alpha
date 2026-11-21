@@ -68,6 +68,7 @@ import {createSolidProps} from './solid-props.js';
 import {auditScene} from './world-grid.js';
 import {buildBlackMarket, NARROWS, hasTool} from './black-market.js';
 import { createActionMenu } from './action-menu.js';
+import { createNeighbours } from './neighbours.js';
 import {buildMilitary, addNavyCrew} from './military.js';
 import {createConditions,conditionOf} from './condition.js';
 import {createLicences} from './licences.js';
@@ -1499,12 +1500,23 @@ const homeDoorR = new THREE.Group(); homeDoorR.position.set(HOME.x + 1, HOME_Y, 
 const homeDoorCollider = { minX: HOME.x - 1, maxX: HOME.x + 1, minZ: HOME.minZ - 0.12, maxZ: HOME.minZ + 0.12 };
 colliders.push(homeDoorCollider);
 let homeDoorOpen = false;
-interactables.push({ pos: new THREE.Vector3(HOME.x, HOME_Y, HOME.minZ), r: 2.2, get label() { return homeDoorOpen ? 'Close the front door' : rent?.lockedOut() && !houseAt(player.position) ? 'Padlocked by the landlord' : 'Open the front door'; }, action: () => {
+// Your front door: open or close it, and lock it with your key (inside or out). Nobody breaks in, but a locked door
+// is locked: people who come round have to knock.
+let homeLocked = false;
+interactables.push({ pos: new THREE.Vector3(HOME.x, HOME_Y, HOME.minZ), r: 2.2, title: 'Your front door', label: 'Your front door', actions: () => {
+  const padlocked = !homeDoorOpen && rent?.lockedOut() && !houseAt(player.position);
+  if (padlocked) return [{ label: 'Padlocked by the landlord', run: () => toggleHomeDoor() }];
+  return [
+    { label: homeDoorOpen ? 'Close the door' : 'Open the door', disabled: !homeDoorOpen && homeLocked, note: !homeDoorOpen && homeLocked ? 'Unlock it first' : null, run: () => toggleHomeDoor() },
+    ...(homeDoorOpen ? [] : [{ label: homeLocked ? 'Unlock it' : 'Lock it', run: () => { homeLocked = !homeLocked; toast(homeLocked ? '🔒 You turn the key. Locked.' : '🔓 You unlock the door.'); } }]),
+  ];
+} });
+function toggleHomeDoor() {
   if (!homeDoorOpen && rent?.lockedOut() && !houseAt(player.position)) return toast(`🔒 ${'Mr Kassim'} padlocked your door. Pay him the ${rent.owing()} gold you owe (he's outside Flat 1, downstairs).`);
   homeDoorOpen = !homeDoorOpen;
   const i = colliders.indexOf(homeDoorCollider);
   if (homeDoorOpen && i >= 0) colliders.splice(i, 1); else if (!homeDoorOpen && i < 0) colliders.push(homeDoorCollider);
-} });
+}
 // Front garden gates: a double gate across the driveway (wide enough for the car) and a small
 // gate on the path. They swing open when you, or your car, come up to them.
 const homeGates = [];
@@ -7213,7 +7225,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, systemVoice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let neighbours = null, venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, systemVoice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -8082,7 +8094,7 @@ function updateCamera(dt) {
   }
   { // indoors (a house, a building interior, or under any roof) -> first person
     const p = player.position;
-    const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || !!walkIns.inside || !!slum?.insideShack?.(p) || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
+    const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || !!walkIns.inside || !!slum?.insideShack?.(p) || !!neighbours?.inside || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
     // The player doesn't pick the view: first-person indoors, third-person in a vehicle,
     // and on foot it depends on the place (first-person in dungeons and underground, third-person outside).
     const below = !!dungeon || !!sewers?.underground || !!metro?.underground;
@@ -8547,6 +8559,11 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   resortBeach=buildResortBeach(leisureCtx,{z0:SEA_Z});poolZones.push(...resortBeach.pools);
   // Cinder Row: the slum north of Poison Land where everyone but the admin starts out (slum.js). Built before the road scan so its lanes count as roads.
   slum=createSlum({...leisureCtx,K:makeKit(leisureCtx),curb:CURB,drink:()=>{stats.energy=clamp(stats.energy+4,0,100);toast('💧 Warm water that tastes of the pipe. Better than nothing.');}});
+  // every flat door has an owner with a routine of their own (neighbours.js)
+  neighbours = createNeighbours({ doors: slum.flatDoors, scene, colliders, interactables, toast, raiseWanted, hasTool, lockTool,
+    hours: () => (dayTime * 24 + 6) % 24, day: () => Math.floor(reconstructionDays) % 7,
+    teleport: (p, ry) => { player.position.copy(p); player.rotation.y = ry; yaw = ry + Math.PI; vy = 0; pvel.set(0, 0, 0); },
+    gold: n => { stats.gold += n; }, hurt: n => { stats.hp = Math.max(1, stats.hp - n); noteHpLoss('Shoved by a neighbour'); }, news: t => society?.news(t) });
   townPlaces.destinations.push(...slum.destinations);
   // the two cities off the ground: Skyhaven in the sky (airships from the Sky Port) and Deephaven under the bay
   // (a lift on the west shore and a glass tunnel). Both checked clear of everything before they were placed.
@@ -8892,7 +8909,7 @@ function frame() {
   perfBudget.update(rawDt, frameMs, running);
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
-  seatedResidents?.update(rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld();
+  seatedResidents?.update(rawDt); neighbours?.update(rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld();
   let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
   optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);

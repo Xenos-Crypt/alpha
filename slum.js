@@ -253,6 +253,36 @@ export function createSlum(ctx) {
 
   // ---------------- the tenement: two floors of other people's flats under yours, an outside stair, a balcony ----------------
   const tenants = [];
+  // ---- real flat doors and windows (not painted-on rectangles) ----
+  // A door: a wooden frame proud of the wall, a panelled leaf on a hinge (so it can open), a handle and a concrete
+  // step. A window: frame, glass, a cross bar, a sill, a curtain drawn half across behind the glass and a dark room
+  // behind that; slum ground floors keep their security bars. Every door is recorded (flatDoors) with where it is
+  // and which way it faces, for the owners and their locks.
+  const flatDoors = [], flatWindows = [];
+  const frameM = std('doorFrame', { color: 0x3b2f25 }), handleM = std('handle', { color: 0xb8a060, metalness: 0.6, roughness: 0.4 }), roomDark = std('roomDark', { color: 0x15130f, roughness: 1 });
+  const leafMs = ['#6b4a2f', '#2f4a6b', '#7a2e2a', '#3d5a3a', '#5a5550'].map((c, i) => std('flatDoor' + i, { map: paintTex(c) }));
+  const gbox = (parent, w, h, d, x, y, z, m) => { const b = new THREE.Mesh(boxGeo, m); b.scale.set(w, h, d); b.position.set(x, y, z); b.castShadow = b.receiveShadow = true; parent.add(b); return b; };
+  function realDoor(x, y, z, nx, nz, who, W = 1.0) {
+    const H = 2.05, g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = Math.atan2(nx, nz); scene.add(g);   // local +z = out of the wall
+    gbox(g, 0.08, H + 0.08, 0.16, -W / 2 - 0.04, (H + 0.08) / 2, 0.03, frameM); gbox(g, 0.08, H + 0.08, 0.16, W / 2 + 0.04, (H + 0.08) / 2, 0.03, frameM); gbox(g, W + 0.16, 0.08, 0.16, 0, H + 0.04, 0.03, frameM);
+    gbox(g, W + 0.3, 0.07, 0.4, 0, 0.035, 0.22, concrete);   // the step
+    const hinge = new THREE.Group(); hinge.position.set(-W / 2, 0, 0.02); g.add(hinge);
+    const lm = pick(leafMs), leaf = gbox(hinge, W - 0.02, H - 0.02, 0.05, W / 2, H / 2, 0, lm); leaf.name = 'flat door';
+    for (const py of [0.55, 1.45]) gbox(hinge, W - 0.3, 0.6, 0.015, W / 2, py, 0.032, lm);   // raised panels
+    gbox(hinge, 0.04, 0.04, 0.07, W - 0.12, 1.02, 0.05, handleM); gbox(hinge, 0.14, 0.03, 0.03, W - 0.17, 1.02, 0.08, handleM);
+    gbox(hinge, 0.06, 0.06, 0.01, W - 0.12, 1.2, 0.03, dark);   // keyhole plate
+    const D = { g, hinge, x, y, z, nx, nz, who, W, open: 0 }; flatDoors.push(D); return D;
+  }
+  function realWindow(x, y, z, nx, nz, w = 1.2, h = 0.9, bars = false) {
+    const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = Math.atan2(nx, nz); scene.add(g);
+    gbox(g, w, h, 0.02, 0, 0, -0.005, roomDark);   // the room behind
+    const curtain = gbox(g, w * 0.48, h * 0.92, 0.01, (R() < 0.5 ? -1 : 1) * w * 0.25, 0, 0.012, pick(cloth));
+    const glass = gbox(g, w, h, 0.01, 0, 0, 0.03, glassM);
+    for (const [ww, hh, px, py] of [[w + 0.1, 0.06, 0, h / 2 + 0.03], [w + 0.1, 0.06, 0, -h / 2 - 0.03], [0.06, h, -w / 2 - 0.02, 0], [0.06, h, w / 2 + 0.02, 0], [0.04, h, 0, 0], [w, 0.04, 0, 0]]) gbox(g, ww, hh, 0.07, px, py, 0.04, frameM);
+    gbox(g, w + 0.2, 0.05, 0.16, 0, -h / 2 - 0.08, 0.08, concrete);   // sill
+    if (bars) for (let k = -2; k <= 2; k++) gbox(g, 0.03, h + 0.04, 0.03, k * w / 5.2, 0, 0.1, std('bars2', { color: 0x4a4038, metalness: 0.5, roughness: 0.6 }));
+    const W2 = { g, curtain, glass, x, y, z }; flatWindows.push(W2); return W2;
+  }
   function buildTenement(dx, dz, mine) {
     const H0 = SLUM_HOME, H = { x: H0.x + dx, z: H0.z + dz, minX: H0.minX + dx, maxX: H0.maxX + dx, minZ: H0.minZ + dz, maxZ: H0.maxZ + dz };
     const S = { a0: STAIR.a0 + dx, a1: STAIR.a1 + dx, b1: STAIR.b1 + dx, balX0: STAIR.balX0 + dx, z0: STAIR.z0 + dz, z1: STAIR.z1 + dz, land1: STAIR.land1 + dz, bal0: STAIR.bal0 + dz };
@@ -263,14 +293,15 @@ export function createSlum(ctx) {
     box(W + 0.4, 0.14, D + 0.4, cx, M - 0.02, cz, concrete); box(W + 0.3, 0.14, D + 0.3, cx, T - 0.04, cz, concrete);   // slab edges
     level(G)(solid(H.minX, H.maxX, H.minZ, H.maxZ)); level(2.9)(solid(H.minX, H.maxX, H.minZ, H.maxZ));   // you can't walk into other people's flats
     // doors and barred windows of the flats below: two on the ground floor (one is the landlord's), one up a floor
-    box(1.0, 2.05, 0.08, cx - 2.6, M + 1.03, H.maxZ + 0.04, dark); mine && tenants.push({ x: cx - 2.6, z: H.maxZ + 0.75, y: M, who: 'Flat 3' });   // Flat 3: door on the back gallery
+    realDoor(cx - 2.6, M, H.maxZ, 0, 1, 'Flat 3'); mine && tenants.push({ x: cx - 2.6, z: H.maxZ + 0.75, y: M, who: 'Flat 3' });   // Flat 3: door on the back gallery
     for (const [dx, y, who] of [[-2.6, G, 'Flat 1 (the landlord)'], [2.6, G, 'Flat 2']]) {
-      box(1.0, 2.05, 0.08, cx + dx, y + 1.03, H.minZ - 0.04, y === G ? plank : dark);
+      realDoor(cx + dx, y, H.minZ, 0, -1, who);
       mine && tenants.push({ x: cx + dx, z: H.minZ - 0.9, y, who });
     }
-    for (const [dx, y] of [[0, G], [-0.3, M], [2.6, M]]) { box(1.2, 0.9, 0.06, cx + dx, y + 1.6, H.minZ - 0.04, dark); for (let k = -2; k <= 2; k++) box(0.03, 0.92, 0.08, cx + dx + k * 0.25, y + 1.6, H.minZ - 0.06, bars); }
-    for (const [x, y] of [[H.minX - 0.04, G], [H.minX - 0.04, M]]) box(0.06, 0.9, 1.2, x, y + 1.6, cz, dark);
-    box(0.08, 2.0, 0.95, H.maxX + 0.04, M + 1.0, H.maxZ - 0.9, dark); mine && tenants.push({ x: S.a0 + 0.6, z: S.z1 + 0.7, y: M, who: 'Flat 4 (door on the landing)' });
+    for (const [dx, y] of [[0, G], [-0.3, M], [2.6, M]]) realWindow(cx + dx, y + 1.6, H.minZ, 0, -1, 1.2, 0.9, y === G);   // ground floor windows keep their bars
+    for (const [x, y] of [[H.minX, G], [H.minX, M]]) realWindow(x, y + 1.6, cz, -1, 0, 1.2, 0.9, y === G);
+    for (const [x, y] of [[cx + 1.6, M], [cx + 2.6, G]]) realWindow(x, y + 1.6, H.maxZ, 0, 1, 1.0, 0.8, y === G);   // the back
+    realDoor(H.maxX, M, H.maxZ - 0.9, 1, 0, 'Flat 4', 0.9); mine && tenants.push({ x: S.a0 + 0.6, z: S.z1 + 0.7, y: M, who: 'Flat 4 (door on the landing)' });
     for (let i = 0; i < 9; i++) box(0.5 + R() * 1.4, 0.4 + R() * 1.2, 0.02, cx + (R() - 0.5) * W * 0.9, G + 0.6 + R() * 4.5, H.minZ - 0.09, std('stain', { color: 0x3a3226, transparent: true, opacity: 0.45 }));   // damp stains down the front
     // the outside stair: two steep flights of rough planks on steel posts, with a landing at the back
     const flight = (x0, x1, za, ya, zb, yb) => { const n = 18; for (let i = 0; i < n; i++) { const t = (i + 0.5) / n, z = za + (zb - za) * t, y = ya + (yb - ya) * t; box(x1 - x0, 0.06, Math.abs(zb - za) / n + 0.02, (x0 + x1) / 2, y - 0.03, z, plank); }
@@ -307,7 +338,8 @@ export function createSlum(ctx) {
     put(new THREE.SphereGeometry(0.45, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), concrete, H.minX + 0.6, M + 2.5, H.minZ - 0.3, 1, 0.4, 1, -1.2, 0, 0);
     if (!mine) {   // the top-floor flat (yours is built in main.js): walls, a roof, a door onto the balcony; it's somebody's home, so shut
       box(W, FLOOR_H - 0.05, D, cx, T + FLOOR_H / 2 - 0.02, cz, pick(painted)); box(W + 0.6, 0.06, D + 0.6, cx, T + FLOOR_H + 0.1, cz, ironRoof, 0.06, 0, 0);
-      box(1.0, 2.05, 0.08, cx + 3.0, T + 1.03, H.minZ - 0.04, dark); box(1.2, 0.9, 0.06, cx - 1.5, T + 1.6, H.minZ - 0.04, dark); for (let k = -2; k <= 2; k++) box(0.03, 0.92, 0.08, cx - 1.5 + k * 0.25, T + 1.6, H.minZ - 0.06, bars);
+      realDoor(cx + 3.0, T, H.minZ, 0, -1, 'Top flat'); realWindow(cx - 1.5, T + 1.6, H.minZ, 0, -1, 1.4, 0.95); realWindow(cx + 0.9, T + 1.6, H.minZ, 0, -1, 0.9, 0.95);
+      realWindow(H.minX, T + 1.6, cz, -1, 0, 1.2, 0.9); realWindow(H.maxX, T + 1.6, cz, 1, 0, 1.2, 0.9); realWindow(cx, T + 1.6, H.maxZ, 0, 1, 1.4, 0.9);
       level(T)(solid(H.minX, H.maxX, H.minZ, H.maxZ));
     }
     tag('BLD', 'APT', 'CON.MET', 'Built by hand, floor by floor (no permit)', 'Tenement block (3 storeys)', cx, cz);
@@ -315,9 +347,7 @@ export function createSlum(ctx) {
   }
   for (const [dx, dz] of TENEMENTS) buildTenement(dx, dz, !dx && !dz);
 
-  // your neighbours' doors: locked (it's their home), but you can knock
-  { const replies = ['"Who is it? ...We\'re not buying anything."', '"Not now, the baby\'s asleep."', 'Nobody answers. A TV is on somewhere inside.', '"If it\'s about the noise, it wasn\'t us."', '"Mr Kassim sent you? Tell him the tap still leaks."'];
-    for (const t of tenants) if (!t.who.includes('landlord')) interactables.push({ pos: new THREE.Vector3(t.x, t.y, t.z), r: 1.4, door: true, label: `Knock on ${t.who.replace(/ \(.*\)/, '')}'s door (locked)`, action: () => ctx.toast('🚪 ' + replies[Math.floor(Math.random() * replies.length)]) }); }
+  // (your neighbours' doors, knocking and locks: neighbours.js; every flat has an owner with a routine)
 
   // ---------------- street life: power lines, lamps, laundry, rubbish, fire barrels ----------------
   // wooden poles along the lanes, leaning, with a tangle of wires (half of them stolen connections)
@@ -431,7 +461,7 @@ export function createSlum(ctx) {
   }
 
   return {
-    bounds: SLUM, home: SLUM_HOME, homeY: SLUM_HOME_Y, landlordAt: tenants[0], lanes, neglected, shacks,
+    bounds: SLUM, home: SLUM_HOME, homeY: SLUM_HOME_Y, landlordAt: tenants[0], lanes, neglected, shacks, flatDoors,
     // standing inside a shack's room (for the camera: indoors is first-person)
     insideShack: p => shacks.some(k => Math.abs(p.x - k.x) < k.w / 2 - 0.1 && Math.abs(p.z - k.z) < k.d / 2 - 0.1 && p.y < curb + 3.2),
     people: () => K?.people || [], errands,
