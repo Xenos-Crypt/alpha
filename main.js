@@ -8034,7 +8034,7 @@ function updateCamera(dt) {
   }
   { // indoors (a house, a building interior, or under any roof) -> first person
     const p = player.position;
-    const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
+    const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || !!walkIns.inside || !!slum?.insideShack?.(p) || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
     // The player doesn't pick the view: first-person indoors, third-person in a vehicle,
     // and on foot it depends on the place (first-person in dungeons and underground, third-person outside).
     const below = !!dungeon || !!sewers?.underground || !!metro?.underground;
