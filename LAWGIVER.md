@@ -2,6 +2,21 @@
 
 One entry per run: what was decided, why, and what was declined. The owner reviews and merges every change.
 
+## 2026-11-21 — The Ashford Supermarket's entrance path no longer runs under its car park
+
+**Decision:** In `places.js`, the Ashford Supermarket's car park was centred at z -29 (z -38…-20) while the supermarket's 12 m entrance path runs from the door (z -49) to z -37. Both are slabs with their top at y 0.08, so for 1 m the path and the car park lay in the same plane and flickered through each other. The car park now starts where the path ends (centre z -28, z -37…-19), the same layout as the police HQ car park next door.
+
+**Where:** Ashford Supermarket, east district (590, -66); car park and entrance path at (590, -37). World-audit pair cleared:
+`LND-SRF-BLK.SHT-REQ-IOQEG6 + LND-SRF-BRN.CON-REQ-17YDV1` (590, -37) — also reported from production today by `PER-PLR-HUM-PLR-13QVK3` via `/api/world-report`. (The car park's own surface ID changes, because the ID seed includes its extent.) Full scan: 25 → 24 overlaps.
+
+**Why:** It is one of the overlaps a resident reported from the live world today, it sits in front of a shop every resident uses, and the cause is a single coordinate: no collider, walking height, car spawn or save key depends on it (the slab has no collider; nothing else references (590, -29)).
+
+**Input this run:** no open issues, no Petitions issue. One open PR (#97, tenement doors and windows: `slum.js`, `main.js`, `supermarket.js`, `action-menu.js`, `black-market.js`), so this change stays out of those files. Supabase `world_bugs` (fixed = false): empty. Vercel production logs: two `[world-report]` posts (11:08, 11:11 UTC) from one resident: (590, -37), (1157, 545), (-6500, 8), (-5097, -7), and several Cinder Row lane pairs (WHT.PLR + BLK.WOD) at x 720…840, z 500…550.
+
+**Looked at and deferred:**
+- Cinder Row lanes (720…840, 500…550): this is `slum.js`, which open PR #97 rewrites; I do not stack a change on it. Earlier finding stands: mostly lane surfaces vs polygon-offset grime decals, better fixed in the audit than by moving lanes.
+- Still open: glass/plastic at (1157, 545); far-region floors at (-5097, -7) and (-6500, 8); road paint at (-320, -808), (277, 702), (243, 702); the audit false positives (248, -710), (668, -953); the unused karting kerb texture.
+
 ## 2026-11-20 — Anthos Bay: the wet sand, the surf and the towels no longer flicker through each other
 
 **Decision:** In `resort-beach.js` (Anthos Bay, merged today in #64/#65) three flat layers along the shoreline were stacked only 4–6 mm apart: the dry sand (top `SAND` = 0.065), the wet-sand edge (`SAND + 0.004`), and both the surf foam and the beach towels (`SAND + 0.01`). With the camera's 0.1–1000 depth range that is below depth precision from roughly 100 m out, so the strip z-fought with the sand and the towels with the wet edge. The layers are now 1 cm apart: wet sand `SAND + 0.01`, foam `SAND + 0.02`, towels `SAND + 0.03`.

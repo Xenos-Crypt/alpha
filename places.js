@@ -141,7 +141,9 @@ export function buildPlaces(ctx) {
   }
   sign('PRODUCE    GROCERIES    HOUSEHOLD', 590, 3.8, -79, 18);
   desk(590, -53, 'Pay at the checkout: buy groceries', ctx.buyGroceries);
-  parking(590, -29, 44);
+  // Car park starts where the 12 m entrance path ends (z -37), as at the police HQ; at z -29 it ran 1 m
+  // under the path and the two flickered through each other.
+  parking(590, -28, 44);
 
   const mall = room('ASHFORD GALLERIA', 625, 55, 70, 44, 0xd8d0c4, 8);
   for (const x of [600, 616, 634, 650]) {
