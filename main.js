@@ -6485,9 +6485,9 @@ function resolveInteractTarget() {
   if (inCivicInterior) {
     // Inside a home, shop or office you leave through the front door; elsewhere in the
     // building E uses whatever you're standing next to (bed, fridge, till...).
-    if (interiors.active) { const s = interiors.nearest(player.position); return s ? { label: s.label, action: s.action } : null; }
+    if (interiors.active) { const s = interiors.nearest(player.position); return s ? asTarget(s) : null; }
     const desk = nearestInteractable();   // e.g. the civic hall's reception counter
-    if (desk) return { label: desk.label, action: desk.action };
+    if (desk) return asTarget(desk);
     return { label: 'Leave', action: leaveCivicBuilding };
   }
   if (dungeon) return nearExitPortal() ? { label: dungeon.cleared ? 'Leave the dungeon' : 'Escape (no reward)', action: leaveDungeonFade } : null;
@@ -6495,11 +6495,11 @@ function resolveInteractTarget() {
   const stoppedBus = !inCar && vehicles.find(b => b.kind === 'bus' && b.ai && b.ai.stopped && !b.disabled && distXZ(b.group.position, player.position) < 6.5);
   if (stoppedBus) return { label: 'Board the bus (2 gold)', action: () => boardBus(stoppedBus) };
   const service = nearestInteractable();
-  if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return {label:service.label,action:service.action};
-  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway') || /^(Take the lift|Board the intercity|Next intercity|Board the bus|Licensing|Talk to|Buy |Play |Use the vending)/.test(service.label))) return { label: service.label, action: service.action };
+  if(service&&/^(Talk to|Use Northhaven|Read strategic|Board .*taxi|Board .*city bus|Visit .*dealership|Visit .*tourist office|Speak to hidden quest master|Speak to Technocrat|Speak to Scientist|Speak to Bureaucrat|Speak to Trader|Speak to Theologian|Speak to Sufi|Speak to Teacher|Speak to Imam|Speak to Christian|Speak to Hindu|Speak to Buddhist|Speak to Rabbi|Speak to Engineer|Speak to Doctor|Speak to Tour guide)/.test(service.label))return asTarget(service);
+  if (service && (player.position.x > 350 || player.position.x < -350 || service.label === 'Open town travel board' || service.label.startsWith('Board ') || service.label === 'Adopt companion dog' || service.label === 'Claim special training ability' || service.label.startsWith('Enter sewer manhole') || service.label.startsWith('Enter subway') || /^(Take the lift|Board the intercity|Next intercity|Board the bus|Licensing|Talk to|Buy |Play |Use the vending)/.test(service.label))) return asTarget(service);
   // Standing right at a counter, screen or person: use it, even if a door or a parked car is also in reach.
-  if (service && distXZ(player.position, service.pos) < 1.6) return { label: service.label, action: service.action };
-  if (service?.priority) return { label: service.label, action: service.action };   // rides, stalls, courts, kiosks...
+  if (service && distXZ(player.position, service.pos) < 1.6) return asTarget(service);
+  if (service?.priority) return asTarget(service);   // rides, stalls, courts, kiosks...
   // Inside a subway stairwell, E shouldn't open a nearby building instead.
   const inStairwell = metro?.entrances?.groundAt(player.position.x, player.position.z) != null;
   const cb = inStairwell || player.position.y > 3 ? null : nearestCivicBuilding();   // not from a rooftop or mountain
@@ -6514,7 +6514,7 @@ function resolveInteractTarget() {
     return { label, action: () => enterVehicle(v) };
   }
   const it = nearestInteractable();
-  return it ? { label: it.label, action: it.action } : null;
+  return it ? asTarget(it) : null;   // anything can offer a menu of actions
 }
 // The action menu: E on something with several things to do opens a list (and pauses the game); see action-menu.js
 let menuPaused = false;
@@ -6526,6 +6526,7 @@ function interact() {
   if (t.actions) actionMenu.open(t.title || t.label, t.actions()); else t.action();
 }
 // Several things to do: the prompt says how many, and E opens the menu
+const asTarget = it => it.actions ? withMenu(it.title || it.label, it.actions) : { label: it.label, action: it.action };   // anything in the world can offer a menu
 const withMenu = (title, actions) => { const list = actions(); return list.length === 1 && !list[0].gauge ? { label: list[0].label, action: list[0].run } : { title, label: `${title}  ·  ${list.length} options`, actions }; };
 
 // =====================================================================

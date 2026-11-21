@@ -5,7 +5,7 @@
 // Walk out without paying and the alarm goes off: you keep the shopping, but the police are called.
 // Everything you buy goes into your kitchen at home, ready to cook (see kitchen.js).
 import * as THREE from 'three';
-import { AISLES } from './kitchen.js';
+import { AISLES, INGREDIENTS } from './kitchen.js';
 import { floorMaterial } from './floor-textures.js';
 
 export const SUPERSTORE = { x0: 36, x1: 72, z0: -242, z1: -198, door: -220 };   // the doors face west, onto the North Road
@@ -17,6 +17,24 @@ export function buildSupermarket(ctx) {
   const mat = (c, o = {}) => { const k = c + JSON.stringify(o); if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.75, metalness: o.metal ?? 0, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1, map: o.map ?? null, transparent: o.opacity != null, opacity: o.opacity ?? 1 })); return mats.get(k); };
   const B = (x0, x1, y0, y1, z0, z1, c, solid = false, o) => { const m = new THREE.Mesh(boxGeo, c instanceof THREE.Material ? c : mat(c, o)); m.scale.set(x1 - x0, y1 - y0, z1 - z0); m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); m.castShadow = y1 - y0 > 0.4; m.receiveShadow = true; scene.add(m); if (solid) colliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) }); return m; };
   const label = (text, x, y, z, ry, w = 4, bg = '#0f5132', fg = '#ffffff') => { const t = makeTex(512, 128, g => { g.fillStyle = bg; g.fillRect(0, 0, 512, 128); g.fillStyle = fg; g.font = 'bold 56px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 66, 490); }); const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 4), new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide })); m.position.set(x, y, z); m.rotation.y = ry; scene.add(m); return m; };
+  // a shelf, counter or chiller: E opens the action menu (main.js): take things into your basket, read the price
+  // labels, or slip one thing into your pocket. Pocketed things never reach the till or the gate alarm, but staff
+  // and other shoppers can see you do it.
+  const ING = Object.fromEntries(INGREDIENTS.map(i => [i.id, i]));
+  const shelf = (x, z, r, title, ids, open) => interactables.push({ pos: new THREE.Vector3(x, 0, z), r, label: title, title, actions: () => {
+    const items = ids.map(id => ING[id]).filter(Boolean);
+    return [
+      { label: 'Take things into your basket', run: open },
+      { label: 'Read the price labels', run: () => ctx.toast('🏷️ ' + items.map(i => `${i.icon} ${i.name} ${i.price}g`).join(' · ')) },
+      { label: 'Slip something into your pocket (steal)', note: 'Staff and shoppers might see', run: () => pocket(items) },
+    ];
+  } });
+  function pocket(items) {
+    const i = items[Math.floor(Math.random() * items.length)], k = kitchen();
+    if (Math.random() < 0.35) { ctx.toast(`👁️ A shop assistant saw you pocket the ${i.name.toLowerCase()}! "Oi! Put that back!" They've called it in.`); ctx.onShoplift?.(i.price * 3); return; }
+    if (k?.pantry) k.pantry[i.id] = (k.pantry[i.id] || 0) + 1;
+    ctx.toast(`${i.icon} The ${i.name.toLowerCase()} goes into your pocket. Nobody noticed... this time. (It'll be in your kitchen.)`);
+  }
   const spot = (x, z, r, text, action) => { const it = { pos: new THREE.Vector3(x, 0, z), r, action }; if (typeof text === 'function') Object.defineProperty(it, 'label', { get: text, enumerable: true }); else it.label = text; interactables.push(it); };
 
   // ---- car park ----
@@ -47,7 +65,7 @@ export function buildSupermarket(ctx) {
   const veg = [0xd94f3d, 0xf2c14e, 0x5bb36a, 0xe67e22, 0x8e44ad, 0x2ecc71];
   for (let i = 0; i < 3; i++) { const x = S.x0 + 6.5 + i * 3.2, z = S.z0 + 4; B(x - 1.2, x + 1.2, 0, 0.8, z - 0.9, z + 0.9, 0x8a6440, true); for (let k = 0; k < 4; k++) B(x - 1.1 + k * 0.55, x - 0.6 + k * 0.55, 0.8, 0.95, z - 0.8, z + 0.8, veg[(i * 4 + k) % veg.length]); }
   label('FRUIT & VEG', S.x0 + 9.7, 3.6, S.z0 + 4, 0, 4.5);
-  spot(S.x0 + 9.7, S.z0 + 6, 2.4, 'Shop fruit and veg', () => kitchen().openShelf('Fruit and veg', AISLES[0].items));
+  shelf(S.x0 + 9.7, S.z0 + 6, 2.4, 'Fruit and veg', AISLES[0].items, () => kitchen().openShelf('Fruit and veg', AISLES[0].items));
   // ---- aisles (shelving running away from the door) ----
   const stock = [0xc0392b, 0xf39c12, 0x27ae60, 0x2980b9, 0x8e44ad, 0xecf0f1, 0xd35400, 0x16a085];
   // The aisles stand at negative z (the store is north of the centre), so the raw sum below is mostly
@@ -62,24 +80,30 @@ export function buildSupermarket(ctx) {
   [AISLES[1], AISLES[2], AISLES[3], { name: 'Household', icon: '🧽', items: null }].forEach((a, i) => {
     const z = aisleZ[i]; label(`${i + 1}  ${a.name.toUpperCase()}`, ax0 - 0.2, 4.2, z, -Math.PI / 2, 4.2, '#ffd23f', '#0f5132');
     B(ax0 - 0.25, ax0 - 0.2, 4.2, H - 0.05, z - 0.02, z + 0.02, 0x555555);
-    if (a.items) spot(ax0 + 3, z, 2.2, `Take from the ${a.name.toLowerCase()} aisle`, () => kitchen().openShelf(a.name, a.items));
+    if (a.items) shelf(ax0 + 3, z, 2.2, `The ${a.name.toLowerCase()} aisle`, a.items, () => kitchen().openShelf(a.name, a.items));
     else spot(ax0 + 3, z, 2.2, 'Browse household goods', () => ctx.toast('🧽 Washing-up liquid, sponges, bin bags, light bulbs... you have all that at home already.'));
   });
   // ---- chillers along the back, bakery counter in the corner ----
   for (let z = S.z0 + 2; z < S.z1 - 2; z += 3.2) { B(S.x1 - 1.1, S.x1 - 0.05, 0, 2.1, z, z + 3, 0x2b3036, true); for (let k = 0; k < 4; k++) B(S.x1 - 1.13, S.x1 - 1.1, 0.35 + k * 0.42, 0.6 + k * 0.42, z + 0.1, z + 2.9, mat(0xbfe9ff, { emissive: 0x9fdcff, ei: 0.6, opacity: 0.7 })); }
   label('CHILLED · DAIRY · MEAT', S.x1 - 0.2, 3.4, cz, -Math.PI / 2, 6);
-  spot(S.x1 - 2, cz, 2.2, 'Take from the chillers', () => kitchen().openShelf('Chilled', ['milk', 'butter', 'cheese', 'eggs', 'bacon', 'chicken', 'beef', 'fish']));
+  { const ch = ['milk', 'butter', 'cheese', 'eggs', 'bacon', 'chicken', 'beef', 'fish']; shelf(S.x1 - 2, cz, 2.2, 'The chillers', ch, () => kitchen().openShelf('Chilled', ch)); }
   B(S.x0 + 6, S.x0 + 12, 0, 1.1, S.z1 - 3.5, S.z1 - 2.5, 0xd8c3a5, true); B(S.x0 + 6, S.x0 + 12, 1.1, 1.6, S.z1 - 3.5, S.z1 - 2.5, mat(0xfff4e0, { opacity: 0.4 }));
   for (let i = 0; i < 8; i++) B(S.x0 + 6.3 + i * 0.7, S.x0 + 6.8 + i * 0.7, 1.12, 1.3, S.z1 - 3.3, S.z1 - 2.7, 0xc68642);
   label('BAKERY', S.x0 + 9, 3.2, S.z1 - 0.4, Math.PI, 3.6, '#8a5a2b');
-  spot(S.x0 + 9, S.z1 - 5, 2.2, 'Take from the bakery', () => kitchen().openShelf('Bakery', ['bread', 'flour', 'eggs', 'butter']));
+  { const bk = ['bread', 'flour', 'eggs', 'butter']; shelf(S.x0 + 9, S.z1 - 5, 2.2, 'The bakery counter', bk, () => kitchen().openShelf('Bakery', bk)); }
   // ---- checkouts by the door ----
   const tills = [cz - 8, cz - 3, cz + 3];
   for (const z of tills) {
     B(S.x0 + 5, S.x0 + 9, 0, 0.95, z - 0.45, z + 0.45, 0x2f4f6f, true); B(S.x0 + 5.2, S.x0 + 8, 0.95, 0.97, z - 0.3, z + 0.3, 0x1a1a1a);
     B(S.x0 + 8.4, S.x0 + 8.8, 0.95, 1.3, z - 0.2, z + 0.2, 0x333333); B(S.x0 + 9.1, S.x0 + 9.2, 0, 1.9, z + 0.5, z + 0.6, 0x555555);
     const num = label(`${tills.indexOf(z) + 1}`, S.x0 + 9.15, 2.1, z + 0.55, -Math.PI / 2, 0.8, '#ffd23f', '#0f5132'); void num;
-    spot(S.x0 + 7, z - 1.0, 1.6, () => kitchen()?.basketCount ? `Pay at the till (${kitchen().basketCount} items, ${kitchen().basketValue} gold)` : 'Till: your basket is empty', () => kitchen().openTill('Westhaven Superstore'));
+    interactables.push({ pos: new THREE.Vector3(S.x0 + 7, 0, z - 1.0), r: 1.6, title: 'The till', get label() { return 'The till'; }, actions: () => {
+      const k = kitchen(), n = k?.basketCount || 0;
+      return [
+        { label: n ? `Pay for your basket (${n} items, ${k.basketValue} gold)` : 'Pay (your basket is empty)', disabled: !n, run: () => k.openTill('Westhaven Superstore') },
+        { label: 'Chat with the cashier', run: () => ctx.toast(['🧑‍💼 "Busy one today. Everyone\'s stocking up."', '🧑‍💼 "Do you need a bag? Five pence."', '🧑‍💼 "The bread\'s half price after six, love."', '🧑‍💼 "Card or gold? We only take gold. Obviously."'][Math.floor(Math.random() * 4)]) },
+      ];
+    } });
   }
   // ---- people: cashiers and shoppers ----
   const people = [];
