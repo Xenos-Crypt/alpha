@@ -21,6 +21,15 @@ export const STIMS = [
   { name: 'Blue Lotus', icon: '🪷', price: 30, instant: { energy: 100 }, comedown: { hp: -15 }, desc: 'Full energy at once. Comedown: −15 health' },
 ];
 
+// Lock tools sold by Ink. One opens car locks, the other house and flat doors (two separate tools).
+export const TOOLS = [
+  { name: 'Car Master Key', icon: '🗝️', price: 180, desc: 'Opens a locked car door if your hands are quick enough' },
+  { name: 'Door Master', icon: '🔑', price: 140, desc: 'Picks the lock of a house or flat door' },
+];
+const tools = (() => { try { return new Set(JSON.parse(localStorage.getItem('aw-tools') || '[]')); } catch { return new Set(); } })();
+const saveTools = () => { try { localStorage.setItem('aw-tools', JSON.stringify([...tools])); } catch { } };
+export const hasTool = name => tools.has(name);
+
 export function buildBlackMarket({ openVehicleShop, openPropertyShop, forgeLicence, hasLicence, scene, colliders, interactables, sitSpots, makePerson, animatePerson, makeTex, groundY, toast, openMenu, raiseWanted, stats, destinations }) {
   const { x: CX, z: CZ } = NARROWS, Y = groundY(CX, CZ);
   const mats = new Map();
@@ -99,7 +108,8 @@ export function buildBlackMarket({ openVehicleShop, openPropertyShop, forgeLicen
   const FAKES = [['driving', 'Fake driving licence', '🚗', 250], ['firearms', 'Fake firearms licence', '🔫', 220], ['pilot', 'Fake pilot licence', '✈️', 400], ['boat', 'Fake boat licence', '⛵', 120], ['motorbike', 'Fake motorbike licence', '🏍️', 110], ['business', 'Fake trading licence', '🏪', 160]];
   const fakeItems = FAKES.map(([id, name, icon, price]) => ({ name, icon, price, desc: 'Instant, no test. Police or clerks may spot it.', owned: () => !!hasLicence?.(id), onBuy: s => { if (stats.gold < s.price) return false; forgeLicence?.(id); toast(`${icon} ${name}: it looks perfect. Mostly. Don't hand it to anyone who checks properly.`); risk(0.1, 'forged documents'); } }));
   const forger = [...fakeItems, { name: 'Clean record (fake papers)', icon: '📄', price: 150, desc: 'Wipes your wanted level', onBuy: s => { if (stats.gold < s.price) return false; window.dispatchEvent(new CustomEvent('aw-clear-wanted')); toast('📄 New papers, new face. The police lose interest in you.'); } },
-    { name: 'Hot-wire kit', icon: '🔧', price: 80, desc: 'Lockpicks and a scanner. (For show. Mostly.)', onBuy: s => { if (stats.gold < s.price) return false; toast('🔧 A hot-wire kit. You feel like a criminal mastermind.'); risk(0.1, 'stolen gear'); } }];
+    // break-in tools: kept for good (saved on this device). Each one beats its own kind of lock: see action-menu.js
+    ...TOOLS.map(t => ({ ...t, owned: () => tools.has(t.name), onBuy: s => { if (stats.gold < s.price || tools.has(s.name)) return false; tools.add(s.name); saveTools(); toast(`${s.icon} You buy a ${s.name}. ${s.desc}.`); risk(0.12, 'stolen gear'); } }))];
   stall(CX + 6, CZ - 10, -Math.PI / 2, 0x1a1a3a); dealer(CX + 8.2, CZ - 10, -Math.PI / 2, 0x2a2a4a, 'Talk to Ink (forged licences and papers)', () => openMenu('Ink the forger', forger));
   // Razor's chop shop: stolen cars and bikes, re-sprayed with fake plates, about half price.
   stall(CX - 6, CZ + 14, Math.PI / 2, 0x2a2a2a); dealer(CX - 8.2, CZ + 14, Math.PI / 2, 0x3a2a1a, "Talk to Razor (stolen vehicles, chop shop)", () => {

@@ -66,7 +66,8 @@ import {buildSkyCity} from './sky-city.js';
 import {buildDeepCity} from './deep-city.js';
 import {createSolidProps} from './solid-props.js';
 import {auditScene} from './world-grid.js';
-import {buildBlackMarket, NARROWS} from './black-market.js';
+import {buildBlackMarket, NARROWS, hasTool} from './black-market.js';
+import { createActionMenu } from './action-menu.js';
 import {buildMilitary, addNavyCrew} from './military.js';
 import {createConditions,conditionOf} from './condition.js';
 import {createLicences} from './licences.js';
@@ -2008,6 +2009,7 @@ const POSES = {
   dash:     { aL: [0.9, 0.25],  aR: [0.9, -0.25], lL: -0.4, lR: 0.7 },
   punchL:   { aL: [-1.6, -0.1], aR: [0.3, -0.1],  lL: 0.3,  lR: -0.3 },
   punchR:   { aL: [0.3, 0.1],   aR: [-1.6, 0.1],  lL: -0.3, lR: 0.3 },
+  pick:     { aL: [-0.85, -0.15], aR: [-1.05, 0.12], lL: 0, lR: 0 },   // working a lock with both hands
   uppercut: { aL: [0.4, 0.2],   aR: [-3.0, 0],    lL: 0.5,  lR: -0.6 },
   cast:     { aL: [-1.5, -0.25], aR: [-1.5, 0.25], lL: 0.2, lR: -0.2 },
   slam:     { aL: [-2.9, 0.3],  aR: [-2.9, -0.3], lL: 0.6,  lR: 0.6 },
@@ -6334,6 +6336,37 @@ function raiseWanted(t = 45) {
   wanted = Math.max(wanted, t);
   policeLastSeen.copy(inCar && driving ? driving.group.position : player.position);
 }
+// ---- someone else's car: what you can do at it ----
+// A car with someone at the wheel: wave, knock on the window, or drag them out and take it. A parked car is locked
+// most of the time (decided once per car): unlocked, you just open the door (stealing it); locked, you look in,
+// work the lock with a Car Master Key (the lock gauge), or smash the window, which is loud and gets noticed.
+const CAR_LIKE = new Set(['car', 'police', 'ambulance', 'pickup', 'van', 'truck', 'suv', 'taxi']);
+const carTitle = (v, names) => { const n = names[v.kind] || v.kind; return carDriven(v) ? `The ${n} (someone's driving)` : `A parked ${n}` + (carLocked(v) ? ' (locked)' : ''); };
+const carDriven = v => !v.ai.parked && !!v.driver?.root?.visible;
+const carLocked = v => { if (v.locked == null) v.locked = v.kind === 'police' || Math.random() < 0.75; return v.locked; };
+function seenBy(radius = 22) { return peds.some(e => e.alive && !e.hidden && distXZ(e.root.position, player.position) < radius); }
+function carActions(v) {
+  const list = [];
+  if (carDriven(v)) {
+    const moving = Math.abs(v.speed) > 1;
+    list.push({ label: 'Wave to the driver', run: () => { toast(['🙋 The driver waves back.', '🙋 The driver gives you a puzzled look.', '🙋 The driver nods and drives on.', '📯 The driver honks at you.'][Math.floor(Math.random() * 4)]); } });
+    list.push({ label: 'Knock on the window', disabled: moving, note: moving ? 'The car is moving' : null, run: () => toast(['🚗 The window comes down an inch: "What do you want?"', '🚗 "Get away from my car!" The driver locks the doors.', '🚗 The driver ignores you and stares straight ahead.', '🚗 "You need directions?" the driver asks.'][Math.floor(Math.random() * 4)]) });
+    list.push({ label: `Drag the driver out (steal it)`, run: () => enterVehicle(v) });
+    return list;
+  }
+  if (!carLocked(v)) { list.push({ label: 'Open the door (steal it)', run: () => { if (seenBy()) raiseWanted(40); enterVehicle(v); } }); return list; }
+  list.push({ label: 'Look through the window', run: () => toast(['👀 Empty seats and a parking ticket on the dash.', '👀 A coat on the back seat. Nothing worth much.', '👀 Phone charger, sweet wrappers, a child\'s car seat.', '👀 Spotless inside. Someone loves this car.'][Math.floor(Math.random() * 4)]) });
+  const key = hasTool('Car Master Key');
+  list.push({ label: 'Open it with the Car Master Key', disabled: !key, note: key ? 'Tap the number fast to work the lock' : 'You need a Car Master Key (Ink, in the Narrows)',
+    gauge: key ? { title: 'Working the car lock', fill: 0.085, drain: 0.3, onStart: () => lockTool(true), onDone: () => { v.locked = false; lockTool(false); toast('🔓 Click. The lock gives.'); if (seenBy(18)) { raiseWanted(45); toast('👁️ Someone saw you break into that car.'); } enterVehicle(v); }, onCancel: () => { lockTool(false); toast('You give up on the lock.'); } } : null,
+    run: () => {} });
+  list.push({ label: 'Smash the window', note: 'Loud: anyone near will notice', run: () => { v.locked = false; burst(at(v.group.position, 1.2), 14, [0xcfe8ff, 0xffffff], 4, 0.05, 0.25, 6, 1); toast('💥 The glass shatters. The alarm starts wailing.'); if (seenBy(40)) raiseWanted(70); enterVehicle(v); } });
+  return list;
+}
+// the key in your hand (and the arms forward) while you work a lock
+const lockKey = new THREE.Group(); { const m = new THREE.MeshStandardMaterial({ color: 0xc9b26a, metalness: 0.7, roughness: 0.35 }); const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.09), m); shaft.position.z = 0.06; const bow = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.007, 6, 12), m); lockKey.add(shaft, bow); lockKey.visible = false; }
+P.armR.pivot.add(lockKey); lockKey.position.copy(P.armR.end.position); holdOnBody(lockKey, 'hand');
+function lockTool(on) { lockKey.visible = on; }
 function enterVehicle(v) {
   if(adventureServices?.parachuting){toast('Land before entering a vehicle.');return;}
   if(v.noSteal&&!v.stealable){toast('This is a display car. Buy it at the dealership instead.');return;}
@@ -6476,13 +6509,24 @@ function resolveInteractTarget() {
   const v = nearestVehicle();
   if (v) {
     const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', bicycle: 'bicycle', motorcycle: 'motorbike' };
+    if (v.ai && !v.stolen && !v.isTow && CAR_LIKE.has(v.kind)) return withMenu(carTitle(v, names), () => carActions(v));
     const label = v.isTow ? (v.company && !careers?.job?.tow ? 'Steal the recovery truck' : 'Drive the recovery truck') : v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' && !v.stolen ? 'Steal the ' : ['bicycle','motorcycle'].includes(v.kind) ? 'Ride the ' : 'Drive the ') + (names[v.kind] || v.kind);
     return { label, action: () => enterVehicle(v) };
   }
   const it = nearestInteractable();
   return it ? { label: it.label, action: it.action } : null;
 }
-function interact() { resolveInteractTarget()?.action(); }
+// The action menu: E on something with several things to do opens a list (and pauses the game); see action-menu.js
+let menuPaused = false;
+const actionMenu = createActionMenu({ onPauseChange: p => { menuPaused = p; for (const k in keys) keys[k] = false; } });
+
+function interact() {
+  if (actionMenu.picking) return;
+  const t = resolveInteractTarget(); if (!t) return;
+  if (t.actions) actionMenu.open(t.title || t.label, t.actions()); else t.action();
+}
+// Several things to do: the prompt says how many, and E opens the menu
+const withMenu = (title, actions) => { const list = actions(); return list.length === 1 && !list[0].gauge ? { label: list[0].label, action: list[0].run } : { title, label: `${title}  ·  ${list.length} options`, actions }; };
 
 // =====================================================================
 // CIVIC BUILDINGS: real police stations, hospitals, courthouses, libraries,
@@ -7088,6 +7132,7 @@ function setFreeMouse(on) {
 
 addEventListener('keydown', e => {
   if(e.target.closest?.('input,textarea,select,[contenteditable=true]'))return;
+  if (actionMenu.key(e)) { e.preventDefault(); return; }   // the action menu (and a lock you're working) takes the keys first
   if(e.code==='KeyP'&&!e.ctrlKey&&!e.metaKey){if(!e.repeat&&(locked||settingsOpen||hosting.open||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
   if(e.code==='KeyS'&&!e.ctrlKey&&!e.metaKey&&(controlPrefs.desktopMovement==='arrows'||e.shiftKey&&!inCar&&!navy?.rider)){if(!e.repeat&&(locked||settingsOpen||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
   const movement=movementKey(e.code,controlPrefs.desktopMovement);if(movement)keys[movement]=true;
@@ -7344,7 +7389,7 @@ function updatePlayer(dt) {
   }
   else if (player.position.y - floorY > 0.2) onGround = false;
 
-  const pose = action?.pose ?? (playerBlocking ? 'block' : playerStun > 0 ? 'stunned' : null);
+  const pose = action?.pose ?? (actionMenu.picking ? 'pick' : playerBlocking ? 'block' : playerStun > 0 ? 'stunned' : null);
   animateHumanoid(P, pose === 'slash' ? 'punchR' : pose, moving && canMove, sprinting, onGround, dt);
   if (pose === 'slash') P.armR.pivot.rotation.x = lerp(-2.8, -0.4, clamp(action.t / 0.18, 0, 1));
   P.rig.rotation.x = lerp(P.rig.rotation.x, playerStun > 0 ? -0.3 : 0, 1 - Math.exp(-15 * dt));
@@ -8124,7 +8169,7 @@ function updateHud(dt) {
   $('extra').style.display = $('extra').textContent.trim() ? '' : 'none';
 
   const interactTarget = resolveInteractTarget();
-  let prompt = interactTarget ? 'E: ' + interactTarget.label : '';
+  let prompt = interactTarget && !actionMenu.isOpen && !actionMenu.picking ? 'E: ' + interactTarget.label : '';
   $('prompt').textContent = mobileControls?.mobile ? prompt.replace(/^E:/, 'Interact:') : prompt;
   $('prompt').style.display = prompt ? 'block' : 'none';
 
@@ -8751,7 +8796,7 @@ function frame() {
   const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
   if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){const next=qualityGovernor.frame(optimiser.cpuHeavy?Math.min(frameMs,30):frameMs,gfxQuality);if(next)setGraphicsQuality(next,false);}   // steps down when slow, back up when there's room (never above what this device can handle)
   if(document.hidden&&!(onlinePlayReady&&hosting.room)){clock.getDelta();requestAnimationFrame(frame);return;}
-  const running=locked||(onlinePlayReady&&!!hosting.room);
+  const running=(locked||(onlinePlayReady&&!!hosting.room))&&!menuPaused;   // (the action menu pauses the game)
   const rawDt = Math.min(clock.getDelta(), 0.05);
   let dt = rawDt;
   optimiser.beginFrame(); const simStart = performance.now();
@@ -8846,7 +8891,7 @@ function frame() {
   perfBudget.update(rawDt, frameMs, running);
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
-  seatedResidents?.update(rawDt); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld();
+  seatedResidents?.update(rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld();
   let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
   optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);
