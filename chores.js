@@ -1,7 +1,7 @@
 // Chore mini-games: washing your hands, doing the laundry and washing up are now things you do,
 // step by step, not a one-line message.
-//   Wash your hands: tap on, wet, soap, scrub every part for 20 seconds (A/D or ←/→ in turn, or
-//     rub with the mouse), rinse, tap off, dry on the towel.
+//   Wash your hands: tap on, wet, pick up the sponge, soap it, scrub every part of both hands with it for
+//     20 seconds (drag it, or WASD), rinse, put the sponge back, tap off, dry on the towel.
 //   Laundry: sort each item into whites or colours, then for each load pick the temperature, measure
 //     the powder, let it spin, and peg everything out. A red sock in the whites turns them pink.
 //   Washing up: scrub the dirt off each plate with the sponge (mouse, or WASD), rinse and rack it.
@@ -71,15 +71,22 @@ export function createChores({ toast, pause, resume, done }) {
   const space = () => keys.Space || mouse.down;
 
   // ================= wash your hands =================
+  // With a sponge: pick it up from the side of the basin, soap it, then scrub each part of both hands with it (drag
+  // it over them with the mouse, or move it with WASD / the arrows) for at least 20 seconds, rinse, put the sponge
+  // back, tap off, dry.
   function handwash() {
-    const AREAS = ['Palms', 'Backs of hands', 'Between fingers', 'Thumbs', 'Fingertips & nails', 'Wrists'];
-    const st = { kind: 'handwash', title: '🧼 Wash your hands', i: 0, t: 0, hold: 0, pumps: 0, area: 0, strokes: 0, lastSide: 0, scrubT: 0, lather: 0, wet: 0, dry: 0, tap: false, tapT: 0, score: 100 };
+    const ZONES = [['Palms', 300, 168], ['Backs of hands', 262, 132], ['Between fingers', 300, 100], ['Thumbs', 338, 132], ['Fingertips & nails', 300, 82], ['Wrists', 300, 200]];
+    const st = { kind: 'handwash', title: '🧼 Wash your hands', i: 0, t: 0, hold: 0, pumps: 0, scrubT: 0, lather: 0, wet: 0, dry: 0, tap: false, tapT: 0, score: 100,
+      zones: ZONES.map(([name, x, y]) => ({ name, x, y, done: 0 })), sponge: { x: 120, y: 190, held: false }, lastSide: 0 };
+    const REST = { x: 120, y: 190 };
     const steps = [
       ['Turn the tap on', 'Press Space or click the tap'],
       ['Wet your hands', 'Hold Space (or hold the mouse) under the water'],
-      ['Pump the soap', 'Press Space twice'],
-      ['Scrub, for at least 20 seconds', 'Rub your hands: A and D (or ← →) in turn, or drag the mouse left and right'],
+      ['Pick up the sponge', 'Press Space or click the sponge on the side of the basin'],
+      ['Soap the sponge', 'Press Space twice (two pumps of soap)'],
+      ['Scrub every part with the sponge, at least 20 seconds', 'Drag the sponge over your hands (or move it with WASD / arrows)'],
       ['Rinse the soap off', 'Hold Space under the water'],
+      ['Put the sponge back', 'Press Space or click the side of the basin'],
       ['Turn the tap off', 'Press Space or click the tap'],
       ['Dry your hands on the towel', 'Rub: A and D in turn, or drag the mouse'],
     ];
@@ -87,45 +94,65 @@ export function createChores({ toast, pause, resume, done }) {
     const rub = code => { const side = /KeyA|ArrowLeft/.test(code) ? -1 : /KeyD|ArrowRight/.test(code) ? 1 : 0; if (side && side !== st.lastSide) { st.lastSide = side; return true; } return false; };
     st.press = code => {
       if (st.i === 0 && code === 'Space') { st.tap = true; next(); }
-      else if (st.i === 2 && code === 'Space') { st.pumps++; if (st.pumps >= 2) next(); }
-      else if (st.i === 3 && rub(code)) stroke();
-      else if (st.i === 5 && code === 'Space') { st.tap = false; next(); }
-      else if (st.i === 6 && rub(code)) st.dry = Math.min(1, st.dry + 0.07);
+      else if (st.i === 2 && code === 'Space') { st.sponge.held = true; next(); }
+      else if (st.i === 3 && code === 'Space') { st.pumps++; if (st.pumps >= 2) { st.lather = 0.3; next(); } }
+      else if (st.i === 6 && code === 'Space') { st.sponge.held = false; Object.assign(st.sponge, REST); next(); }
+      else if (st.i === 7 && code === 'Space') { st.tap = false; next(); }
+      else if (st.i === 8 && rub(code)) st.dry = Math.min(1, st.dry + 0.07);
     };
-    st.click = (x, y) => { if (x > 330 && x < 420 && y < 90) { if (st.i === 0) { st.tap = true; next(); } else if (st.i === 5) { st.tap = false; next(); } } else if (st.i === 2) st.press('Space'); };
-    function stroke() { st.strokes++; st.lather = Math.min(1, st.lather + 0.04); if (st.strokes >= 8 * (st.area + 1) && st.area < AREAS.length) st.area++; }
+    st.click = (x, y) => {
+      if (x > 330 && x < 420 && y < 90 && (st.i === 0 || st.i === 7)) { st.tap = st.i === 0; next(); return; }
+      if (st.i === 2 && Math.hypot(x - REST.x, y - REST.y) < 45) { st.sponge.held = true; next(); return; }
+      if (st.i === 3) st.press('Space');
+      if (st.i === 6 && Math.hypot(x - REST.x, y - REST.y) < 60) st.press('Space');
+    };
     st.update = dt => {
       st.t += dt; if (st.tap) st.tapT += dt;
       const s = steps[Math.min(st.i, steps.length - 1)]; st.step = s[0]; st.hint = s[1];
+      const sp = st.sponge;
       if (st.i === 1) { if (space()) st.hold += dt; st.wet = Math.min(1, st.hold / 1.2); if (st.hold > 1.2) next(); }
-      if (st.i === 3) {
+      if (st.i === 4) {
         st.scrubT += dt;
-        if (Math.abs(mouse.dx) > 18) { const side = Math.sign(mouse.dx); if (side !== st.lastSide) { st.lastSide = side; stroke(); } }
-        st.hint = `${AREAS[Math.min(st.area, AREAS.length - 1)]} · ${Math.min(20, st.scrubT).toFixed(0)}/20 s`;
-        if (st.area >= AREAS.length && st.scrubT >= 20) next();
-        else if (st.area >= AREAS.length) st.hint = `Every part done. Keep going until 20 s: ${st.scrubT.toFixed(0)}/20`;
+        const v = 240 * dt; let moving = false;
+        if (keys.KeyA || keys.ArrowLeft) { sp.x -= v; moving = true; } if (keys.KeyD || keys.ArrowRight) { sp.x += v; moving = true; }
+        if (keys.KeyW || keys.ArrowUp) { sp.y -= v; moving = true; } if (keys.KeyS || keys.ArrowDown) { sp.y += v; moving = true; }
+        if (mouse.down) { sp.x = mouse.x; sp.y = mouse.y; if (mouse.moved > 0) moving = true; }
+        sp.x = Math.max(30, Math.min(490, sp.x)); sp.y = Math.max(30, Math.min(250, sp.y));
+        if (moving) st.rubbing = 0.25; st.rubbing = Math.max(0, (st.rubbing || 0) - dt);   // (a drag counts as scrubbing between mouse events too)
+        if (st.rubbing > 0) { st.lather = Math.min(1, st.lather + dt * 0.25); for (const z of st.zones) if (Math.hypot(z.x - sp.x, z.y - sp.y) < 36) z.done = Math.min(1, z.done + dt * 0.6); }
+        const left = st.zones.filter(z => z.done < 1);
+        st.hint = left.length ? `Scrub: ${left.map(z => z.name.toLowerCase()).join(', ')} · ${Math.min(20, st.scrubT).toFixed(0)}/20 s` : `Every part done. Keep going until 20 s: ${st.scrubT.toFixed(0)}/20`;
+        if (!left.length && st.scrubT >= 20) next();
       }
-      if (st.i === 4) { if (space()) st.hold += dt; st.lather = Math.max(0, 1 - st.hold / 2); if (st.hold > 2) next(); }
-      if (st.i === 6) { if (Math.abs(mouse.dx) > 18) { const side = Math.sign(mouse.dx); if (side !== st.lastSide) { st.lastSide = side; st.dry = Math.min(1, st.dry + 0.07); } } if (st.dry >= 1) { st.i++; } }
-      st.progress = Math.min(1, (st.i + (st.i === 3 ? Math.min(st.area / AREAS.length, st.scrubT / 20) : 0)) / steps.length);
-      st.parts = st.i >= 3 ? AREAS.map((a, k) => (k < st.area ? '✓' : '·')).join(' ') : '';
-      if (st.i >= steps.length) { st.score = Math.max(40, 100 - Math.max(0, st.tapT - 40) * 2); st.step = 'Clean hands ✓'; st.hint = ''; return 'done'; }
+      if (st.i === 5) { if (space()) st.hold += dt; st.lather = Math.max(0, 1 - st.hold / 2); if (st.hold > 2) next(); }
+      if (st.i === 8) { if (Math.abs(mouse.dx) > 18) { const side = Math.sign(mouse.dx); if (side !== st.lastSide) { st.lastSide = side; st.dry = Math.min(1, st.dry + 0.07); } } if (st.dry >= 1) { st.i++; } }
+      if (sp.held && st.i !== 4) { sp.x += (300 - sp.x) * Math.min(1, dt * 6); sp.y += (232 - sp.y) * Math.min(1, dt * 6); }   // in your hand under the tap
+      mouse.moved = 0;
+      const zoneShare = st.zones.reduce((a, z) => a + z.done, 0) / st.zones.length;
+      st.progress = Math.min(1, (st.i + (st.i === 4 ? Math.min(zoneShare, st.scrubT / 20) : 0)) / steps.length);
+      st.parts = st.i >= 4 ? st.zones.map(z => (z.done >= 1 ? '✓' : '·')).join(' ') : '';
+      if (st.i >= steps.length) { st.score = Math.max(40, 100 - Math.max(0, st.tapT - 55) * 2); st.step = 'Clean hands ✓'; st.hint = ''; return 'done'; }
     };
     st.draw = g => {
       rr(60, 170, 400, 90, 18, '#dfe6ea'); rr(90, 180, 340, 60, 26, '#b8c6cf');               // basin
       rr(350, 40, 24, 60, 6, '#c0c6cc'); rr(330, 34, 80, 16, 8, '#c0c6cc'); rr(390, 26, 22, 12, 4, st.tap ? '#4aa3ff' : '#e05050');   // tap and handle
       if (st.tap) { g.fillStyle = 'rgba(120,190,255,.7)'; g.fillRect(356, 100, 12, 110); }
       rr(450, 120, 26, 50, 6, '#79c2a1'); rr(456, 110, 14, 12, 3, '#555');                    // soap pump
-      if (st.i >= 6) { rr(40, 40, 70, 110, 8, '#c9a77a'); text('towel', 75, 100, '#fff', '12px system-ui'); }
-      const rubX = Math.sin(st.t * (st.i === 3 || st.i === 6 ? 14 : 2)) * (st.i === 3 || st.i === 6 ? 14 : 2), wet = st.wet > 0 && st.dry < 1;
+      rr(REST.x - 34, REST.y + 12, 68, 8, 3, '#c9d1d6');                                     // the sponge's spot on the basin edge
+      if (st.i >= 8) { rr(40, 40, 70, 110, 8, '#c9a77a'); text('towel', 75, 100, '#fff', '12px system-ui'); }
+      const scrub = st.i === 4, rubX = st.i === 8 ? Math.sin(st.t * 14) * 14 : 0, wet = st.wet > 0 && st.dry < 1;
       for (const s of [-1, 1]) {
-        const hx = (st.i === 6 ? 120 : 300) + s * (28 + (st.i === 3 ? 0 : 6)) + rubX * s * 0.5, hy = 150;
+        const hx = (st.i === 8 ? 120 : 300) + s * 34 + rubX * s * 0.5, hy = 150;
         g.save(); g.translate(hx, hy); g.rotate(s * 0.25); rr(-26, -40, 52, 78, 22, '#d9a07a'); for (let f = 0; f < 4; f++) rr(-22 + f * 12, -66, 10, 30, 5, '#d9a07a'); rr(s * 22 - 6, -30, 12, 30, 6, '#d9a07a'); g.restore();
         if (wet) { g.fillStyle = 'rgba(140,200,255,.35)'; g.fillRect(hx - 28, hy - 60, 56, 100); }
       }
+      if (scrub) for (const z of st.zones) { g.globalAlpha = 0.85; circ(z.x, z.y, 7, z.done >= 1 ? '#3ddc97' : `rgba(255,210,63,${0.4 + 0.6 * (1 - z.done)})`); g.globalAlpha = 1; }
       for (let k = 0; k < st.lather * 40; k++) { const a = k * 2.4 + st.t * 0.6; circ(300 + Math.cos(a) * (20 + (k % 7) * 7), 140 + Math.sin(a * 1.3) * 34, 5 + (k % 4) * 2, 'rgba(255,255,255,.85)'); }
-      if (st.i === 2) text(`soap ${st.pumps}/2`, 463, 190, '#ffd23f');
-      if (st.i === 3) { g.fillStyle = '#3a424c'; g.fillRect(20, 20, 200, 10); g.fillStyle = '#3ddc97'; g.fillRect(20, 20, 200 * Math.min(1, st.scrubT / 20), 10); text('20 seconds', 120, 46, '#aab4bf', '12px system-ui'); }
+      const sp = st.sponge, wob = scrub ? Math.sin(st.t * 20) * 2 : 0;   // the sponge: yellow foam with a green scourer
+      rr(sp.x - 24 + wob, sp.y - 14, 48, 28, 6, '#f7d046'); rr(sp.x - 24 + wob, sp.y + 6, 48, 8, 3, '#2e8b57');
+      if (st.pumps && st.i >= 3 && st.i <= 5) for (let k = 0; k < 6; k++) circ(sp.x - 18 + k * 7 + wob, sp.y - 16 - (k % 2) * 4, 4, 'rgba(255,255,255,.9)');
+      if (st.i === 3) text(`soap ${st.pumps}/2`, 463, 190, '#ffd23f');
+      if (scrub) { g.fillStyle = '#3a424c'; g.fillRect(20, 20, 200, 10); g.fillStyle = '#3ddc97'; g.fillRect(20, 20, 200 * Math.min(1, st.scrubT / 20), 10); text('20 seconds', 120, 46, '#aab4bf', '12px system-ui'); }
     };
     return st;
   }
