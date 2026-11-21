@@ -1,4 +1,4 @@
-import { createPeople } from './people.js';
+import { createPeople, makeLook, HAIR_STYLES, HAIR_COLOURS } from './people.js';
 import { createSeatedResidents } from './seated-residents.js';
 import { createBankPanel } from './bank-panel.js';
 import {buildWorldExpansion,insideExclusionZone} from './world-expansion.js';
@@ -1924,17 +1924,20 @@ const people = createPeople({
   camera: () => camera,
   lookOf: h => { if (h.citizen) return h.citizen; if (!society) return null; if (h.pedE === undefined) h.pedE = peds.find(e => e.h === h) || null; return h.pedE ? society.citizenOf(h.pedE) : null; },
   babyOf: c => seatedResidents?.babyOf(c) || null,
-  budget: () => Math.round(({ low: 8, medium: 14, high: 22, ultra: 30 }[gfxQuality] ?? 14) * (matchMedia('(pointer: coarse)').matches ? .7 : 1) * optimiser.crowd),
+  budget: () => Math.round(({ low: 10, medium: 18, high: 28, ultra: 40 }[gfxQuality] ?? 18) * (matchMedia('(pointer: coarse)').matches ? .7 : 1) * optimiser.crowd),
+  near: () => ({ low: 45, medium: 70, high: 95, ultra: 125 }[gfxQuality] ?? 70) * (0.6 + 0.4 * optimiser.crowd),   // how far away people still have real bodies
 });
 // The people nearest the camera get real human bodies (people.js): ordinary slim builds in everyday clothes.
 // Further away, and for heroes and monsters, the simple figures stand in. (false switches the real bodies off.)
 const REAL_BODIES = true;
 function makeHumanoid(opts) {
-  const h = makeHumanoidFigure(opts);
+  // people who get real bodies close up wear the slim, plain version of the simple figure further away, so the
+  // change at a distance is hard to see (same build, same clothes, no cartoon face)
+  const h = makeHumanoidFigure(REAL_BODIES && opts.real !== false ? { ...opts, slim: true } : opts);
   if (REAL_BODIES && opts.real !== false) people.adopt(h, opts);
   return h;
 }
-function makeHumanoidFigure({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes = 0x1b1b2f, handScale = 1, child = false }) {
+function makeHumanoidFigure({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, shoes = 0x1b1b2f, handScale = 1, child = false, slim = false }) {
   const root = new THREE.Group();
   scene.add(root);
   const rig = new THREE.Group();
@@ -1942,6 +1945,7 @@ function makeHumanoidFigure({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, s
   root.add(rig);
   const mats = { outfit: stdMat(outfit), hair: stdMat(hair), skin: stdMat(skin), pants: stdMat(pants), dark: stdMat(shoes) };
 
+  if (slim) return slimFigure(root, rig, mats, child);
   mesh(new THREE.CapsuleGeometry(0.21, 0.4, 4, 12), mats.outfit, rig).position.y = 1.27;
   mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.08, 14), 0x3b2a1e, rig).position.y = 1.02;
   // Face: the old hair sphere (0.265) was bigger than the head itself (0.24) and
@@ -1973,6 +1977,32 @@ function makeHumanoidFigure({ outfit, hair, skin = 0xffdcc0, pants = 0x2d3142, s
   return { root, rig, legL, legR, armL, armR, mats, flashMats: Object.values(mats), phase: 0 };
 }
 
+// The far-away look of a real person: an ordinary slim build in the same clothes, shoulders narrower than the
+// hero figure, a plain head with hair and no drawn-on face (from a distance a face is a skin-coloured oval).
+const SLIM = {
+  chest: new THREE.CapsuleGeometry(0.16, 0.36, 4, 10), hips: new THREE.CapsuleGeometry(0.15, 0.08, 4, 10), neck: new THREE.CylinderGeometry(0.055, 0.06, 0.12, 8),
+  head: new THREE.SphereGeometry(0.115, 14, 10).scale(1, 1.2, 1.05), hair: new THREE.SphereGeometry(0.12, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(1, 1.15, 1.08),
+  arm: new THREE.CapsuleGeometry(0.048, 0.5, 4, 8), leg: new THREE.CapsuleGeometry(0.07, 0.68, 4, 8), hand: new THREE.SphereGeometry(0.045, 8, 6), shoe: new THREE.BoxGeometry(0.1, 0.07, 0.24),
+};
+function slimFigure(root, rig, mats, child) {
+  // (the rig is .9 scale, so these sizes are about 10% bigger than the real body's)
+  mesh(SLIM.chest, mats.outfit, rig).position.y = 1.33;
+  mesh(SLIM.hips, mats.pants, rig).position.y = 1.03;
+  mesh(SLIM.neck, mats.skin, rig).position.y = 1.67;
+  mesh(SLIM.head, mats.skin, rig).position.y = 1.84;
+  mesh(SLIM.hair, mats.hair, rig).position.set(0, 1.875, -0.012);
+  function limb(x, y, len, geo, mat, endMat, endGeo) {
+    const pivot = new THREE.Group(); pivot.position.set(x, y, 0); rig.add(pivot);
+    mesh(geo, mat, pivot).position.y = -len / 2;
+    const end = mesh(endGeo, endMat, pivot); end.position.y = -len - 0.04;
+    return { pivot, end };
+  }
+  const legL = limb(0.085, 1.0, 0.86, SLIM.leg, mats.pants, mats.dark, SLIM.shoe), legR = limb(-0.085, 1.0, 0.86, SLIM.leg, mats.pants, mats.dark, SLIM.shoe);
+  legL.end.position.z = legR.end.position.z = 0.04;
+  const armL = limb(0.22, 1.56, 0.6, SLIM.arm, mats.outfit, mats.skin, SLIM.hand), armR = limb(-0.22, 1.56, 0.6, SLIM.arm, mats.outfit, mats.skin, SLIM.hand);
+  return { root, rig, legL, legR, armL, armR, mats, flashMats: Object.values(mats), phase: 0, slim: true };
+}
+
 // Poses: arm [x, z] rotations and leg x rotations. Arm x of -PI/2 points forward, -PI points up.
 const POSES = {
   dash:     { aL: [0.9, 0.25],  aR: [0.9, -0.25], lL: -0.4, lR: 0.7 },
@@ -1989,8 +2019,12 @@ const POSES = {
   phone:    { aL: [0.2, 0.1],   aR: [-2.3, 0.1],  lL: 0.1,  lR: -0.1 }, // recording or calling for help
   cpr:      { aL: [-1.1, 0.05], aR: [-1.1, -0.05], lL: -1.0, lR: -0.15 }, // kneeling over an injured bystander
 };
+const NO_AIM = new Set(['sit', 'phone', 'cpr', 'swim']);   // moves the body's own clips already show
+let playerHolding = () => false;                            // (set once the sword and gun exist)
 function animateHumanoid(h, pose, moving, sprinting, grounded, dt) {
   if (h.realOpts) people.want(h, pose, moving, sprinting, grounded);
+  // your real body's arms follow fighting moves, and the right arm follows a held sword or gun
+  if (h.realOpts?.always) h.realAim = pose && !NO_AIM.has(pose) ? 'both' : playerHolding() ? 'right' : null;
   const k = 1 - Math.exp(-22 * dt);
   h.phase += (moving ? (sprinting ? 14 : 9) : 0) * dt;
   const sw = moving && grounded && !pose ? Math.sin(h.phase) * (sprinting ? 0.9 : 0.6) : 0;
@@ -2087,7 +2121,17 @@ let unlockedCharIndices = [0, 1]; // the primary/secondary pair chosen at class 
 // =====================================================================
 // PLAYER
 // =====================================================================
-const P = makeHumanoid({ outfit: characters[0].color, hair: characters[0].hair, real: false });   // the hero keeps the hero figure
+// Your own look (Settings > Character): man or woman, skin tone, hair style and colour, build. Kept on this device.
+const playerLook = (() => {
+  let l = null; try { l = JSON.parse(localStorage.getItem('playerLook') || 'null'); } catch { }
+  if (!l || !l.sex || l.tone == null) { l = makeLook(Math.random); l.beard = false; l.height = 1; l.build = 0.97; }
+  return l;
+})();
+function savePlayerLook() { try { localStorage.setItem('playerLook', JSON.stringify(playerLook)); } catch { } }
+savePlayerLook();
+// You have a real body too, like everyone else (the simple figure is only a stand-in while the bodies load).
+// Your clothes follow your class colours; fighting moves turn the body's arms the way the move points them.
+const P = makeHumanoid({ outfit: characters[0].color, hair: characters[0].hair, look: playerLook, always: true, followMats: true });
 const player = P.root;
 const swordGrip = new THREE.Group();
 swordGrip.position.copy(P.armR.end.position);
@@ -2095,6 +2139,23 @@ swordGrip.rotation.x = 1.0;
 P.armR.pivot.add(swordGrip);
 mesh(new THREE.BoxGeometry(0.06, 0.04, 1.0), new THREE.MeshStandardMaterial({ color: 0xe6e9ee, metalness: 0.6, roughness: 0.3 }), swordGrip).position.z = 0.55;
 mesh(new THREE.BoxGeometry(0.26, 0.06, 0.06), 0xc9a227, swordGrip).position.z = 0.05;
+// Held and worn things (sword, gun, backpack) live on the simple figure; while your real body shows, they're
+// carried by it instead: in its right hand, pointing the way the move points, and on its back.
+const HELD = [];
+function holdOnBody(obj, follow) { HELD.push({ obj, home: obj.parent, pos: obj.position.clone(), quat: obj.quaternion.clone(), follow }); }
+const _hv = new THREE.Vector3(), _hq = new THREE.Quaternion(), _hm = new THREE.Matrix4(), _hs = new THREE.Vector3(), _hInv = new THREE.Matrix4(), BACK = new THREE.Vector3(0, -0.1, -0.17);
+function syncPlayerHeld() {
+  const r = P.real;
+  for (const H of HELD) {
+    if (!r || !r.bones.hand_r || !r.bones.spine_03) { if (H.obj.parent !== H.home) { H.home.add(H.obj); H.obj.position.copy(H.pos); H.obj.quaternion.copy(H.quat); H.obj.scale.setScalar(1); } continue; }
+    if (H.obj.parent !== player) player.add(H.obj);
+    if (H.follow === 'hand') { r.bones.hand_r.getWorldPosition(_hv); H.home.getWorldQuaternion(_hq); _hq.multiply(H.quat); _hs.setScalar(0.9); }
+    else { r.bones.spine_03.getWorldPosition(_hv); player.getWorldQuaternion(_hq); _hv.add(BACK.clone().applyQuaternion(_hq)); _hs.setScalar(0.9); }
+    player.updateWorldMatrix(true, false); _hInv.copy(player.matrixWorld).invert();
+    _hm.compose(_hv, _hq, _hs).premultiply(_hInv).decompose(H.obj.position, H.obj.quaternion, H.obj.scale);
+  }
+}
+holdOnBody(swordGrip, 'hand');
 swordGrip.visible = false; // nobody starts armed — whether you get a weapon at all depends on your birth roll
 
 // =====================================================================
@@ -2107,7 +2168,7 @@ backpack.position.set(0, 1.35, -0.26);
 mesh(new THREE.BoxGeometry(0.34, 0.42, 0.18), 0x5a4530, backpack);
 mesh(new THREE.BoxGeometry(0.28, 0.14, 0.05), 0x4a3824, backpack).position.set(0, 0.1, -0.1);
 for (const s of [-1, 1]) mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 6), 0x3a2c1c, backpack).position.set(s * 0.14, 0.05, 0.1);
-P.rig.add(backpack);
+P.rig.add(backpack); holdOnBody(backpack, 'back');
 let hasBag = true, inventory = [
   { name: 'Water bottle', icon: '💧' },
   { name: 'Snack bar', icon: '🍫' },
@@ -6897,6 +6958,9 @@ function renderSettings() {
   $('stabSound').style.display = settingsTab === 'sound' ? '' : 'none';
   $('stabGraphics').style.display = settingsTab === 'graphics' ? '' : 'none';
   $('stabView').style.display = settingsTab === 'view' ? '' : 'none';
+  $('stabCharacter').style.display = settingsTab === 'character' ? '' : 'none';
+  document.querySelectorAll('#settingsPanel .opt[data-look]').forEach(b => { const [k, v] = b.dataset.look.split(':'); b.classList.toggle('active', k === 'sex' ? playerLook.sex === v : k === 'build' ? Math.abs(playerLook.build - +v) < 0.02 : k === 'beard' ? !!playerLook.beard : false); });
+  $('lookTone').value = Math.round(playerLook.tone * 100);
   document.querySelectorAll('[data-view]').forEach(b=>{const selected=b.dataset.view===cameraViewSetting;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected));});
   document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.classList.toggle('active', b.dataset.gfx === 'auto' ? !manualGraphics : manualGraphics && b.dataset.gfx === gfxQuality));
   { const el = $('gfxDevice'), o = optimiser.stats;
@@ -6920,6 +6984,20 @@ document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEve
   else { manualGraphics = true; localStorage.setItem('gfxQualityChosen', '1'); setGraphicsQuality(b.dataset.gfx); }
   renderSettings();
 }));
+// Settings > Character: change your look; your body is rebuilt with it straight away
+function changeLook(fn) { fn(playerLook); savePlayerLook(); people.refresh(P); renderSettings(); }
+document.querySelectorAll('#settingsPanel .opt[data-look]').forEach(b => b.addEventListener('click', () => {
+  const [k, v] = b.dataset.look.split(':');
+  changeLook(l => {
+    if (k === 'sex') { l.sex = v; l.hair = Math.min(l.hair, HAIR_STYLES[v].length - 1); if (v === 'f') l.beard = false; }
+    else if (k === 'hair') l.hair = (l.hair + +v + HAIR_STYLES[l.sex].length) % HAIR_STYLES[l.sex].length;
+    else if (k === 'hairColour') l.hairColour = (l.hairColour + +v + HAIR_COLOURS.length) % HAIR_COLOURS.length;
+    else if (k === 'build') l.build = +v;
+    else if (k === 'beard') l.beard = l.sex === 'm' && !l.beard;
+    else if (k === 'random') { const n = makeLook(Math.random); Object.assign(l, n, { height: 1, build: l.build }); }
+  });
+}));
+$('lookTone').addEventListener('change', e => changeLook(l => { l.tone = +e.target.value / 100; }));
 $('settingsBtn').addEventListener('click', () => toggleSettings(true));
 $('menuLagSettings').addEventListener('click', () => { settingsTab = 'graphics'; toggleSettings(true); });
 $('inventoryBtn').addEventListener('click', () => toggleInventory(true));
@@ -8174,7 +8252,7 @@ worldAudio=createWorldAudio({volume:()=>Math.max(0,Math.min(1,Number(localStorag
 for(let z=BRIDGE_Z0;z<BRIDGE_Z1;z+=8)if(z<GAP0||z>=GAP1)planeBlocks.push({minX:BRIDGE_X-BRIDGE_HALF_W,maxX:BRIDGE_X+BRIDGE_HALF_W,minZ:z,maxZ:z+8,bottom:BRIDGE_Y-.5,top:BRIDGE_Y+.25});
 for(const side of [1,-1]){const b={minX:BRIDGE_X-BRIDGE_HALF_W,maxX:BRIDGE_X+BRIDGE_HALF_W,minZ:side===1?GAP0:(GAP0+GAP1)/2,maxZ:side===1?(GAP0+GAP1)/2:GAP1,bottom:BRIDGE_Y-.5,top:BRIDGE_Y+.4,side};liftPlaneBlocks.push(b);planeBlocks.push(b);}
 bridgeTraffic=buildBridgeTraffic({makeVehicle,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),groundY,harbourHeight:harbourBridge.heightAt,vehicles,resolve:resolveRoadMovement,liftWarning:()=>bridgeLiftState!=='down'});
-const equippedGun=new THREE.Group();P.armR.pivot.add(equippedGun);equippedGun.position.copy(P.armR.end.position);equippedGun.rotation.x=1;mesh(new THREE.BoxGeometry(.12,.12,.65),0x293541,equippedGun).position.z=.25;mesh(new THREE.BoxGeometry(.1,.22,.14),0x394853,equippedGun).position.y=-.08;equippedGun.visible=false;
+const equippedGun=new THREE.Group();P.armR.pivot.add(equippedGun);equippedGun.position.copy(P.armR.end.position);equippedGun.rotation.x=1;mesh(new THREE.BoxGeometry(.12,.12,.65),0x293541,equippedGun).position.z=.25;mesh(new THREE.BoxGeometry(.1,.22,.14),0x394853,equippedGun).position.y=-.08;equippedGun.visible=false;holdOnBody(equippedGun,'hand');playerHolding=()=>swordGrip.visible||equippedGun.visible;
 adventureServices=buildAdventureServices({licensed:id=>licences.has(id),licenceCheck:(id,c,who)=>licences.check(id,c,who),openLicences:name=>licences.open(name),illegalPurchase:()=>raiseWanted(60),showEquipment(id){swordGrip.visible=id==='sword'||!id&&!!origin?.weapon;equippedGun.visible=id==='pistol'||id==='rifle';equippedGun.scale.setScalar(id==='rifle'?1.5:1);},scene,box,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),sign:signboard,destinations:townPlaces.destinations,interactables,playerPosition:()=>player.position,toast,
 pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons}),pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},reward(gold,xp){stats.gold+=gold;gainXp(xp);},changed(){saveSolo();},
 repair(price){const car=vehicles.find(v=>isRoadVehicle(v)&&!v.disabled&&!v.noSteal&&distXZ(v.group.position,player.position)<12);if(!car){toast('Bring an operational car within 12 metres of the shop.');return;}if(stats.gold<price){toast('Not enough gold.');return;}stats.gold-=price;car.health=100;applyVehicleCondition(car);toast('Vehicle repaired. Full power and steering restored.');},
@@ -8759,7 +8837,7 @@ function frame() {
   perfBudget.update(rawDt, frameMs, running);
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
-  seatedResidents?.update(rawDt); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt);
+  seatedResidents?.update(rawDt); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld();
   let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
   optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);

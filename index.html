@@ -303,6 +303,7 @@
     <button class="tab active" data-stab="controls">Controls</button>
     <button class="tab" data-stab="sound">Sound</button>
     <button class="tab" data-stab="graphics">Graphics</button>
+    <button class="tab" data-stab="character">Character</button>
   </div>
   <div id="stabControls"><div id="controlChoices"></div>    <div class="row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px">
       <button class="opt" id="layoutEditBtn">Move controls</button>
@@ -334,6 +335,16 @@
     <div class="sub" id="gfxDevice"></div>
   </div>
   <div id="stabView" style="display:none"></div>
+  <div id="stabCharacter" style="display:none">
+    <div class="sub">Your look</div>
+    <div class="row" style="flex-wrap:wrap"><button class="opt" data-look="sex:m" style="flex:1 1 40%">Man</button><button class="opt" data-look="sex:f" style="flex:1 1 40%">Woman</button></div>
+    <div class="row"><span>Skin tone</span><input type="range" id="lookTone" min="0" max="100" value="50"></div>
+    <div class="row" style="flex-wrap:wrap"><button class="opt" data-look="hair:-1" style="flex:1 1 40%">◀ Hair style</button><button class="opt" data-look="hair:1" style="flex:1 1 40%">Hair style ▶</button></div>
+    <div class="row" style="flex-wrap:wrap"><button class="opt" data-look="hairColour:-1" style="flex:1 1 40%">◀ Hair colour</button><button class="opt" data-look="hairColour:1" style="flex:1 1 40%">Hair colour ▶</button></div>
+    <div class="row" style="flex-wrap:wrap"><button class="opt" data-look="build:0.93" style="flex:1 1 28%">Slim</button><button class="opt" data-look="build:1" style="flex:1 1 28%">Average</button><button class="opt" data-look="build:1.07" style="flex:1 1 28%">Broad</button></div>
+    <div class="row" style="flex-wrap:wrap"><button class="opt" data-look="beard:1" style="flex:1 1 40%">Beard on / off</button><button class="opt" data-look="random:1" style="flex:1 1 40%">🎲 Random look</button></div>
+    <div class="sub">Your clothes take your class colours.</div>
+  </div>
   <button class="close" id="closeSettings">Close</button>
 </div>
 <div id="layoutEditBar" style="display:none;position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:30;background:#14202eef;color:#fff;padding:8px 14px;border-radius:10px;font:13px system-ui;align-items:center;gap:10px">

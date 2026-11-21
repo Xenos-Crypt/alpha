@@ -237,7 +237,7 @@ export function buildBody(kit, look, dress) {
   const u = mat.userData.u; u.tone.value = look.tone;
   const hc = new THREE.Color(HAIR_COLOURS[look.hairColour] ?? HAIR_COLOURS[2]).lerp(GREY, look.grey);
   for (const m of [hair, beard, ...brows]) if (m) m.material.color.copy(hc).multiplyScalar(2.2);
-  const p = { holder, root, body, mat, mixer: new THREE.AnimationMixer(root), actions: new Map(), current: null, look };
+  const p = { holder, root, body, mat, bones, hairMeshes: [hair, beard, ...brows].filter(Boolean), mixer: new THREE.AnimationMixer(root), actions: new Map(), current: null, look };
   dressBody(p, dress);
   return p;
 }
@@ -305,7 +305,8 @@ export function clipFor(pose, moving, sprinting, grounded, swimming, h) {
 // ---- the manager: who gets a real body this frame --------------------------------------------------------
 // camera: () => camera; lookOf(h) -> resident {look, age} | null; babyOf(resident) -> baby resident | null;
 // budget() -> how many full bodies at once; near: metres
-export function createPeople({ camera, lookOf = () => null, babyOf = () => null, budget = () => 24, near = 55 }) {
+export function createPeople({ camera, lookOf = () => null, babyOf = () => null, budget = () => 24, near = () => 55 }) {
+  const nearOf = typeof near === 'function' ? near : () => near;
   const all = [];          // every humanoid that can have a real body
   const pool = { m: [], f: [] };
   let kit = null, failed = false;
@@ -315,6 +316,7 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
   function adopt(h, opts) { h.realOpts = opts; h.realSeed = (seq++ * 2654435761) >>> 0; all.push(h); }
   function lookFor(h, c) {
     if (c?.look) return atAge(c.look, c.age);
+    if (h.realOpts.look) return atAge(h.realOpts.look, 30);   // a look of their own (the player's, from Settings)
     const look = h.realLook ||= makeLook(seeded(h.realSeed));
     const sk = h.realOpts.skin;   // the old figure's skin colour sets the tone
     if (sk != null && look.toneFrom !== sk) { const col = new THREE.Color(sk); look.tone = +clamp(1 - (col.r * .55 + col.g * .45) * 1.15 + .12, 0, 1).toFixed(2); look.toneFrom = sk; }
@@ -329,18 +331,21 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
     const o = h.realOpts;
     dressBody(p, { outfit: o.outfit ?? 0x55606e, pants: o.pants ?? 0x2d3142, shoes: o.shoes ?? 0x1b1b2f, sleeves: o.sleeves ?? (look.sex === 'f' && (h.realSeed & 3) === 0 ? 0 : 1), longLegs: o.longLegs ?? 1 });
     // a resident is their own size; anyone else keeps the old figure's size (crowds of different heights)
-    p.hs = c?.look ? 1 : h.rig.scale.y / (o.child ? .56 : .9);
+    p.hs = c?.look || o.look ? 1 : h.rig.scale.y / (o.child ? .56 : .9);
     p.holder.scale.setScalar(p.hs);
     // a newborn's parent takes the baby out in a pram
     const baby = c && !look.child ? babyOf(c) : null;
     if (baby?.look && c.pram) { p.pram = babyPram(atAge(baby.look, baby.age), c.pram.colour); p.pram.userData.id = c.pram.id; h.root.add(p.pram); }
     h.root.add(p.holder); h.rig.visible = false; h.real = p; p.current = null;
+    if (o.followMats) followMats(h, p);
+    h.onReal?.(p);
     pose(h, p);
     play(kit, p, clipFor(h.realPose, h.realMoving, h.realSprint, h.realGrounded !== false, h.realSwim, h), 0);
     p.mixer.update(Math.random() * 2);
   }
   function detach(h) {
     const p = h.real; if (!p) return;
+    h.onReal?.(null);
     h.root.remove(p.holder); h.rig.visible = true; h.real = null; h.pushing = false;
     if (p.pram) { p.pram.removeFromParent(); p.pram.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); }); p.pram = null; }
     p.mixer.stopAllAction(); p.actions.clear(); p.current = null;
@@ -363,6 +368,42 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
     if (h.mats) { h.mats.outfit?.color.setHex(o.outfit); h.mats.pants?.color.setHex(o.pants); if (o.shoes != null) h.mats.dark?.color.setHex(o.shoes); }
     if (h.real) dressBody(h.real, { outfit: o.outfit, pants: o.pants, shoes: o.shoes ?? 0x1b1b2f, sleeves: o.sleeves ?? 1, longLegs: o.longLegs ?? 1 });
   }
+  // the player's colours can change at any time (class, outfit): the body takes them from the old figure's materials
+  function followMats(h, p) {
+    const m = h.mats, u = p.mat.userData.u; if (!m) return;
+    u.shirt.value.copy(m.outfit.color); u.trousers.value.copy(m.pants.color); u.shoes.value.copy(m.dark.color);   // (hair keeps its natural colour)
+  }
+  // In fighting moves (punch, cast, slash, block...) the body has no clip of its own, so its arms are turned to point
+  // the same way as the moves' arm poses: each upper arm, then forearm, aimed along the pose's arm.
+  const qa = new THREE.Quaternion(), qb = new THREE.Quaternion(), qc = new THREE.Quaternion(), va = new THREE.Vector3(), vb = new THREE.Vector3(), dir = new THREE.Vector3(), DOWN = new THREE.Vector3(0, -1, 0);
+  function aimBone(bone, child, want) {
+    if (!bone || !child) return;
+    bone.getWorldPosition(va); child.getWorldPosition(vb); vb.sub(va); if (vb.lengthSq() < 1e-8) return; vb.normalize();
+    qa.setFromUnitVectors(vb, want);                       // the turn needed, in the world
+    bone.getWorldQuaternion(qb); bone.parent.getWorldQuaternion(qc);
+    bone.quaternion.copy(qc.invert().multiply(qa.multiply(qb)));
+    bone.updateMatrixWorld(true);
+  }
+  function aimArms(h, p) {
+    p.root.updateMatrixWorld(true);
+    for (const [side, arm] of [['l', h.armL], ['r', h.armR]]) {
+      if (!arm || (h.realAim === 'right' && side === 'l')) continue;   // holding a weapon: only the right arm follows the old pose
+      arm.pivot.getWorldQuaternion(qa); dir.copy(DOWN).applyQuaternion(qa);
+      const B = p.bones; aimBone(B['upperarm_' + side], B['lowerarm_' + side], dir); aimBone(B['lowerarm_' + side], B['hand_' + side], dir);
+    }
+  }
+  // the simple stand-in seen further away gets the same hair colour and skin tone as the real body, so the
+  // change between them at a distance is hard to notice
+  const LIGHT = new THREE.Color(0xf0c9a8), DARK = new THREE.Color(0x4a2f22), sc = new THREE.Color();
+  function matchStandIn(h) {
+    const c = lookOf(h), src = c?.look || h.realOpts.look || h;
+    if (h.standInFor === src && !h.realOpts.always) return;
+    h.standInFor = src;
+    const m = h.mats; if (!m) return;
+    const look = lookFor(h, c);
+    m.hair?.color.setHex(HAIR_COLOURS[look.hairColour] ?? HAIR_COLOURS[2]).lerp(GREY, look.grey);
+    if (m.skin) m.skin.color.copy(sc.copy(LIGHT).lerp(DARK, look.tone));
+  }
   const tmp = new THREE.Vector3(), camPos = new THREE.Vector3();
   let t = 0;
   function update(dt) {
@@ -375,10 +416,11 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
       const live = [];
       for (const h of all) {
         if (!h.root.parent) { if (h.real) detach(h); continue; }
-        dressFromWardrobe(h);
+        dressFromWardrobe(h); if (h.real && h.realOpts.followMats) followMats(h, h.real);
+        matchStandIn(h);
         let vis = h.root.visible, o = h.root.parent; while (vis && o) { vis = o.visible; o = o.parent; }
-        h.root.getWorldPosition(tmp); const d = tmp.distanceToSquared(camPos);
-        if (vis && d < near * near) live.push([d, h]); else if (h.real) detach(h);
+        h.root.getWorldPosition(tmp); const d = h.realOpts.always ? -1 : tmp.distanceToSquared(camPos), nr = nearOf();   // (the player always comes first)
+        if (vis && d < nr * nr) live.push([d, h]); else if (h.real) detach(h);
       }
       live.sort((a, b) => a[0] - b[0]);
       const n = budget();
@@ -389,9 +431,12 @@ export function createPeople({ camera, lookOf = () => null, babyOf = () => null,
       const want = clipFor(h.realPose, h.realMoving, h.realSprint, h.realGrounded !== false, h.realSwim, h);
       play(kit, h.real, want, .25, 1);
       h.real.mixer.update(dt);
+      if (h.realAim) aimArms(h, h.real);
     }
   }
   // animateHumanoid tells us what the person is doing; we choose the clip
   function want(h, pose, moving, sprinting, grounded) { h.realPose = pose; h.realMoving = moving; h.realSprint = sprinting; h.realGrounded = grounded; }
-  return { adopt, update, want, get ready() { return !!kit; }, get count() { return all.filter(h => h.real).length; }, kit: () => kit };
+  // rebuild someone's body (their look changed); the next update gives them the new one
+  function refresh(h) { if (h.real) { detach(h); t = 1; } }
+  return { adopt, update, want, refresh, get ready() { return !!kit; }, get count() { return all.filter(h => h.real).length; }, kit: () => kit };
 }
