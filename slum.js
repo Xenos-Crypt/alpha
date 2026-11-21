@@ -176,10 +176,10 @@ export function createSlum(ctx) {
     if (winOff != null && hasDoor) piece(winOff - 0.45, winOff + 0.45, t / 2 - 0.01, t / 2 + 0.01, 1.25, 1.95, glassM);
     // the doorway: a real door, a rag curtain, or just a hole
     if (hasDoor) {
-      const [hx, hz] = Wp(doorOff - dw / 2, -0.03), g = new THREE.Group(), base = alongX ? 0 : -Math.PI / 2; g.position.set(hx, y0, hz); g.rotation.y = base; scene.add(g);   // hinge on one side; the leaf runs along the wall
+      const [hx, hz] = Wp(doorOff - dw / 2, t / 2), g = new THREE.Group(), base = alongX ? 0 : -Math.PI / 2; g.position.set(hx, y0, hz); g.rotation.y = base; scene.add(g);   // hinge on one side; the leaf runs along the wall
       const leaf = new THREE.Mesh(boxGeo, R() < 0.5 ? plank : dark); leaf.scale.set(dw - 0.04, DH - 0.03, 0.05); leaf.position.set((dw - 0.04) / 2, DH / 2, 0); leaf.name = 'shack door'; g.add(leaf); leaf.castShadow = true;
       const col = wallC(doorOff - dw / 2, doorOff + dw / 2, -0.03, t);
-      const D = { g, col, base, target: 0, swing: 1.4 * (alongX ? -fz : fx) };   // it swings outwards
+      const D = { g, col, base, target: 0, swing: -1.4 * (alongX ? -fz : fx) };   // it swings inwards, into the room: the alleys outside are too narrow (outwards it went into the shack across the way)
       const [px, pz] = Wp(doorOff, 0); shackDoors.push(D);
       interactables.push({ pos: new THREE.Vector3(px, 0, pz), r: 1.6, door: true, col, get label() { return D.target ? 'Close the door' : 'Open the door'; }, action() { D.target = D.target ? 0 : 1; const i = colliders.indexOf(col); if (D.target && i >= 0) colliders.splice(i, 1); else if (!D.target && i < 0) colliders.push(col); } });
     } else if (R() < 0.5) { const [px, pz] = Wp(doorOff, t / 2); plane(dw - 0.1, 0.7, px, y0 + DH - 0.35, pz, rag, alongX ? 0 : Math.PI / 2); }
@@ -432,6 +432,8 @@ export function createSlum(ctx) {
 
   return {
     bounds: SLUM, home: SLUM_HOME, homeY: SLUM_HOME_Y, landlordAt: tenants[0], lanes, neglected, shacks,
+    // standing inside a shack's room (for the camera: indoors is first-person)
+    insideShack: p => shacks.some(k => Math.abs(p.x - k.x) < k.w / 2 - 0.1 && Math.abs(p.z - k.z) < k.d / 2 - 0.1 && p.y < curb + 3.2),
     people: () => K?.people || [], errands,
     groundAt: slumGroundAt,
     destinations: [{ name: 'Cinder Row (slum)', x: 720, z: 520 }, { name: "Mama Ade's corner shop (Cinder Row)", x: 647.5, z: 503 }],
