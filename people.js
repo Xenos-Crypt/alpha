@@ -62,7 +62,11 @@ function prepBody(scene) {
   }
   g.setAttribute('cover', new THREE.BufferAttribute(cover, 4)); g.setAttribute('shoe', new THREE.BufferAttribute(shoe, 1));
   g.setAttribute('axisPos', new THREE.BufferAttribute(boneAxes(body), 3));
-  const [sp, sn] = smoothShape(g);
+  // where clothes hang loose instead of clinging: across the hips and between the legs (trousers don't show what's
+  // under them), and over the chest (a shirt drapes straight down from it); these parts are smoothed much further
+  const flat = new Float32Array(n), bn = body.skeleton.bones.map(b => b.name);
+  for (let v = 0; v < n; v++) for (let k = 0; k < 4; k++) { const b = bn[si.getComponent(v, k)], w = sw.getComponent(v, k); if (b === 'pelvis') flat[v] += w; else if (b === 'spine_03' || b === 'spine_02') flat[v] += w * .6; else if (/^thigh_[lr]$/.test(b)) flat[v] += w * .35; }
+  const [sp, sn] = smoothShape(g, flat);
   g.setAttribute('smoothPos', new THREE.BufferAttribute(sp, 3)); g.setAttribute('smoothNormal', new THREE.BufferAttribute(sn, 3));
   scene.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(scene);
@@ -96,7 +100,7 @@ function boneAxes(body) {
 // A smoothed copy of the body's shape (Taubin smoothing: it softens without shrinking). Under clothes the
 // body is drawn part-way to this, so cloth hides muscle lines the way real fabric does; children are drawn
 // fully smoothed, so they have a child's plain shape and nothing of an adult's.
-function smoothShape(g) {
+function smoothShape(g, flat = null) {
   const pos = g.attributes.position, n = pos.count, idx = g.index.array;
   // vertices split along texture seams share a position: treat them as one point, or the seams open up
   const key = new Map(), same = new Int32Array(n);
@@ -115,6 +119,19 @@ function smoothShape(g) {
       q[o] = p[o] + k * (x * f - p[o]); q[o + 1] = p[o + 1] + k * (y * f - p[o + 1]); q[o + 2] = p[o + 2] + k * (z * f - p[o + 2]);
     }
     [p, q] = [q, p];
+  }
+  // loose-cloth parts: plain smoothing (this one does flatten bumps), each point as far as its `flat` weight says
+  if (flat) {
+    const fw = new Float32Array(m); for (let v = 0; v < n; v++) fw[same[v]] = Math.max(fw[same[v]], Math.min(1, flat[v]));
+    for (let it = 0; it < 60; it++) {
+      for (let v = 0; v < m; v++) {
+        const L = list[v], o = v * 3, k = fw[v] * .5; if (!L.length || !k) { q[o] = p[o]; q[o + 1] = p[o + 1]; q[o + 2] = p[o + 2]; continue; }
+        let x = 0, y = 0, z = 0; for (const w of L) { x += p[w * 3]; y += p[w * 3 + 1]; z += p[w * 3 + 2]; }
+        const f = 1 / L.length;
+        q[o] = p[o] + k * (x * f - p[o]); q[o + 1] = p[o + 1] + k * (y * f - p[o + 1]); q[o + 2] = p[o + 2] + k * (z * f - p[o + 2]);
+      }
+      [p, q] = [q, p];
+    }
   }
   // normals of the smoothed shape, summed over the welded points so the seams stay invisible
   const nrm = new Float32Array(m * 3), A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3();
@@ -147,7 +164,7 @@ function personMaterial(kit, sex) {
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 cover; attribute float shoe; attribute vec3 smoothPos, smoothNormal, axisPos; uniform float inflate, sleeves, longLegs, smoothing, girth; varying vec4 vCover; varying float vShoe;')
       .replace('#include <uv_vertex>', '#include <uv_vertex>\nvCover = cover; vShoe = shoe;')
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = normalize(mix(objectNormal, smoothNormal, smoothing * clamp(cover.x + cover.y + cover.z + cover.w, 0., 1.)));')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed = mix(transformed, smoothPos, smoothing * clamp(cover.x + cover.y + cover.z + cover.w, 0., 1.));\ntransformed = axisPos + (transformed - axisPos) * girth;\ntransformed += objectNormal * inflate * clamp(cover.x + cover.y * sleeves + cover.z + cover.w * longLegs, 0., 1.);');
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed = mix(transformed, smoothPos, smoothing * clamp(cover.x + cover.y + cover.z + cover.w, 0., 1.));\ntransformed = axisPos + (transformed - axisPos) * girth;\ntransformed += objectNormal * inflate * (cover.x * 1.5 + cover.y * sleeves * .9 + cover.z * 1.05 + cover.w * longLegs * 1.3);   // everyday clothes hang loose: a shirt stands off the body most, trouser legs widen a little towards the ankle');
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D darkMap; uniform float tone, sleeves, longLegs; uniform vec3 shirt, trousers, shoes; varying vec4 vCover; varying float vShoe; float clothAmt;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         vec3 skin = mix(diffuseColor.rgb, texture2D(darkMap, vMapUv).rgb, tone);
@@ -156,14 +173,21 @@ function personMaterial(kit, sex) {
         vec3 garment = mix(trousers, shirt, smoothstep(-.12, .12, topW - botW));
         // a faint weave so cloth isn't flat paint
         float weave = .94 + .06 * sin(vMapUv.x * 900.) * sin(vMapUv.y * 900.);
-        vec3 c = mix(skin, garment * weave, clothAmt);
+        // a belt where the shirt meets the trousers, and darker stitched hems at the collar, cuffs and trouser ends
+        float waist = 1. - smoothstep(0., .1, abs(topW - botW));
+        garment = mix(garment, vec3(.09, .07, .06), waist * step(.5, topW + botW) * .85);
+        float hem = smoothstep(.25, .42, topW + botW) * (1. - smoothstep(.45, .7, topW + botW));
+        garment *= 1. - hem * .35;
+        // soft folds in the fabric
+        float fold = .93 + .07 * sin(vMapUv.y * 160. + sin(vMapUv.x * 40.) * 2.);
+        vec3 c = mix(skin, garment * weave * fold, clothAmt);
         c = mix(c, shoes, smoothstep(.3, .7, vShoe));
         clothAmt = max(clothAmt, smoothstep(.3, .7, vShoe));
         diffuseColor.rgb = c;`)
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(mix(normal, nonPerturbedNormal, clothAmt * .9));')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(.55, .88, clothAmt);');
   };
-  m.customProgramCacheKey = () => 'aw-person';
+  m.customProgramCacheKey = () => 'aw-person-2';
   return m;
 }
 function hairMaterial(kit, name) {
@@ -179,8 +203,9 @@ export function buildBody(kit, look, dress) {
   root.traverse(o => { if (o.isBone) bones[o.name] = o; });
   const mat = personMaterial(kit, shape);
   if (look.child) mat.userData.u.smoothing.value = 1;
-  // ordinary builds: men lose the superhero bulk, women keep most of their shape; build sets slim or heavy
-  else { mat.userData.u.smoothing.value = shape === 'm' ? .75 : .55; mat.userData.u.girth.value = (shape === 'm' ? .84 : .95) + (look.build - 1) * 1.1; }
+  // ordinary everyday people, not athletes: the muscle shapes are smoothed away and the body slimmed (men more,
+  // since the source body is a bodybuilder's); build still makes some slimmer or heavier than others
+  else { mat.userData.u.smoothing.value = shape === 'm' ? .95 : .9; mat.userData.u.girth.value = (shape === 'm' ? .78 : .9) + (look.build - 1) * 1.1; }
   root.traverse(o => {
     if (!o.isMesh) return;
     o.castShadow = true; o.frustumCulled = false;
@@ -205,7 +230,7 @@ export function buildBody(kit, look, dress) {
   const scale = (1.72 / B.height) * look.size;
   const holder = new THREE.Group(); holder.add(root);
   root.scale.set(scale * look.build, scale, scale * look.build); root.position.y = -B.foot * scale;
-  mat.userData.u.inflate.value = .012 / scale;
+  mat.userData.u.inflate.value = .02 / scale;
   // children aren't small adults: their heads are bigger for their bodies
   if (look.grow < 1 && bones.Head) bones.Head.scale.setScalar(1 + (1 - look.grow) * .55);
   // colours

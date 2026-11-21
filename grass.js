@@ -7,18 +7,25 @@ import { FOLIAGE_TINT } from './trees.js';
 import { seasonalFoliage } from './seasons.js';
 
 function tuftGeometry() {
-  const pos = [], col = [], base = new THREE.Color(0x3d6a2c), tip = new THREE.Color(0x8fbf5a);
-  const blades = 9;
+  // a clump of curved blades: each blade is two tapering segments that bend outwards, dark at the root, bright at the tip
+  const pos = [], col = [], base = new THREE.Color(0x4a8a32), mid = new THREE.Color(0x6cb046), tip = new THREE.Color(0xaad872);
+  const blades = 14;
   for (let i = 0; i < blades; i++) {
-    const a = i / blades * Math.PI * 2 + (i % 2) * 0.4, r = 0.04 + (i % 3) * 0.035, h = 0.16 + ((i * 37) % 10) / 45, w = 0.016, lean = 0.06 + (i % 3) * 0.03;
-    const cx = Math.cos(a) * r, cz = Math.sin(a) * r, px = -Math.sin(a) * w, pz = Math.cos(a) * w;
-    pos.push(cx - px, 0, cz - pz, cx + px, 0, cz + pz, cx + Math.cos(a) * lean, h, cz + Math.sin(a) * lean);
-    col.push(base.r, base.g, base.b, base.r, base.g, base.b, tip.r, tip.g, tip.b);
+    const a = i / blades * Math.PI * 2 + (i % 3) * 0.5, r = 0.02 + ((i * 7) % 5) * 0.018, h = 0.2 + ((i * 37) % 10) / 40, w = 0.022, lean = 0.05 + (i % 4) * 0.035;
+    const cx = Math.cos(a) * r, cz = Math.sin(a) * r, px = -Math.sin(a) * w, pz = Math.cos(a) * w, dx = Math.cos(a), dz = Math.sin(a);
+    const mx = cx + dx * lean * 0.35, mz = cz + dz * lean * 0.35, my = h * 0.55, tx = cx + dx * lean, tz = cz + dz * lean;
+    // lower segment (a quad) and upper segment (a triangle to the point)
+    pos.push(cx - px, 0, cz - pz, cx + px, 0, cz + pz, mx + px * 0.6, my, mz + pz * 0.6, cx - px, 0, cz - pz, mx + px * 0.6, my, mz + pz * 0.6, mx - px * 0.6, my, mz - pz * 0.6,
+      mx - px * 0.6, my, mz - pz * 0.6, mx + px * 0.6, my, mz + pz * 0.6, tx, h, tz);
+    for (const c of [base, base, mid, base, mid, mid, mid, mid, tip]) col.push(c.r, c.g, c.b);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
+  // light the blades as if they faced up (otherwise half of them, seen from behind, look black)
+  const n = g.attributes.normal; for (let i = 0; i < n.count; i++) { const y = Math.abs(n.getY(i)); n.setXYZ(i, n.getX(i) * 0.4, 0.8 + y * 0.2, n.getZ(i) * 0.4); }
+  g.normalizeNormals?.();
   return g;
 }
 
@@ -27,12 +34,13 @@ export function createGrass({ scene, count = 3500, radius = 38, spot }) {
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   material.onBeforeCompile = sh => {   // wind: the tips sway, the roots stay put
     sh.uniforms.uTime = time;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('float faceDirection = gl_FrontFacing ? 1.0 : - 1.0;', 'float faceDirection = 1.0;'));   // both sides of a blade lit alike
     sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       vec4 wp = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
       float sway = sin(uTime * 1.7 + wp.x * 0.35 + wp.z * 0.27) * 0.5 + sin(uTime * 3.1 + wp.x * 0.9) * 0.2;
       transformed.x += sway * 0.12 * position.y; transformed.z += sway * 0.06 * position.y;`);
   };
-  material.customProgramCacheKey = () => 'grass-wind-v1';
+  material.customProgramCacheKey = () => 'grass-wind-v2';
   const mesh = new THREE.InstancedMesh(tuftGeometry(), material, count);
   mesh.frustumCulled = false; mesh.userData.noCull = true; mesh.receiveShadow = false; mesh.castShadow = false;
   scene.add(mesh);
@@ -48,7 +56,7 @@ export function createGrass({ scene, count = 3500, radius = 38, spot }) {
     const y = spot(x, z);
     if (y == null) { p.ok = false; mesh.setMatrixAt(i, zero); return; }
     p.ok = true;
-    const s = 0.6 + Math.random() * 0.6, tall = 0.8 + Math.random() * 0.5;
+    const s = 0.4 + Math.random() * 0.35, tall = 0.75 + Math.random() * 0.45;
     p.s = s; p.tall = tall;   // how it looks (short / medium / long), used for its world ID
     mesh.setMatrixAt(i, m4.compose(v.set(x, y + 0.01, z), q.setFromAxisAngle(up, Math.random() * 6.28), sc.set(s, s * tall, s)));
   }
@@ -70,6 +78,8 @@ export function createGrass({ scene, count = 3500, radius = 38, spot }) {
     }
     if (changed) mesh.instanceMatrix.needsUpdate = true;
   }
-  seasonalFoliage(material, FOLIAGE_TINT);   // grass browns in autumn and frosts in winter, like the leaves
+  // grass follows the seasons more gently than tree leaves (a lawn stays mostly green through autumn)
+  const tint = new THREE.Vector4(), grassTint = { get value() { tint.copy(FOLIAGE_TINT.value); tint.w *= 0.3; return tint; } };
+  seasonalFoliage(material, grassTint);
   return { update, mesh, tufts: () => pts, setCount(n) { mesh.count = Math.max(0, Math.min(count, n)); } };
 }

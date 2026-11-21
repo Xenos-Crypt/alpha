@@ -73,6 +73,7 @@ import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
 import {createRace} from './race.js';
 import {buildDoors,shopOpen} from './doors.js';
+import { profileDevice, createQualityGovernor } from './device-profile.js';
 import {createWalkIns,WALKIN_STOREY} from './walkin.js';
 import {buildHills, buildRidge} from './hills.js';
 import {buildVehicleDealers} from './vehicle-dealers.js';
@@ -224,21 +225,22 @@ const GFX_PRESETS = {
   high: { pr: touchDevice ? 1 : 1.5, shadows: true, shadowSize: 2048 },
   ultra: { pr: touchDevice ? 1.5 : 2, shadows: true, shadowSize: 4096 },
 };
-// Phones default to Low (no shadows, lower pixel ratio) unless the player has
-// already picked a quality themselves -- "medium" for everyone was hammering
-// weaker phones, since shadow rendering is the single biggest GPU cost there.
-// Older builds also saved the automatic slow-frame downgrade, so desktop players could be
-// stuck on Low without choosing it. A saved 'low' only counts if it was picked in Settings.
+// A saved quality only counts if the player picked it in Settings (older builds saved automatic downgrades too).
 const savedGfx = localStorage.getItem('gfxQuality');
-const savedGfxChosen = localStorage.getItem('gfxQualityChosen') === '1' || touchDevice || savedGfx !== 'low';
-let gfxQuality = GFX_PRESETS[savedGfx] && savedGfxChosen ? savedGfx : (touchDevice ? 'low' : 'medium');
+// What this device can handle (device-profile.js): its graphics chip, cores, memory and screen pick the starting
+// quality, unless the player chose one in Settings.
+const deviceProfile = profileDevice(renderer.getContext()), qualityGovernor = createQualityGovernor(deviceProfile);
+console.info('[device]', deviceProfile.gpu, '→', deviceProfile.tier, '(' + deviceProfile.why + ')');
+{ const el = document.getElementById('gfxDevice'); if (el) el.textContent = `This device: ${deviceProfile.why} (${deviceProfile.cores} cores) — Auto starts on ${deviceProfile.tier[0].toUpperCase() + deviceProfile.tier.slice(1)} and adjusts as you play.`; }
+let gfxQuality = GFX_PRESETS[savedGfx] && localStorage.getItem('gfxQualityChosen') === '1' ? savedGfx : deviceProfile.tier;
 // `persist` is false for the automatic slow-frame downgrade, so one slow moment (an area
 // streaming in, another app busy) doesn't leave the player on Low quality forever.
 function setGraphicsQuality(level, persist = true) {
   gfxQuality = GFX_PRESETS[level] ? level : 'medium';
   const p = GFX_PRESETS[gfxQuality];
-  renderer.setPixelRatio(Math.min(devicePixelRatio, p.pr));
-  perfBudget?.setBasePixelRatio(Math.min(devicePixelRatio, p.pr));
+  const pr = Math.min(devicePixelRatio, p.pr, deviceProfile.maxPixelRatio);   // (a sharp screen on a modest chip draws fewer pixels)
+  renderer.setPixelRatio(pr);
+  perfBudget?.setBasePixelRatio(pr);
   perfBudget?.setQuality(gfxQuality);
   renderer.shadowMap.enabled = p.shadows;
   applyShadowMapSize();   // no-op before `sun` exists; the sun's own setup applies the initial size instead
@@ -249,7 +251,7 @@ function setGraphicsQuality(level, persist = true) {
 // Split out from setGraphicsQuality() since `sun` doesn't exist yet the first
 // time that runs (declared further down this file); the sun's own setup below
 // calls this once more right after creating it, using the already-chosen quality.
-let manualGraphics=false;
+let manualGraphics=localStorage.getItem('gfxQualityChosen')==='1';   // the player's own choice switches off automatic adjusting
 let perfBudget=null;   // created once the scene exists (see below)
 let sunReady = false;   // `sun` is declared further down this module; guards against touching it before then
 function applyShadowMapSize() {
@@ -362,9 +364,30 @@ function speckle(g, w, h, count, colors, size = 2) {
   }
 }
 
-const grassTex = makeTex(256, 256, (g, w, h) => {
-  g.fillStyle = '#5d9a43'; g.fillRect(0, 0, w, h);
-  speckle(g, w, h, 7000, ['#4f8a38', '#6aab4c', '#578f3d', '#74b556', '#66a347']);
+// Lush lawn grass: thousands of short blades in many greens, dense enough that no soil shows, with soft patches
+// of lighter and darker growth. It tiles seamlessly (blades crossing an edge are drawn again on the other side).
+// Its own random numbers, so drawing it never changes the city's layout.
+const grassTex = makeTex(512, 512, (g, w, h) => {
+  const r = rng(4242);
+  g.fillStyle = '#4f9a38'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 26; i++) {   // patches
+    const x = r() * w, y = r() * h, rad = 40 + r() * 90, light = r() < 0.5;
+    for (const [ox, oy] of [[0, 0], [w, 0], [-w, 0], [0, h], [0, -h]]) {
+      const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+      gr.addColorStop(0, light ? 'rgba(150,200,80,.28)' : 'rgba(30,80,25,.25)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2);
+    }
+  }
+  const greens = ['#3d7f2c', '#468c33', '#56a13b', '#62ad44', '#71b94e', '#4c9535', '#7cc257', '#3a7428', '#8acb5f'];
+  g.lineCap = 'round';
+  for (let i = 0; i < 26000; i++) {   // blades
+    const x = r() * w, y = r() * h, len = 4 + r() * 7, lean = (r() - 0.5) * 4;
+    g.strokeStyle = greens[Math.floor(r() * greens.length)]; g.lineWidth = 0.8 + r() * 0.9;
+    const offs = [[0, 0]]; if (x < 12) offs.push([w, 0]); if (x > w - 12) offs.push([-w, 0]); if (y < 12) offs.push([0, h]);
+    for (const [ox, oy] of offs) {
+      g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + lean * 0.3, y + oy - len * 0.6, x + ox + lean, y + oy - len); g.stroke();
+    }
+  }
 });
 
 // One 40m x 40m road tile centred on an intersection; repeated across the city.
@@ -677,7 +700,9 @@ const paveMat = new THREE.MeshStandardMaterial({ map: paveTex, roughness: 0.95 }
 const lawnTex = grassTex.clone(); lawnTex.repeat.set(7, 7); lawnTex.needsUpdate = true;
 const lawnMat = new THREE.MeshStandardMaterial({ map: lawnTex, roughness: 1 });
 const sandMat = new THREE.MeshStandardMaterial({ map: sandTex, roughness: 1 });
+const lawnRects = [];   // the raised lawns inside pavement blocks (homes, parks): real grass grows on them too
 function pavement(x, z, innerMat) {
+  if (innerMat === lawnMat) lawnRects.push({ minX: x - 9.6, maxX: x + 9.6, minZ: z - 9.6, maxZ: z + 9.6 });
   const m = new THREE.Mesh(new THREE.BoxGeometry(24, CURB, 24), [curbMat, curbMat, paveMat, curbMat, curbMat, curbMat]);
   m.position.set(x, CURB / 2, z);
   m.receiveShadow = true;
@@ -1868,9 +1893,9 @@ const people = createPeople({
   babyOf: c => seatedResidents?.babyOf(c) || null,
   budget: () => Math.round(({ low: 8, medium: 14, high: 22, ultra: 30 }[gfxQuality] ?? 14) * (matchMedia('(pointer: coarse)').matches ? .7 : 1)),
 });
-// Everyone uses the same kind of figure as the player. (The realistic rigged bodies from people.js are switched
-// off: set REAL_BODIES to true to bring them back for the people nearest the camera.)
-const REAL_BODIES = false;
+// The people nearest the camera get real human bodies (people.js): ordinary slim builds in everyday clothes.
+// Further away, and for heroes and monsters, the simple figures stand in. (false switches the real bodies off.)
+const REAL_BODIES = true;
 function makeHumanoid(opts) {
   const h = makeHumanoidFigure(opts);
   if (REAL_BODIES && opts.real !== false) people.adopt(h, opts);
@@ -6854,7 +6879,7 @@ function renderSettings() {
   $('stabGraphics').style.display = settingsTab === 'graphics' ? '' : 'none';
   $('stabView').style.display = settingsTab === 'view' ? '' : 'none';
   document.querySelectorAll('[data-view]').forEach(b=>{const selected=b.dataset.view===cameraViewSetting;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected));});
-  document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.classList.toggle('active', b.dataset.gfx === gfxQuality));
+  document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.classList.toggle('active', b.dataset.gfx === 'auto' ? !manualGraphics : manualGraphics && b.dataset.gfx === gfxQuality));
 }
 function toggleSettings(open) {
   if (freeMouse) { freeMouse = false; $('mouseHint').style.display = 'none'; $('crosshair').style.display = ''; }
@@ -6868,7 +6893,11 @@ function toggleSettings(open) {
   else if (getComputedStyle($('menu')).display === 'none') requestGameControl();
 }
 document.querySelectorAll('#settingsPanel .tab').forEach(b => b.addEventListener('click', () => { settingsTab = b.dataset.stab; renderSettings(); }));
-document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => { manualGraphics=true;localStorage.setItem('gfxQualityChosen','1');setGraphicsQuality(b.dataset.gfx); renderSettings(); }));
+document.querySelectorAll('#settingsPanel .opt[data-gfx]').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.gfx === 'auto') { manualGraphics = false; localStorage.removeItem('gfxQualityChosen'); setGraphicsQuality(deviceProfile.tier, false); }   // back to what suits this device, adjusting as you play
+  else { manualGraphics = true; localStorage.setItem('gfxQualityChosen', '1'); setGraphicsQuality(b.dataset.gfx); }
+  renderSettings();
+}));
 $('settingsBtn').addEventListener('click', () => toggleSettings(true));
 $('menuLagSettings').addEventListener('click', () => { settingsTab = 'graphics'; toggleSettings(true); });
 $('inventoryBtn').addEventListener('click', () => toggleInventory(true));
@@ -8545,18 +8574,23 @@ function grassSpot(x, z) {
   if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 4) return null;
   for (const n of noGrass) if (n.r ? Math.hypot(x - n.cx, z - n.cz) < n.r : x > n.minX && x < n.maxX && z > n.minZ && z < n.maxZ) return null;
   if (insideFootprint(x, z)) return null;
+  // never on any floor: walk-in buildings, terminals, interiors
+  if (walkIns.floorAt(x, z, 0.5) != null || townPlaces?.floorAt(x, z) != null) return null;
+  const blocked = () => { for (const c of collidersNear(x, z)) { if (c.circleRadius != null ? Math.hypot(x - c.circleX, z - c.circleZ) < c.circleRadius + 0.6 : x > c.minX - 0.6 && x < c.maxX + 0.6 && z > c.minZ - 0.6 && z < c.maxZ + 0.6) return true; } return false; };
+  for (const l of lawnRects) if (x > l.minX && x < l.maxX && z > l.minZ && z < l.maxZ) { const g = groundY(x, z, 0); return Math.abs(g - (CURB + 0.01)) < 0.06 && !blocked() ? CURB + 0.01 : null; }   // a lawn (not where a path, pond or house sits on it)
   const terrain = hills?.groundAt(x, z) ?? ridge?.groundAt(x, z);
   const y = terrain ?? groundY(x, z, 0);
   if (terrain == null && (y > 0.1 || y < -0.2)) return null;                       // pavements, raised floors, water
   if (Math.abs(x) < 185 && Math.abs(z) < 185) { const mx = ((x % 40) + 40) % 40, mz = ((z % 40) + 40) % 40; if (mx < 7 || mx > 33 || mz < 7 || mz > 33) return null; }   // town street grid
   for (const r of roadGrid.get(Math.floor(x / ROAD_CELL) * 100003 + Math.floor(z / ROAD_CELL)) || []) if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) return null;
-  for (const c of collidersNear(x, z)) { if (c.circleRadius != null ? Math.hypot(x - c.circleX, z - c.circleZ) < c.circleRadius + 0.6 : x > c.minX - 0.6 && x < c.maxX + 0.6 && z > c.minZ - 0.6 && z < c.maxZ + 0.6) return null; }
+  if (blocked()) return null;
   return y;
 }
-const grass = createGrass({ scene, count: touchDevice ? 3000 : 6000, radius: touchDevice ? 28 : 38, spot: grassSpot });
-// The loose grass tufts are switched off everywhere for now (they grew on floors, pools and roads); they'll come
-// back placed properly, area by area. Set GRASS_TUFTS to true to bring the old scatter back.
-const GRASS_TUFTS = false;
+// Real grass: clumps of blades on open grassland, parks and home lawns around you. Never on roads, pavements,
+// paths, water, floors or inside anything (grassSpot decides). How thick it grows depends on the graphics quality.
+const grass = createGrass({ scene, count: touchDevice ? 6000 : 20000, radius: touchDevice ? 22 : 30, spot: grassSpot });
+const GRASS_TUFTS = true;
+const GRASS_DENSITY = { low: 3000, medium: 10000, high: 15000, ultra: 20000 };
 if (!GRASS_TUFTS) { grass.mesh.visible = false; grass.setCount(0); }
 const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
 worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,layers:()=>{const cops=vehicles.filter(v=>v.kind==='police'&&!v.disabled),me=inCar&&driving?driving.group.position:player.position,P=o=>({x:o.x,z:o.z});   // map filters: green safe, blue police, red pursuit, and the rest
@@ -8591,7 +8625,7 @@ if (location.hash === '#test-systems') {   // exercises building collapse, plane
   }, 3000);
 }
 const clock = new THREE.Clock();
-let slowFrameTime=0,lastFrameAt=performance.now(),perfWarmup=0;
+let lastFrameAt=performance.now(),perfWarmup=0;
 // Before a reload: stop the game loop and free the graphics card first, so the old page isn't still rendering
 // the whole city while the new one starts (that overlap is what made "Save and reload" lag the computer).
 let shuttingDown=false;
@@ -8606,7 +8640,7 @@ function shutDownForReload(message){
 function frame() {
   if(shuttingDown)return;
   const nowFrame=performance.now(),frameMs=nowFrame-lastFrameAt;lastFrameAt=nowFrame;perfWarmup+=frameMs;
-  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){slowFrameTime=frameMs>45?slowFrameTime+Math.min(frameMs,250):Math.max(0,slowFrameTime-100);if(slowFrameTime>4000&&gfxQuality!=='low'){setGraphicsQuality('low',false);slowFrameTime=0;toast('Graphics adjusted for smoother play. Change quality in Settings.');}}
+  if(locked&&!document.hidden&&!manualGraphics&&perfWarmup>5000){const next=qualityGovernor.frame(frameMs,gfxQuality);if(next)setGraphicsQuality(next,false);}   // steps down when slow, back up when there's room (never above what this device can handle)
   if(document.hidden&&!(onlinePlayReady&&hosting.room)){clock.getDelta();requestAnimationFrame(frame);return;}
   const running=locked||(onlinePlayReady&&!!hosting.room);
   const rawDt = Math.min(clock.getDelta(), 0.05);
@@ -8628,7 +8662,7 @@ function frame() {
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
     updateHomeDoor(dt);
     updateFlashlight(); updateBusRide(dt); checkVehicleLicences(); checkHotPlates(dt); conditions?.tick(reconstructionDays); conditions?.update(dt, inCar || !canAct());
-    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); walkIns.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); if (GRASS_TUFTS) grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
+    blackMarket?.update(dt); football?.update(dt); doors?.update(dt); walkIns.update(dt); property?.update(); houseVisits?.update(dt); forest.flush(); forest.update(dt); if (GRASS_TUFTS) grass.setCount(GRASS_DENSITY[gfxQuality] ?? 7000), grass.update(dt, player.position, player.position.y > -1 && Math.abs(player.position.x) < 4000 && !inCivicInterior); drivingSchool?.update(dt); hills?.update(dt, inCar && driving ? driving.group.position : null); estate?.update(dt, player.position, inCar && driving ? driving : null);
     military?.update(dt); spaceWing?.update(dt); navyCrew?.update(dt, (h, m, d) => animateHumanoid(h, null, m, false, true, d));
     soloSaveTimer += dt;
     if (soloSaveTimer > 8) { soloSaveTimer = 0; saveSolo(); }
