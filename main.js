@@ -6913,7 +6913,7 @@ function updateHotbar() {
 // INPUT
 // =====================================================================
 const keys = {};
-let locked = false, yaw = Math.PI, pitch = 0.3, camDist = 6;
+let locked = false, yaw = Math.PI, pitch = 0.18, camDist = 3.4, lastLookAt = 0;   // (close behind the shoulder, like GTA; the wheel zooms 2 to 10 m)
 let mobileControls = null;
 function requestGameControl() {
   for(const code in keys)keys[code]=false;mouseHeld=false;
@@ -6945,6 +6945,7 @@ $('closeBoard').addEventListener('click', () => toggleBoard(false));
 // SETTINGS (controls / sound / graphics)
 // =====================================================================
 // First-person is the default view; third-person is a choice in Settings (remembered once you pick it there).
+let playerMoving = false;   // (walking or running this frame: the camera follows your facing then)
 let cameraView = 'third';   // set every frame by updateCamera(): the place decides the view, not the player
 // The view you picked in Settings; indoors the camera always goes first-person (no seeing through
 // roofs and walls), and goes back to your choice when you step outside.
@@ -7122,7 +7123,7 @@ addEventListener('keyup', e => {const code=movementKey(e.code,controlPrefs.deskt
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseHeld = false; });
 addEventListener('mousemove', e => {
   if (!locked || cine || freeMouse) return;
-  yaw -= e.movementX * 0.0025;
+  yaw -= e.movementX * 0.0025; if (e.movementX || e.movementY) lastLookAt = performance.now();
   pitch = clamp(pitch + e.movementY * 0.0025, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2);
 });
 addEventListener('mousedown', e => { if (locked && e.button === 0 && !e.target?.closest?.('button, a, input, select, textarea, [role="button"], section, dialog')) { mouseHeld = true; m1(); } });   // tapping a HUD button (torch, taxi, career...) shouldn't also throw a punch
@@ -7132,7 +7133,7 @@ addEventListener('wheel', e => {
   // board/panel (the stats board, the travel board, etc.) used to zoom the
   // camera behind it too, making it look like the view was randomly resizing.
   if (!locked || boardOpen || freeMouse || document.getElementById('placesTravel')?.hidden === false) return;
-  camDist = clamp(camDist + Math.sign(e.deltaY), 3, 14);
+  camDist = clamp(camDist + Math.sign(e.deltaY) * 0.6, 2, 10);
 });
 
 const startEl = $('start');
@@ -7276,7 +7277,7 @@ function updateSwimming(dt) {
   else waterExhausted=false;
   const targetY=(stats.energy>0?-1.05:-1.35)+waterLevelAt(player.position.x,player.position.z);   /* a raised pool's water is higher than the sea */
   player.position.y=lerp(player.position.y,targetY,1-Math.exp(-4*dt));vy=0;
-  if(moving)player.rotation.y=lerpAngle(player.rotation.y,Math.atan2(dir.x,dir.z),1-Math.exp(-5*dt));
+  playerMoving = moving; if(moving)player.rotation.y=lerpAngle(player.rotation.y,Math.atan2(dir.x,dir.z),1-Math.exp(-5*dt));
   animateHumanoid(P,null,moving,false,false,dt);P.rig.rotation.x=-.6;
   if(!isSeaWater(player.position.x,player.position.z)){swimming=false;waterExhausted=false;P.rig.rotation.x=0;player.position.y=groundY(player.position.x,player.position.z);onGround=true;toast('Back on dry ground.');}
 }
@@ -7302,6 +7303,7 @@ function updatePlayer(dt) {
   playerBlocking = !!keys.KeyF && !action && playerStun <= 0;
   const canMove = !action && playerStun <= 0;
   const sprinting = canMove && moving && keys.ShiftLeft && stats.energy > 0 && !playerBlocking;
+  playerMoving = canMove && moving;
   if (canMove && moving) {
     player.position.addScaledVector(dir, (sprinting ? 9 : 5) * (adminFlying ? (sprinting ? 4 : 2) : 1) * (sewers?.movementScale(player.position) ?? 1) * (metro?.movementScale(player.position)??1) * speedMul() * (playerBlocking ? 0.35 : 1) * dt);
     if (!playerBlocking) player.rotation.y = lerpAngle(player.rotation.y, Math.atan2(dir.x, dir.z), 1 - Math.exp(-12 * dt));
@@ -8064,7 +8066,14 @@ function updateCamera(dt) {
     camera.near=.1;camera.updateProjectionMatrix();
     const focus = inCar ? driving.group.position : player.position;
     if (inCar && Math.abs(driving.speed) > 1) yaw = lerpAngle(yaw, driving.group.rotation.y + Math.PI, 1 - Math.exp(-3 * dt));
-    const target = new THREE.Vector3(focus.x, focus.y + (inCar ? 1.8 : 1.5), focus.z);
+    // On foot the camera swings round behind you, to face the way you face, whenever you're moving and haven't
+    // turned the camera yourself in the last second (look around with the mouse and it stays where you put it).
+    // (not when you run back towards the camera: like GTA, it doesn't spin round to chase you)
+    else if (!inCar && playerMoving && performance.now() - lastLookAt > 1000) {
+      const behind = player.rotation.y + Math.PI, off = Math.abs(Math.atan2(Math.sin(behind - yaw), Math.cos(behind - yaw)));
+      if (off < 1.9) yaw = lerpAngle(yaw, behind, 1 - Math.exp(-2.2 * dt));
+    }
+    const target = new THREE.Vector3(focus.x, focus.y + (inCar ? 1.8 : 1.55), focus.z);
     const offset = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     let dist = inCar ? camDist + ({ bus: 7, boat: 5, plane: 12 }[driving.kind] ?? 3) : camDist;
 
@@ -8205,7 +8214,7 @@ metro=buildMetro({scene,box,colliders,camBlockers,interactables,sitSpots,makeTex
 mobileControls = setupMobileControls({
   playing: () => locked && !roomChat.open && !worldMap?.open && !movieTv?.open && !npcConversations?.open && !society?.open && !worldIds?.isOpen && !infoMarkets?.open && !bankPanel?.open && !story?.open && !system?.open && !phone?.open && !adventureServices?.open && !supportSkills?.open && !cityServices?.open && !boardOpen && !settingsOpen && !layoutEditMode && document.getElementById('placesTravel')?.hidden !== false,
   key: (code, down) => { keys[code] = down; },
-  look: (dx, dy) => { if (cine) return; yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
+  look: (dx, dy) => { if (cine) return; lastLookAt = performance.now(); yaw -= dx * .005; pitch = clamp(pitch + dy * .005, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2); },
   interact, dash, psychic: psychicGrip, switchCharacter: switchChar, skill: useSkill, ultimate: useUlt,
   attack: down => { mouseHeld = down; if (down) m1(); },
   board: () => toggleBoard(true), settings: () => toggleSettings(true), pause: pauseMobileGame,
