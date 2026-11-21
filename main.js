@@ -69,6 +69,7 @@ import {auditScene} from './world-grid.js';
 import {buildBlackMarket, NARROWS, hasTool} from './black-market.js';
 import { createActionMenu } from './action-menu.js';
 import { createNeighbours } from './neighbours.js';
+import { createRoamingTraffic } from './traffic-roam.js';
 import {buildMilitary, addNavyCrew} from './military.js';
 import {createConditions,conditionOf} from './condition.js';
 import {createLicences} from './licences.js';
@@ -2962,7 +2963,7 @@ function spawnTraffic(kind, color, route) {
   return v;
 }
 const CAR_COLORS = [0x2e86de, 0xf5f6fa, 0x2d3436, 0xe17055, 0x00b894, 0xfdcb6e, 0x6c5ce7, 0xb2bec3, 0x0a3d62, 0x833471];
-for (let i = 0; i < 14; i++) spawnTraffic('car', pick(CAR_COLORS));
+for (let i = 0; i < 22; i++) spawnTraffic('car', pick(CAR_COLORS));   // the town grid (more of them: it was too quiet)
 for (let i = 0; i < 2; i++) spawnTraffic('police', 0xf5f6fa);
 for (let i = 0; i < 2; i++) spawnTraffic('bus', 0x8b1a2b, BUS_ROUTE);
 
@@ -6354,7 +6355,7 @@ function raiseWanted(t = 45) {
 // work the lock with a Car Master Key (the lock gauge), or smash the window, which is loud and gets noticed.
 const CAR_LIKE = new Set(['car', 'police', 'ambulance', 'pickup', 'van', 'truck', 'suv', 'taxi']);
 const carTitle = (v, names) => { const n = names[v.kind] || v.kind; return carDriven(v) ? `The ${n} (someone's driving)` : `A parked ${n}` + (carLocked(v) ? ' (locked)' : ''); };
-const carDriven = v => !v.ai.parked && !!v.driver?.root?.visible;
+const carDriven = v => !v.ai.parked;   // traffic that isn't parked has someone at the wheel
 const carLocked = v => { if (v.locked == null) v.locked = v.kind === 'police' || Math.random() < 0.75; return v.locked; };
 function seenBy(radius = 22) { return peds.some(e => e.alive && !e.hidden && distXZ(e.root.position, player.position) < radius); }
 function carActions(v) {
@@ -8697,6 +8698,14 @@ const roadGrid = new Map(), ROAD_CELL = 20;
 const roadRectList = (() => { const set = new Set(); for (const l of roadGrid.values()) for (const r of l) if ((r.maxX - r.minX) * (r.maxZ - r.minZ) < 60000) set.add(r); const out = [...set];
   for (let k = -4; k <= 4; k++) out.push({ minX: k * 40 - 4.5, maxX: k * 40 + 4.5, minZ: -178, maxZ: 178 }, { minX: -178, maxX: 178, minZ: k * 40 - 4.5, maxZ: k * 40 + 4.5 });   // the town's street grid
   return out; })();
+// Traffic on every other road in the country (traffic-roam.js): the road network is read from the road strips above.
+const OBST = [];
+const roamTraffic = createRoamingTraffic({ rects: roadRectList, makeVehicle, vehicles, colors: CAR_COLORS,
+  groundY: (x, z, y) => groundY(x, z, y), skipArea: (x, z) => Math.abs(x) < 182 && Math.abs(z) < 182,
+  count: () => ({ low: 18, medium: 32, high: 45, ultra: 60 }[gfxQuality] ?? 32) * optimiser.crowd,
+  player: () => (inCar && driving ? driving.group.position : player.position),
+  obstacles: () => OBST });
+console.log('[traffic]', roamTraffic.nodes.length, 'junctions,', roamTraffic.edges.length / 2, 'stretches of road');
 function isRoadAt(x, z) {
   if (groundY(x, z, 0) > 0.12) return false;   // pavements, kerbs, floors
   if (Math.abs(x) < 180 && Math.abs(z) < 180) { const mx = ((x % 40) + 40) % 40, mz = ((z % 40) + 40) % 40; if (mx < 4.5 || mx > 35.5 || mz < 4.5 || mz > 35.5) return true; }
@@ -8909,7 +8918,8 @@ function frame() {
   perfBudget.update(rawDt, frameMs, running);
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
-  seatedResidents?.update(rawDt); neighbours?.update(rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld();
+  seatedResidents?.update(rawDt); neighbours?.update(rawDt);
+    OBST.length = 0; for (const v of vehicles) if (!v.disabled) OBST.push(v.group.position); OBST.push(player.position); roamTraffic.update(hitStop > 0 ? 0 : rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld();
   let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
   optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);
