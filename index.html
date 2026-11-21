@@ -324,12 +324,14 @@
   <div id="stabGraphics" style="display:none">
     <div class="sub">Resolution / quality</div>
     <div class="row" style="flex-wrap:wrap">
+      <button class="opt" data-gfx="auto" style="flex:1 1 100%">Auto (fits this device)</button>
       <button class="opt" data-gfx="low" style="flex:1 1 40%">Low (mobile)</button>
       <button class="opt" data-gfx="medium" style="flex:1 1 40%">Medium (laptop)</button>
       <button class="opt" data-gfx="high" style="flex:1 1 40%">High (laptop)</button>
       <button class="opt" data-gfx="ultra" style="flex:1 1 40%">Ultra High</button>
     </div>
     <div class="sub">Lower settings reduce render resolution and turn off shadows for better performance. Ultra High is not recommended for most devices.</div>
+    <div class="sub" id="gfxDevice"></div>
   </div>
   <div id="stabView" style="display:none"></div>
   <button class="close" id="closeSettings">Close</button>
