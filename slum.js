@@ -347,9 +347,7 @@ export function createSlum(ctx) {
   }
   for (const [dx, dz] of TENEMENTS) buildTenement(dx, dz, !dx && !dz);
 
-  // your neighbours' doors: locked (it's their home), but you can knock
-  { const replies = ['"Who is it? ...We\'re not buying anything."', '"Not now, the baby\'s asleep."', 'Nobody answers. A TV is on somewhere inside.', '"If it\'s about the noise, it wasn\'t us."', '"Mr Kassim sent you? Tell him the tap still leaks."'];
-    for (const t of tenants) if (!t.who.includes('landlord')) interactables.push({ pos: new THREE.Vector3(t.x, t.y, t.z), r: 1.4, door: true, label: `Knock on ${t.who.replace(/ \(.*\)/, '')}'s door (locked)`, action: () => ctx.toast('🚪 ' + replies[Math.floor(Math.random() * replies.length)]) }); }
+  // (your neighbours' doors, knocking and locks: neighbours.js; every flat has an owner with a routine)
 
   // ---------------- street life: power lines, lamps, laundry, rubbish, fire barrels ----------------
   // wooden poles along the lanes, leaning, with a tangle of wires (half of them stolen connections)
@@ -463,7 +461,7 @@ export function createSlum(ctx) {
   }
 
   return {
-    bounds: SLUM, home: SLUM_HOME, homeY: SLUM_HOME_Y, landlordAt: tenants[0], lanes, neglected, shacks,
+    bounds: SLUM, home: SLUM_HOME, homeY: SLUM_HOME_Y, landlordAt: tenants[0], lanes, neglected, shacks, flatDoors,
     // standing inside a shack's room (for the camera: indoors is first-person)
     insideShack: p => shacks.some(k => Math.abs(p.x - k.x) < k.w / 2 - 0.1 && Math.abs(p.z - k.z) < k.d / 2 - 0.1 && p.y < curb + 3.2),
     people: () => K?.people || [], errands,
