@@ -359,6 +359,8 @@ export function buildAdminEstate(ctx) {
     for (const x of [987, 1000, 1013]) { const l = new THREE.PointLight(0xffe6c4, 12, 20, 1.6); l.position.set(x, uy + UH - 0.6, (uz0 + uz1) / 2); root.add(l); }
     for (const x of [985, 995, 1005, 1015]) B(root, 2.4, 0.04, 0.5, x, uy + UH - 0.06, -434, glow, false);
   }
+  // a glass lift down to the basement (cinema, bar, gym, bowling, pool, car park), beside the stairs; cars come up to the forecourt
+  ctx.basement?.({ name: ctx.title ? 'your mansion' : 'the mansion', x: 995.4, y: 0, z: -444, face: Math.PI / 2, drive: { x: 989, y: 0.06, z: -466, ry: Math.PI / 2 } });
   const upTV = { at: new THREE.Vector3(1000, FY1, -428), screen: (() => { const m = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.35), new THREE.MeshBasicMaterial({ color: 0x050505 })); m.position.set(1000, FY1 + 1.9, uz1 - 0.31); m.rotation.y = Math.PI; root.add(m); return m; })() };
   const inR = (r, x, z) => x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ;
   const upstairsAt = (x, z, y) => {

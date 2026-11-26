@@ -39,6 +39,7 @@ import {buildWorldAdvertising} from './world-advertising.js';
 import {createWorldMap} from './world-map.js';
 import {createMovieTv} from './movie-tv.js';
 import { createRain } from './rain.js';
+import { createMansionBasements } from './mansion-basement.js';
 import { createHouseVisits } from './house-visits.js';
 import {createOnlineAccount} from './online-account.js';
 import {createSupportSkills} from './support-skills.js';
@@ -665,6 +666,7 @@ function groundY(x, z, bodyY = null) {
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
+  const baseFloor=basements?.groundAt(x,z);if(baseFloor!=null)return baseFloor;   // the mansions' basement level (its pool is sunk)
   const adminFloor=adminEstate?.groundAt(x,z,bodyY??player?.position.y??0);if(adminFloor!=null)return adminFloor;   // the admin estate (its raised pool deck)
   const slumFloor=slumGroundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player?.position.y));if(slumFloor!=null)return slumFloor;   // (the tenement's floors, stairs and balcony depend on how high you are)   // Cinder Row: dirt plots and lanes
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
@@ -2649,7 +2651,7 @@ let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{re
 function setUpHome(){
   if(isAdmin){
     if(adminEstate||!homeKitCtx)return;
-    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),chore:(k,o)=>doChore(k,o),planeBlocks,workout:()=>{stats.energy=clamp(stats.energy-10,0,100);stats.clean=Math.max(0,(stats.clean??60)-20);gainXp(2);},
+    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),chore:(k,o)=>doChore(k,o),planeBlocks,basement:spec=>basements?.add(spec),workout:()=>{stats.energy=clamp(stats.energy-10,0,100);stats.clean=Math.max(0,(stats.clean??60)-20);gainXp(2);},
       makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
     poolZones.push(...adminEstate.pools);
     if(adminEstate.tv)movieTv?.register(adminEstate.tv.screen,adminEstate.tv.at,()=>Math.abs(player.position.y-adminEstate.tv.at.y)<2);   // the lounge TV upstairs
@@ -7273,7 +7275,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let neighbours = null, venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, systemVoice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let basements = null, neighbours = null, venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, systemVoice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -8445,8 +8447,15 @@ drivingSchool = buildDrivingSchool({ scene, colliders, interactables, makeTex, m
   money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, enterVehicle: v => { if (inCar) exitVehicle(); player.position.copy(v.group.position); enterVehicle(v); }, exitVehicle: () => exitVehicle(), isDriving: v => inCar && driving === v });
 ridge = buildRidge({ scene, makeTex, interactables, sitSpots, toast, destinations: townPlaces.destinations });
 tunnel = buildTunnel({ scene, colliders, camBlockers, makeTex, destinations: townPlaces.destinations });   // Sunset Ridge Tunnel, beside the road over the top
-hills = buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
-estate = buildEstate({ scene, colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
+// Mansion basements: one lower level (cinema, bar, gym, bowling, pool, car park) reached by a lift in every mansion
+basements = createMansionBasements({ scene, colliders, interactables, sitSpots, poolZones, planeBlocks, makeTex, toast: m => toast(m),
+  makeVehicle: (k, c, st) => makeVehicle(k, c, st), removeVehicle: v => { const i = vehicles.indexOf(v); if (i >= 0) vehicles.splice(i, 1); },
+  teleport: (x, y, z, look) => { if (inCar) exitVehicle(true); if (sitting) toggleSit(null); player.position.set(x, y, z); vy = 0; pvel.set(0, 0, 0); if (look != null) yaw = look; },
+  driveAway: v => { cityServices?.ownedCars?.push(v); enterVehicle(v); },
+  workout: () => { stats.energy = clamp(stats.energy - 10, 0, 100); stats.clean = Math.max(0, (stats.clean ?? 60) - 20); gainXp(2); }, gainXp: n => gainXp(n),
+  drink: () => { stats.hunger = Math.min(100, stats.hunger + 3); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
+hills = buildHills({ scene, basement: spec => basements.add(spec), colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
+estate = buildEstate({ scene, basement: spec => basements.add(spec), colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeVehicle: (k, c, st) => makeVehicle(k, c, st),
   sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), sleep: () => sleep(),
   eat: (n, cost, msg) => { stats.hunger = Math.min(100, stats.hunger + n); toast(msg); }, rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); },
@@ -8848,6 +8857,7 @@ function grassSpot(x, z) {
   for (const n of noGrass) if (n.r ? Math.hypot(x - n.cx, z - n.cz) < n.r : x > n.minX && x < n.maxX && z > n.minZ && z < n.maxZ) return null;
   if (insideFootprint(x, z)) return null;
   if (adminEstate?.paved?.(x, z)) return null;   // your mansion's floors, drive and forecourt
+  if (hills?.noGrass?.(x, z)) return null;   // Highcliff Hills: its roads, drives and mansions
   // never on any floor: walk-in buildings, terminals, interiors
   if (walkIns.floorAt(x, z, 0.5) != null || townPlaces?.floorAt(x, z) != null) return null;
   const blocked = () => { for (const c of collidersNear(x, z)) { if (c.circleRadius != null ? Math.hypot(x - c.circleX, z - c.circleZ) < c.circleRadius + 0.6 : x > c.minX - 0.6 && x < c.maxX + 0.6 && z > c.minZ - 0.6 && z < c.maxZ + 0.6) return true; } return false; };
@@ -8879,6 +8889,7 @@ worldAdvertising=buildWorldAdvertising({scene,groundY,insideCollider,playerPosit
 const mapButton=document.createElement('button');mapButton.id='worldMapButton';mapButton.textContent='Map (M)';mapButton.type='button';mapButton.onclick=()=>openMap();document.body.append(mapButton);
 for(const it of interactables)if(it.label==='Open town travel board')it.action=()=>worldMap.show();
 movieTv=createMovieTv({interactables,position:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});movieTv.register(civicTvScreen,new THREE.Vector3(CIVIC_OFFSET.x,.3,CIVIC_OFFSET.z-7));
+if(basements)movieTv.register(basements.cinemaTv.screen,basements.cinemaTv.at,()=>basements.cinemaTv.canSee(player.position));   // the basement cinema
 if(interiors.layouts.cinema_screen)movieTv.register(interiors.layouts.cinema_screen,new THREE.Vector3(-7000,.3,-1.5),()=>interiors.active===interiors.layouts.cinema);   // Starlight Cinema's big screen
 const homeTvAt=homeRooms.tv;const homeTv=mesh(new THREE.PlaneGeometry(homeTvAt.w,homeTvAt.h),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(homeTvAt.x-.03,homeTvAt.y,homeTvAt.z);homeTv.rotation.y=homeTvAt.yaw;movieTv.register(homeTv,new THREE.Vector3(homeTvAt.x-1.4,homeTvAt.y-1.35,homeTvAt.z),()=>houseAt(player.position,-0.05)===houses[0]&&roomAt(player.position)?.name==='living');   // on the living-room wall, facing the sofa
 onlineAccount=createOnlineAccount({client:supabase,active:()=>onlinePlayReady&&!!hosting.room,snapshot:()=>({prog:{...prog},stats:{...stats},inventory,hasBag,adventure:adventureServices.snapshot(),support:supportSkills.snapshot(),supportCounters,monsterQuestKills,heroDungeonKills,villainKills,ownedCars:cityServices.snapshot().owned,quests:cityLife.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target}))})});

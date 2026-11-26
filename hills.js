@@ -19,7 +19,7 @@ export function roadPoint(t) {   // t: 0 (bottom) .. 1 (top)
   return { x: HILL.x + Math.cos(a) * r, z: HILL.z + Math.sin(a) * r, r, a };
 }
 
-export function buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations, playerPos, sitSpots, planeBlocks, chore, sleep }) {
+export function buildHills({ basement, scene, colliders, civicBuildings, interactables, makeTex, toast, destinations, playerPos, sitSpots, planeBlocks, chore, sleep }) {
   const mats = new Map();
   const mat = (c, o = {}) => { const k = c + JSON.stringify(o); if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0, map: o.map ?? null, transparent: o.opacity != null, opacity: o.opacity ?? 1, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1 })); return mats.get(k); };
   const geo = new THREE.BoxGeometry(1, 1, 1);
@@ -160,6 +160,8 @@ export function buildHills({ scene, colliders, civicBuildings, interactables, ma
     L(2.6, 0.45, 0.9, 2, U + 0.3, -6.2, cream); L(2.6, 0.6, 0.22, 2, U + 0.75, -5.8, cream); col(0.7, 3.3, -6.7, -5.7, U); for (const dx of [-0.8, 0.8]) sit(2 + dx, -6.2, Math.PI, U + 0.45, 'Sit on the sofa');
     // lights on both floors
     for (const [lx, ly, lz] of [[-5, FY - 0.5, -3], [5, FY - 0.5, -4], [-5, TOP - 0.5, -4], [4, TOP - 0.5, -4]]) { const l = new THREE.PointLight(0xffe6c4, 7, 14, 1.6); l.position.set(lx, ly, lz); g.add(l); }
+    // a glass lift down to the basement level, by the back window; cars come round to the cul-de-sac outside the gate
+    { const c = toW(-3.5, -8.6), d = toW(0, 14); basement?.({ name: m.name, x: c.x, y: Y, z: c.z, face: g.rotation.y, drive: { x: d.x, y: Y + 0.15, z: d.z, ry: g.rotation.y + Math.PI / 2 } }); }
     planeBlocks?.push({ ...rectW(-10, 10, -10, 2), top: Y + TOP + 0.6 });   // indoors: first person, and the roof doesn't hide you
     houses.push({ inv });
   }
@@ -234,7 +236,24 @@ export function buildHills({ scene, colliders, civicBuildings, interactables, ma
     }
     return hillHeight(x, z);
   }
-  return { update, groundAt, hill: HILL };
+  // where grass must not grow: the winding road, the approach road, the last stretch, the cul-de-sac, and each
+  // mansion's drive, house, patio and pool (lawns inside the walls still grow)
+  const roadPts = []; for (let i = 0; i <= 440; i++) roadPts.push(roadPoint(i / 440));
+  const foot0 = roadPoint(0), top1 = roadPoint(1);
+  const bare = [];   // world rects, from each mansion's local layout
+  for (const h of houses) { const m = h.inv.clone().invert(), W = (a, b) => new THREE.Vector3(a, 0, b).applyMatrix4(m);
+    for (const [a, b, c, d] of [[-3.5, 3.5, 1, 9.5], [-10.5, 10.5, -10.5, 2.5], [-17, -9.8, -11, -1], [-1.5, 9.5, -16, -10]]) { const p = W(a, c), q = W(b, d); bare.push({ minX: Math.min(p.x, q.x), maxX: Math.max(p.x, q.x), minZ: Math.min(p.z, q.z), maxZ: Math.max(p.z, q.z) }); } }
+  function noGrass(x, z) {
+    const dx = x - HILL.x, dz = z - HILL.z, r = Math.hypot(dx, dz);
+    if (Math.abs(z - foot0.z) < ROAD_W / 2 + 1 && x > foot0.x - 2 && x < foot0.x + 172) return true;   // the approach road
+    if (r > HILL.base + 2) return false;
+    if (r < 17) return true;                                                                            // the cul-de-sac
+    { const a = Math.atan2(dz, dx) - ROAD_END_A, along = Math.cos(a) * r, across = Math.abs(Math.sin(a) * r); if (along > 14 && along < top1.r + 2 && across < ROAD_W / 2 + 1) return true; }   // the last stretch in
+    if (r >= HILL.flat && r <= HILL.base) for (const p of roadPts) if (Math.abs(p.x - x) < 6 && Math.abs(p.z - z) < 6 && Math.hypot(p.x - x, p.z - z) < ROAD_W / 2 + 1) return true;   // the winding road
+    for (const b of bare) if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) return true;
+    return false;
+  }
+  return { update, groundAt, hill: HILL, noGrass };
 }
 
 // Sunset Ridge: a long ridge south of the nightlife strip. The road from the boulevard climbs
