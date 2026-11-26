@@ -152,11 +152,11 @@ export function furnishHouse(ctx, h) {
   B(hw - 0.6, hw - 0.1, b0 + 0.25, b0 + 0.75, 0, 0.42, 0xf6f6f2);                        // toilet
   B(hw - 0.3, hw - 0.08, b0 + 0.25, b0 + 0.75, 0.42, 0.85, 0xf6f6f2);
   B(hw - 0.62, hw - 0.08, b0 + 0.23, b0 + 0.77, 0.42, 0.46, 0xffffff);
-  sitSpots.push({ x: X(hw - 0.42), z: Z(b0 + 0.5), yaw: -Math.PI / 2, seatY: y + 0.45, label: 'Use the toilet' });
+  sitSpots.push({ x: X(hw - 0.42), z: Z(b0 + 0.5), yaw: -Math.PI / 2, seatY: y + 0.45, label: 'Use the toilet', toilet: true });   // E: pee, poo or just sit (main.js)
   B(1.08, 1.5, b0 + 0.1, b0 + 0.65, 0.78, 0.9, 0xffffff); B(1.2, 1.3, b0 + 0.3, b0 + 0.45, 0, 0.78, 0xf6f6f2);   // basin
   B(1.06, 1.08, b0 + 0.08, b0 + 0.68, 1.15, 1.8, 0xcfe4ee, false, { metal: 0.9, rough: 0.05 });                     // mirror
   B(1.06, 1.3, b1 - 0.6, b1 - 0.1, 1.2, 1.25, 0xd9c49a);                                                           // towel rail
-  spot(hw - 0.55, b1 - 0.5, 0.9, 'Take a shower', () => ctx.rest(12, '🚿 A hot shower. You feel fresh and wide awake.'));
+  spot(hw - 0.55, b1 - 0.5, 0.9, 'Take a shower', () => ctx.chore ? ctx.chore('shower') : ctx.rest(12, '🚿 A hot shower. You feel fresh and wide awake.'));
   spot(1.6, b0 + 0.4, 0.6, 'Wash your hands', () => ctx.chore ? ctx.chore('handwash') : ctx.toast('🧼 Squeaky clean.'));
 
   // ---------------- storage room (back, right) ----------------
