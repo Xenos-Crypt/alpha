@@ -197,6 +197,8 @@ export function buildEstate(ctx) {
     Cy(1.1, 1.1, 0.08, 0, 0.95, 14, oak, 24); Cy(0.25, 0.4, 0.9, 0, 0.5, 14, oak, 10); Cy(0.25, 0.18, 0.5, 0, 1.25, 14, mat(0xffffff), 10); for (let k = 0; k < 7; k++) B(0.2, 0.2, 0.2, Math.cos(k) * 0.18, 1.6, 14 + Math.sin(k) * 0.18, [0xe84393, 0xffffff, 0xf9ca24][k % 3]);
     { const [x, z] = W(0, 14); colliders.push({ circleX: x, circleZ: z, circleRadius: 1.15, minX: x - 1.15, maxX: x + 1.15, minZ: z - 1.15, maxZ: z + 1.15 }); }
     { const [x, z] = W(3, 17.5); stander(x, z, ry(Math.PI), { outfit: 0x1a1a1a, task: 'idle' }); act(3, 17.5, 1.8, 'Talk to the butler', () => toast(`🤵 "Welcome to ${P.name.split(' · ')[1]}. The cinema is through on the right, the kitchen and great room on the left, the ${P.wing === 'court' ? 'basketball court' : 'indoor pool'} past the games room, and the cars are in the auto gallery. The stairs take you up to the suites."`)); }
+    // a glass lift between the two staircases down to the basement level; cars come round to the circular drive
+    { const [x, z] = W(0, 3.5), [dx, dz] = W(0, 28); ctx.basement?.({ name: P.name.split(' · ')[1], x, y: FY0, z, face: ry(0), drive: { x: dx, y: 0.06, z: dz, ry: ry(Math.PI / 2) } }); }
     // ---- the double staircase: two ramps rising from z 9 to the landing at z -1 ----
     for (const sx of [-1, 1]) {
       const xa = sx * 4.6, xb = sx * 6.6, xm = (xa + xb) / 2;
