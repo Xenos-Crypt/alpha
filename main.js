@@ -38,6 +38,7 @@ import {roadsidePosition} from './roadside-placement.js';
 import {buildWorldAdvertising} from './world-advertising.js';
 import {createWorldMap} from './world-map.js';
 import {createMovieTv} from './movie-tv.js';
+import { createRain } from './rain.js';
 import { createHouseVisits } from './house-visits.js';
 import {createOnlineAccount} from './online-account.js';
 import {createSupportSkills} from './support-skills.js';
@@ -2223,7 +2224,7 @@ const pvel = new THREE.Vector3();          // knockback velocity
 let playerStun = 0, iFrames = 0, playerBlocking = false, awaken = 0, drownWarned = false, bloodArmour = 0;
 let action = null;                          // the move currently being performed
 let comboIdx = 0, lastM1 = 0, m1Cd = 0, dashCd = 0, mouseHeld = false;
-const stats = { hp: 100, hunger: 80, energy: 80, ult: 0, gold: 0 };
+const stats = { hp: 100, hunger: 80, energy: 80, ult: 0, gold: 0, bladder: 60, bowel: 45, clean: 60 };   // bladder/bowel: how badly you need the toilet; clean: when you last washed
 let kills = 0;
 
 // =====================================================================
@@ -2648,7 +2649,7 @@ let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{re
 function setUpHome(){
   if(isAdmin){
     if(adminEstate||!homeKitCtx)return;
-    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),
+    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),chore:(k,o)=>doChore(k,o),
       makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
     poolZones.push(...adminEstate.pools);
     townPlaces?.destinations?.push({name:'Your mansion (Xenos Estate)',x:adminEstate.home.x,z:adminEstate.home.z});
@@ -6489,7 +6490,7 @@ function resolveInteractTarget() {
   if (transport?.rider) return { label: 'Leave', action: () => transport.leave() };
   if (inCar && driving?.isTow) { const a = recovery?.action(driving, player.position); if (a) return a; }   // tow truck: winch / drop wrecks
   if (inCar) return { label: driving.kind === 'plane' && driving.alt > 3 ? 'Jump with parachute' : 'Get out', action: () => exitVehicle() };
-  if (sitting) return { label: 'Stand up', action: () => toggleSit(null) };
+  if (sitting) return withMenu(activeSitSpot?.toilet || activeSitSpot?.label === 'Use the toilet' ? 'Toilet' : 'Sitting', () => [{ label: 'Stand up', run: () => toggleSit(null) }, ...seatActions(activeSitSpot)]);
   if (action) return null;
   // a bus waiting at the stop beside you beats the bench at the stop
   const busHere = !inCar && !inCivicInterior && vehicles.find(b => b.kind === 'bus' && b.ai && b.ai.stopped && !b.disabled && distXZ(b.group.position, player.position) < 6.5);
@@ -6500,6 +6501,8 @@ function resolveInteractTarget() {
     // secretary's desk, a counter, a bed...). Otherwise use that thing.
     const other = inCivicInterior && interiors.active ? interiors.nearest(player.position) : nearestInteractable();
     const seatD = Math.hypot(player.position.x - seat.x, player.position.z - seat.z), otherD = other ? distXZ(player.position, other.pos) : Infinity;
+    // (a toilet under the bathroom window: the toilet's menu also opens the window)
+    if (isToilet(seat) && seatD < 1.4) return withMenu('Toilet', () => [...toiletActions(seat), ...(other?.window && otherD < 1.4 ? [{ label: other.label, run: () => other.action() }] : [])]);
     if (!other || seatD <= otherD) return { label: seat.label || 'Sit', action: () => toggleSit(seat) };
   }
   if (inCivicInterior) {
@@ -6536,6 +6539,33 @@ function resolveInteractTarget() {
   const it = nearestInteractable();
   return it ? asTarget(it) : null;   // anything can offer a menu of actions
 }
+// THE TOILET: E offers a pee, a poo or just sitting down. You can only go if you need to (stats.bladder /
+// stats.bowel fill up over the day and after you eat); men pee standing up, everyone else sits. chores.js plays it
+// out: aim, push, wipe, flush. Afterwards your hands want washing.
+const isToilet = s => !!s && (s.toilet || s.label === 'Use the toilet');
+const needWords = n => n >= 80 ? 'You really need to go' : n >= 45 ? 'You need to go' : n >= 20 ? 'You could go' : "You don't need to go";
+function toiletActions(seat) {
+  const list = [
+    { label: 'Have a pee', note: needWords(stats.bladder), run: () => useToilet(seat, 'pee') },
+    { label: 'Have a poo', note: needWords(stats.bowel), run: () => useToilet(seat, 'poo') },
+  ];
+  if (!sitting) list.push({ label: 'Just sit down', run: () => toggleSit(seat) });
+  return list;
+}
+function useToilet(seat, mode) {
+  const n = mode === 'pee' ? stats.bladder : stats.bowel;
+  if (n < 20) { toast(mode === 'pee' ? "🚽 You try, but nothing comes. You don't need to go yet." : "🚽 You sit there for a while, but nothing's happening. You don't need to go."); return; }
+  const stand = mode === 'pee' && playerLook?.sex === 'm';
+  if (stand && sitting) toggleSit(null); else if (!stand && !sitting && seat) toggleSit(seat);
+  chores?.open('toilet', { mode, stand, need: n });
+}
+// What else you can do from where you're sitting: the toilet, or the TV you're facing.
+function seatActions(seat) {
+  const list = isToilet(seat) ? toiletActions(seat) : [];
+  if (movieTv?.near?.(8)) list.push({ label: 'Watch TV', run: () => movieTv.show() });
+  return list;
+}
+let handsDirty = false, needWarned = {};
 // The action menu: E on something with several things to do opens a list (and pauses the game); see action-menu.js
 let menuPaused = false;
 const actionMenu = createActionMenu({ onPauseChange: p => { menuPaused = p; for (const k in keys) keys[k] = false; } });
@@ -6663,15 +6693,24 @@ const arcade = createArcade({ toast, pause: () => pauseForPanel(), resume: () =>
 const licences = createLicences({ caught: () => raiseWanted(70), money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, toast, day: () => reconstructionDays, wanted: () => wanted, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 const snackShop = createSnackShop({ stats, maxHp, toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 kitchen = createKitchen({ stats, maxHp, toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); }, gainXp: n => gainXp(n), bag: () => inventory, bagChanged: () => { if (inventoryOpen) renderInventory(); } });
-chores = createChores({ toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
-  done(kind, score, res = {}) {
-    if (kind === 'handwash') { gainXp(1); toast(`🧼 Hands washed properly (${Math.round(score)}%). Squeaky clean.`); }
+chores = createChores({ toast: m => toast(m), pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); }, done: (...a) => choreDone(...a) });
+function choreDone(kind, score, res = {}) {
+    if (kind === 'handwash') { gainXp(1); handsDirty = false; toast(`🧼 Hands washed properly (${Math.round(score)}%). Squeaky clean.`); }
+    else if (kind === 'toilet') {
+      if (res.mode === 'poo') { stats.bowel = 0; stats.bladder = Math.min(stats.bladder, 10); } else stats.bladder = 0;
+      handsDirty = true; needWarned = {}; if (sitting) toggleSit(null);
+      toast(res.mode === 'pee' && res.splashed ? '🚽 Flushed, and you wiped up after yourself. Now wash your hands.' : '🚽 Done and flushed. Now wash your hands.');
+    }
+    else if (kind === 'shower' || kind === 'bath') {
+      stats.clean = 100; handsDirty = false; stats.energy = clamp(stats.energy + (kind === 'bath' ? 18 : 12), 0, 100);
+      toast(res.scalded ? '🚿 Clean all over… and a bit red: that water was far too hot.' : kind === 'bath' ? '🛁 A long hot soak and a proper wash. You feel brand new.' : '🚿 Clean all over. You feel fresh and wide awake.');
+    }
     else if (kind === 'laundry') { stats.energy = Math.max(0, stats.energy - 3); gainXp(3); toast(res.pink ? '👕 Laundry done and pegged out… but everything white is pink now.' : `👕 Laundry done and pegged out (${Math.round(score)}%). Fresh clothes.`); }
     else if (kind === 'dishes') kitchen?.washUp();
-  } });
+}
 // Chores: if you've hired a housekeeper (society.js), they've already done it today.
 function doChore(kind, o) {
-  const who = society?.choreByStaff(kind);
+  const who = ['laundry', 'dishes', 'handwash'].includes(kind) && society?.choreByStaff(kind);   // nobody showers for you
   if (who) { const what = { laundry: 'the laundry', dishes: 'the dishes', handwash: 'the towels and soap' }[kind] || 'it'; toast(`🧹 ${who}, your housekeeper, has already done ${what} today.`); if (kind === 'laundry') gainXp(1); else if (kind === 'dishes') kitchen?.washUp(); return; }
   return chores?.open(kind, o);
 }
@@ -7240,6 +7279,8 @@ let weatherState = 'clear', weatherT = 90 + rand() * 120;
 $('weatherBadge').textContent = '☀️ Clear';
 let WEATHER_CYCLE = ['clear', 'rain', 'clear', 'snow'], weatherIdx = 0;   // replaced by the season's cycle once seasons.js starts
 const WEATHER_LABEL = { clear: '☀️ Clear', rain: '🌧️ Raining', snow: '❄️ Snowing' };
+const RAIN_TOP = new THREE.Color(0x56697c), RAIN_HAZE = new THREE.Color(0x7d91a6), RAIN_LIGHT = new THREE.Color(0x8fa9c4);
+let rain = null, playerIndoors = false;
 function updateWeather(dt) {
   weatherT -= dt;
   if (weatherT <= 0) {
@@ -7254,12 +7295,11 @@ function updateWeather(dt) {
   // forcing a perpetual "doors open, waiting" state is the only hook available
   // from here without reaching into transport.js's own update loop.
   if (weatherState === 'snow') for (const s of transport?.services ?? []) { s.doors = true; s.wait = 2; }
-  if ((weatherState === 'rain' || weatherState === 'snow') && !spaceCentre?.inSpace && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
+  if (weatherState === 'snow' && !spaceCentre?.inSpace && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
     for (let i = 0; i < (touchDevice ? 2 : 6); i++) {   // fewer weather particles on phones
       const a = rand() * Math.PI * 2, r = rand() * 16;
       const x = player.position.x + Math.cos(a) * r, z = player.position.z + Math.sin(a) * r;
       if (weatherState === 'snow') spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3((Math.random() - 0.5), -2.5, (Math.random() - 0.5)), 0xffffff, 0.07, 1.6, -2.5);
-      else spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3(0, -14, 0), 0x9fc3e0, 0.05, 0.7, -14);
     }
   }
 }
@@ -7937,6 +7977,27 @@ function openLawPanel(){
 // Former test toggles, now off: needs drain and walking speed is human (powers add to it).
 const CHEAT_NO_NEEDS = false;
 const CHEAT_SPEED_MULT = 1;
+// The body's other needs: the toilet and keeping clean. Warnings come as toasts; leave it too long and you have
+// an accident (not in god mode).
+let lastHunger = null;
+function updateBody(dt) {
+  const ate = lastHunger == null ? 0 : Math.max(0, stats.hunger - lastHunger); lastHunger = stats.hunger;
+  stats.bladder = clamp((stats.bladder ?? 50) + 100 / (DAY_LEN / 4) * dt + ate * 0.12, 0, 100);
+  stats.bowel = clamp((stats.bowel ?? 40) + 100 / (DAY_LEN * 1.1) * dt + ate * 0.3, 0, 100);
+  stats.clean = clamp((stats.clean ?? 60) - 100 / (DAY_LEN * 1.5) * (action || keys.ShiftLeft ? 3 : 1) * dt, 0, 100);
+  const warn = (k, at, msg) => { if (!needWarned[k] && at) { needWarned[k] = true; toast(msg); } };
+  warn('bladder', stats.bladder >= 80, '🚽 You need a wee. Find a toilet.');
+  warn('bowel', stats.bowel >= 85, '🚽 You really need the toilet.');
+  warn('clean', stats.clean <= 20, "🧼 You haven't washed in a while. People can smell it: have a shower.");
+  if (stats.clean > 40) needWarned.clean = false;
+  if (isAdmin && adminGod) return;
+  if (stats.bladder >= 100 || stats.bowel >= 100) {
+    const which = stats.bladder >= 100 ? 'bladder' : 'bowel';
+    if (which === 'bladder') stats.bladder = 0; else stats.bowel = 0;
+    stats.clean = Math.min(stats.clean, 5); needWarned = {};
+    toast("😳 You couldn't hold it any longer and didn't make it to a toilet. You need a shower and clean clothes.");
+  }
+}
 function updateNeeds(dt) {
   if (!CHEAT_NO_NEEDS) {
     // Real rhythm on the game clock (3x real time): hungry again after ~6 game-hours (2 real
@@ -7948,6 +8009,7 @@ function updateNeeds(dt) {
     if (sitting || resting || (inCar && !keys.ShiftLeft)) stats.energy = clamp(stats.energy + 100 / 5400 * dt, 0, 100);
     else if (strolling && !action) stats.energy = clamp(stats.energy + 100 / 10800 * dt, 0, 100);
     else stats.energy = clamp(stats.energy - 100 / (DAY_LEN * 0.4) * drainMul() * dt, 0, 100);
+    updateBody(dt);
   }
   if (!CHEAT_NO_NEEDS && (stats.hunger === 0 || stats.energy === 0)) { stats.hp -= 0.5 * dt; noteHpLoss(stats.hunger === 0 ? 'Starving: eat something' : 'Exhausted: get some sleep'); }   // starvation/exhaustion is slow, not instant
   else if (stats.hunger > 30) stats.hp += 1 * dt;
@@ -8011,9 +8073,9 @@ function updateWorldLight(dt) {
     top.copy(SKY.duskTop).lerp(SKY.nightTop, t);
     horizon.copy(SKY.duskHorizon).lerp(SKY.nightHorizon, t);
   }
-  if (weatherState === 'rain') { top.lerp(new THREE.Color(0x5a6168), 0.6); horizon.lerp(new THREE.Color(0x6b7278), 0.6); }
+  const haze = rain?.haze ?? (weatherState === 'rain' ? 1 : 0);   // rain: a blue-grey haze closes in
+  if (haze > 0) { top.lerp(RAIN_TOP, 0.65 * haze); horizon.lerp(RAIN_HAZE, 0.7 * haze); sun.intensity *= 1 - 0.55 * haze; hemi.color.lerp(RAIN_LIGHT, 0.6 * haze); }   // overcast: dim, blue-grey light
   scene.fog.color.copy(horizon);
-  scene.fog.far = weatherState === 'rain' ? 300 : 600;
   sky.position.copy(camera.position);
   sunDisc.position.copy(camera.position).addScaledVector(sunDir, perfBudget.celestialDistance());
   moonDisc.position.copy(camera.position).addScaledVector(sunDir, -perfBudget.celestialDistance());
@@ -8065,7 +8127,7 @@ function updateWorldLight(dt) {
     hemi.intensity = 0.45; hemi.color.set(th.light);
     sunDisc.visible = moonDisc.visible = false;
   } else {
-    scene.fog.near = 140; scene.fog.far = 600;
+    scene.fog.near = 140 - 125 * haze; scene.fog.far = 600 - 450 * haze;   // rain closes the distance in
   }
 }
 
@@ -8105,6 +8167,7 @@ function updateCamera(dt) {
     const indoors = !inCar && (!!interiors?.active || inCivicInterior || !!houseAt(p, -0.1) || !!walkIns.inside || !!slum?.insideShack?.(p) || !!neighbours?.inside || planeBlocks.some(b => p.x > b.minX + 0.3 && p.x < b.maxX - 0.3 && p.z > b.minZ + 0.3 && p.z < b.maxZ - 0.3 && b.top > p.y + 2.2 && b.top < p.y + 40));
     // The player doesn't pick the view: first-person indoors, third-person in a vehicle,
     // and on foot it depends on the place (first-person in dungeons and underground, third-person outside).
+    playerIndoors = indoors;
     const below = !!dungeon || !!sewers?.underground || !!metro?.underground;
     const want = indoors ? 'first' : inCar ? 'third' : below ? 'first' : 'third';
     if (want !== cameraView) { cameraView = want; pitch = want === 'third' ? clamp(pitch, -.1, 1.2) : pitch; }
@@ -8783,6 +8846,7 @@ function grassSpot(x, z) {
   if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 4) return null;
   for (const n of noGrass) if (n.r ? Math.hypot(x - n.cx, z - n.cz) < n.r : x > n.minX && x < n.maxX && z > n.minZ && z < n.maxZ) return null;
   if (insideFootprint(x, z)) return null;
+  if (adminEstate?.paved?.(x, z)) return null;   // your mansion's floors, drive and forecourt
   // never on any floor: walk-in buildings, terminals, interiors
   if (walkIns.floorAt(x, z, 0.5) != null || townPlaces?.floorAt(x, z) != null) return null;
   const blocked = () => { for (const c of collidersNear(x, z)) { if (c.circleRadius != null ? Math.hypot(x - c.circleX, z - c.circleZ) < c.circleRadius + 0.6 : x > c.minX - 0.6 && x < c.maxX + 0.6 && z > c.minZ - 0.6 && z < c.maxZ + 0.6) return true; } return false; };
@@ -8815,7 +8879,7 @@ const mapButton=document.createElement('button');mapButton.id='worldMapButton';m
 for(const it of interactables)if(it.label==='Open town travel board')it.action=()=>worldMap.show();
 movieTv=createMovieTv({interactables,position:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});movieTv.register(civicTvScreen,new THREE.Vector3(CIVIC_OFFSET.x,.3,CIVIC_OFFSET.z-7));
 if(interiors.layouts.cinema_screen)movieTv.register(interiors.layouts.cinema_screen,new THREE.Vector3(-7000,.3,-1.5),()=>interiors.active===interiors.layouts.cinema);   // Starlight Cinema's big screen
-const homeTvAt=homeRooms.tv;const homeTv=mesh(new THREE.PlaneGeometry(homeTvAt.w,homeTvAt.h),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(homeTvAt.x-.03,homeTvAt.y,homeTvAt.z);homeTv.rotation.y=homeTvAt.yaw;movieTv.register(homeTv,new THREE.Vector3(homeTvAt.x-1.4,CURB,homeTvAt.z),()=>houseAt(player.position,-0.05)===houses[0]&&roomAt(player.position)?.name==='living');   // on the living-room wall, facing the sofa
+const homeTvAt=homeRooms.tv;const homeTv=mesh(new THREE.PlaneGeometry(homeTvAt.w,homeTvAt.h),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(homeTvAt.x-.03,homeTvAt.y,homeTvAt.z);homeTv.rotation.y=homeTvAt.yaw;movieTv.register(homeTv,new THREE.Vector3(homeTvAt.x-1.4,homeTvAt.y-1.35,homeTvAt.z),()=>houseAt(player.position,-0.05)===houses[0]&&roomAt(player.position)?.name==='living');   // on the living-room wall, facing the sofa
 onlineAccount=createOnlineAccount({client:supabase,active:()=>onlinePlayReady&&!!hosting.room,snapshot:()=>({prog:{...prog},stats:{...stats},inventory,hasBag,adventure:adventureServices.snapshot(),support:supportSkills.snapshot(),supportCounters,monsterQuestKills,heroDungeonKills,villainKills,ownedCars:cityServices.snapshot().owned,quests:cityLife.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target}))})});
 applyLayout();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
@@ -8895,6 +8959,10 @@ function frame() {
     interiors.update(dt);
     walkInThroughDoors(dt);
     updateWeather(dt);
+    rain ||= createRain({ scene, camera, count: touchDevice ? 3000 : 9000, splashes: touchDevice ? 110 : 260, groundAt: (x, z) => groundY(x, z, player.position.y + 3),
+      sheltered: (x, z) => insideFootprint(x, z) || walkIns.floorAt(x, z, 0.5) != null || !!houseAt({ x, z }, 0.2) });
+    rain.set(weatherState === 'rain' || weatherState === 'storm');
+    rain.update(dt, { indoors: playerIndoors || !!spaceCentre?.inSpace || !!metro?.underground || !!sewers?.underground || !!dungeon || inCivicInterior || !!interiors?.active, density: optimiser.crowd });
     updateFirefighters(dt);
     updateFireDamage(dt);
     bg('bats', dt, updateBats);

@@ -84,9 +84,9 @@ export function buildAdminEstate(ctx) {
   lawn.rotation.x = -Math.PI / 2; lawn.position.set((X0 + X1) / 2, 0.02, (Z0 + Z1) / 2); lawn.receiveShadow = true; root.add(lawn);
   const tarmac = mat(0x3c4247, { rough: 0.9 });
   // the drive: from the road, through the gate, south to z -465.5; then east along z -470 to the forecourt's
-  // west edge (x 993). The two pieces meet edge to edge, never overlapping (no flicker).
+  // west edge (x 984). The two pieces meet edge to edge, never overlapping (no flicker).
   B(root, 9, 0.06, ROAD_Z + 465.5, GX, 0.04, (ROAD_Z - 465.5) / 2, tarmac, false);
-  B(root, 993 - (GX - 4.5), 0.06, 9, (993 + GX - 4.5) / 2, 0.04, -470, tarmac, false);
+  B(root, 984 - (GX - 4.5), 0.06, 9, (984 + GX - 4.5) / 2, 0.04, -470, tarmac, false);
   const wallC = mat(0xe8e2d6, { rough: 0.8 });
   const wall = (x0, x1, z0, z1) => { const w = Math.max(0.5, x1 - x0), d = Math.max(0.5, z1 - z0), x = (x0 + x1) / 2, z = (z0 + z1) / 2; B(root, w, 2.2, d, x, 1.1, z, wallC); solid(x - w / 2, x + w / 2, z - d / 2, z + d / 2); };
   wall(X0, GX - 6, Z1, Z1); wall(GX + 6, X1, Z1, Z1); wall(X0, X1, Z0, Z0); wall(X0, X0, Z0, Z1); wall(X1, X1, Z0, Z1);
@@ -99,11 +99,51 @@ export function buildAdminEstate(ctx) {
 
   // ---------------- the mansion: walk in on marble floors ----------------
   const hx0 = 1250 + DX, hx1 = 1300 + DX, hz0 = 210 + DZ, hz1 = 240 + DZ, H = 6, cx = (hx0 + hx1) / 2;
-  hall({ x0: hx0, x1: hx1, z0: hz0, z1: hz1, H, wall: 0xf6f3ee, floor: 0xf2efe9, floorKind: 'marble', roof: 0x2a2e33, gaps: { n: [[cx - 3, cx + 3]], s: [[cx - 7, cx + 7]] } });
-  B(root, hx1 - hx0 + 6, 5, hz1 - hz0 - 6, cx, H + 3, (hz0 + hz1) / 2, mat(0xf6f3ee, { rough: 0.6 }));
-  B(root, hx1 - hx0 + 8, 0.4, hz1 - hz0 - 2, cx, H + 5.7, (hz0 + hz1) / 2, 0x2a2e33);
-  for (let x = hx0 + 2; x < hx1 - 1; x += 4) B(root, 3, 3.6, 0.1, x, H + 3, hz0 + 2.95, mat(0x3c6e8f, { rough: 0.05, metal: 0.5 }), false);   // glass front (faces the forecourt)
-  B(root, hx1 - hx0 + 6.2, 0.18, 0.2, cx, H + 0.6, hz0 - 0.05, 0xd4af37);
+  // A modern villa. Ground floor: the walk-in rooms behind tall windows (real openings with glass in them, so you
+  // see in and out), the front door under a canopy on two stone columns. Upper floor: set back, glazed across the
+  // front, with a glass balcony; a thin roof slab overhangs both. (The upper floor is the outside of the house only.)
+  const winF = [[978, 984], [987, 994], [1006, 1013], [1016, 1022]], winB = [[977, 987]], winW = [[-443, -439]];
+  const byX = (a, b) => a[0] - b[0];
+  hall({ x0: hx0, x1: hx1, z0: hz0, z1: hz1, H, wall: 0xf3eee4, floor: 0xf2efe9, floorKind: 'marble', roof: 0x2e2a27,
+    gaps: { n: [...winF, [cx - 3, cx + 3]].sort(byX), s: [...winB, [cx - 7, cx + 7]].sort(byX), w: winW } });
+  const glass = mat(0x9fc4d6, { opacity: 0.28, rough: 0.05, metal: 0.4 }), bronze = mat(0x3b3530, { rough: 0.4, metal: 0.6 }), stone = mat(0xb9ad98, { rough: 0.9 });
+  const pane = (ax, az, bx, bz) => {   // glass filling an opening 3.2 m tall, with bronze frames and mullions every metre and a half
+    const alongX = Math.abs(bx - ax) > Math.abs(bz - az), len = alongX ? bx - ax : bz - az, mx = (ax + bx) / 2, mz = (az + bz) / 2;
+    B(root, alongX ? len : 0.05, 3.2, alongX ? 0.05 : len, mx, 1.6, mz, glass, false); solid(Math.min(ax, bx) - (alongX ? 0 : 0.1), Math.max(ax, bx) + (alongX ? 0 : 0.1), Math.min(az, bz) - (alongX ? 0.1 : 0), Math.max(az, bz) + (alongX ? 0.1 : 0));
+    const n = Math.max(1, Math.round(len / 1.5));
+    for (let i = 0; i <= n; i++) { const t = i / n; B(root, alongX ? 0.08 : 0.12, 3.2, alongX ? 0.12 : 0.08, ax + (bx - ax) * t, 1.6, az + (bz - az) * t, bronze, false); }
+    for (const y of [0.04, 3.16]) B(root, alongX ? len : 0.12, 0.08, alongX ? 0.12 : len, mx, y, mz, bronze, false);
+  };
+  for (const [a, b] of winF) pane(a, hz0, b, hz0); for (const [a, b] of winB) pane(a, hz1, b, hz1); for (const [a, b] of winW) pane(hx0, a, hx0, b);
+  // stone cladding on the corners and between the front windows, a dark plinth all round
+  for (const x of [hx0 + 0.6, 985.5, 995.5, 1004.5, 1014.5, hx1 - 0.6]) B(root, x === hx0 + 0.6 || x === hx1 - 0.6 ? 1.5 : 1.2, H, 0.14, x, H / 2, hz0 - 0.2, stone, false);
+  for (const [w, d, x, z] of [[hx1 - hx0 + 0.4, 0.5, cx, hz0 - 0.1], [hx1 - hx0 + 0.4, 0.5, cx, hz1 + 0.1], [0.5, hz1 - hz0, hx0 - 0.1, (hz0 + hz1) / 2], [0.5, hz1 - hz0, hx1 + 0.1, (hz0 + hz1) / 2]]) {
+    const segs = d === 0.5 ? (z < (hz0 + hz1) / 2 ? [...winF, [cx - 3, cx + 3]] : [...winB, [cx - 7, cx + 7]]).sort(byX) : [];
+    if (!segs.length) { B(root, w, 0.35, d, x, 0.175, z, 0x4a4440, false); continue; }
+    let a = hx0 - 0.2; for (const [g0, g1] of [...segs, [hx1 + 0.2, hx1 + 0.2]]) { if (g0 - a > 0.05) B(root, g0 - a, 0.35, d, (a + g0) / 2, 0.175, z, 0x4a4440, false); a = g1; }
+  }
+  // the front door: a bronze frame, a canopy on two stone columns, lanterns either side, a stone landing
+  B(root, 6.3, 0.2, 0.3, cx, 3.25, hz0 - 0.05, bronze, false); for (const sd of [-1, 1]) B(root, 0.15, 3.3, 0.3, cx + sd * 3.05, 1.65, hz0 - 0.05, bronze, false);
+  B(root, 10, 0.35, 5, cx, 3.9, hz0 - 2.4, mat(0xf3eee4, { rough: 0.6 })); B(root, 10.1, 0.12, 5.1, cx, 3.7, hz0 - 2.4, bronze, false);
+  for (const sd of [-1, 1]) { C(root, 0.32, 0.36, 3.7, cx + sd * 4.4, 1.85, hz0 - 4.4, stone, 16); solid(cx + sd * 4.4 - 0.36, cx + sd * 4.4 + 0.36, hz0 - 4.76, hz0 - 4.04);
+    B(root, 0.3, 0.55, 0.3, cx + sd * 3.6, 2.4, hz0 - 0.3, bronze, false); B(root, 0.2, 0.4, 0.2, cx + sd * 3.6, 2.4, hz0 - 0.42, mat(0xfff1cf, { emissive: 0xffc870, ei: 1.6 }), false); }
+  for (const [x, z] of [[cx - 3, hz0 - 3], [cx, hz0 - 3], [cx + 3, hz0 - 3], [cx - 1.5, hz0 - 1.4], [cx + 1.5, hz0 - 1.4]]) S(root, 0.12, x, 3.68, z, mat(0xffffff, { emissive: 0xffe2a0, ei: 1.5 }), 8);   // downlights under the canopy
+  B(root, 11, 0.05, 5, cx, 0.065, hz0 - 2.4, stone, false);
+  // the upper storey: set back from the front, glass across the front, a balcony with a glass rail, a roof slab
+  const ux0 = 981, ux1 = 1019, uz0 = hz0 + 4, uz1 = hz1 - 2, UH = 4.2, uy = H + 0.5;
+  const upWall = mat(0xf3eee4, { rough: 0.6 }), warm = mat(0x6d5a3e, { emissive: 0xffd08a, ei: 0.35, rough: 0.2 });
+  B(root, ux1 - ux0, UH, 0.3, cx, uy + UH / 2, uz1, upWall); B(root, 0.3, UH, uz1 - uz0, ux0, uy + UH / 2, (uz0 + uz1) / 2, upWall); B(root, 0.3, UH, uz1 - uz0, ux1, uy + UH / 2, (uz0 + uz1) / 2, upWall);
+  B(root, ux1 - ux0 - 0.4, UH - 0.2, 0.1, cx, uy + UH / 2, uz0 + 0.35, warm, false);                                       // lit rooms behind the glass
+  B(root, ux1 - ux0, UH, 0.06, cx, uy + UH / 2, uz0, mat(0x7fa6bb, { opacity: 0.45, rough: 0.05, metal: 0.5 }), false);    // the glazing
+  for (let x = ux0; x <= ux1 + 0.01; x += 2.375) B(root, 0.1, UH, 0.12, x, uy + UH / 2, uz0, bronze, false);
+  for (const [x0, x1] of [[ux0, 993], [1007, ux1]]) for (const z of [(uz0 + uz1) / 2 - 3, (uz0 + uz1) / 2 + 3]) { B(root, 0.06, 2.2, 3, x0 - 0.18, uy + 2.2, z, glass, false); B(root, 0.06, 2.2, 3, x1 + 0.18, uy + 2.2, z, glass, false); }   // side windows
+  B(root, ux1 - ux0 + 0.2, 0.25, uz0 - hz0 + 0.2, cx, H + 0.62, (hz0 + uz0) / 2, mat(0xe8e2d6, { rough: 0.7 }));            // balcony floor (the ground floor's roof)
+  B(root, ux1 - ux0, 1.05, 0.05, cx, H + 1.27, hz0 + 0.2, glass, false); B(root, ux1 - ux0 + 0.1, 0.06, 0.1, cx, H + 1.82, hz0 + 0.2, bronze, false);   // glass balcony rail
+  B(root, hx1 - hx0 + 3, 0.35, hz1 - hz0 + 2, cx, uy + UH + 0.18, (hz0 + hz1) / 2, mat(0x2e2a27, { rough: 0.6 }));          // roof slab, overhanging
+  B(root, hx1 - hx0 + 3.05, 0.18, 0.1, cx, uy + UH + 0.18, hz0 - 1.05, bronze, false);
+  for (const sd of [-1, 1]) { const g = new THREE.Group(); g.position.set(cx + sd * 12, H + 0.75, hz0 + 1.6); root.add(g); B(g, 0.7, 0.45, 0.7, 0, 0.22, 0, stone); S(g, 0.55, 0, 0.85, 0, mat(0x3f7f3a, { rough: 0.9 }), 10); }   // planters on the balcony
+  // a warm wash of light inside, so the rooms aren't grey (three lamps, no shadows)
+  for (const x of [985, 1000, 1015]) { const l = new THREE.PointLight(0xffe6c4, 14, 22, 1.6); l.position.set(x, H - 0.6, (hz0 + hz1) / 2); root.add(l); }
   tag('BLD', 'MAN', 'MRB.GLS', 'The mansion', cx, (hz0 + hz1) / 2);
   const P = (x, z) => [x + DX, z + DZ];
   for (const [n, x, z, m, mk] of [['Sofa', 1258, 222, 'LTH', 'Atelier Furniture'], ['Sofa', 1258, 228.5, 'LTH', 'Atelier Furniture'], ['Coffee table', 1258, 225.2, 'GLS', 'Atelier Furniture'], ['Wall TV', 1250.3, 225.2, 'GLS', 'Cryptic'],
@@ -137,8 +177,6 @@ export function buildAdminEstate(ctx) {
     { const [x, z] = P(1299.1, 222.4); B(root, 0.85, 2.1, 1, x, 1.05, z, mat(0xbfc5ca, { metal: 0.6, rough: 0.3 })); }
     for (const ox of [1288.5, 1290, 1291.5]) { const [x, z] = P(ox, 221.4); C(root, 0.22, 0.22, 0.08, x, 0.78, z, dark, 12); C(root, 0.04, 0.04, 0.75, x, 0.38, z, gold, 6); seat(x, z, Math.PI, 'Sit at the kitchen island', 0.82); }
     for (const ox of [1288.5, 1291.5]) { const [x, z] = P(ox, 220); C(root, 0.01, 0.01, 1.6, x, H - 0.8, z, dark, 4); S(root, 0.2, x, H - 1.7, z, glow, 10); }
-    // dining: a sideboard against the back wall and a painting over it
-    { const [x, z] = P(1289, 239.3); B(root, 2.6, 0.9, 0.5, x, 0.45, z, wood); B(root, 0.3, 0.4, 0.3, x - 0.8, 1.1, z, mat(0x3f6f8f, { rough: 0.2 }), false); }
     // the bedroom: walled off in the south-east corner with a doorway, nightstands, a wardrobe and a rug
     const bw = mat(0xf6f3ee, { rough: 0.8 });
     const wallP = (ax, az, bx, bz) => { const [x0, z0] = P(ax, az), [x1, z1] = P(bx, bz), w = Math.max(0.2, x1 - x0), d = Math.max(0.2, z1 - z0); ctx.camBlockers?.push(B(root, w, H - 0.1, d, (x0 + x1) / 2, (H - 0.1) / 2, (z0 + z1) / 2, bw)); solid(x0 - (w === 0.2 ? 0.1 : 0), x1 + (w === 0.2 ? 0.1 : 0), z0 - (d === 0.2 ? 0.1 : 0), z1 + (d === 0.2 ? 0.1 : 0)); };
@@ -146,21 +184,49 @@ export function buildAdminEstate(ctx) {
     { const [x, z] = P(1296, 236.6); B(root, 3.6, 0.02, 3, x, 0.03, z, mat(0xcfc6b5, { rough: 1 }), false); }
     for (const ox of [1294.2, 1297.8]) { const [x, z] = P(ox, 237.3); B(root, 0.5, 0.55, 0.45, x, 0.28, z, wood); S(root, 0.12, x, 0.72, z, glow, 8); }
     { const [x, z] = P(1299.3, 235.6); B(root, 0.6, 2.3, 2, x, 1.15, z, wood); }
+    // the bathroom (between the dining area and the bedroom): a bath, a shower, a toilet, a basin and mirror
+    wallP(1283, 234, 1284.2, 234); wallP(1285.4, 234, 1292, 234); wallP(1283, 234, 1283, 239.8);
+    {
+      const tile = mat(0xdfe6ea, { rough: 0.35 }), white = mat(0xf8f8f5, { rough: 0.25 }), chrome = mat(0xd0d4da, { metal: 0.9, rough: 0.2 });
+      { const [x, z] = P(1287.6, 237); B(root, 8.6, 0.02, 5.6, x, 0.07, z, tile, false); }   // tiled floor
+      { const [x, z] = P(1288.9, 239.3); B(root, 3.6, 0.58, 0.95, x, 0.29, z, white); B(root, 3.3, 0.03, 0.7, x, 0.5, z, mat(0x8cc7de, { opacity: 0.8, rough: 0.1 }), false); C(root, 0.03, 0.03, 0.3, x + 1.55, 0.75, z + 0.3, chrome, 8); solid(x - 1.8, x + 1.8, z - 0.48, z + 0.48);
+        spot(x, z - 1.1, 1.4, 'Take a bath', () => ctx.chore ? ctx.chore('bath') : toast('🛁 A long hot bath.')); }
+      { const [x, z] = P(1284, 239); B(root, 1.5, 0.12, 1.5, x, 0.12, z, white, false); B(root, 0.05, 2.1, 1.5, x + 0.75, 1.17, z, mat(0x9fd3ff, { opacity: 0.3, rough: 0.05 }), false); B(root, 1.0, 2.1, 0.05, x + 0.25, 1.17, z - 0.75, mat(0x9fd3ff, { opacity: 0.3, rough: 0.05 }), false);
+        C(root, 0.15, 0.15, 0.04, x, 2.15, z + 0.2, chrome, 12); spot(x, z, 1.0, 'Take a shower', () => ctx.chore ? ctx.chore('shower') : toast('🚿 A hot shower.')); }
+      { const [x, z] = P(1291.45, 235.6); B(root, 0.4, 0.4, 0.5, x, 0.2, z, white); B(root, 0.16, 0.38, 0.42, x + 0.27, 0.62, z, white); B(root, 0.5, 0.05, 0.44, x - 0.03, 0.43, z, mat(0xffffff));
+        ctx.sitSpots?.push({ x: x - 0.05, z, yaw: -Math.PI / 2, seatY: 0.45, label: 'Use the toilet', toilet: true }); B(root, 0.12, 0.12, 0.12, x + 0.3, 0.75, z + 0.5, mat(0xf8f8f4)); }   // toilet, and a roll on the wall
+      { const [x, z] = P(1287.6, 234.4); B(root, 1.1, 0.12, 0.5, x, 0.86, z, white); B(root, 0.2, 0.8, 0.2, x, 0.4, z, white); B(root, 1.0, 0.9, 0.04, x, 1.7, z - 0.22, mat(0xdde9ef, { metal: 0.25, rough: 0.08, emissive: 0x2a3438, ei: 0.4 }), false); B(root, 1.08, 0.98, 0.03, x, 1.7, z - 0.24, mat(0x3b3530, { metal: 0.6, rough: 0.4 }), false); C(root, 0.02, 0.02, 0.2, x, 1.0, z - 0.15, chrome, 6);
+        spot(x, z + 0.6, 0.8, 'Wash your hands', () => ctx.chore ? ctx.chore('handwash') : toast('🧼 Squeaky clean.')); }
+      { const [x, z] = P(1289.9, 234.25); B(root, 0.8, 0.05, 0.05, x, 1.2, z, chrome, false); B(root, 0.7, 0.6, 0.05, x, 0.92, z + 0.03, mat(0xf2efe9), false); }   // towel rail and towel
+      const bl = new THREE.PointLight(0xffffff, 6, 8, 1.6); bl.position.set(...[P(1287.6, 237)].map(([x, z]) => [x, H - 0.8, z])[0]); root.add(bl);
+      tag('PRD', 'FUR', 'CER', 'Bathroom suite: bath, shower, toilet and basin', ...P(1287.6, 237), 'Atelier Furniture');
+    }
     // a study corner (south-west): desk, chair and a second bookcase
     { const [x, z] = P(1256, 238.6); B(root, 2, 0.06, 0.9, x, 0.76, z, wood); for (const [a, b] of [[-0.9, -0.35], [0.9, -0.35], [-0.9, 0.35], [0.9, 0.35]]) B(root, 0.06, 0.74, 0.06, x + a, 0.37, z + b, wood, false); B(root, 0.5, 0.35, 0.03, x, 1, z + 0.2, mat(0x050505, { emissive: 0x0d2a4a, ei: 0.6 }), false);
       B(root, 0.5, 0.45, 0.5, x, 0.25, z - 0.8, dark); B(root, 0.5, 0.6, 0.08, x, 0.75, z - 1.05, dark); seat(x, z - 0.8, 0, 'Sit at the desk', 0.5); }
     { const [x, z] = P(1250.6, 236); B(root, 0.6, 3, 3, x, 1.5, z, wood); }
     // plants by the front door and the garden opening, paintings on the walls
-    for (const [ox, oz] of [[1266, 211.5], [1284, 211.5], [1266.5, 238.8], [1283.5, 238.8]]) { const [x, z] = P(ox, oz); C(root, 0.35, 0.28, 0.6, x, 0.3, z, mat(0xd8d2c4), 12); S(root, 0.6, x, 1.15, z, mat(0x3f7f3a, { rough: 0.9 }), 10); }
+    for (const [ox, oz] of [[1266, 211.5], [1284, 211.5], [1266.5, 238.8], [1282.4, 238.8]]) { const [x, z] = P(ox, oz); C(root, 0.35, 0.28, 0.6, x, 0.3, z, mat(0xd8d2c4), 12); S(root, 0.6, x, 1.15, z, mat(0x3f7f3a, { rough: 0.9 }), 10); }
     const art = (cols, x, z, ry) => { const t = makeTex(128, 96, g => { g.fillStyle = cols[0]; g.fillRect(0, 0, 128, 96); for (let i = 0; i < 7; i++) { g.fillStyle = cols[1 + i % (cols.length - 1)]; g.beginPath(); g.arc(20 + i * 15, 30 + (i * 37) % 50, 10 + (i * 7) % 18, 0, 7); g.fill(); } }); const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshStandardMaterial({ map: t })); m.position.set(x, 2.8, z); m.rotation.y = ry; root.add(m); B(root, ry ? 0.05 : 2.4, 1.8, ry ? 2.4 : 0.05, x + (ry ? -Math.sign(ry) * 0.03 : 0), 2.8, z + (ry ? 0 : 0.03), gold, false); };
-    art(['#1f3b57', '#d4af37', '#e8e2d6', '#8f2f2f'], ...P(1289, 239.75), Math.PI); art(['#e8e2d6', '#2f5f8f', '#3f6f3f', '#b8902f'], ...P(1258, 239.75), Math.PI);
+    art(['#e8e2d6', '#2f5f8f', '#3f6f3f', '#b8902f'], ...P(1258, 239.75), Math.PI);
     art(['#2a2e33', '#d4af37', '#7b2f2f'], P(1250.25, 0)[0], P(0, 231)[1], Math.PI / 2); art(['#f2efe9', '#5a3f6f', '#2f5f8f'], P(1299.75, 0)[0], P(0, 228)[1], -Math.PI / 2);
     for (const [n, x, z, m] of [['Armchair', 1263.2, 225.2, 'LTH'], ['Bookcase', 1250.6, 214, 'WOD'], ['Kitchen units and fridge', 1299.2, 217, 'WOD.STL'], ['Bar stools', 1290, 221.4, 'STL'], ['Wardrobe', 1299.3, 235.6, 'WOD'], ['Study desk', 1256, 238.6, 'WOD'], ['Living-room rug', 1258, 225.2, 'TXT']])
       tag('PRD', 'FUR', m, n, ...P(x, z), 'Atelier Furniture');
   }
   spot(cx, hz0 - 1.5, 2.5, 'Your mansion', () => toast('🏛 Your mansion: marble floors, the pool out back, the garage to the east and your airstrip on the west side.'));
   // the forecourt and the supercar out front, two more in the garage
-  { const [x, z] = P(1275, 195); B(root, 14, 0.06, 26, x, 0.04, z, mat(0xd9d2c3, { rough: 0.8 }), false); tag('LND', 'ROD', 'STN', 'Mansion forecourt', x, z); }
+  { B(root, 32, 0.06, 31.5, cx, 0.04, -468.25, mat(0xd9d2c3, { rough: 0.8 }), false); tag('LND', 'ROD', 'STN', 'Mansion forecourt', cx, -468); }
+  {   // a fountain in the middle of the forecourt: a stone basin, water, a tiered centre
+    const fz = -474.5, stoneF = mat(0xd6cdbb, { rough: 0.8 }), water = mat(0x5fb7d8, { opacity: 0.8, rough: 0.05, metal: 0.2 });
+    C(root, 3.2, 3.3, 0.6, cx, 0.3, fz, stoneF, 32); C(root, 2.9, 2.9, 0.05, cx, 0.58, fz, water, 32); C(root, 0.35, 0.5, 1.6, cx, 1.1, fz, stoneF, 12);
+    C(root, 1.1, 0.8, 0.25, cx, 1.95, fz, stoneF, 24); C(root, 0.95, 0.95, 0.04, cx, 2.06, fz, water, 24); C(root, 0.12, 0.2, 0.7, cx, 2.4, fz, stoneF, 8);
+    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; C(root, 0.03, 0.06, 0.45, cx + Math.cos(a) * 0.9, 1.85, fz + Math.sin(a) * 0.9, mat(0xbfe6f5, { opacity: 0.55, emissive: 0x2a6f8a, ei: 0.3 }), 5); }   // water falling off the top tier
+    solid(cx - 3.2, cx + 3.2, fz - 3.2, fz + 3.2); tag('PRD', 'FNT', 'STN.WTR', 'Forecourt fountain', cx, fz);
+  }
+  const hedge = mat(0x2f5a2a, { rough: 1 });
+  for (const [a, b] of [[976, 995], [1005, 1024]]) { B(root, b - a, 0.9, 0.9, (a + b) / 2, 0.45, hz0 - 1.3, hedge); solid(a, b, hz0 - 1.75, hz0 - 0.85); }
+  for (const x of [975.5, 1024.5]) for (const z of [hz0 - 1.3]) { B(root, 0.9, 0.5, 0.9, x, 0.25, z, mat(0xd6cdbb)); S(root, 0.7, x, 1.15, z, hedge, 12); }
+  for (let z = -360; z > -460; z -= 25) for (const sd of [-1, 1]) { const x = GX + sd * 6; C(root, 0.08, 0.1, 3.6, x, 1.8, z, bronze, 8); B(root, 0.4, 0.5, 0.4, x, 3.75, z, mat(0xfff1cf, { emissive: 0xffd28a, ei: 1.4 }), false); solid(x - 0.15, x + 0.15, z - 0.15, z + 0.15); }   // lamp posts along the drive
   const garage = { x0: 1306 + DX, x1: 1326 + DX, z0: 212 + DZ, z1: 238 + DZ };
   hall({ x0: garage.x0, x1: garage.x1, z0: garage.z0, z1: garage.z1, H: 4, wall: 0xf6f3ee, floor: 0xcfd4d8, floorKind: 'tiles', roof: 0x2a2e33, gaps: { n: [[garage.x0 + 3, garage.x1 - 3]] } });
   tag('BLD', 'GAR', 'STN', 'Garage', (garage.x0 + garage.x1) / 2, (garage.z0 + garage.z1) / 2);
@@ -198,8 +264,12 @@ export function buildAdminEstate(ctx) {
   spot(hgx0 - 3, (hgz0 + hgz1) / 2, 2, 'Your private jet', () => toast('✈️ Your private jet is waiting on the runway. Walk up to it to fly. Take off up the runway, northwards.'));
 
   bot.people(K);   // the friend on the sofa and the pilot
+  const paved = [{ minX: hx0 - 1, maxX: hx1 + 1, minZ: hz0 - 1.8, maxZ: hz1 + 1 }, { minX: garage.x0 - 1, maxX: garage.x1 + 1, minZ: garage.z0 - 1, maxZ: garage.z1 + 1 }, { minX: 983.5, maxX: 1016.5, minZ: -484.5, maxZ: -452 },
+    { minX: GX - 5, maxX: GX + 5, minZ: -466, maxZ: ROAD_Z }, { minX: GX - 5, maxX: 984.5, minZ: -475, maxZ: -465 }, { minX: deck.minX - 0.5, maxX: deck.maxX + 0.5, minZ: deck.minZ - 0.5, maxZ: deck.maxZ + 4.5 }, { minX: tub[0] - 2.5, maxX: tub[0] + 2.5, minZ: tub[1] - 2.5, maxZ: tub[1] + 2.5 },
+    { minX: rx - 17, maxX: rx + 17, minZ: rz0 - 1, maxZ: rz1 + 1 }, { minX: rx + 16, maxX: hgx1 + 1, minZ: hgz0 - 1, maxZ: hgz1 + 1 }];
   return {
     pools, cars, jet, bounds: { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 },
+    paved: (x, z) => x > X0 && x < X1 && z > Z0 && z < Z1 && paved.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ),
     home: { x: cx, z: hz0 - 3 },   // where you appear when you go home: the front door
     // you stand on the pool's deck (it's raised); inside the water you swim
     groundAt: (x, z) => (x >= deck.minX && x <= deck.maxX && z >= deck.minZ && z <= deck.maxZ && !(x > px0 && x < px1 && z > pz0 && z < pz1)) ? 0.45 : null,

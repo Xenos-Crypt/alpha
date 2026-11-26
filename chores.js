@@ -255,6 +255,260 @@ export function createChores({ toast, pause, resume, done }) {
     return st;
   }
 
-  const GAMES = { handwash, laundry, dishes };
+  // ================= the toilet =================
+  // Seen from the side, cut away so you can see into the bowl. mode 'pee' or 'poo'; `stand` pees standing up (lift
+  // the seat and aim: the stream weakens as you finish, so keep it in the bowl; anything that misses has to be
+  // wiped up). Sitting down: go, tear off paper, wipe. A poo takes pushing (hold Space; let go to breathe when the
+  // strain bar is full), then wiping until the paper comes away clean: each sheet takes three wipes and goes in
+  // the bowl, and you tear off more when you run out. Then flush and close the lid. `need` (0-100) is how badly you
+  // need to go: the more, the longer it takes.
+  function toilet({ mode = 'pee', stand = false, need = 60 } = {}) {
+    const poo = mode === 'poo', standing = !poo && stand;
+    const st = { kind: 'toilet', mode, title: poo ? '🚽 Have a poo' : '🚽 Have a pee', i: 0, t: 0, lid: false, seatUp: false, sat: false, aim: 0.25, go: 0, splash: 0, puddle: [],
+      strain: 0, rest: false, sheets: 0, inHand: 0, sheetDirt: 0, mess: 0, used: 0, water: 0, flushT: -1, score: 100, lastSide: 0, result: { mode } };
+    const goFor = 3 + Math.max(0.2, Math.min(1, need / 100)) * (poo ? 7 : 5);
+    const S = (id, step, hint) => ({ id, step, hint });
+    let steps = standing
+      ? [S('lid', 'Lift the lid and the seat', 'Press Space or click the toilet'), S('aim', 'Aim into the bowl and go', 'Hold Space to go · aim with W / S (or hold the mouse and move it up and down)'),
+        S('seatDown', 'Put the seat back down', 'Press Space'), S('flush', 'Flush', 'Press Space or click the handle'), S('close', 'Close the lid', 'Press Space')]
+      : [S('lid', 'Lift the lid', 'Press Space or click the toilet'), S('sit', 'Sit down', 'Press Space'),
+        poo ? S('push', 'Push', 'Hold Space to push · let go to breathe when the strain bar is full') : S('go', 'Relax and go', 'Hold Space'),
+        S('paper', poo ? 'Tear off some toilet paper' : 'Tear off a bit of toilet paper', 'Press Space or click the roll'),
+        S('wipe', 'Wipe', 'Rub: A and D in turn, or drag the mouse side to side'), S('flush', 'Stand up and flush', 'Press Space or click the handle'), S('close', 'Close the lid', 'Press Space')];
+    const cur = () => steps[Math.min(st.i, steps.length - 1)].id;
+    const next = () => { st.i++; st.hold = 0; };
+    const paperFor = () => (poo ? 3 : 2);
+    const tear = () => { st.sheets++; if (!st.inHand) { st.inHand = 3; st.sheetDirt = 0; st.sheets--; } };
+    const wipeStroke = () => {
+      if (!st.inHand) { st.hint = 'Out of paper in your hand: press Space to tear off another sheet'; return; }
+      st.mess = Math.max(0, st.mess - (poo ? 0.12 : 0.2)); st.sheetDirt = Math.max(st.sheetDirt, st.mess); st.inHand--;
+      if (!st.inHand || st.mess <= 0) { st.used++; st.water = Math.min(1, st.water + 0.05); if (st.sheets > 0) { st.sheets--; st.inHand = 3; st.sheetDirt = 0; } else st.inHand = 0; }   // used sheet into the bowl, next one from your hand
+    };
+    const rub = code => { const side = /KeyA|ArrowLeft/.test(code) ? -1 : /KeyD|ArrowRight/.test(code) ? 1 : 0; if (side && side !== st.lastSide) { st.lastSide = side; return true; } return false; };
+    st.press = code => {
+      const id = cur();
+      if (code !== 'Space') { if ((id === 'wipe' || id === 'mop') && rub(code)) wipeStroke(); return; }
+      if (id === 'lid') { st.lid = true; if (standing) st.seatUp = true; next(); }
+      else if (id === 'sit') { st.sat = true; next(); }
+      else if (id === 'paper') { tear(); if (st.sheets + (st.inHand ? 1 : 0) >= paperFor()) { st.mess = poo ? 1 : 0.2; next(); } }
+      else if (id === 'wipe' || id === 'mop') { if (!st.inHand) tear(); }
+      else if (id === 'seatDown') { st.seatUp = false; next(); }
+      else if (id === 'flush' && st.flushT < 0) { st.sat = false; st.flushT = 0; }
+      else if (id === 'close') { st.lid = false; next(); }
+    };
+    st.click = (x, y) => {
+      const id = cur();
+      if (id === 'flush' && x > 120 && x < 210 && y < 110) return st.press('Space');
+      if (id === 'paper' || ((id === 'wipe' || id === 'mop') && !st.inHand)) { if (Math.hypot(x - 430, y - 110) < 50) st.press('Space'); return; }
+      if (id === 'lid' && x > 140 && x < 320 && y > 60) st.press('Space');
+    };
+    st.update = dt => {
+      st.t += dt; const id = cur(), s = steps[Math.min(st.i, steps.length - 1)]; st.step = s.step; st.hint = s.hint;
+      if (id === 'aim') {
+        if (keys.KeyW || keys.ArrowUp) st.aim += dt * 0.6; if (keys.KeyS || keys.ArrowDown) st.aim -= dt * 0.6;
+        if (mouse.down) st.aim = Math.max(0, Math.min(1, (250 - mouse.y) / 200));
+        st.aim = Math.max(0, Math.min(1, st.aim + Math.sin(st.t * 1.9) * 0.05 * dt));   // your hand isn't perfectly steady
+        if (keys.Space) {
+          st.go += dt; st.water = Math.min(0.6, st.go / goFor * 0.6);
+          const land = st.landX = streamLand();
+          if (land < 190 || land > 292) { st.splash += dt; if (Math.random() < dt * 6) st.puddle.push(land + (Math.random() - 0.5) * 20); }
+          if (st.go >= goFor) {
+            next();
+            if (st.splash > 0.3) { steps.splice(st.i, 0, S('mop', 'Wipe up the splashes', 'Press Space for paper, then rub: A and D in turn (or drag the mouse)')); st.mess = Math.min(1, st.splash / 2); }
+          }
+        }
+        st.hint = `${s.hint} · ${Math.round(Math.min(1, st.go / goFor) * 100)}%`;
+      }
+      if (id === 'go') { if (space()) st.go += dt; st.water = Math.min(0.6, st.go / goFor * 0.6); if (st.go >= goFor) next(); }
+      if (id === 'push') {
+        if (space() && !st.rest) { st.strain = Math.min(1, st.strain + dt * 0.45); st.go += dt; if (st.strain >= 1) st.rest = true; }
+        else { st.strain = Math.max(0, st.strain - dt * 0.6); if (st.strain < 0.25) st.rest = false; }
+        if (st.rest) st.hint = 'Let go of Space and breathe…';
+        st.water = Math.min(1, st.go / goFor);
+        if (st.go >= goFor) next();
+      }
+      if ((id === 'wipe' || id === 'mop')) {
+        if (Math.abs(mouse.dx) > 18) { const side = Math.sign(mouse.dx); if (side !== st.lastSide) { st.lastSide = side; wipeStroke(); } }
+        if (!st.inHand && st.mess > 0) st.hint = 'Out of paper: press Space (or click the roll) to tear off another sheet';
+        else if (st.mess > 0) st.hint = `${s.hint} · the paper's still coming away dirty`;
+        if (st.mess <= 0) { if (st.inHand) { st.used++; st.inHand = 0; } st.sheets = 0; next(); }
+      }
+      if (st.flushT >= 0) { st.flushT += dt; st.water = Math.max(0, st.water - dt * 0.9); if (st.flushT > 1.6) { st.flushT = -2; st.water = 0; st.puddle = st.puddle.filter(() => cur() !== 'flush'); next(); } }
+      mouse.moved = 0;
+      st.progress = Math.min(1, (st.i + (id === 'aim' || id === 'go' || id === 'push' ? Math.min(1, st.go / goFor) : id === 'wipe' || id === 'mop' ? 1 - st.mess : 0)) / steps.length);
+      st.parts = id === 'wipe' || id === 'mop' ? `sheets used: ${st.used}` : '';
+      if (st.i >= steps.length) { st.score = Math.max(30, 100 - Math.round(st.splash * 25)); st.result = { mode, splashed: st.splash > 0.3, sheets: st.used }; st.step = 'Done and flushed ✓'; st.hint = 'Now wash your hands.'; return 'done'; }
+    };
+    // where the stream lands (x on the floor line): further with more aim, weaker as you finish
+    const streamLand = () => { const strength = 1 - 0.45 * Math.min(1, st.go / goFor); return 352 - (40 + st.aim * 190) * strength; };
+    st.draw = g => {
+      rr(0, 0, 520, 280, 0, '#cfd8dc'); for (let x = 0; x < 520; x += 40) { g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(x, 0, 1, 236); }   // tiled wall
+      rr(0, 236, 520, 44, 0, '#9aa5ab');                                                                  // floor
+      for (const p of st.puddle) { g.globalAlpha = 0.55; g.fillStyle = '#e8d36a'; g.beginPath(); g.ellipse(p, 240, 14, 3, 0, 0, 7); g.fill(); g.globalAlpha = 1; }
+      // toilet, side on (it faces right): cistern, flush handle, the bowl cut away, the pedestal
+      rr(140, 60, 50, 92, 8, '#f4f4f0'); rr(150, 72, 30, 8, 3, st.flushT >= 0 ? '#9aa3ad' : '#c0c6cc');
+      g.fillStyle = '#f4f4f0'; g.beginPath(); g.moveTo(180, 160); g.lineTo(300, 160); g.quadraticCurveTo(300, 215, 248, 222); g.lineTo(236, 236); g.lineTo(196, 236); g.lineTo(190, 210); g.closePath(); g.fill();
+      g.fillStyle = '#d9dfe3'; g.beginPath(); g.moveTo(192, 166); g.lineTo(290, 166); g.quadraticCurveTo(286, 205, 246, 212); g.lineTo(200, 206); g.closePath(); g.fill();   // inside the bowl
+      const tint = st.mode === 'poo' ? `rgba(150,110,60,${0.35 * st.water})` : `rgba(230,205,60,${0.45 * st.water})`;
+      g.fillStyle = '#bfe3f2'; g.fillRect(200, 190, 80, 16); g.fillStyle = tint; g.fillRect(200, 190, 80, 16);
+      if (st.flushT >= 0) for (let k = 0; k < 8; k++) circ(240 + Math.cos(st.flushT * 9 + k) * 30, 196 + Math.sin(st.flushT * 9 + k) * 5, 3, 'rgba(255,255,255,.9)');
+      // seat and lid
+      g.fillStyle = '#ffffff';
+      if (!st.lid) { rr(178, 150, 126, 8, 4, '#ffffff'); rr(178, 158, 126, 4, 2, '#e6e6e0'); }
+      else { rr(186, 60, 8, 98, 4, '#ffffff'); if (st.seatUp) rr(196, 70, 7, 88, 3, '#f0f0ea'); else rr(180, 156, 124, 5, 2, '#e6e6e0'); }
+      // toilet roll on the wall
+      circ(430, 110, 24, '#f8f8f4'); circ(430, 110, 8, '#b49a74'); rr(400, 84, 60, 6, 3, '#9aa3ad');
+      if (cur() === 'paper' || ((cur() === 'wipe' || cur() === 'mop') && !st.inHand)) { g.fillStyle = '#f8f8f4'; g.fillRect(420, 132, 20, 26 + Math.sin(st.t * 4) * 2); }
+      // you
+      const skin = '#d9a07a', top = '#3d5a80';
+      if (st.sat) {
+        circ(212, 60, 16, skin); rr(200, 76, 28, 74, 10, top); rr(206, 140, 96, 18, 8, '#2f3640'); rr(290, 150, 16, 84, 7, '#2f3640'); rr(286, 230, 30, 8, 3, '#222');   // head, body, thighs, shins, feet
+        if (cur() === 'push') { g.fillStyle = `rgba(255,80,60,${st.strain * 0.6})`; g.beginPath(); g.arc(212, 60, 16, 0, 7); g.fill(); }
+      } else if (standing && st.i <= 2) {
+        circ(372, 62, 16, skin); rr(358, 78, 30, 84, 10, top); rr(360, 158, 26, 78, 8, '#2f3640'); rr(352, 230, 36, 8, 3, '#222');
+        if (cur() === 'aim' && keys.Space) {   // the stream: an arc from you down to where it lands
+          const land = streamLand(), sx = 356, sy = 152, peak = Math.min(sy, 150 - st.aim * 30);
+          g.strokeStyle = 'rgba(235,210,70,.85)'; g.lineWidth = 3; g.beginPath(); g.moveTo(sx, sy); g.quadraticCurveTo((sx + land) / 2, peak - 10, land, land >= 190 && land <= 292 ? 196 : 236); g.stroke();
+        }
+      } else if (cur() !== 'lid') { circ(372, 62, 16, skin); rr(358, 78, 30, 84, 10, top); rr(360, 158, 26, 78, 8, '#2f3640'); rr(352, 230, 36, 8, 3, '#222'); }
+      // the sheet of paper in your hand, showing how much is still coming off
+      if ((cur() === 'wipe' || cur() === 'mop') && st.inHand) { const d = Math.round(255 - st.sheetDirt * 90); rr(400, 190, 50, 34, 4, `rgb(${d},${Math.round(d * 0.95)},${Math.round(d * 0.88)})`); text(`${st.inHand} wipe${st.inHand > 1 ? 's' : ''} left on this sheet`, 425, 240, '#33404a', '11px system-ui'); }
+      if (cur() === 'paper') text(`${st.sheets + (st.inHand ? 1 : 0)}/${paperFor()} sheets`, 430, 180, '#33404a');
+      if (cur() === 'push') { g.fillStyle = '#3a424c'; g.fillRect(20, 20, 200, 10); g.fillStyle = st.rest ? '#e05050' : '#ffb347'; g.fillRect(20, 20, 200 * st.strain, 10); text(st.rest ? 'breathe…' : 'strain', 120, 46, '#33404a', '12px system-ui'); }
+      if (cur() === 'aim') text(st.landX && (st.landX < 190 || st.landX > 292) ? 'Missing! Aim back into the bowl' : '', 260, 30, '#c0392b');
+    };
+    return st;
+  }
+
+  // ================= a shower or a bath =================
+  // Washing all of you, step by step. Shower: water on, get the temperature right (keep the dial in the green for a
+  // moment: too hot scalds, too cold and you're shivering), get wet, shampoo and rinse your hair, soap the sponge,
+  // scrub the front of you, turn round and scrub your back, rinse off, water off, dry off. A bath: plug in, run it at
+  // the right temperature, let it fill, get in, then the same wash, a soak, pull the plug and dry off.
+  function bodywash({ bath = false } = {}) {
+    const st = { kind: bath ? 'bath' : 'shower', title: bath ? '🛁 Have a bath' : '🚿 Have a shower', i: 0, t: 0, hold: 0, water: false, temp: 22, good: 0, wet: 0, fill: 0, plug: false, inBath: false,
+      pumps: 0, lather: 0, hair: 0, back: false, dry: 0, scrubT: 0, sponge: { x: 450, y: 150, held: false }, lastSide: 0, score: 100, ouch: 0 };
+    const FRONT = [['Face', 260, 50], ['Neck', 260, 78], ['Chest', 260, 108], ['Left armpit', 228, 96], ['Right armpit', 292, 96], ['Left arm', 200, 132], ['Right arm', 320, 132], ['Belly', 260, 148], ['Left leg', 244, 210], ['Right leg', 276, 210], ['Feet', 260, 250]];
+    const BACK = [['Back of your neck', 260, 78], ['Upper back', 260, 108], ['Lower back', 260, 146], ['Backs of your legs', 260, 210]];
+    const mk = list => list.map(([name, x, y]) => ({ name, x, y, done: 0 }));
+    st.front = mk(FRONT); st.backZ = mk(BACK);
+    const S = (id, step, hint) => ({ id, step, hint });
+    const steps = bath
+      ? [S('plug', 'Put the plug in', 'Press Space'), S('on', 'Turn the taps on', 'Press Space or click the taps'), S('temp', 'Get the temperature right', 'A / D (or drag the mouse) to turn the mixer · keep it in the green'),
+        S('fill', 'Let the bath fill', 'Wait… (hold Space to keep an eye on it)'), S('off', 'Turn the taps off', 'Press Space'), S('in', 'Get in', 'Press Space'),
+        S('wet', 'Get wet all over', 'Hold Space'), S('shampoo', 'Shampoo your hair', 'Press Space for a squirt, then rub it in: drag over your hair (or WASD)'), S('rinseHair', 'Rinse your hair', 'Hold Space'),
+        S('soap', 'Soap the sponge', 'Press Space twice'), S('front', 'Scrub yourself all over', 'Drag the sponge over every part (or move it with WASD)'),
+        S('turn', 'Lean forward and do your back', 'Press Space'), S('backs', 'Scrub your back', 'Drag the sponge (or WASD)'), S('rinse', 'Rinse the soap off', 'Hold Space'),
+        S('soak', 'Lie back and soak', 'Hold Space for a few seconds'), S('out', 'Pull the plug and get out', 'Press Space'), S('dry', 'Dry yourself with the towel', 'Rub: A and D in turn, or drag the mouse')]
+      : [S('on', 'Turn the water on', 'Press Space or click the mixer'), S('temp', 'Get the temperature right', 'A / D (or drag the mouse) to turn the mixer · keep it in the green'),
+        S('wet', 'Get wet all over', 'Hold Space under the water'), S('shampoo', 'Shampoo your hair', 'Press Space for a squirt, then rub it in: drag over your hair (or WASD)'), S('rinseHair', 'Rinse your hair', 'Hold Space'),
+        S('soap', 'Soap the sponge', 'Press Space twice'), S('front', 'Scrub yourself all over', 'Drag the sponge over every part (or move it with WASD)'),
+        S('turn', 'Turn round to do your back', 'Press Space'), S('backs', 'Scrub your back', 'Drag the sponge (or WASD)'), S('rinse', 'Rinse the soap off', 'Hold Space under the water'),
+        S('off', 'Turn the water off', 'Press Space'), S('dry', 'Step out and dry off with the towel', 'Rub: A and D in turn, or drag the mouse')];
+    const cur = () => steps[Math.min(st.i, steps.length - 1)].id;
+    const next = () => { st.i++; st.hold = 0; };
+    const GOOD = [36, 40];
+    st.press = code => {
+      const id = cur();
+      if (id === 'dry') { const side = /KeyA|ArrowLeft/.test(code) ? -1 : /KeyD|ArrowRight/.test(code) ? 1 : 0; if (side && side !== st.lastSide) { st.lastSide = side; st.dry = Math.min(1, st.dry + 0.06); } return; }
+      if (code !== 'Space') return;
+      if (id === 'plug') { st.plug = true; next(); }
+      else if (id === 'on') { st.water = true; next(); }
+      else if (id === 'off') { st.water = false; next(); }
+      else if (id === 'in') { st.inBath = true; next(); }
+      else if (id === 'shampoo' && !st.hairSoap) st.hairSoap = true;
+      else if (id === 'soap') { st.pumps++; if (st.pumps >= 2) { st.sponge.held = true; st.lather = 0.3; next(); } }
+      else if (id === 'turn') { st.back = true; next(); }
+      else if (id === 'out') { st.inBath = false; st.plug = false; next(); }
+    };
+    st.click = (x, y) => { const id = cur(); if ((id === 'on' || id === 'off') && x > 400 && y < 120) st.press('Space'); else if (['plug', 'in', 'turn', 'out', 'soap'].includes(id) || (id === 'shampoo' && !st.hairSoap)) st.press('Space'); };
+    const moveSponge = dt => {
+      const sp = st.sponge, v = 240 * dt; let moving = false;
+      if (keys.KeyA || keys.ArrowLeft) { sp.x -= v; moving = true; } if (keys.KeyD || keys.ArrowRight) { sp.x += v; moving = true; }
+      if (keys.KeyW || keys.ArrowUp) { sp.y -= v; moving = true; } if (keys.KeyS || keys.ArrowDown) { sp.y += v; moving = true; }
+      if (mouse.down) { sp.x = mouse.x; sp.y = mouse.y; if (mouse.moved > 0) moving = true; }
+      sp.x = Math.max(20, Math.min(500, sp.x)); sp.y = Math.max(20, Math.min(265, sp.y));
+      if (moving) st.rubbing = 0.25; st.rubbing = Math.max(0, (st.rubbing || 0) - dt);
+      return st.rubbing > 0;
+    };
+    st.update = dt => {
+      st.t += dt; const id = cur(), s = steps[Math.min(st.i, steps.length - 1)]; st.step = s.step; st.hint = s.hint;
+      if (id === 'temp' || (st.water && id !== 'off')) {
+        if (id === 'temp') {
+          if (keys.KeyA || keys.ArrowLeft) st.temp -= dt * 9; if (keys.KeyD || keys.ArrowRight) st.temp += dt * 9;
+          if (mouse.down) st.temp += mouse.dx * 0.12;
+          st.temp = Math.max(10, Math.min(55, st.temp));
+          const ok = st.temp >= GOOD[0] && st.temp <= GOOD[1]; st.good = ok ? st.good + dt : 0;
+          st.hint = `${Math.round(st.temp)}°C · ${st.temp > 44 ? 'Ow! Far too hot' : st.temp > GOOD[1] ? 'a bit too hot' : st.temp < 30 ? 'freezing!' : st.temp < GOOD[0] ? 'a bit cold' : 'just right, hold it there'} · ${s.hint}`;
+          if (st.temp > 44 && !bath) st.ouch += dt;
+          if (st.good > 1.5) next();
+        }
+      }
+      if (id === 'fill') { st.fill = Math.min(1, st.fill + dt / (space() ? 3 : 5)); st.hint = `${Math.round(st.fill * 100)}% full`; if (st.fill >= 1) next(); }
+      if (id === 'wet') { if (space()) st.hold += dt; st.wet = Math.min(1, st.hold / 2); if (st.hold > 2) next(); }
+      if (id === 'shampoo') {
+        if (st.hairSoap) { const sp = st.sponge; if (moveSponge(dt) && Math.hypot(sp.x - 260, sp.y - 30) < 40) st.hair = Math.min(1, st.hair + dt * 0.5); st.hint = `Rub it in all over your hair: ${Math.round(st.hair * 100)}%`; if (st.hair >= 1) next(); }
+      }
+      if (id === 'rinseHair') { if (space()) st.hold += dt; st.hair = Math.max(0, 1 - st.hold / 1.5); if (st.hold > 1.5) { st.hair = 0; next(); } }
+      if (id === 'front' || id === 'backs') {
+        st.scrubT += dt; const zones = id === 'front' ? st.front : st.backZ, sp = st.sponge;
+        if (moveSponge(dt)) { st.lather = Math.min(1, st.lather + dt * 0.2); for (const z of zones) if (Math.hypot(z.x - sp.x, z.y - sp.y) < 34) z.done = Math.min(1, z.done + dt * 0.8); }
+        const left = zones.filter(z => z.done < 1);
+        st.hint = left.length ? `Still to do: ${left.map(z => z.name.toLowerCase()).join(', ')}` : 'All done';
+        if (!left.length) next();
+      }
+      if (id === 'rinse') { if (space()) st.hold += dt; st.lather = Math.max(0, 1 - st.hold / 2.5); if (st.hold > 2.5) { st.lather = 0; st.sponge.held = false; next(); } }
+      if (id === 'soak') { if (space()) st.hold += dt; st.hint = st.hold > 0 ? 'Ahh…' : s.hint; if (st.hold > 3) next(); }
+      if (id === 'dry') { if (Math.abs(mouse.dx) > 18) { const side = Math.sign(mouse.dx); if (side !== st.lastSide) { st.lastSide = side; st.dry = Math.min(1, st.dry + 0.06); } } if (st.dry >= 1) st.i++; }
+      if (st.sponge.held && id !== 'front' && id !== 'backs' && id !== 'shampoo') { st.sponge.x += (330 - st.sponge.x) * Math.min(1, dt * 6); st.sponge.y += (150 - st.sponge.y) * Math.min(1, dt * 6); }
+      mouse.moved = 0;
+      const zs = id === 'front' ? st.front : id === 'backs' ? st.backZ : null, share = zs ? zs.reduce((a, z) => a + z.done, 0) / zs.length : 0;
+      st.progress = Math.min(1, (st.i + share) / steps.length);
+      st.parts = zs ? zs.map(z => (z.done >= 1 ? '✓' : '·')).join(' ') : '';
+      if (st.i >= steps.length) { st.score = Math.max(40, 100 - Math.round(st.ouch * 20)); st.result = { scalded: st.ouch > 0.5 }; st.step = 'Clean all over ✓'; st.hint = ''; return 'done'; }
+    };
+    st.draw = g => {
+      const id = cur();
+      rr(0, 0, 520, 280, 0, '#d6e2e8'); for (let x = 0; x < 520; x += 34) for (let y = 0; y < 280; y += 34) { g.strokeStyle = 'rgba(255,255,255,.45)'; g.strokeRect(x, y, 34, 34); }
+      if (bath) {   // the tub, with the water level and the taps
+        rr(70, 170, 380, 90, 18, '#f4f4f0'); g.fillStyle = 'rgba(110,180,230,.55)'; g.fillRect(84, 250 - 70 * st.fill, 352, 70 * st.fill);
+        rr(410, 150, 30, 26, 6, '#c0c6cc'); if (st.water) { g.fillStyle = 'rgba(140,200,255,.8)'; g.fillRect(420, 176, 8, 70); }
+        circ(110, 252, 6, st.plug ? '#333' : '#999');
+      } else {   // the shower head, the mixer, the tray, the glass
+        rr(240, 4, 40, 12, 5, '#c0c6cc'); rr(256, 0, 8, 10, 2, '#c0c6cc');
+        if (st.water) { g.fillStyle = `rgba(${st.temp > 40 ? 200 : 140},${st.temp > 40 ? 190 : 200},255,.35)`; g.fillRect(230, 16, 60, 250); if (st.temp > 38) for (let k = 0; k < 10; k++) circ(200 + ((k * 53 + st.t * 30) % 120), 40 + ((k * 37) % 200), 14, 'rgba(255,255,255,.12)'); }
+        rr(130, 262, 260, 14, 4, '#f4f4f0'); g.fillStyle = 'rgba(160,210,240,.18)'; g.fillRect(380, 20, 6, 242);
+      }
+      // the mixer dial: green band is the comfortable range
+      { const cx = 470, cy = 70; circ(cx, cy, 30, '#e8ecef'); const ang = T => Math.PI * (0.75 + (T - 10) / 45 * 1.5);
+        g.lineWidth = 6; g.strokeStyle = '#4aa3ff'; g.beginPath(); g.arc(cx, cy, 24, ang(10), ang(30)); g.stroke(); g.strokeStyle = '#3ddc97'; g.beginPath(); g.arc(cx, cy, 24, ang(GOOD[0]), ang(GOOD[1])); g.stroke(); g.strokeStyle = '#e05050'; g.beginPath(); g.arc(cx, cy, 24, ang(44), ang(55)); g.stroke();
+        const a = ang(st.temp); g.strokeStyle = '#333'; g.lineWidth = 3; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * 20, cy + Math.sin(a) * 20); g.stroke(); text(`${Math.round(st.temp)}°`, cx, cy + 46, '#33404a', 'bold 13px system-ui'); }
+      // shelf with shampoo and shower gel; the sponge rests on it until you soap it
+      rr(410, 140, 90, 6, 2, '#9aa3ad'); rr(420, 112, 16, 28, 4, '#c96b9b'); rr(442, 116, 16, 24, 4, '#5fb38a');
+      // you (a plain figure: head, body, arms, legs; from behind when you turn round). In the bath you're lower down.
+      const dy = bath && st.inBath ? 60 : 0, skin = '#d9a07a', shade = '#c78e6a', back = st.back && (id === 'backs' || id === 'turn');
+      if (!bath || st.inBath || ['dry', 'plug', 'on', 'temp', 'fill', 'off', 'in'].includes(id)) {
+        g.save(); g.translate(0, dy);
+        circ(260, 50, 22, skin); if (back || st.hair > 0 || true) { g.fillStyle = back ? '#3b2a20' : '#3b2a20'; g.beginPath(); g.arc(260, back ? 50 : 42, 22, Math.PI, back ? Math.PI * 3 : 0); g.fill(); }
+        rr(250, 70, 20, 14, 4, skin); rr(222, 82, 76, 90, 18, back ? shade : skin); rr(226, 150, 68, 24, 8, '#4b5d70');   // body; shorts so it stays a game, not a body
+        rr(196, 86, 22, 86, 10, skin); rr(302, 86, 22, 86, 10, skin);   // arms
+        if (!(bath && st.inBath)) { rr(232, 172, 24, 80, 10, skin); rr(264, 172, 24, 80, 10, skin); rr(228, 248, 30, 10, 4, shade); rr(262, 248, 30, 10, 4, shade); }
+        if (st.wet > 0 && st.dry < 1) { g.fillStyle = `rgba(140,200,255,${0.25 * st.wet * (1 - st.dry)})`; g.fillRect(190, 26, 140, 236); }
+        if (st.hair > 0) for (let k = 0; k < 14; k++) circ(244 + (k % 7) * 5.5, 30 + Math.floor(k / 7) * 8 + Math.sin(st.t * 3 + k) * 1.5, 5, 'rgba(255,255,255,.9)');
+        const zones = id === 'front' ? st.front : id === 'backs' ? st.backZ : [];
+        for (const z of zones) { g.globalAlpha = 0.85; circ(z.x, z.y, 7, z.done >= 1 ? '#3ddc97' : `rgba(255,210,63,${0.4 + 0.6 * (1 - z.done)})`); g.globalAlpha = 1; }
+        if (st.lather > 0) for (let k = 0; k < st.lather * 30; k++) { const z = (id === 'backs' ? st.backZ : st.front)[k % (id === 'backs' ? 4 : 11)]; if (z.done > 0.2 || id === 'rinse') circ(z.x + Math.cos(k * 2.3) * 12, z.y + Math.sin(k * 1.7) * 10, 4 + (k % 3), 'rgba(255,255,255,.8)'); }
+        g.restore();
+      }
+      if (bath && st.inBath) { g.fillStyle = 'rgba(110,180,230,.55)'; g.fillRect(84, 180, 352, 70); }   // you're in the water
+      if (id === 'dry') { rr(40 + Math.sin(st.t * 12) * 14, 90, 80, 120, 8, '#c9a77a'); text('towel', 80 + Math.sin(st.t * 12) * 14, 155, '#fff', '12px system-ui'); }
+      const sp = st.sponge; if (sp.held || id === 'shampoo' && st.hairSoap || id === 'soap') { const wob = (id === 'front' || id === 'backs') ? Math.sin(st.t * 20) * 2 : 0; rr(sp.x - 20 + wob, sp.y - 12, 40, 24, 8, '#f7a35c'); }   // the sponge (or your hand with shampoo on it)
+      else if (!st.sponge.held && ['on', 'temp', 'wet', 'plug', 'fill', 'off', 'in'].includes(id)) rr(470, 128, 30, 12, 5, '#f7a35c');
+      if (id === 'soap') text(`gel ${st.pumps}/2`, 450, 106, '#33404a');
+    };
+    return st;
+  }
+
+  const GAMES = { handwash, laundry, dishes, toilet, shower: () => bodywash(), bath: () => bodywash({ bath: true }) };
   return { open, get active() { return !el.hidden; } };
 }
