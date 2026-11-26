@@ -658,14 +658,14 @@ function groundY(x, z, bodyY = null) {
   if(harbourBridge){const deck=harbourBridge.groundAt(x,z,bodyY ?? (inCar&&driving?driving.group.position.y:player?.position.y??0));if(deck!=null&&deck>0.6)return deck;}
   const bayFloor=resortBeach?.groundAt(x,z);if(bayFloor!=null)return bayFloor;   // Anthos Bay sand, decks and jetty (checked first: other layers treat this spot as open sea)
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
-  const hillFloor=hills?.groundAt(x,z);if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
+  const hillFloor=hills?.groundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player?.position.y??0));if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
   const estateFloor=estate?.groundAt(x,z,bodyY??player.position.y);if(estateFloor!=null)return estateFloor;   // The Reserve: mansion upper floors and staircases
   const linkFloor=roadLinks?.groundAt(x,z);if(linkFloor!=null)return linkFloor;   // country roads over the hills, on embankments
   const ridgeFloor=ridge?.groundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player.position.y));if(ridgeFloor!=null)return ridgeFloor;   // Sunset Ridge
   const padFloor = helipads?.groundAt(x, z, bodyY ?? player.position.y); if (padFloor != null) return padFloor;   // rooftop helipads
   const peakFloor = lostPeak?.groundAt(x, z, bodyY ?? player.position.y); if (peakFloor != null) return peakFloor;   // Mount Aurelia's summit
  const poisonFloor=poisonLand?.groundAt(x,z);if(poisonFloor!=null)return poisonFloor;
-  const adminFloor=adminEstate?.groundAt(x,z);if(adminFloor!=null)return adminFloor;   // the admin estate (its raised pool deck)
+  const adminFloor=adminEstate?.groundAt(x,z,bodyY??player?.position.y??0);if(adminFloor!=null)return adminFloor;   // the admin estate (its raised pool deck)
   const slumFloor=slumGroundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player?.position.y));if(slumFloor!=null)return slumFloor;   // (the tenement's floors, stairs and balcony depend on how high you are)   // Cinder Row: dirt plots and lanes
   const volcanicFloor=volcanicIsland?.groundAt(x,z);if(volcanicFloor!=null)return volcanicFloor;
   const ghostFloor=ghostIsland?.groundAt(x,z);if(ghostFloor!=null)return ghostFloor;
@@ -2649,9 +2649,10 @@ let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{re
 function setUpHome(){
   if(isAdmin){
     if(adminEstate||!homeKitCtx)return;
-    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),chore:(k,o)=>doChore(k,o),
+    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),chore:(k,o)=>doChore(k,o),planeBlocks,workout:()=>{stats.energy=clamp(stats.energy-10,0,100);stats.clean=Math.max(0,(stats.clean??60)-20);gainXp(2);},
       makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
     poolZones.push(...adminEstate.pools);
+    if(adminEstate.tv)movieTv?.register(adminEstate.tv.screen,adminEstate.tv.at,()=>Math.abs(player.position.y-adminEstate.tv.at.y)<2);   // the lounge TV upstairs
     townPlaces?.destinations?.push({name:'Your mansion (Xenos Estate)',x:adminEstate.home.x,z:adminEstate.home.z});
     // ...and a house in the city where the admin starts out (the mansion is still theirs): one of the town's existing
     // houses, the one nearest the middle of Ashford, so nothing new is built on top of anything
@@ -8444,7 +8445,7 @@ drivingSchool = buildDrivingSchool({ scene, colliders, interactables, makeTex, m
   money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, enterVehicle: v => { if (inCar) exitVehicle(); player.position.copy(v.group.position); enterVehicle(v); }, exitVehicle: () => exitVehicle(), isDriving: v => inCar && driving === v });
 ridge = buildRidge({ scene, makeTex, interactables, sitSpots, toast, destinations: townPlaces.destinations });
 tunnel = buildTunnel({ scene, colliders, camBlockers, makeTex, destinations: townPlaces.destinations });   // Sunset Ridge Tunnel, beside the road over the top
-hills = buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position });
+hills = buildHills({ scene, colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
 estate = buildEstate({ scene, colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeVehicle: (k, c, st) => makeVehicle(k, c, st),
   sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), sleep: () => sleep(),
