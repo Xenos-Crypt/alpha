@@ -315,11 +315,11 @@ export function addNavyCrew({ scene, interactables, makePerson, toast, dock = { 
   const sailors = [];
   for (let i = 0; i < 4; i++) {
     const h = makePerson({ outfit: 0x1d2a4a, pants: 0x1d2a4a, hair: 0x2b1d14, shoes: 0x111111 });
-    h.root.position.set(dock.x - 12 + i * 2.2, 0.5, dock.z - 4); h.root.rotation.y = Math.PI; scene.add(h.root);
+    h.root.position.set(dock.x - 12 + i * 2.2, dock.y ?? 0.5, dock.z - 4); h.root.rotation.y = Math.PI; scene.add(h.root);
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 12), new THREE.MeshStandardMaterial({ color: 0xffffff })); cap.position.y = 2.0; h.rig.add(cap);
     sailors.push(h);
   }
-  interactables.push({ pos: new THREE.Vector3(dock.x - 8, 0.8, dock.z - 4), r: 3.5, label: 'Talk to the navy officer', action: () => toast('"Aegis Navy. We crew the patrol ship and the submarine — go aboard from the end of the pier. The rest of the forces are at Eastern Command, inside the East gate: Air Force, Militant Corps, Mech Corps and Heavy Infantry."') });
+  interactables.push({ pos: new THREE.Vector3(dock.x - 8, dock.y ?? 0.8, dock.z - 4), r: 3.5, label: 'Talk to the navy officer', action: () => toast('"Aegis Navy. We crew the patrol ship and the submarine — go aboard from the end of the pier. The rest of the forces are at Eastern Command, inside the East gate: Air Force, Militant Corps, Mech Corps and Heavy Infantry."') });
   return {
     update(dt, animatePerson) { for (const h of sailors) animatePerson(h, false, dt); },
   };

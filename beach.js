@@ -8,7 +8,7 @@ import { makeKit } from './leisure-kit.js';
 export function buildBeach(ctx, { sea, seaZ = 187, beachZ0 = 165 }) {
   const K = makeKit(ctx), { B, C, S, mat, solid, sign, place, spot, stander, sitter, walker, family } = K;
   const { scene, makeTex, sports, toast, stats } = ctx, root = new THREE.Group(); scene.add(root);
-  const ZONES = [[70, 138], [162, 205], [242, 296], [-298, -252]];   // clear stretches of sand (port, bridges, pier and helipad left alone)
+  const ZONES = [[70, 138], [162, 205], [242, 296]];   // clear stretches of sand. The beach starts at the plane (x 60) and runs east: west of it is the port's sea wall
   const inZone = x => ZONES.some(([a, b]) => x > a && x < b);
 
   // ---------------- the sea: a rippling surface, shallows and surf ----------------
@@ -20,17 +20,16 @@ export function buildBeach(ctx, { sea, seaZ = 187, beachZ0 = 165 }) {
   ripple.wrapS = ripple.wrapT = THREE.RepeatWrapping; ripple.repeat.set(40, 45); ripple.colorSpace = THREE.NoColorSpace;
   if (sea) { sea.material.normalMap = ripple; sea.material.normalScale = new THREE.Vector2(0.55, 0.55); sea.material.roughness = 0.12; sea.material.metalness = 0.25; sea.material.color.set(0x1f6fa8); sea.material.needsUpdate = true; }
   const shallowTex = makeTex(8, 64, g => { const grd = g.createLinearGradient(0, 0, 0, 64); grd.addColorStop(0, 'rgba(90,220,210,0.85)'); grd.addColorStop(0.5, 'rgba(60,180,200,0.45)'); grd.addColorStop(1, 'rgba(31,111,168,0)'); g.fillStyle = grd; g.fillRect(0, 0, 8, 64); });
-  const shallow = new THREE.Mesh(new THREE.PlaneGeometry(600, 26), new THREE.MeshStandardMaterial({ map: shallowTex, transparent: true, depthWrite: false, roughness: 0.1, normalMap: ripple }));
-  shallow.rotation.x = -Math.PI / 2; shallow.position.set(0, 0.045, seaZ + 13); root.add(shallow);
+  const shallow = new THREE.Mesh(new THREE.PlaneGeometry(240, 26), new THREE.MeshStandardMaterial({ map: shallowTex, transparent: true, depthWrite: false, roughness: 0.1, normalMap: ripple }));
+  shallow.rotation.x = -Math.PI / 2; shallow.position.set(180, 0.045, seaZ + 13); root.add(shallow);
   const foamTex = makeTex(256, 32, g => { g.clearRect(0, 0, 256, 32); for (let i = 0; i < 260; i++) { const x = Math.random() * 256, y = 8 + Math.random() * 16, r = 1 + Math.random() * 4; g.fillStyle = `rgba(255,255,255,${0.35 + Math.random() * 0.5})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillRect(0, 14, 256, 4); });
   foamTex.wrapS = THREE.RepeatWrapping; foamTex.repeat.set(30, 1);
-  const foams = [0, 1].map(k => { const f = new THREE.Mesh(new THREE.PlaneGeometry(600, 2.4), new THREE.MeshBasicMaterial({ map: k ? foamTex.clone() : foamTex, transparent: true, depthWrite: false, opacity: 0.8 })); f.rotation.x = -Math.PI / 2; f.position.set(0, 0.055 + k * 0.004, seaZ + 1); root.add(f); if (k) { f.material.map.wrapS = THREE.RepeatWrapping; f.material.map.repeat.set(22, 1); f.material.map.needsUpdate = true; } return f; });
+  const foams = [0, 1].map(k => { const f = new THREE.Mesh(new THREE.PlaneGeometry(240, 2.4), new THREE.MeshBasicMaterial({ map: k ? foamTex.clone() : foamTex, transparent: true, depthWrite: false, opacity: 0.8 })); f.rotation.x = -Math.PI / 2; f.position.set(180, 0.055 + k * 0.004, seaZ + 1); root.add(f); if (k) { f.material.map.wrapS = THREE.RepeatWrapping; f.material.map.repeat.set(22, 1); f.material.map.needsUpdate = true; } return f; });
   // wet sand along the water's edge
-  const wet = new THREE.Mesh(new THREE.PlaneGeometry(600, 4), mat(0xb59a6a, { rough: 0.5 })); wet.rotation.x = -Math.PI / 2; wet.position.set(0, 0.02, seaZ - 1.5); root.add(wet);
+  const wet = new THREE.Mesh(new THREE.PlaneGeometry(240, 4), mat(0xb59a6a, { rough: 0.5 })); wet.rotation.x = -Math.PI / 2; wet.position.set(180, 0.02, seaZ - 1.5); root.add(wet);
 
   // ---------------- palms, parasols, loungers, towels ----------------
   for (let x = 72; x < 296; x += 11) if (inZone(x)) ctx.tree?.(x + (x % 3), beachZ0 + 2.2, 'palm', 1.1 + (x % 5) * 0.05);
-  for (let x = -296; x < -252; x += 12) ctx.tree?.(x, beachZ0 + 2.2, 'palm', 1.15);
   const parasolCols = [['#e63946', '#ffffff'], ['#1f6fd1', '#ffd23f'], ['#22c55e', '#ffffff'], ['#ff922b', '#ffffff'], ['#7b2cbf', '#ffd6e8']];
   const parasolMats = parasolCols.map(([a, b]) => { const t = makeTex(128, 16, g => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? a : b; g.fillRect(i * 16, 0, 16, 16); } }); return new THREE.MeshStandardMaterial({ map: t, side: THREE.DoubleSide }); });
   let k = 0;
@@ -45,7 +44,7 @@ export function buildBeach(ctx, { sea, seaZ = 187, beachZ0 = 165 }) {
     k++;
   }
   // kids building sandcastles, with a bucket and spade
-  for (const [x, z] of [[96, 182], [186, 181], [262, 182], [-250, 182]]) {
+  for (const [x, z] of [[96, 182], [186, 181], [262, 182], [124, 181]]) {
     const castle = new THREE.Group(); castle.position.set(x, 0, z); root.add(castle); B(castle, 1.2, 0.35, 1.2, 0, 0.17, 0, 0xd9c08a); for (const [dx, dz] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]]) { C(castle, 0.18, 0.2, 0.55, dx, 0.5, dz, 0xd9c08a, 8); const c2 = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.25, 8), mat(0xd9c08a)); c2.position.set(dx, 0.9, dz); castle.add(c2); }
     C(castle, 0.15, 0.12, 0.25, 1.0, 0.12, 0.3, 0xff3b30, 10); sitter(x - 1.0, z + 0.6, Math.PI * 0.7, 0.15, { child: true, task: 'eat' }); sitter(x + 0.8, z - 0.9, -0.4, 0.15, { child: true, task: 'talk' }); }
   // surfboards stuck in the sand
@@ -76,10 +75,10 @@ export function buildBeach(ctx, { sea, seaZ = 187, beachZ0 = 165 }) {
   // ---------------- people: strollers along the water, swimmers in the shallows ----------------
   family([[75, seaZ - 3], [204, seaZ - 3]], { kids: 1, speed: 0.8 });
   family([[204, seaZ - 4], [75, seaZ - 4]], { kids: 2, speed: 0.8, t: 60 });
-  walker([[244, seaZ - 3], [294, seaZ - 3]], { speed: 1.0 }); walker([[-296, seaZ - 3], [-254, seaZ - 3]], { speed: 2.6 });   // a jogger
+  walker([[244, seaZ - 3], [294, seaZ - 3]], { speed: 1.0 }); walker([[70, seaZ - 3], [136, seaZ - 3]], { speed: 2.6 });   // a jogger
   walker([[80, 170], [135, 170], [135, 172], [80, 172]], { speed: 1.1 });
   const swimmers = [];
-  for (let i = 0; i < 9; i++) { const x = -296 + i * 5 + (i % 2) * 2, z = seaZ + 5 + (i % 3) * 3; /* west end: the east shore moved out to Anthos Bay */ const h = K.person(x, z, Math.PI * (i % 2), { child: i % 3 === 0 }); if (h) { swimmers.push({ h, x, z, ph: i * 1.3 }); } }
+  for (let i = 0; i < 9; i++) { const x = 96 + i * 5 + (i % 2) * 2, z = seaZ + 5 + (i % 3) * 3; /* off the beach, between the plane and the pier-side huts */ const h = K.person(x, z, Math.PI * (i % 2), { child: i % 3 === 0 }); if (h) { swimmers.push({ h, x, z, ph: i * 1.3 }); } }
 
   let t = 0;
   function update(dt, p) {

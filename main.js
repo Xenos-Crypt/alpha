@@ -3021,10 +3021,16 @@ for (let i = 0; i < 3; i++) {
 // =====================================================================
 const SEA_Z = 187;
 const PIER = new THREE.Vector3(20, CURB, 200);
-const beach = mesh(new THREE.PlaneGeometry(600, SEA_Z - 165), sandMat);
+// The beach starts where your plane is parked (x 60) and runs east to Anthos Bay. West of the plane, along the
+// port and out to the bay's west end, the shore is a concrete quay with a sea wall: no sand there.
+const BEACH_X0 = 60;
+const beach = mesh(new THREE.PlaneGeometry(300 - BEACH_X0, SEA_Z - 165), sandMat);
 beach.rotation.x = -Math.PI / 2;
-beach.position.set(0, 0.01, (165 + SEA_Z) / 2);
+beach.position.set((BEACH_X0 + 300) / 2, 0.01, (165 + SEA_Z) / 2);
 beach.castShadow = false;
+{ const quay = mesh(new THREE.PlaneGeometry(BEACH_X0 + 300, SEA_Z - 165), new THREE.MeshStandardMaterial({ color: 0x9a9c98, roughness: 0.95 })); quay.rotation.x = -Math.PI / 2; quay.position.set((BEACH_X0 - 300) / 2, 0.012, (165 + SEA_Z) / 2); quay.castShadow = false;
+  // the sea wall along the water's edge (gaps where the port's docks and the pier run out to sea), with a rail
+  for (const [a, b] of [[-300, -212], [-48, 17], [23, BEACH_X0]]) { box(b - a, 0.9, 0.6, (a + b) / 2, 0.45, SEA_Z - 0.3, 0xb8b6ae); box(b - a, 0.06, 0.08, (a + b) / 2, 1.45, SEA_Z - 0.3, 0x3a4048, false); for (let x = a + 1; x < b; x += 3) box(0.06, 0.6, 0.06, x, 1.15, SEA_Z - 0.3, 0x3a4048, false); } }
 const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 900 - SEA_Z), new THREE.MeshStandardMaterial({ color: 0x2a7ab8, roughness: 0.15, metalness: 0.1 }));
 sea.rotation.x = -Math.PI / 2;
 sea.position.set(0, 0.03, (SEA_Z + 900) / 2);
@@ -8410,7 +8416,7 @@ const regionalTransportContext={scene,box,sign:signboard,makePerson:makeHumanoid
  canBoard:()=>!navy?.rider&&!intercityRail?.rider&&!cityServices?.rider&&!spaceCentre?.rider&&!metro?.rider&&!transport?.rider&&!inCar&&!sitting&&!action&&!dungeon&&!adventureServices?.parachuting,
  prepare(){action=null;swimming=false;vy=0;pvel.set(0,0,0);},move(p){player.position.copy(p);vy=0;pvel.set(0,0,0);swimming=false;},carry:p=>player.position.copy(p),toast,
  addSeat(x,z,y){box(3,.15,.7,x,y+.65,z,0x69727c,false);box(3,.6,.1,x,y+1,z+.3,0x69727c,false);sitSpots.push({x,z,seatY:y+.75,yaw:Math.PI,label:'Sit at railway station'});}};
-navy=buildNavy({...regionalTransportContext,input:()=>locked?{forward:keys.KeyW?1:0,back:keys.KeyS?1:0,left:keys.KeyA?1:0,right:keys.KeyD?1:0,dive:keys.ShiftLeft||keys.ShiftRight?1:0,surface:keys.Space?1:0}:{forward:0,back:0,left:0,right:0,dive:0,surface:0},water:(x,z,h,l,w)=>waterFootprint(x,z,h,l,w,navigableSea),clearPassage:(v,next)=>shipCanAdvance({x:v.g.position.x,z:v.g.position.z,length:v.length},next.x,BRIDGE_X,GAP0,GAP1,bridgeLiftAngle)});
+navy=buildNavy({...regionalTransportContext,colliders,input:()=>locked?{forward:keys.KeyW?1:0,back:keys.KeyS?1:0,left:keys.KeyA?1:0,right:keys.KeyD?1:0,dive:keys.ShiftLeft||keys.ShiftRight?1:0,surface:keys.Space?1:0}:{forward:0,back:0,left:0,right:0,dive:0,surface:0},water:(x,z,h,l,w)=>waterFootprint(x,z,h,l,w,navigableSea),clearPassage:(v,next)=>shipCanAdvance({x:v.g.position.x,z:v.g.position.z,length:v.length},next.x,BRIDGE_X,GAP0,GAP1,bridgeLiftAngle)});
 military = buildMilitary({ scene, colliders, interactables, civicBuildings, makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, toast, burst, fxSphere, statSources, destinations: townPlaces.destinations,
   playerPos: () => player.position, playerRig: () => P,
   addAircraft: a => makeAircraft(a),
@@ -8471,7 +8477,7 @@ property = createProperty({ scene, buildings: civicBuildings, market, interactab
 // Online rooms: visit other players' houses (knock, or break in — the owner can report you).
 houseVisits = createHouseVisits({ send: p => roomChat.sendGame(p), online: () => !!roomChat.connected, myId: () => roomChat.self, owned: () => property?.snapshot() || [],
   toast, raiseWanted: n => { raiseWanted(n); careers?.convict('Reported for breaking into a home'); }, enter: b => enterCivicBuilding(b), menu: (title, items) => snackShop.open(title, 'visit', items) });
-navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast });
+navyCrew = addNavyCrew({ scene, interactables, makePerson: o => makeHumanoid(o), toast, dock: { x: -306, z: 292, y: navy?.base?.y ?? 0.15 } });
 intercityRail=buildIntercityRail({...regionalTransportContext,colliders,sitSpots,makeTex,playerPosition:()=>player.position,resume:()=>{if(!boardOpen&&!settingsOpen)requestGameControl();}});
 for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'military');v.group.position.set(286+i*7,.2,-238);v.ai={parked:true};}
 for(const v of cityServices.traffic)if(v.kind==='car'&&(v.group.position.z>640&&v.group.position.x<500))detailVehicle(v,'luxury');
