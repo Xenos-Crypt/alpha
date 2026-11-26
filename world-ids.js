@@ -276,6 +276,10 @@ export function createWorldIds(ctx) {
       if (box.max.y - box.min.y > .08 || w * d < .5 || w > 300 || d > 300) continue;
       const mat = Array.isArray(m.material) ? m.material[0] : m.material;
       if (mat?.transparent && mat.opacity < .5) continue;
+      // A decal (grime, mud, road wear) is drawn on top by design: polygon offset towards the camera and no depth
+      // write, so it never flickers with the floor under it. Counting it as a second floor made the scan "fix" it by
+      // lifting the floor over it (Cinder Row's lanes rose 2 cm and buried their own mud and potholes).
+      if (mat?.polygonOffset && mat.polygonOffsetFactor < 0 && mat.depthWrite === false) continue;
       const rec = { m, mat, x0: box.min.x, x1: box.max.x, z0: box.min.z, z1: box.max.z, top: box.max.y, look: surfMat(mat) };
       const cells = []; for (let gx = Math.floor(rec.x0 / 10); gx <= Math.floor(rec.x1 / 10); gx++) for (let gz = Math.floor(rec.z0 / 10); gz <= Math.floor(rec.z1 / 10); gz++) cells.push(gx + ',' + gz);
       for (const k of cells.slice(0, 64)) {
