@@ -104,7 +104,7 @@ export function buildAdminEstate(ctx) {
   // front, with a glass balcony; a thin roof slab overhangs both. (The upper floor is the outside of the house only.)
   const winF = [[978, 984], [987, 994], [1006, 1013], [1016, 1022]], winB = [[977, 987]], winW = [[-443, -439]];
   const byX = (a, b) => a[0] - b[0];
-  hall({ x0: hx0, x1: hx1, z0: hz0, z1: hz1, H, wall: 0xf3eee4, floor: 0xf2efe9, floorKind: 'marble', roof: 0x2e2a27,
+  const houseHall = hall({ x0: hx0, x1: hx1, z0: hz0, z1: hz1, H, wall: 0xf3eee4, floor: 0xf2efe9, floorKind: 'marble', roof: 0x2e2a27,
     gaps: { n: [...winF, [cx - 3, cx + 3]].sort(byX), s: [...winB, [cx - 7, cx + 7]].sort(byX), w: winW } });
   const glass = mat(0x9fc4d6, { opacity: 0.28, rough: 0.05, metal: 0.4 }), bronze = mat(0x3b3530, { rough: 0.4, metal: 0.6 }), stone = mat(0xb9ad98, { rough: 0.9 });
   const pane = (ax, az, bx, bz) => {   // glass filling an opening 3.2 m tall, with bronze frames and mullions every metre and a half
@@ -133,9 +133,11 @@ export function buildAdminEstate(ctx) {
   const ux0 = 981, ux1 = 1019, uz0 = hz0 + 4, uz1 = hz1 - 2, UH = 4.2, uy = H + 0.5;
   const upWall = mat(0xf3eee4, { rough: 0.6 }), warm = mat(0x6d5a3e, { emissive: 0xffd08a, ei: 0.35, rough: 0.2 });
   B(root, ux1 - ux0, UH, 0.3, cx, uy + UH / 2, uz1, upWall); B(root, 0.3, UH, uz1 - uz0, ux0, uy + UH / 2, (uz0 + uz1) / 2, upWall); B(root, 0.3, UH, uz1 - uz0, ux1, uy + UH / 2, (uz0 + uz1) / 2, upWall);
-  B(root, ux1 - ux0 - 0.4, UH - 0.2, 0.1, cx, uy + UH / 2, uz0 + 0.35, warm, false);                                       // lit rooms behind the glass
-  B(root, ux1 - ux0, UH, 0.06, cx, uy + UH / 2, uz0, mat(0x7fa6bb, { opacity: 0.45, rough: 0.05, metal: 0.5 }), false);    // the glazing
-  for (let x = ux0; x <= ux1 + 0.01; x += 2.375) B(root, 0.1, UH, 0.12, x, uy + UH / 2, uz0, bronze, false);
+  const upGlass = mat(0x7fa6bb, { opacity: 0.4, rough: 0.05, metal: 0.5 }), DOOR = [997.5, 1002.5];   // the glazing, with a doorway onto the balcony
+  for (const [a, b] of [[ux0, DOOR[0]], [DOOR[1], ux1]]) B(root, b - a, UH, 0.06, (a + b) / 2, uy + UH / 2, uz0, upGlass, false);
+  B(root, DOOR[1] - DOOR[0], UH - 2.6, 0.06, cx, uy + 2.6 + (UH - 2.6) / 2 + 0.25, uz0, upGlass, false);
+  for (let x = ux0; x <= ux1 + 0.01; x += 2.375) if (x < DOOR[0] - 0.1 || x > DOOR[1] + 0.1) B(root, 0.1, UH, 0.12, x, uy + UH / 2, uz0, bronze, false);
+  for (const x of DOOR) B(root, 0.14, UH, 0.16, x, uy + UH / 2, uz0, bronze, false); B(root, DOOR[1] - DOOR[0], 0.12, 0.16, cx, uy + 2.85, uz0, bronze, false);
   for (const [x0, x1] of [[ux0, 993], [1007, ux1]]) for (const z of [(uz0 + uz1) / 2 - 3, (uz0 + uz1) / 2 + 3]) { B(root, 0.06, 2.2, 3, x0 - 0.18, uy + 2.2, z, glass, false); B(root, 0.06, 2.2, 3, x1 + 0.18, uy + 2.2, z, glass, false); }   // side windows
   B(root, ux1 - ux0 + 0.2, 0.25, uz0 - hz0 + 0.2, cx, H + 0.62, (hz0 + uz0) / 2, mat(0xe8e2d6, { rough: 0.7 }));            // balcony floor (the ground floor's roof)
   B(root, ux1 - ux0, 1.05, 0.05, cx, H + 1.27, hz0 + 0.2, glass, false); B(root, ux1 - ux0 + 0.1, 0.06, 0.1, cx, H + 1.82, hz0 + 0.2, bronze, false);   // glass balcony rail
@@ -179,7 +181,7 @@ export function buildAdminEstate(ctx) {
     for (const ox of [1288.5, 1291.5]) { const [x, z] = P(ox, 220); C(root, 0.01, 0.01, 1.6, x, H - 0.8, z, dark, 4); S(root, 0.2, x, H - 1.7, z, glow, 10); }
     // the bedroom: walled off in the south-east corner with a doorway, nightstands, a wardrobe and a rug
     const bw = mat(0xf6f3ee, { rough: 0.8 });
-    const wallP = (ax, az, bx, bz) => { const [x0, z0] = P(ax, az), [x1, z1] = P(bx, bz), w = Math.max(0.2, x1 - x0), d = Math.max(0.2, z1 - z0); ctx.camBlockers?.push(B(root, w, H - 0.1, d, (x0 + x1) / 2, (H - 0.1) / 2, (z0 + z1) / 2, bw)); solid(x0 - (w === 0.2 ? 0.1 : 0), x1 + (w === 0.2 ? 0.1 : 0), z0 - (d === 0.2 ? 0.1 : 0), z1 + (d === 0.2 ? 0.1 : 0)); };
+    const wallP = (ax, az, bx, bz) => { const [x0, z0] = P(ax, az), [x1, z1] = P(bx, bz), w = Math.max(0.2, x1 - x0), d = Math.max(0.2, z1 - z0); ctx.camBlockers?.push(B(root, w, H - 0.1, d, (x0 + x1) / 2, (H - 0.1) / 2, (z0 + z1) / 2, bw)); solid(x0 - (w === 0.2 ? 0.1 : 0), x1 + (w === 0.2 ? 0.1 : 0), z0 - (d === 0.2 ? 0.1 : 0), z1 + (d === 0.2 ? 0.1 : 0)).baseYAt = () => 0; };
     wallP(1292, 234, 1293.2, 234); wallP(1294.8, 234, 1299.8, 234); wallP(1292, 234, 1292, 239.8);
     { const [x, z] = P(1296, 236.6); B(root, 3.6, 0.02, 3, x, 0.03, z, mat(0xcfc6b5, { rough: 1 }), false); }
     for (const ox of [1294.2, 1297.8]) { const [x, z] = P(ox, 237.3); B(root, 0.5, 0.55, 0.45, x, 0.28, z, wood); S(root, 0.12, x, 0.72, z, glow, 8); }
@@ -189,7 +191,7 @@ export function buildAdminEstate(ctx) {
     {
       const tile = mat(0xdfe6ea, { rough: 0.35 }), white = mat(0xf8f8f5, { rough: 0.25 }), chrome = mat(0xd0d4da, { metal: 0.9, rough: 0.2 });
       { const [x, z] = P(1287.6, 237); B(root, 8.6, 0.02, 5.6, x, 0.07, z, tile, false); }   // tiled floor
-      { const [x, z] = P(1288.9, 239.3); B(root, 3.6, 0.58, 0.95, x, 0.29, z, white); B(root, 3.3, 0.03, 0.7, x, 0.5, z, mat(0x8cc7de, { opacity: 0.8, rough: 0.1 }), false); C(root, 0.03, 0.03, 0.3, x + 1.55, 0.75, z + 0.3, chrome, 8); solid(x - 1.8, x + 1.8, z - 0.48, z + 0.48);
+      { const [x, z] = P(1288.9, 239.3); B(root, 3.6, 0.58, 0.95, x, 0.29, z, white); B(root, 3.3, 0.03, 0.7, x, 0.5, z, mat(0x8cc7de, { opacity: 0.8, rough: 0.1 }), false); C(root, 0.03, 0.03, 0.3, x + 1.55, 0.75, z + 0.3, chrome, 8); solid(x - 1.8, x + 1.8, z - 0.48, z + 0.48).baseYAt = () => 0;
         spot(x, z - 1.1, 1.4, 'Take a bath', () => ctx.chore ? ctx.chore('bath') : toast('🛁 A long hot bath.')); }
       { const [x, z] = P(1284, 239); B(root, 1.5, 0.12, 1.5, x, 0.12, z, white, false); B(root, 0.05, 2.1, 1.5, x + 0.75, 1.17, z, mat(0x9fd3ff, { opacity: 0.3, rough: 0.05 }), false); B(root, 1.0, 2.1, 0.05, x + 0.25, 1.17, z - 0.75, mat(0x9fd3ff, { opacity: 0.3, rough: 0.05 }), false);
         C(root, 0.15, 0.15, 0.04, x, 2.15, z + 0.2, chrome, 12); spot(x, z, 1.0, 'Take a shower', () => ctx.chore ? ctx.chore('shower') : toast('🚿 A hot shower.')); }
@@ -206,7 +208,7 @@ export function buildAdminEstate(ctx) {
       B(root, 0.5, 0.45, 0.5, x, 0.25, z - 0.8, dark); B(root, 0.5, 0.6, 0.08, x, 0.75, z - 1.05, dark); seat(x, z - 0.8, 0, 'Sit at the desk', 0.5); }
     { const [x, z] = P(1250.6, 236); B(root, 0.6, 3, 3, x, 1.5, z, wood); }
     // plants by the front door and the garden opening, paintings on the walls
-    for (const [ox, oz] of [[1266, 211.5], [1284, 211.5], [1266.5, 238.8], [1282.4, 238.8]]) { const [x, z] = P(ox, oz); C(root, 0.35, 0.28, 0.6, x, 0.3, z, mat(0xd8d2c4), 12); S(root, 0.6, x, 1.15, z, mat(0x3f7f3a, { rough: 0.9 }), 10); }
+    for (const [ox, oz] of [[1264.5, 211.5], [1284, 211.5], [1266.5, 238.8], [1282.4, 238.8]]) { const [x, z] = P(ox, oz); C(root, 0.35, 0.28, 0.6, x, 0.3, z, mat(0xd8d2c4), 12); S(root, 0.6, x, 1.15, z, mat(0x3f7f3a, { rough: 0.9 }), 10); }
     const art = (cols, x, z, ry) => { const t = makeTex(128, 96, g => { g.fillStyle = cols[0]; g.fillRect(0, 0, 128, 96); for (let i = 0; i < 7; i++) { g.fillStyle = cols[1 + i % (cols.length - 1)]; g.beginPath(); g.arc(20 + i * 15, 30 + (i * 37) % 50, 10 + (i * 7) % 18, 0, 7); g.fill(); } }); const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshStandardMaterial({ map: t })); m.position.set(x, 2.8, z); m.rotation.y = ry; root.add(m); B(root, ry ? 0.05 : 2.4, 1.8, ry ? 2.4 : 0.05, x + (ry ? -Math.sign(ry) * 0.03 : 0), 2.8, z + (ry ? 0 : 0.03), gold, false); };
     art(['#e8e2d6', '#2f5f8f', '#3f6f3f', '#b8902f'], ...P(1258, 239.75), Math.PI);
     art(['#2a2e33', '#d4af37', '#7b2f2f'], P(1250.25, 0)[0], P(0, 231)[1], Math.PI / 2); art(['#f2efe9', '#5a3f6f', '#2f5f8f'], P(1299.75, 0)[0], P(0, 228)[1], -Math.PI / 2);
@@ -264,6 +266,107 @@ export function buildAdminEstate(ctx) {
   spot(hgx0 - 3, (hgz0 + hgz1) / 2, 2, 'Your private jet', () => toast('✈️ Your private jet is waiting on the runway. Walk up to it to fly. Take off up the runway, northwards.'));
 
   bot.people(K);   // the friend on the sofa and the pilot
+  // ---------------- upstairs: a staircase from the hall, a lounge, a master suite with its own bathroom, an office
+  // and gym, and the balcony. The stairs are a real ramp and the floor a real floor (groundAt below), so you walk up.
+  const FY1 = H + 0.75, upFloors = [], upVoids = [];
+  const ST = { x0: 990.9, x1: 993.5, z0: -447, z1: -434 }, HOLE = { x0: 990.8, x1: 993.6, z0: -440.6, z1: -433.9 };   // the flight rises northwards from beside the front door
+  const solidAt = (y, x0, x1, z0, z1) => { const c = solid(x0, x1, z0, z1); c.baseYAt = () => y; return c; };
+  {
+    // cut the stairwell out of the hall's roof and ceiling
+    const cut = m => { if (!m) return; const w = m.scale.x, d = m.scale.z, mx = m.position.x, mz = m.position.z, x0 = mx - w / 2, x1 = mx + w / 2, z0 = mz - d / 2, z1 = mz + d / 2, blocked = ctx.camBlockers?.indexOf(m) ?? -1;
+      const parts = [[x0, HOLE.x0, z0, z1], [HOLE.x1, x1, z0, z1], [HOLE.x0, HOLE.x1, z0, HOLE.z0], [HOLE.x0, HOLE.x1, HOLE.z1, z1]];
+      for (const [a, b, c, e] of parts) if (b - a > 0.01 && e - c > 0.01) { const piece = B(m.parent, b - a, m.scale.y, e - c, (a + b) / 2, m.position.y, (c + e) / 2, m.material, false); if (blocked >= 0) ctx.camBlockers.push(piece); }
+      if (blocked >= 0) ctx.camBlockers.splice(blocked, 1); m.parent.remove(m); };
+    const near = (y, sy) => houseHall.children.find(m => Math.abs(m.position.y - y) < 0.02 && Math.abs(m.scale.y - sy) < 0.02 && m.scale.x > 30);
+    cut(near(H + 0.25, 0.5)); cut(near(H - 0.03, 0.05));
+    // the stairs: 18 solid marble steps, glass balustrades with a bronze handrail on both sides
+    const marble = mat(0xf2efe9, { rough: 0.3 }), rail = mat(0x9fc4d6, { opacity: 0.3, rough: 0.05 }), N = 18, run = (ST.z1 - ST.z0) / N, mx = (ST.x0 + ST.x1) / 2;
+    for (let k = 0; k < N; k++) { const top = FY1 * (k + 1) / N; B(root, ST.x1 - ST.x0, top, run, mx, top / 2, ST.z0 + (k + 0.5) * run, marble); B(root, ST.x1 - ST.x0 + 0.02, 0.03, 0.05, mx, top - 0.01, ST.z0 + (k + 1) * run - 0.03, bronze, false); }
+    const len = Math.hypot(ST.z1 - ST.z0, FY1), ang = Math.atan2(FY1, ST.z1 - ST.z0);
+    for (const x of [ST.x0, ST.x1]) { const g = new THREE.Group(); g.position.set(x, FY1 / 2 + 0.5, (ST.z0 + ST.z1) / 2); g.rotation.x = -ang; root.add(g); B(g, 0.04, 1.0, len, 0, 0, 0, rail, false); B(g, 0.07, 0.07, len, 0, 0.52, 0, bronze, false); }
+    solidAt(0, ST.x0 - 0.05, ST.x1 + 0.05, -442.6, ST.z1);   // you can't walk into the high part of the flight from the hall below
+    tag('PRD', 'STR', 'MRB.GLS', 'Marble staircase', mx, (ST.z0 + ST.z1) / 2);
+    // upper floor: oak boards on a slab over the ground floor's roof (the balcony is the same height), a pale ceiling
+    const oak = mat(0xa77b52, { rough: 0.55 }), ceil = mat(0xf4f1ea, { emissive: 0x6e6a62, ei: 0.35 });
+    for (const [a, b, c, e] of [[ux0, HOLE.x0, uz0, uz1], [HOLE.x1, ux1, uz0, uz1], [HOLE.x0, HOLE.x1, uz0, HOLE.z0], [HOLE.x0, HOLE.x1, HOLE.z1, uz1]]) B(root, b - a, 0.25, e - c, (a + b) / 2, FY1 - 0.125 + 0.005, (c + e) / 2, oak, false);
+    B(root, ux1 - ux0, 0.04, uz1 - uz0, cx, uy + UH - 0.03, (uz0 + uz1) / 2, ceil, false);
+    upFloors.push({ minX: ux0, maxX: ux1, minZ: uz0, maxZ: uz1 }, { minX: ux0, maxX: ux1, minZ: hz0, maxZ: uz0 });   // the rooms, and the balcony
+    upVoids.push({ minX: HOLE.x0, maxX: HOLE.x1, minZ: HOLE.z0, maxZ: HOLE.z1 - 0.3 });
+    // a glass rail round the stairwell up here
+    B(root, 0.05, 1.0, HOLE.z1 - HOLE.z0, HOLE.x0, FY1 + 0.5, (HOLE.z0 + HOLE.z1) / 2, rail, false); B(root, 0.05, 1.0, HOLE.z1 - HOLE.z0, HOLE.x1, FY1 + 0.5, (HOLE.z0 + HOLE.z1) / 2, rail, false); B(root, HOLE.x1 - HOLE.x0, 1.0, 0.05, mx, FY1 + 0.5, HOLE.z0, rail, false);
+    for (const x of [HOLE.x0, HOLE.x1]) B(root, 0.07, 0.07, HOLE.z1 - HOLE.z0, x, FY1 + 1.02, (HOLE.z0 + HOLE.z1) / 2, bronze, false);
+    solidAt(FY1, HOLE.x0 - 0.08, HOLE.x0 + 0.08, HOLE.z0, HOLE.z1); solidAt(FY1, HOLE.x1 - 0.08, HOLE.x1 + 0.08, HOLE.z0, HOLE.z1); solidAt(FY1, HOLE.x0, HOLE.x1, HOLE.z0 - 0.08, HOLE.z0 + 0.08);
+    // walls up here: the back and sides, the glass front (with the balcony doorway), the ends of the balcony
+    solidAt(FY1, ux0, ux1, uz1 - 0.15, uz1 + 0.15); solidAt(FY1, ux0 - 0.15, ux0 + 0.15, hz0, uz1); solidAt(FY1, ux1 - 0.15, ux1 + 0.15, hz0, uz1);
+    solidAt(FY1, ux0, DOOR[0], uz0 - 0.08, uz0 + 0.08); solidAt(FY1, DOOR[1], ux1, uz0 - 0.08, uz0 + 0.08);
+    for (const x of [ux0, ux1]) { B(root, 0.05, 1.05, uz0 - hz0, x, FY1 + 0.52, (hz0 + uz0) / 2, rail, false); }
+    ctx.planeBlocks?.push({ minX: ux0, maxX: ux1, minZ: uz0, maxZ: uz1, top: uy + UH + 0.4 });   // indoors up here: first person, the roof doesn't hide you
+    const wallU = (x0, x1, z0, z1) => { ctx.camBlockers?.push(B(root, x1 - x0, UH - 0.25, z1 - z0, (x0 + x1) / 2, FY1 + (UH - 0.25) / 2, (z0 + z1) / 2, upWall)); solidAt(FY1, x0, x1, z0, z1); };
+    const upSpot = (x, z, r, label, action) => { const it = spot(x, z, r, label, action); it.pos.y = FY1; return it; };
+    const upSeat = (x, z, yaw, label, h = 0.45, extra = {}) => ctx.sitSpots?.push({ x, z, yaw, seatY: FY1 + h, label, ...extra });
+    const wood = mat(0x6b4a33, { rough: 0.6 }), dark = mat(0x2a2e33, { rough: 0.5 }), cream = mat(0xe9e4da, { rough: 0.8 }), white = mat(0xf8f8f5, { rough: 0.25 }), chrome = mat(0xd0d4da, { metal: 0.9, rough: 0.2 }), glow = mat(0xfff1cf, { emissive: 0xffe2a0, ei: 1.3 });
+    const Y = FY1;
+    // ---- the master bedroom (east, front): a big bed against the east wall, nightstands, a wardrobe wall, a reading chair
+    wallU(1006.85, 1007.15, uz0, -438.6); wallU(1006.85, 1007.15, -437.2, uz1);            // its wall, with a doorway from the lounge
+    { const bx = 1017.3, bz = -438.5; B(root, 3.0, 0.45, 2.4, bx, Y + 0.3, bz, wood); B(root, 2.8, 0.25, 2.3, bx - 0.05, Y + 0.6, bz, white); B(root, 0.2, 1.3, 2.6, ux1 - 0.3, Y + 0.85, bz, mat(0x3b3530, { rough: 0.8 }));
+      for (const dz of [-0.6, 0.6]) B(root, 0.4, 0.15, 0.6, bx + 1.1, Y + 0.8, bz + dz, cream); B(root, 1.6, 0.06, 2.35, bx - 0.75, Y + 0.76, bz, mat(0x7b2f2f, { rough: 0.9 }));
+      for (const dz of [-1.7, 1.7]) { B(root, 0.55, 0.55, 0.45, ux1 - 0.55, Y + 0.28, bz + dz, wood); S(root, 0.12, ux1 - 0.55, Y + 0.72, bz + dz, glow, 8); }
+      solidAt(FY1, bx - 1.5, bx + 1.6, bz - 1.2, bz + 1.2); upSpot(bx - 2.1, bz, 2, 'Sleep in your bed', () => ctx.sleep?.()); B(root, 5, 0.02, 4, bx - 1, Y + 0.01, bz, mat(0xcfc6b5, { rough: 1 }), false); }
+    { B(root, 6, 2.6, 0.6, 1013, Y + 1.3, uz0 + 0.45, wood, true); for (let i = 0; i < 4; i++) B(root, 0.04, 2.4, 0.02, 1010.7 + i * 1.5, Y + 1.3, uz0 + 0.76, dark, false); solidAt(FY1, 1010, 1016, uz0, uz0 + 0.8);
+      upSpot(1013, uz0 + 1.4, 1.4, 'Open the wardrobe', () => toast('👔 Suits, trainers and a row of watches. Everything you own, neatly hung.')); }   // a wall of wardrobes along the glass front
+    { const g = new THREE.Group(); g.position.set(1009, Y, -442); g.rotation.y = 0.6; root.add(g); B(g, 0.9, 0.42, 0.9, 0, 0.3, 0, cream); B(g, 0.9, 0.7, 0.2, 0, 0.75, -0.38, cream); upSeat(1009, -442, 0.6, 'Sit in the reading chair'); }
+    // ---- the en-suite (east, back): bath, shower, toilet, double basin
+    wallU(1007.15, 1009.2, -432.15, -431.85); wallU(1010.4, ux1, -432.15, -431.85);
+    { B(root, ux1 - 1007.2, 0.02, uz1 - (-431.85), (1007.2 + ux1) / 2, Y + 0.012, (-431.85 + uz1) / 2, mat(0xdfe6ea, { rough: 0.35 }), false);
+      const bx = 1014.8, bz = uz1 - 0.65; B(root, 3.4, 0.6, 1.0, bx, Y + 0.3, bz, white); B(root, 3.1, 0.03, 0.75, bx, Y + 0.52, bz, mat(0x8cc7de, { opacity: 0.8, rough: 0.1 }), false); C(root, 0.03, 0.03, 0.3, bx + 1.5, Y + 0.78, bz + 0.3, chrome, 8);
+      solidAt(FY1, bx - 1.7, bx + 1.7, bz - 0.5, bz + 0.5); upSpot(bx, bz - 1.2, 1.4, 'Take a bath', () => ctx.chore ? ctx.chore('bath') : toast('🛁 A long hot bath.'));
+      const sx = 1018, sz = uz1 - 0.9; B(root, 1.6, 0.12, 1.6, sx, Y + 0.12, sz, white, false); B(root, 0.05, 2.1, 1.6, sx - 0.8, Y + 1.17, sz, mat(0x9fd3ff, { opacity: 0.3, rough: 0.05 }), false); B(root, 1.2, 2.1, 0.05, sx - 0.2, Y + 1.17, sz - 0.8, mat(0x9fd3ff, { opacity: 0.3, rough: 0.05 }), false); C(root, 0.15, 0.15, 0.04, sx + 0.3, Y + 2.15, sz + 0.3, chrome, 12);
+      upSpot(sx, sz, 1.0, 'Take a shower', () => ctx.chore ? ctx.chore('shower') : toast('🚿 A hot shower.'));
+      const tx = 1007.55, tz = -425; B(root, 0.4, 0.4, 0.5, tx, Y + 0.2, tz, white); B(root, 0.16, 0.38, 0.42, tx - 0.27, Y + 0.62, tz, white); B(root, 0.5, 0.05, 0.44, tx + 0.03, Y + 0.43, tz, white);
+      upSeat(tx + 0.05, tz, Math.PI / 2, 'Use the toilet', 0.45, { toilet: true });
+      const vx = 1012.5, vz = -431.5; B(root, 2.6, 0.85, 0.55, vx, Y + 0.43, vz, wood); B(root, 2.7, 0.06, 0.6, vx, Y + 0.88, vz, white); for (const dx of [-0.65, 0.65]) { B(root, 0.5, 0.05, 0.35, vx + dx, Y + 0.92, vz, mat(0xeef2f4)); C(root, 0.02, 0.02, 0.22, vx + dx, Y + 1.0, vz - 0.22, chrome, 6); }
+      B(root, 2.4, 1.0, 0.04, vx, Y + 1.75, vz - 0.28, mat(0xdde9ef, { metal: 0.25, rough: 0.08, emissive: 0x2a3438, ei: 0.4 }), false); solidAt(FY1, vx - 1.3, vx + 1.3, vz - 0.3, vz + 0.3);
+      upSpot(vx, vz + 0.7, 1.0, 'Wash your hands', () => ctx.chore ? ctx.chore('handwash') : toast('🧼 Squeaky clean.'));
+      tag('PRD', 'FUR', 'CER', 'En-suite: bath, shower, toilet and double basin', vx, -427, 'Atelier Furniture'); }
+    // ---- the lounge (middle, at the top of the stairs): sofas round a TV on the back wall, a bar
+    { B(root, 9, 0.02, 6, 1000, Y + 0.01, -427.5, mat(0x5a4a6a, { rough: 1 }), false);
+      B(root, 4.4, 2.5, 0.1, 1000, Y + 1.9, uz1 - 0.25, mat(0x050505, { rough: 0.15 }), false);
+      B(root, 3.0, 0.5, 0.5, 1000, Y + 0.25, uz1 - 0.45, wood); solidAt(FY1, 998.5, 1001.5, uz1 - 0.7, uz1);
+      const sofa = (x, z, ry) => { const g = new THREE.Group(); g.position.set(x, Y, z); g.rotation.y = ry; root.add(g); B(g, 3.2, 0.45, 1.0, 0, 0.3, 0, cream); B(g, 3.2, 0.6, 0.25, 0, 0.75, -0.4, cream); for (const sd of [-1, 1]) B(g, 0.25, 0.55, 1.0, sd * 1.5, 0.5, 0, cream); };
+      sofa(1000, -430.2, Math.PI); solidAt(FY1, 998.4, 1001.6, -430.7, -429.7); for (const dx of [-1, 0, 1]) upSeat(1000 + dx, -430, Math.PI, 'Sit on the sofa');
+      B(root, 1.6, 0.35, 0.8, 1000, Y + 0.18, -427.6, mat(0x1a1a1a, { rough: 0.2, metal: 0.4 }));
+      B(root, 0.6, 1.05, 3.2, 1005.6, Y + 0.53, -443, wood); B(root, 0.7, 0.06, 3.3, 1005.6, Y + 1.08, -443, white); solidAt(FY1, 1005.3, 1005.9, -444.6, -441.4);   // the bar
+      for (let i = 0; i < 6; i++) C(root, 0.04, 0.05, 0.3, 1006.6, Y + 1.25 + (i % 2) * 0.35, -444.2 + Math.floor(i / 2) * 0.9, mat([0x6b2a1a, 0x2a5a2a, 0xc9a24a][i % 3], { opacity: 0.85, rough: 0.1 }), 8);
+      B(root, 0.3, 1.2, 3, 1006.7, Y + 1.5, -443, wood, false);
+      for (const dz of [-1, 0, 1]) { C(root, 0.2, 0.2, 0.06, 1004.8, Y + 0.78, -443 + dz, dark, 12); C(root, 0.03, 0.03, 0.75, 1004.8, Y + 0.38, -443 + dz, bronze, 6); upSeat(1004.8, -443 + dz, Math.PI / 2, 'Sit at the bar', 0.8); }
+      upSpot(1005, -440.7, 1.2, 'Pour a drink', () => toast('🥃 You pour something old and expensive and look out over the estate.'));
+      tag('PRD', 'FUR', 'LTH.GLS', 'Upstairs lounge and bar', 1000, -430, 'Atelier Furniture'); }
+    // ---- the office and gym (west)
+    { const dx = 983.2, dz = -441.5; B(root, 2.2, 0.06, 1.0, dx, Y + 0.76, dz, wood); for (const [a, b] of [[-1, -0.4], [1, -0.4], [-1, 0.4], [1, 0.4]]) B(root, 0.06, 0.74, 0.06, dx + a, Y + 0.37, dz + b, wood, false);
+      B(root, 0.7, 0.42, 0.03, dx, Y + 1.1, dz + 0.35, mat(0x050505, { emissive: 0x0d2a4a, ei: 0.6 }), false); B(root, 0.55, 0.45, 0.55, dx, Y + 0.25, dz - 0.85, dark); B(root, 0.55, 0.65, 0.08, dx, Y + 0.78, dz - 1.12, dark);
+      solidAt(FY1, dx - 1.1, dx + 1.1, dz - 0.5, dz + 0.5); upSeat(dx, dz - 0.85, 0, 'Sit at the desk', 0.5);
+      B(root, 0.45, 2.6, 4, ux0 + 0.4, Y + 1.3, -437, wood); for (let i = 0; i < 5; i++) for (let j = 0; j < 7; j++) B(root, 0.3, 0.36, 0.12 + (i * j) % 3 * 0.04, ux0 + 0.5, Y + 0.35 + i * 0.5, -438.6 + j * 0.5, [0x8f2f2f, 0x2f5f8f, 0x3f6f3f, 0xb8902f, 0x5a3f6f][(i + j) % 5], false);
+      solidAt(FY1, ux0, ux0 + 0.65, -439, -435);
+      B(root, 0.9, 0.2, 2.0, 984, Y + 0.12, -425.5, dark); B(root, 0.9, 0.04, 1.6, 984, Y + 0.24, -425.6, mat(0x111111)); for (const sd of [-1, 1]) B(root, 0.06, 1.1, 0.06, 984 + sd * 0.42, Y + 0.75, -424.6, chrome); B(root, 0.9, 0.1, 0.3, 984, Y + 1.3, -424.6, dark);   // treadmill
+      solidAt(FY1, 983.5, 984.5, -426.6, -424.4);
+      B(root, 0.4, 0.45, 1.4, 987.5, Y + 0.23, -425, dark); B(root, 1.6, 0.04, 0.04, 987.5, Y + 1.1, -424.2, chrome); for (const sd of [-1, 1]) C(root, 0.22, 0.22, 0.06, 987.5 + sd * 0.8, Y + 1.1, -424.2, dark, 16);   // bench and bar
+      upSpot(986, -425, 1.6, 'Work out', () => { toast('🏋️ Half an hour on the treadmill and the bench. You feel strong.'); ctx.workout?.(); });
+      B(root, 3, 0.02, 2.4, 985.5, Y + 0.01, -425.2, mat(0x333333, { rough: 1 }), false);
+      tag('PRD', 'FUR', 'WOD.STL', 'Home office and gym', 985, -432, 'Atelier Furniture'); }
+    // ---- the balcony: loungers and a table looking out over the forecourt
+    for (const x of [985, 1015]) { const g = new THREE.Group(); g.position.set(x, Y, (hz0 + uz0) / 2); root.add(g); B(g, 0.75, 0.1, 2, 0, 0.35, 0, 0xffffff); B(g, 0.75, 0.5, 0.1, 0, 0.6, 0.95, 0xffffff); upSeat(x, (hz0 + uz0) / 2, Math.PI, 'Lie on the lounger', 0.4); }
+    // warm lights upstairs and a stander-free quiet: it's your floor
+    for (const x of [987, 1000, 1013]) { const l = new THREE.PointLight(0xffe6c4, 12, 20, 1.6); l.position.set(x, uy + UH - 0.6, (uz0 + uz1) / 2); root.add(l); }
+    for (const x of [985, 995, 1005, 1015]) B(root, 2.4, 0.04, 0.5, x, uy + UH - 0.06, -434, glow, false);
+  }
+  const upTV = { at: new THREE.Vector3(1000, FY1, -428), screen: (() => { const m = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.35), new THREE.MeshBasicMaterial({ color: 0x050505 })); m.position.set(1000, FY1 + 1.9, uz1 - 0.31); m.rotation.y = Math.PI; root.add(m); return m; })() };
+  const inR = (r, x, z) => x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ;
+  const upstairsAt = (x, z, y) => {
+    if (x < hx0 - 1 || x > hx1 + 1 || z < hz0 - 1 || z > hz1 + 1) return null;
+    if (x >= ST.x0 && x <= ST.x1 && z >= ST.z0 && z <= ST.z1) { const h = FY1 * Math.min(1, Math.max(0, (z - ST.z0) / (ST.z1 - ST.z0))); if (y > h - 1.1 && y < h + 1.6) return h; }
+    if (y > FY1 - 1.2) { if (upVoids.some(r => inR(r, x, z))) return null; if (upFloors.some(r => inR(r, x, z))) return FY1; }
+    return null;
+  };
   const paved = [{ minX: hx0 - 1, maxX: hx1 + 1, minZ: hz0 - 1.8, maxZ: hz1 + 1 }, { minX: garage.x0 - 1, maxX: garage.x1 + 1, minZ: garage.z0 - 1, maxZ: garage.z1 + 1 }, { minX: 983.5, maxX: 1016.5, minZ: -484.5, maxZ: -452 },
     { minX: GX - 5, maxX: GX + 5, minZ: -466, maxZ: ROAD_Z }, { minX: GX - 5, maxX: 984.5, minZ: -475, maxZ: -465 }, { minX: deck.minX - 0.5, maxX: deck.maxX + 0.5, minZ: deck.minZ - 0.5, maxZ: deck.maxZ + 4.5 }, { minX: tub[0] - 2.5, maxX: tub[0] + 2.5, minZ: tub[1] - 2.5, maxZ: tub[1] + 2.5 },
     { minX: rx - 17, maxX: rx + 17, minZ: rz0 - 1, maxZ: rz1 + 1 }, { minX: rx + 16, maxX: hgx1 + 1, minZ: hgz0 - 1, maxZ: hgz1 + 1 }];
@@ -272,6 +375,7 @@ export function buildAdminEstate(ctx) {
     paved: (x, z) => x > X0 && x < X1 && z > Z0 && z < Z1 && paved.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ),
     home: { x: cx, z: hz0 - 3 },   // where you appear when you go home: the front door
     // you stand on the pool's deck (it's raised); inside the water you swim
-    groundAt: (x, z) => (x >= deck.minX && x <= deck.maxX && z >= deck.minZ && z <= deck.maxZ && !(x > px0 && x < px1 && z > pz0 && z < pz1)) ? 0.45 : null,
+    groundAt: (x, z, y = 0) => upstairsAt(x, z, y) ?? ((x >= deck.minX && x <= deck.maxX && z >= deck.minZ && z <= deck.maxZ && !(x > px0 && x < px1 && z > pz0 && z < pz1)) ? 0.45 : null),
+    tv: upTV,   // the lounge TV upstairs (main.js plugs it into the TV system)
   };
 }
