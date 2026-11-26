@@ -1705,6 +1705,7 @@ const inFilm = () => document.body.classList.contains('cinema');
 const heldToasts = [];
 function releaseHeldToasts() { const list = heldToasts.splice(0); list.forEach((t, i) => setTimeout(() => toast(t), 900 + i * 3800)); }
 function toast(text) {
+  try { if (snackShop?.talking && snackShop.echo(text)) return; } catch { }   // talking to someone: what they say shows in the talk box
   if (inFilm()) { if (!heldToasts.includes(text)) { heldToasts.push(text); if (heldToasts.length > 3) heldToasts.shift(); } return; }
   if (soloMode && /\[SYSTEM\]/.test(text)) systemVoice?.speak(String(text).replace(/^.*?\[SYSTEM\]\s*/, ''));   // the System says its messages out loud
   text = touchText(text);
@@ -8183,7 +8184,7 @@ function updateHud(dt) {
   $('extra').style.display = $('extra').textContent.trim() ? '' : 'none';
 
   const interactTarget = resolveInteractTarget();
-  let prompt = interactTarget && !actionMenu.isOpen && !actionMenu.picking ? 'E: ' + interactTarget.label : '';
+  let prompt = interactTarget && !actionMenu.isOpen && !actionMenu.picking && !snackShop.isOpen && !npcConversations?.open ? 'E: ' + interactTarget.label : '';
   $('prompt').textContent = mobileControls?.mobile ? prompt.replace(/^E:/, 'Interact:') : prompt;
   $('prompt').style.display = prompt ? 'block' : 'none';
 
