@@ -19,7 +19,7 @@ export function roadPoint(t) {   // t: 0 (bottom) .. 1 (top)
   return { x: HILL.x + Math.cos(a) * r, z: HILL.z + Math.sin(a) * r, r, a };
 }
 
-export function buildHills({ basement, scene, colliders, civicBuildings, interactables, makeTex, toast, destinations, playerPos, sitSpots, planeBlocks, chore, sleep }) {
+export function buildHills({ doors, basement, scene, colliders, civicBuildings, interactables, makeTex, toast, destinations, playerPos, sitSpots, planeBlocks, chore, sleep }) {
   const mats = new Map();
   const mat = (c, o = {}) => { const k = c + JSON.stringify(o); if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0, map: o.map ?? null, transparent: o.opacity != null, opacity: o.opacity ?? 1, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1 })); return mats.get(k); };
   const geo = new THREE.BoxGeometry(1, 1, 1);
@@ -158,6 +158,11 @@ export function buildHills({ basement, scene, colliders, civicBuildings, interac
     // sitting area on the landing: a sofa facing a TV on the back wall
     L(2.8, 0.02, 2.4, 2, U + 0.01, -7.2, mat(0x5a4a6a, { rough: 1 })); L(2.2, 1.2, 0.08, 2, U + 1.6, -9.8, screen);
     L(2.6, 0.45, 0.9, 2, U + 0.3, -6.2, cream); L(2.6, 0.6, 0.22, 2, U + 0.75, -5.8, cream); col(0.7, 3.3, -6.7, -5.7, U); for (const dx of [-0.8, 0.8]) sit(2 + dx, -6.2, Math.PI, U + 0.45, 'Sit on the sofa');
+    // doors: the cloakroom downstairs; upstairs the master bedroom, its en-suite and the second bedroom
+    for (const [a, b, y, c] of [[[-8.6, -7], [-7.6, -7], 0, 0xf2efe9], [[-1, -1.2], [-1, 0], U, 0x5a3b26], [[-3.4, -4], [-2.3, -4], U, 0xf2efe9], [[5.6, -1.5], [6.6, -1.5], U, 0x5a3b26]]) { const p = toW(...a), q = toW(...b); doors?.add({ a: [p.x, p.z], b: [q.x, q.z], y: Y + y, color: c }); }
+    // a grand painting in the hall
+    { const t = makeTex(256, 160, q => { const sky = q.createLinearGradient(0, 0, 0, 160); sky.addColorStop(0, '#5f86b0'); sky.addColorStop(1, '#f4cf9a'); q.fillStyle = sky; q.fillRect(0, 0, 256, 160); for (let k = 0; k < 3; k++) { q.fillStyle = ['#6f8a4a', '#4f6a3a', '#33482a'][k]; q.beginPath(); q.moveTo(0, 160); for (let xx = 0; xx <= 256; xx += 8) q.lineTo(xx, 95 + k * 20 - Math.sin(xx * 0.03 + k) * 12); q.lineTo(256, 160); q.fill(); } });
+      const pm = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.5), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); pm.position.set(-6.32, 1.8, -8.5); pm.rotation.y = Math.PI / 2; g.add(pm); L(0.05, 1.75, 2.65, -6.36, 1.8, -8.5, accent); }   // on the cloakroom's outside wall
     // lights on both floors
     for (const [lx, ly, lz] of [[-5, FY - 0.5, -3], [5, FY - 0.5, -4], [-5, TOP - 0.5, -4], [4, TOP - 0.5, -4]]) { const l = new THREE.PointLight(0xffe6c4, 7, 14, 1.6); l.position.set(lx, ly, lz); g.add(l); }
     // a glass lift down to the basement level, by the back window; cars come round to the cul-de-sac outside the gate
