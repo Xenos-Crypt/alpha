@@ -525,6 +525,7 @@ let cityLife=null,monsterQuestKills=0;
 let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
 let interiorFloorAt = null;   // upper floors, lifts and stairs inside buildings (interiors.js)
+let resistingUntil = 0;   // you fought the police or the military recently: the patrol ships may open fire (arrest first otherwise)
 let skyCity = null, deepCity = null, shipyard = null, spaceWing = null;   // shipyard: Orbital Forge (spaceships.js)   // Skyhaven (sky-city.js) and Deephaven (deep-city.js)
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
@@ -4031,7 +4032,7 @@ function applyHit(e, h) {
     if (h.up) { e.vel.y = h.up; e.onGround = false; }
   }
   if (e.kind === 'npc' && e.cop) {   // you hit a police officer: they fight back, and it's called in
-    if (byPlayer) { e.copAngry = 14; if (!e.copWarned) { e.copWarned = true; toast('👮 "Assaulting an officer! Get on the ground!" Backup is on its way.'); } raiseWanted(Math.min(200, Math.max(60, wanted + 40))); }
+    if (byPlayer) { e.copAngry = 14; resistingUntil = performance.now() + 90000; if (!e.copWarned) { e.copWarned = true; toast('👮 "Assaulting an officer! Get on the ground!" Backup is on its way.'); } raiseWanted(Math.min(200, Math.max(60, wanted + 40))); }
     reactBystanders(p, byPlayer);
   } else if (e.kind === 'npc') {   // people run away (or square up to you), everyone nearby reacts, and the police get called
     e.brave ??= Math.random() < 0.35;
@@ -4998,11 +4999,14 @@ function hitVehicles(center, range, hits, h, maxDy, dir = null, minDot = -1) {
     if (dir && distance > 0.6 && delta.normalize().dot(dir) < minDot) continue;
     const byPlayer=!h.police&&h.fromPlayer!==false;hits?.add(v); damageVehiclePower(v, (Number(h.dmg) || 0)*(byPlayer?objectPowerScale(prog.level):1), center,byPlayer); if(byPlayer)roadLaw?.powerDamage(); count++;
   }
+  // the Space Wing's patrol ships can be hit too (if you can reach one)
+  { const sh = !h.police && h.fromPlayer !== false && typeof spaceWing !== "undefined" ? spaceWing?.shipNear(center, range + 7) : null; if (sh && !hits?.has(sh)) { hits?.add(sh); spaceWing.damage(sh, (Number(h.dmg) || 0) * objectPowerScale(prog.level), center); count++; } }
   return count;
 }
 function damageVehiclePower(v, damage, from, criminal = true) {
   if (!isRoadVehicle(v) || v.exploded || !Number.isFinite(damage) || damage <= 0) return;
   if (criminal) raiseWanted(v.kind === 'police' ? 120 : 60);
+  if (criminal && v.kind === 'police') resistingUntil = performance.now() + 90000;   // attacking a police car is resisting
   v.health = Math.max(0, (v.health ?? 100) - damage);applyVehicleCondition(v);
   burst(at(v.group.position, 0.8), 8, [0xffcc66, 0x777777], 4, 0.1, 0.3, 8, 1);
   if (v.health === 0) explodeVehicle(v, criminal);
@@ -5238,7 +5242,9 @@ function updateProjectiles(dt) {
       if (pr.pierce) { pr.hits.add(e); applyHit(e, Object.assign({ from: pr.m.position.clone().addScaledVector(pr.vel, -0.1) }, pr.hit)); }
       else { done = true; break; }
     }
+    { const sh = spaceWing?.shipNear(pr.m.position, 7); if (sh && !pr.hits.has(sh) && pr.hit && !pr.hit.police) { pr.hits.add(sh); spaceWing.damage(sh, Number(pr.hit.dmg) || 0, pr.m.position); if (!pr.pierce) done = true; } }   // a patrol ship in the way
     for (const v of vehicles) {
+      if (done) break;
       if (!isRoadVehicle(v) || v.exploded || pr.hits.has(v)) continue;
       if (segmentDistance(v.group.position, previousPosition, pr.m.position) > v.radius + (pr.size || 0.4) || Math.abs(pr.m.position.y - v.group.position.y - 0.8) > 1.5) continue;
       pr.hits.add(v);
@@ -8346,7 +8352,28 @@ military = buildMilitary({ scene, colliders, interactables, civicBuildings, make
 // the military's spaceships: the Air Force Space Wing at Eastern Command (space-wing.js)
 spaceWing = buildSpaceWing({ scene, colliders, interactables, makeTex, toast, makePerson: o => makeHumanoid(o), addSpaceship: o => makeSpaceship(o),
   alert: () => militaryAlert, wanted: () => wanted, target: () => (inCar && driving ? driving.group.position : player.position),
-  hurt: (d, from) => hurtPlayer(d, from, 0, 'Shot by an Air Force Space Wing patrol ship') });
+  hurt: (d, from) => hurtPlayer(d, from, 0, 'Shot by an Air Force Space Wing patrol ship'),
+  resisting: () => performance.now() < resistingUntil, firstHit: (a, b) => firstHit(a, b), groundY: (x, z) => groundY(x, z, 0),
+  burst: (p, n, cols) => burst(p, n, cols, 5, 0.12, 0.35, 8, 1), explode: p => { burst(p, 40, [0xff9a3a, 0xffd36a, 0x555555], 10, 0.2, 0.6, 14, 1); shake = Math.max(shake, 0.6); worldAudio?.impact?.(10); },
+  news: t => society?.news(t), onShipHit: () => { resistingUntil = performance.now() + 90000; raiseWanted(Math.max(150, wanted + 30)); } });
+// Where a straight line first runs into a building or a wall (for shots from the sky): null if it's clear
+function firstHit(a, b) {
+  let best = 1, hit = false;
+  const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+  const test = (x0, x1, y0, y1, z0, z1) => {
+    let t0 = 0, t1 = best;
+    for (const [o, d, lo, hi] of [[a.x, dx, x0, x1], [a.y, dy, y0, y1], [a.z, dz, z0, z1]]) {
+      if (Math.abs(d) < 1e-9) { if (o < lo || o > hi) return; continue; }
+      let u = (lo - o) / d, v = (hi - o) / d; if (u > v) [u, v] = [v, u];
+      t0 = Math.max(t0, u); t1 = Math.min(t1, v); if (t0 > t1) return;
+    }
+    if (t0 < best) { best = t0; hit = true; }
+  };
+  const mnX = Math.min(a.x, b.x), mxX = Math.max(a.x, b.x), mnZ = Math.min(a.z, b.z), mxZ = Math.max(a.z, b.z);
+  for (const B of buildings) if (B.alive && B.x + B.w / 2 > mnX && B.x - B.w / 2 < mxX && B.z + B.d / 2 > mnZ && B.z - B.d / 2 < mxZ) test(B.x - B.w / 2, B.x + B.w / 2, -1, B.top ?? 10, B.z - B.d / 2, B.z + B.d / 2);
+  for (const c of colliders) if (c.circleRadius == null && c.maxX > mnX && c.minX < mxX && c.maxZ > mnZ && c.minZ < mxZ) { const base = c.baseYAt ? c.baseYAt((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2) : 0; test(c.minX, c.maxX, base - 0.5, base + 3, c.minZ, c.maxZ); }
+  return hit ? a.clone().lerp(b, best) : null;
+}
 shipyard = buildShipyard({ scene, colliders, interactables, makeTex, openShop: (title, cats, place) => openVehicleShop(title, cats, place), destinations: townPlaces?.destinations, makePerson: o => makeHumanoid(o) });
 buildVehicleDealers({ openVehicleShop, scene, colliders, interactables, makeTex, makePerson: o => makeHumanoid(o), makeVehicle, makeHelicopter, makeAircraft, toast, money: () => stats.gold, sign: signboard, groundY, destinations: townPlaces.destinations,
   shopPanel: (title, items) => snackShop.open(title, 'dealer', items), registerOwned: v => cityServices?.ownedCars?.push(v) });
