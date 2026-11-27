@@ -2179,6 +2179,7 @@ savePlayerLook();
 // You have a real body too, like everyone else (the simple figure is only a stand-in while the bodies load).
 // Your clothes follow your class colours; fighting moves turn the body's arms the way the move points them.
 const P = makeHumanoid({ outfit: characters[0].color, hair: characters[0].hair, look: playerLook, always: true, followMats: true });
+P.hurry = true;   // you move at 5 m/s, a jog: the jog animation keeps your feet under you (a walk at that speed slides along the ground)
 const player = P.root;
 const swordGrip = new THREE.Group();
 swordGrip.position.copy(P.armR.end.position);
@@ -7210,17 +7211,39 @@ $('settingsBtn').addEventListener('click', () => toggleSettings(true));
 $('menuLagSettings').addEventListener('click', () => { settingsTab = 'graphics'; toggleSettings(true); });
 $('inventoryBtn').addEventListener('click', () => toggleInventory(true));
 $('closeInventory').addEventListener('click', () => toggleInventory(false));
+// Dropping your bag: you slip it off your back and it falls to the ground beside you, with everything still in
+// it. It stays there (go back and press E on it to pick it up); anyone could take it if you leave it.
+let droppedBag = null;
 $('dropBagBtn').addEventListener('click', () => {
   if (!hasBag) { toast('You already dropped your bag.'); return; }
+  const g = backpack.clone(true), wp = new THREE.Vector3(), wq = new THREE.Quaternion();
+  backpack.getWorldPosition(wp); backpack.getWorldQuaternion(wq); g.position.copy(wp); g.quaternion.copy(wq); g.visible = true; scene.add(g);
+  const side = new THREE.Vector3(Math.cos(player.rotation.y), 0, -Math.sin(player.rotation.y));   // it swings off to your right and drops
+  droppedBag = { g, items: inventory, vel: side.multiplyScalar(1.4).setY(0.6), spin: (Math.random() - 0.5) * 4, landed: false };
+  droppedBag.it = { pos: new THREE.Vector3(), r: 1.6, label: 'Pick up your bag', action: () => pickUpBag() };
   hasBag = false; backpack.visible = false; inventory = [];
-  toast('You dropped your bag. Its contents are gone.');
+  toast('You slip your bag off and drop it on the ground. Everything is still in it.');
   renderInventory();
 });
+function pickUpBag() {
+  if (!droppedBag) return; const b = droppedBag; droppedBag = null;
+  scene.remove(b.g); const i = interactables.indexOf(b.it); if (i >= 0) interactables.splice(i, 1);
+  hasBag = true; backpack.visible = true; inventory = b.items || [];
+  toast('You pick your bag up and put it back on.'); renderInventory();
+}
+function updateDroppedBag(dt) {   // the bag falling to the ground and settling
+  const b = droppedBag; if (!b || b.landed) return;
+  b.vel.y -= 9.8 * dt; b.g.position.addScaledVector(b.vel, dt); b.g.rotation.x += b.spin * dt * 0.5; b.g.rotation.z += b.spin * dt;
+  const floor = groundY(b.g.position.x, b.g.position.z, b.g.position.y + 0.5) + 0.12;
+  if (b.g.position.y <= floor) { b.g.position.y = floor; b.landed = true; b.g.rotation.set(-Math.PI / 2 + 0.15, b.g.rotation.y, 0); b.it.pos.copy(b.g.position); interactables.push(b.it); }
+}
 interiorFloorAt = (x, z, y) => interiors.floorAt(x, z, y);
 walkInHooks = interiors.hooks;   // walk-in buildings use the same shop, jobs and sleep actions
 
 $('wearBagBtn').addEventListener('click', () => {
   if (hasBag) { toast('Already wearing your bag.'); return; }
+  if (droppedBag && distXZ(droppedBag.g.position, player.position) < 3) return pickUpBag();
+  if (droppedBag) { toast('Your bag is where you dropped it. Go back for it and press E on it.'); return; }
   hasBag = true; backpack.visible = true;
   toast('You put the bag back on.');
   renderInventory();
@@ -9254,7 +9277,7 @@ function frame() {
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
   seatedResidents?.update(rawDt); neighbours?.update(rawDt);
-    OBST.length = 0; for (const v of vehicles) if (!v.disabled) OBST.push(v.group.position); OBST.push(player.position); roamTraffic.update(hitStop > 0 ? 0 : rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld(); syncArmour();
+    OBST.length = 0; for (const v of vehicles) if (!v.disabled) OBST.push(v.group.position); OBST.push(player.position); roamTraffic.update(hitStop > 0 ? 0 : rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld(); syncArmour(); updateDroppedBag(rawDt);
   let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
   optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);
