@@ -73,6 +73,7 @@ import {buildSpaceWing, buildMilitaryShip} from './space-wing.js';
 import {buildSkyCity} from './sky-city.js';
 import {buildDeepCity} from './deep-city.js';
 import {buildWilds} from './wilds.js';
+import {buildAccessRoads} from './access-roads.js';
 import {createSolidProps} from './solid-props.js';
 import {auditScene} from './world-grid.js';
 import {buildBlackMarket, NARROWS, hasTool} from './black-market.js';
@@ -3417,17 +3418,46 @@ if (CITY_ENABLED) fetch('./assets/map/tiles/manifest.json').then(r => r.json()).
 // register into it too (see there for why).
 // Hand-placed hospital — guaranteed to exist even with the OSM city (which also
 // has real hospitals) disabled. Ambulances stage from here and return here.
-let HOSPITAL_POS = null;
+let HOSPITAL_POS = null, HOSPITAL_TOP = 24;
+const accessPoints = [];   // places that must be joined to the road network (a compound's gate): access-roads.js links them
 (function buildHospital() {
-  const x = -200, z = -200, w = 20, d = 16, floors = 8, h = floors * 3;
+  // St Mary General: the country's main hospital. A 16-storey main tower, an 8-storey west wing (surgery and wards)
+  // joined to it by sky bridges, a 6-storey south block (maternity and children's), a multi-storey car park, and a
+  // second helipad on the west wing. (It grew into the land the police headquarters left when it moved out of town.)
+  const x = -200, z = -195, w = 36, d = 26, floors = 16, h = floors * 3;
   const f = facades[2]; // clinical off-white facade
   addTower(x, CURB, z, w, h, d, f, true);
   // Red cross, lit up, high on the tower face so it reads from a distance.
-  box(2.4, 0.5, 0.15, x, h * 0.82, z - d / 2 - 0.1, 0xe84118, false);
-  box(0.5, 2.4, 0.15, x, h * 0.82, z - d / 2 - 0.1, 0xe84118, false);
+  box(4.8, 1, 0.2, x, h * 0.86, z - d / 2 - 0.12, 0xe84118, false);
+  box(1, 4.8, 0.2, x, h * 0.86, z - d / 2 - 0.12, 0xe84118, false);
+  signboard('ST MARY GENERAL HOSPITAL', x, h - 3, z - d / 2 - 0.15, 26, '#1f5fa8');
   colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
-  civicBuildings.push({ type: 'hospital', name: 'St. Mary General Hospital', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  civicBuildings.push({ type: 'hospital', name: 'St. Mary General Hospital', x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, storeys: floors });
   HOSPITAL_POS = new THREE.Vector3(x, 0, z - d / 2 - 6);
+  HOSPITAL_TOP = h;
+  // the west wing, joined to the tower by two sky bridges
+  { const wx = -256, wz = -197, ww = 64, wd = 34, wh = 24; addTower(wx, CURB, wz, ww, wh, wd, f, true);
+    colliders.push({ minX: wx - ww / 2, maxX: wx + ww / 2, minZ: wz - wd / 2, maxZ: wz + wd / 2 });
+    civicBuildings.push({ type: 'hospital', name: 'St. Mary — West Wing (surgery and wards)', x: wx, z: wz, minX: wx - ww / 2, maxX: wx + ww / 2, minZ: wz - wd / 2, maxZ: wz + wd / 2, storeys: 8 });
+    signboard('WEST WING · SURGERY · WARDS', wx, wh + 1.2, wz - wd / 2 - 0.1, 18, '#1f5fa8');
+    for (const y of [10, 19]) box(x - w / 2 - (wx + ww / 2) + 0.4, 3, 6, (x - w / 2 + wx + ww / 2) / 2, y, z, 0xcfd8dc, false);   // sky bridges
+    // the second helipad, on the west wing's roof
+    const padTex = makeTex(128, 128, g => { g.fillStyle = '#2b2f36'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#ffffff'; g.lineWidth = 6; g.beginPath(); g.arc(64, 64, 56, 0, 7); g.stroke(); g.fillStyle = '#e84118'; g.fillRect(40, 54, 48, 20); g.fillRect(54, 40, 20, 48); });
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(9, 32), new THREE.MeshStandardMaterial({ map: padTex })); pad.rotation.x = -Math.PI / 2; pad.position.set(wx - 12, wh + 0.12, wz); scene.add(pad); }
+  // the south block
+  { const sx = -238, sz = -148, sw = 100, sd = 32, sh = 18; addTower(sx, CURB, sz, sw, sh, sd, facades[2], true);
+    colliders.push({ minX: sx - sw / 2, maxX: sx + sw / 2, minZ: sz - sd / 2, maxZ: sz + sd / 2 });
+    civicBuildings.push({ type: 'hospital', name: "St. Mary — South Block (maternity and children's)", x: sx, z: sz, minX: sx - sw / 2, maxX: sx + sw / 2, minZ: sz - sd / 2, maxZ: sz + sd / 2, storeys: 6 });
+    signboard("MATERNITY · CHILDREN'S HOSPITAL", sx, sh + 1.2, sz + sd / 2 + 0.1, 22, '#1f5fa8'); }
+  // the multi-storey car park: four decks on columns, open sides
+  { const px = -318, pz = -197, pw = 34, pd = 56;
+    for (let k = 0; k < 4; k++) box(pw, 0.4, pd, px, 0.2 + k * 3.2, pz, 0x9a9ea3, false);
+    box(pw, 0.4, pd, px, 12.9, pz, 0x9a9ea3, false);
+    for (const cx2 of [px - pw / 2 + 1, px, px + pw / 2 - 1]) for (let zz = pz - pd / 2 + 2; zz <= pz + pd / 2 - 2; zz += 9) box(0.6, 12.8, 0.6, cx2, 6.4, zz, 0x7b7f84);
+    for (const s of [-1, 1]) box(pw, 1, 0.25, px, 13.6, pz + s * pd / 2, 0x7b7f84, false);
+    signboard('HOSPITAL CAR PARK', px, 14.6, pz - pd / 2 - 0.1, 12, '#1f5fa8');
+    civicBuildings.push({ type: 'parking', name: 'St. Mary Hospital car park', x: px, z: pz, minX: px - pw / 2, maxX: px + pw / 2, minZ: pz - pd / 2, maxZ: pz + pd / 2, noDoor: true });
+    accessPoints.push({ x: px + pw / 2 + 4, z: pz, name: 'Hospital car park entrance' }); }
 })();
 // Hand-placed fire station, next door to the hospital — firefighters standing by.
 const firefighters = [];
@@ -3487,95 +3517,120 @@ buildDowntownPolice(-140, 60, 'Ashford Downtown Police Post — West');
 buildDowntownPolice(100, -140, 'Ashford Downtown Police Post — South');
 
 // =====================================================================
-// POLICE HEADQUARTERS: a full 4-storey HQ + attached prison, west of the
-// hospital/fire station. Canteen wing, prison reception, a receptionist,
-// watchtowers, a gated high fence topped with barbed wire, parked cruisers,
-// guards patrolling the perimeter, and prisoners wandering the rec yard.
+// POLICE HEADQUARTERS AND STATE PRISON: out of the city, on open land in the far west (x -990..-770,
+// z 485..675), where a scan of the map found nothing built. (It used to stand in town next to the hospital.)
+// The compound: a 6 m concrete outer wall with razor wire and eight tall watchtowers with sweeping
+// searchlights; a sterile strip and an inner double fence; a two-gate sally port with a guardhouse and
+// barriers on the south side; the 6-storey HQ, its canteen and the prison intake building inside the gate;
+// four cell blocks; a fenced exercise yard; floodlight masts and CCTV. Guards patrol the strip, prisoners
+// in orange walk the yard.
 // =====================================================================
 const hqPeople = [];
+const PRISON = { x: -880, z: 580, hx: 110, z0: -95, z1: 95 };   // the outer wall: x ±110, z -95..95 round the centre
 (function buildPoliceHQ() {
-  const hx = -260, hz = -200;
-  const x0 = hx - 34, x1 = hx + 34, z0 = hz - 26, z1 = hz + 30;
-
-  // Main HQ tower — 4 storeys.
-  const mw = 26, md = 18, floors = 4, mh = floors * 3;
-  const mx = hx, mz = hz - 10;
+  const hx = PRISON.x, hz = PRISON.z;
+  const W0 = hx - PRISON.hx, W1 = hx + PRISON.hx, WZ0 = hz + PRISON.z0, WZ1 = hz + PRISON.z1;   // outer wall
+  const F0 = W0 + 7, F1 = W1 - 7, FZ0 = WZ0 + 7, FZ1 = WZ1 - 7;                                    // inner fence
+  const concrete = 0xb4b1a8, darkConcrete = 0x8c8a84;
+  // the ground inside: tarmac apron by the gate, gravel strip between wall and fence
+  box(W1 - W0, 0.06, WZ1 - WZ0, hx, 0.03, hz, 0x7d7a72, false);
+  box(54, 0.07, 48, hx + 1, 0.035, FZ1 - 24, 0x3c3f44, false);   // the apron inside the gate, between the HQ and the intake building (a road surface)
+  box(14, 0.07, 14, hx, 0.035, WZ1, 0x3c3f44, false);           // through the sally port
+  // ---- the outer wall, with razor wire on top and a gap for the gate ----
+  const GATE = 7;
+  const wallSeg = (x0, z0, x1, z1) => { const len = Math.hypot(x1 - x0, z1 - z0), alongX = Math.abs(x1 - x0) > 0.1; box(alongX ? len : 0.8, 6, alongX ? 0.8 : len, (x0 + x1) / 2, 3, (z0 + z1) / 2, concrete); box(alongX ? len : 1.1, 0.35, alongX ? 1.1 : len, (x0 + x1) / 2, 6.15, (z0 + z1) / 2, darkConcrete, false); planeBlocks.push({ minX: Math.min(x0, x1) - 0.4, maxX: Math.max(x0, x1) + 0.4, minZ: Math.min(z0, z1) - 0.4, maxZ: Math.max(z0, z1) + 0.4, bottom: 0, top: 7 }); };
+  wallSeg(W0, WZ0, W1, WZ0); wallSeg(W0, WZ0, W0, WZ1); wallSeg(W1, WZ0, W1, WZ1); wallSeg(W0, WZ1, hx - GATE, WZ1); wallSeg(hx + GATE, WZ1, W1, WZ1);
+  { // razor wire coils along the top of the wall
+    const coil = new THREE.TorusGeometry(0.45, 0.03, 4, 10), runs = [[W0, WZ0, W1, WZ0], [W0, WZ0, W0, WZ1], [W1, WZ0, W1, WZ1], [W0, WZ1, hx - GATE, WZ1], [hx + GATE, WZ1, W1, WZ1]];
+    let n = 0; for (const [x0, z0, x1, z1] of runs) n += Math.floor(Math.hypot(x1 - x0, z1 - z0) / 0.6);
+    const im = new THREE.InstancedMesh(coil, new THREE.MeshStandardMaterial({ color: 0xb8c0c6, metalness: 0.7, roughness: 0.4 }), n), o = new THREE.Object3D(); let i = 0;
+    for (const [x0, z0, x1, z1] of runs) { const len = Math.hypot(x1 - x0, z1 - z0), k = Math.floor(len / 0.6); for (let j = 0; j < k; j++) { o.position.set(x0 + (x1 - x0) * j / k, 6.75, z0 + (z1 - z0) * j / k); o.rotation.set(0, Math.atan2(x1 - x0, z1 - z0), 0); o.updateMatrix(); im.setMatrixAt(i++, o.matrix); } }
+    scene.add(im);
+  }
+  // ---- the inner double fence (4.2 m, 2 m apart) round everything but the front apron's gate ----
+  fenceRect(F0, F1, FZ0, FZ1, { h: 4.2, postSpacing: 4, gate: { side: 'z1', from: hx - 5, to: hx + 5 } });
+  fenceRect(F0 + 2, F1 - 2, FZ0 + 2, FZ1 - 50, { h: 4.2, postSpacing: 4, gate: { side: 'z1', from: hx - 4, to: hx + 4 } });   // the second fence keeps the prison apart from the HQ in front
+  // ---- the sally port: two gates, a guardhouse, barriers ----
+  for (const s of [-1, 1]) { box(1.6, 7.5, 1.6, hx + s * (GATE + 0.8), 3.75, WZ1, darkConcrete); box(0.4, 1.2, 9, hx + s * 4.6, 0.6, WZ1 + 9, 0xd9d9d9); }
+  box(2 * GATE + 3.2, 1.4, 1.6, hx, 7.9, WZ1, darkConcrete, false);
+  signboard('ASHFORD POLICE HEADQUARTERS · ANTHOS STATE PRISON', hx, 9.4, WZ1 + 0.9, 30, '#162a4d');
+  { const gh = { x: hx + GATE + 6, z: WZ1 + 6 }; box(6, 3.2, 5, gh.x, 1.6, gh.z, 0xd8d4c8); box(6.6, 0.3, 5.6, gh.x, 3.35, gh.z, 0x5a5a5a, false); box(4, 1, 0.08, gh.x, 1.9, gh.z - 2.54, 0x9fd3ff, false); }
+  for (const s of [-1, 1]) { const arm = box(6, 0.18, 0.18, hx + s * 3, 1.1, WZ1 + 12, 0xe84118, false); arm.material = arm.material.clone(); box(0.4, 1.2, 0.4, hx + s * 6.2, 0.6, WZ1 + 12, 0x333333, false); }
+  // ---- watchtowers: eight tall ones on the wall, each with a searchlight that sweeps the strip ----
+  const beams = [];
+  const tower = (x, z) => {
+    const legH = 12; for (const [ox, oz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) box(0.35, legH, 0.35, x + ox, legH / 2, z + oz, 0x4a4a4a, false);
+    box(4.2, 0.35, 4.2, x, legH + 0.17, z, 0x55595e); box(4.6, 2, 4.6, x, legH + 1.4, z, 0x3a3f45, false); box(3.6, 0.9, 0.06, x, legH + 1.7, z - 2.31, 0x9fd3ff, false); box(5, 0.3, 5, x, legH + 2.55, z, 0x2a2e33, false);
+    colliders.push({ minX: x - 2, maxX: x + 2, minZ: z - 2, maxZ: z + 2 });
+    const pivot = new THREE.Group(); pivot.position.set(x, legH + 2.2, z); scene.add(pivot);
+    const lamp = mesh(new THREE.CylinderGeometry(0.35, 0.45, 0.7, 10), 0xfff4c8, pivot); lamp.material = new THREE.MeshBasicMaterial({ color: 0xfff4c8 }); lamp.rotation.x = Math.PI / 2;
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(4.5, 40, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff6d0, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide }));
+    beam.rotation.x = -(Math.PI / 2 - 0.42); beam.position.set(0, -8.2, 18.4); pivot.add(beam);   // apex at the lamp, the beam falling inwards onto the strip
+    beams.push({ pivot, phase: Math.random() * 6, aim: Math.atan2(hx - x, hz - z) });
+  };
+  for (const [x, z] of [[W0, WZ0], [W1, WZ0], [W0, WZ1], [W1, WZ1], [hx, WZ0], [W0, hz], [W1, hz], [hx - 60, WZ0]]) tower(x, z);
+  // floodlight masts and CCTV
+  for (const [x, z] of [[hx - 70, hz - 40], [hx + 70, hz - 40], [hx - 70, hz + 20], [hx + 70, hz + 20], [hx, hz - 70], [hx, hz + 40]]) {
+    box(0.4, 16, 0.4, x, 8, z, 0x6b6f73); box(3.2, 0.8, 0.8, x, 16.2, z, 0x2a2e33, false); const l = box(2.8, 0.5, 0.2, x, 16, z + 0.45, 0xffffff, false); l.material = new THREE.MeshBasicMaterial({ color: 0xfff8e0 }); }
+  for (const [x, z] of [[F0 + 1, FZ0 + 1], [F1 - 1, FZ0 + 1], [F0 + 1, FZ1 - 1], [F1 - 1, FZ1 - 1], [hx - 8, FZ1 - 52], [hx + 8, FZ1 - 52]]) { box(0.15, 5, 0.15, x, 2.5, z, 0x555a5e, false); box(0.6, 0.35, 0.35, x, 5.1, z + 0.3, 0x222222, false); }
+  // ---- the HQ: 6 storeys, inside the gate on the west of the apron ----
+  const mw = 40, md = 20, floors = 6, mh = floors * 3, mx = hx - 48, mz = FZ1 - 30;
   addTower(mx, CURB, mz, mw, mh, md, facades[3], true);
-  box(2, 0.6, 0.15, mx, mh - 2, mz - md / 2 - 0.1, 0x3867d6, false);
-  signboard('ASHFORD POLICE HEADQUARTERS', mx, mh + 1.4, mz - md / 2 - 0.1, 22, '#162a4d');
+  box(2, 0.6, 0.15, mx, mh - 2, mz + md / 2 + 0.1, 0x3867d6, false);
+  signboard('ASHFORD POLICE HEADQUARTERS', mx, mh + 1.4, mz + md / 2 + 0.1, 26, '#162a4d');
   civicBuildings.push({ type: 'police', name: 'Ashford Police Headquarters', x: mx, z: mz, minX: mx - mw / 2, maxX: mx + mw / 2, minZ: mz - md / 2, maxZ: mz + md / 2 });
-
-  // Canteen wing, attached to the HQ's east side.
-  const cw = 11, cd = 9, ch = 4, cx = mx + mw / 2 + cw / 2, cz = mz;
-  box(cw, ch, cd, cx, ch / 2, cz, 0xd7c9a8);
-  box(cw + 0.4, 0.4, cd + 0.4, cx, ch + 0.2, cz, 0x9a8a68);
+  // the canteen, on the HQ's west side
+  const cw = 12, cd = 10, ch = 4, cx = mx - mw / 2 - cw / 2 - 1, cz = mz;
+  box(cw, ch, cd, cx, ch / 2, cz, 0xd7c9a8); box(cw + 0.4, 0.4, cd + 0.4, cx, ch + 0.2, cz, 0x9a8a68);
   colliders.push({ minX: cx - cw / 2, maxX: cx + cw / 2, minZ: cz - cd / 2, maxZ: cz + cd / 2 });
   signboard('CANTEEN', cx, ch + 0.9, cz + cd / 2 + 0.1, 8, '#4a3b1d');
   civicBuildings.push({ type: 'police', name: 'Police HQ Canteen', x: cx, z: cz, minX: cx - cw / 2, maxX: cx + cw / 2, minZ: cz - cd / 2, maxZ: cz + cd / 2 });
-  for (const [bx, bz] of [[-3, 0], [3, 0]]) { addBench(cx + bx, cz + cd / 2 + 3, Math.PI); }
-
-  // Prison reception, near the gate — a receptionist staffs the front desk.
-  const rw = 14, rd = 10, rh = 5, rx = hx, rz = hz + 14;
-  box(rw, rh, rd, rx, rh / 2, rz, 0xb9c0c8);
-  box(rw + 0.4, 0.4, rd + 0.4, rx, rh + 0.2, rz, 0x7c838c);
+  for (const bx of [-3, 3]) addBench(cx + bx, cz + cd / 2 + 3, Math.PI);
+  // the prison intake building, east of the apron; a receptionist at the desk
+  const rw = 30, rd = 14, rh = 7, rx = hx + 45, rz = FZ1 - 30;
+  box(rw, rh, rd, rx, rh / 2, rz, 0xb9c0c8); box(rw + 0.4, 0.4, rd + 0.4, rx, rh + 0.2, rz, 0x7c838c);
   colliders.push({ minX: rx - rw / 2, maxX: rx + rw / 2, minZ: rz - rd / 2, maxZ: rz + rd / 2 });
-  signboard('PRISON RECEPTION', rx, rh + 0.9, rz - rd / 2 - 0.1, 14, '#162a4d');
-  civicBuildings.push({ type: 'police', name: 'Police HQ — Prison Reception', x: rx, z: rz, minX: rx - rw / 2, maxX: rx + rw / 2, minZ: rz - rd / 2, maxZ: rz + rd / 2 });
-  box(1.4, 0.8, 0.5, rx, 0.4, rz - rd / 2 - 1.2, 0x5a4530, false); // front desk, just outside the door
+  signboard('PRISON INTAKE · VISITORS', rx, rh + 0.9, rz + rd / 2 + 0.1, 16, '#162a4d');
+  civicBuildings.push({ type: 'police', name: 'Anthos State Prison — Intake and Visitors', x: rx, z: rz, minX: rx - rw / 2, maxX: rx + rw / 2, minZ: rz - rd / 2, maxZ: rz + rd / 2 });
+  box(1.4, 0.8, 0.5, rx, 0.4, rz + rd / 2 + 1.2, 0x5a4530, false);
   const receptionist = makeHumanoid({ outfit: 0x2a3a4a, hair: 0x3a2a1a, pants: 0x1c242c });
-  receptionist.root.position.set(rx, 0, rz - rd / 2 - 1.8); receptionist.root.rotation.y = Math.PI;
-
-  // Outdoor rec yard between reception and the main tower — a basketball hoop for prisoners.
-  const yardCX = hx, yardCZ = hz + 2;
-  box(14, 0.08, 10, yardCX, 0.04, yardCZ, 0x6b6e73, false);
-  box(0.18, 3.2, 0.18, yardCX, 1.6, yardCZ - 5, 0x3a3a3a, false);
-  box(1.4, 0.08, 0.9, yardCX, 3.1, yardCZ - 5, 0xe8e8e8, false);
-  const hoop = mesh(new THREE.TorusGeometry(0.4, 0.04, 8, 16), 0xff6b35); hoop.position.set(yardCX, 2.75, yardCZ - 4.6); hoop.rotation.x = Math.PI / 2;
-
-  // Watchtowers at the yard's back corners.
-  buildWatchtower(x0 + 3, z0 + 3);
-  buildWatchtower(x1 - 3, z0 + 3);
-
-  // High perimeter fence with barbed wire, gated at the south (street) side.
-  fenceRect(x0, x1, z0, z1, { h: 3.2, postSpacing: 4.5, gate: { side: 'z1', from: hx - 5, to: hx + 5 } });
-
-  // Parked police cruisers just inside the gate.
-  for (const [vx, vz, rot] of [[hx - 10, hz + 24, Math.PI], [hx + 2, hz + 24, Math.PI], [hx + 14, hz + 24, Math.PI]]) {
-    const v = makeVehicle('police', 0xf5f6fa);
-    v.group.position.set(vx, 0, vz); v.group.rotation.y = rot; v.ai = null;
+  receptionist.root.position.set(rx, 0, rz + rd / 2 + 1.8);
+  // ---- four cell blocks behind the second fence: long, windows barred, 3 storeys ----
+  const cellTex = makeTex(256, 128, g => { g.fillStyle = '#a9a69d'; g.fillRect(0, 0, 256, 128); for (let r = 0; r < 3; r++) for (let c = 0; c < 8; c++) { g.fillStyle = '#2b2d30'; g.fillRect(8 + c * 31, 14 + r * 40, 14, 20); g.fillStyle = '#8a8a8a'; for (let b = 0; b < 4; b++) g.fillRect(10 + c * 31 + b * 3.5, 14 + r * 40, 1.2, 20); } });
+  cellTex.wrapS = THREE.RepeatWrapping; cellTex.repeat.set(5, 1);
+  const cellMat = new THREE.MeshStandardMaterial({ map: cellTex, roughness: 0.9 });
+  const blocks = [['A', hx - 52, hz - 60], ['B', hx + 52, hz - 60], ['C', hx - 52, hz - 25], ['D', hx + 52, hz - 25]];
+  for (const [n, bx, bz] of blocks) {
+    const bw = 76, bd = 16, bh = 11; const m = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), [cellMat, cellMat, new THREE.MeshStandardMaterial({ color: 0x8c8a84 }), cellMat, cellMat, cellMat]); m.position.set(bx, bh / 2, bz); m.castShadow = m.receiveShadow = true; scene.add(m); camBlockers.push(m);
+    colliders.push({ minX: bx - bw / 2, maxX: bx + bw / 2, minZ: bz - bd / 2, maxZ: bz + bd / 2 });
+    signboard('CELL BLOCK ' + n, bx, bh + 1, bz + bd / 2 + 0.1, 10, '#3a3a3a');
+    civicBuildings.push({ type: 'police', name: 'Anthos State Prison — Cell Block ' + n, x: bx, z: bz, minX: bx - bw / 2, maxX: bx + bw / 2, minZ: bz - bd / 2, maxZ: bz + bd / 2 });
   }
-
-  // Guards patrolling a loop just inside the fence line.
-  const patrolLoop = [[x0 + 5, z0 + 5], [x1 - 5, z0 + 5], [x1 - 5, z1 - 5], [x0 + 5, z1 - 5]];
-  for (let i = 0; i < 5; i++) {
-    const h = makeHumanoid({ outfit: 0x2a3a4a, hair: pick([0x1a1a1a, 0x3a2a1a, 0x222]), pants: 0x1c242c });
-    const wp = i % patrolLoop.length;
-    h.root.position.set(patrolLoop[wp][0], 0, patrolLoop[wp][1]);
-    hqPeople.push({ h, kind: 'guard', wp, speed: 2.1 + Math.random() * 0.4 });
-  }
-
-  // Prisoners wandering the rec yard, orange jumpsuits.
-  for (let i = 0; i < 8; i++) {
-    const h = makeHumanoid({ outfit: 0xff7a1a, hair: pick([0x1a1a1a, 0x5a4a3a, 0x2a2a2a]), pants: 0xff7a1a, shoes: 0x2a2a2a });
-    h.root.position.set(yardCX + (Math.random() - 0.5) * 12, 0, yardCZ + (Math.random() - 0.5) * 8);
-    hqPeople.push({ h, kind: 'prisoner', target: null, speed: 1.1 + Math.random() * 0.5, waitT: Math.random() * 3,
-      bounds: { x0: yardCX - 7, x1: yardCX + 7, z0: yardCZ - 5, z1: yardCZ + 5 } });
-  }
-
-  // More guards milling around the yard and gate, keeping order.
-  for (let i = 0; i < 4; i++) {
-    const h = makeHumanoid({ outfit: 0x2a3a4a, hair: pick([0x1a1a1a, 0x3a2a1a]), pants: 0x1c242c });
-    h.root.position.set(yardCX + (Math.random() - 0.5) * 10, 0, yardCZ + (Math.random() - 0.5) * 6);
-    hqPeople.push({ h, kind: 'yardGuard', target: null, speed: 1.4, waitT: Math.random() * 3,
-      bounds: { x0: yardCX - 8, x1: yardCX + 8, z0: yardCZ - 6, z1: yardCZ + 6 } });
-  }
-
+  // ---- the exercise yard (its own fence), between the cell blocks and the HQ ----
+  const yardCX = hx, yardCZ = hz + 10, YW = 70, YD = 22;
+  box(YW, 0.08, YD, yardCX, 0.05, yardCZ, 0x6b6e73, false);
+  fenceRect(yardCX - YW / 2, yardCX + YW / 2, yardCZ - YD / 2, yardCZ + YD / 2, { h: 4, gate: { side: 'z0', from: yardCX - 2, to: yardCX + 2 } });
+  for (const s of [-1, 1]) { box(0.18, 3.2, 0.18, yardCX + s * 20, 1.6, yardCZ, 0x3a3a3a, false); box(0.9, 0.08, 1.4, yardCX + s * 20, 3.1, yardCZ, 0xe8e8e8, false); const hoop = mesh(new THREE.TorusGeometry(0.4, 0.04, 8, 16), 0xff6b35); hoop.position.set(yardCX + s * 19.6, 2.75, yardCZ); hoop.rotation.x = Math.PI / 2; }
+  for (const bx of [-28, -8, 8, 28]) addBench(yardCX + bx, yardCZ + YD / 2 - 2, Math.PI);
+  // ---- police cars parked on the apron ----
+  for (let i = 0; i < 6; i++) { const v = makeVehicle('police', 0xf5f6fa); v.group.position.set(hx - 22 + i * 7, 0, FZ1 - 8); v.group.rotation.y = Math.PI; v.ai = null; }
+  // ---- guards walking the strip, and in the yard; prisoners in the yard ----
+  const patrolLoop = [[F0 - 3.5, FZ0 - 3.5], [F1 + 3.5, FZ0 - 3.5], [F1 + 3.5, FZ1 + 3.5], [F0 - 3.5, FZ1 + 3.5]];   // the strip between the wall and the fence
+  for (let i = 0; i < 8; i++) { const h = makeHumanoid({ outfit: 0x2a3a4a, hair: pick([0x1a1a1a, 0x3a2a1a, 0x222]), pants: 0x1c242c }); const wp = i % 4; h.root.position.set(patrolLoop[wp][0], 0, patrolLoop[wp][1]); hqPeople.push({ h, kind: 'guard', wp, speed: 2.1 + Math.random() * 0.4 }); }
+  for (let i = 0; i < 16; i++) { const h = makeHumanoid({ outfit: 0xff7a1a, hair: pick([0x1a1a1a, 0x5a4a3a, 0x2a2a2a]), pants: 0xff7a1a, shoes: 0x2a2a2a }); h.root.position.set(yardCX + (Math.random() - 0.5) * (YW - 6), 0, yardCZ + (Math.random() - 0.5) * (YD - 4)); hqPeople.push({ h, kind: 'prisoner', target: null, speed: 1.1 + Math.random() * 0.5, waitT: Math.random() * 3, bounds: { x0: yardCX - YW / 2 + 2, x1: yardCX + YW / 2 - 2, z0: yardCZ - YD / 2 + 2, z1: yardCZ + YD / 2 - 2 } }); }
+  for (let i = 0; i < 4; i++) { const h = makeHumanoid({ outfit: 0x2a3a4a, hair: pick([0x1a1a1a, 0x3a2a1a]), pants: 0x1c242c }); h.root.position.set(yardCX + (Math.random() - 0.5) * 20, 0, yardCZ + YD / 2 + 3); hqPeople.push({ h, kind: 'yardGuard', target: null, speed: 1.4, waitT: Math.random() * 3, bounds: { x0: yardCX - YW / 2, x1: yardCX + YW / 2, z0: yardCZ + YD / 2 + 1.5, z1: yardCZ + YD / 2 + 5 } }); }
+  accessPoints.push({ x: hx, z: WZ1 + 16, name: 'Police HQ and State Prison gate' });
+  let t = 0;
   addTask({ dur: 1e9, update(dt) {
+    t += dt;
+    const near = Math.hypot(player.position.x - hx, player.position.z - hz) < 450;
+    for (const b of beams) b.pivot.rotation.y = b.aim + Math.sin(t * 0.35 + b.phase) * 0.9;
+    if (!near) return;   // nobody out here moves unless you're close
     for (const p of hqPeople) {
       const pos = p.h.root.position;
       if (p.kind === 'guard') {
-        const t = patrolLoop[p.wp];
-        const dir = new THREE.Vector3(t[0] - pos.x, 0, t[1] - pos.z), dist = dir.length();
+        const tg = patrolLoop[p.wp];
+        const dir = new THREE.Vector3(tg[0] - pos.x, 0, tg[1] - pos.z), dist = dir.length();
         if (dist < 1.2) { p.wp = (p.wp + 1) % patrolLoop.length; }
         else { dir.normalize(); pos.addScaledVector(dir, p.speed * dt); p.h.root.rotation.y = Math.atan2(dir.x, dir.z); animateHumanoid(p.h, null, true, false, true, dt); }
       } else {
@@ -8528,6 +8583,7 @@ blackMarket = buildBlackMarket({ openVehicleShop: (t, cats, place, o) => openVeh
 statSources.push(blackMarket);
 addEventListener('aw-clear-wanted', () => { wanted = 0; pursuitBackupCooldown = 0; });
 spaceCentre=buildSpaceCentre({safeFence:fenceRect,colliders,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
+if(spaceCentre?.gate)accessPoints.push({...spaceCentre.gate,name:'Space Centre gate'});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
@@ -8931,7 +8987,7 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   WEATHER_CYCLE=seasons.weatherCycle;weatherIdx=0;
   // St Mary's, the port and the naval base, brought up to date
   { const up={...leisureCtx,glowMats,maxHp:()=>maxHp()};
-    hospitalPlus=upgradeHospital(up,{top:24}); HOSPITAL_POS.copy(hospitalPlus.bay);
+    hospitalPlus=upgradeHospital(up,{top:HOSPITAL_TOP}); HOSPITAL_POS.copy(hospitalPlus.bay);
     const hc=civicBuildings.find(b=>b.name==='St. Mary General Hospital'); if(hc)hc.minZ=-224;
     portPlus=upgradePort(up,harbour); navyPlus=upgradeNavy(up,navy); }
   // fences round the stadium, the sports courts and the lido
@@ -9034,12 +9090,30 @@ forest.flush();
   lampSpots.forEach((p, i) => { if (pushOut(p)) placeLampInstance(i, p); });
   for (const t of trafficLights) { const p = { x: t.root.position.x, z: t.root.position.z }; if (pushOut(p)) { t.root.position.x = t.x = p.x; t.root.position.z = t.z = p.z; } }
 }
+// access roads (access-roads.js): every building joined to the road network; laid before the road scan below
+const accessRoads = buildAccessRoads({ scene, blocked: (x0, x1, z0, z1) => collidersAround((x0 + x1) / 2, (z0 + z1) / 2, Math.hypot(x1 - x0, z1 - z0) / 2 + 1).some(c => { if (c.baseYAt) { const b = c.baseYAt((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2); if (!(b < 1.5)) return false; } if (c.circleRadius != null) { const cx = clamp(c.circleX, x0, x1), cz = clamp(c.circleZ, z0, z1); return Math.hypot(cx - c.circleX, cz - c.circleZ) < c.circleRadius; } return c.maxX > x0 && c.minX < x1 && c.maxZ > z0 && c.minZ < z1; }) });
 const roadGrid = new Map(), ROAD_CELL = 20;
 { // find every road-like surface once (dark, flat, low strips) so grass never grows on them
-  const tmpC = new THREE.Color(); scene.updateMatrixWorld(true);   // positions of things built this frame aren't in matrixWorld yet
+  const tmpC = new THREE.Color(), mergedSeen = new Set(); scene.updateMatrixWorld(true);   // positions of things built this frame aren't in matrixWorld yet
   scene.traverse(o => {
     if (!o.isMesh || o.isInstancedMesh) return; const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m?.color) return;
-    const g = o.geometry; if (!['BoxGeometry', 'PlaneGeometry'].includes(g.type)) return;
+    const g = o.geometry;
+    if (g.type === 'BufferGeometry' && g.attributes.position && !m.map) {   // roads merged into one mesh (frontier-world, The Reserve, the road crew...): read their flat tops
+      tmpC.copy(m.color); if (tmpC.r * 0.3 + tmpC.g * 0.59 + tmpC.b * 0.11 > 0.2) return;
+      if (!g.boundingBox) g.computeBoundingBox(); const wb = g.boundingBox.clone().applyMatrix4(o.matrixWorld); if (wb.max.y > 0.35 || wb.min.y < -0.4) return;
+      const P = g.attributes.position, I = g.index, n = I ? I.count : P.count, a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+      for (let t = 0; t < n; t += 3) {
+        a.fromBufferAttribute(P, I ? I.getX(t) : t).applyMatrix4(o.matrixWorld); b.fromBufferAttribute(P, I ? I.getX(t + 1) : t + 1).applyMatrix4(o.matrixWorld); c.fromBufferAttribute(P, I ? I.getX(t + 2) : t + 2).applyMatrix4(o.matrixWorld);
+        if (Math.abs(a.y - b.y) > 0.01 || Math.abs(a.y - c.y) > 0.01 || a.y < wb.max.y - 0.02) continue;   // only the flat top faces
+        const minX = Math.min(a.x, b.x, c.x), maxX = Math.max(a.x, b.x, c.x), minZ = Math.min(a.z, b.z, c.z), maxZ = Math.max(a.z, b.z, c.z), area = Math.abs((b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z)) / 2;
+        if (Math.max(maxX - minX, maxZ - minZ) < 6 || (maxX - minX) * (maxZ - minZ) > area * 2.2) continue;   // axis-aligned stretches only (a slanted one's box would cover the land beside it)
+        const key0 = [minX, maxX, minZ, maxZ].map(v => Math.round(v * 10)).join(); if (mergedSeen.has(key0)) continue; mergedSeen.add(key0);   // (a face's two triangles give the same box)
+        const rect = { minX: minX - 0.5, maxX: maxX + 0.5, minZ: minZ - 0.5, maxZ: maxZ + 0.5 };
+        for (let i = Math.floor(rect.minX / ROAD_CELL); i <= Math.floor(rect.maxX / ROAD_CELL); i++) for (let k = Math.floor(rect.minZ / ROAD_CELL); k <= Math.floor(rect.maxZ / ROAD_CELL); k++) { const key = i * 100003 + k; let l = roadGrid.get(key); if (!l) roadGrid.set(key, l = []); if (!l.includes(rect)) l.push(rect); }
+      }
+      return;
+    }
+    if (!['BoxGeometry', 'PlaneGeometry'].includes(g.type)) return;
     tmpC.copy(m.color); const lum = tmpC.r * 0.3 + tmpC.g * 0.59 + tmpC.b * 0.11; if (lum > 0.08 && !m.map) { if (lum > 0.2) return; }
     if (!g.boundingBox) g.computeBoundingBox(); const bb = g.boundingBox.clone().applyMatrix4(o.matrixWorld);
     if (bb.max.y > 0.35 || bb.min.y < -0.4 || bb.max.y - bb.min.y > 0.3) return;
