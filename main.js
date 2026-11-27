@@ -2133,7 +2133,8 @@ const characters = [
     ],
     ult: { name: 'Terra Sovereign', icon: '🗿', dmg: '62', desc: 'Cinematic earthquake explosion, then +30% damage for 10 seconds.', run: terraUlt },
   },
-  {   // Story Mode only: the protagonist's one power, the Mythic Blood power. Skills unlock as he levels.
+  {   // The Mythic Blood power belongs to the story's protagonist (a character in the world), not to you. Kept here
+      // for him; the player never gets it.
     name: 'Blood', color: 0x2a1d1f, hair: 0x15100f, fx: 0xc8102e, jump: 9, cds: [0, 0, 0, 0], unlock: [1, 3, 4, 6], ultLevel: 10,
     skills: [
       { name: 'Blood Whip', icon: '🩸', cd: 3, dmg: '10', desc: 'Lash with a whip of your own blood. Costs a little health.', run: bloodWhip },
@@ -2143,8 +2144,14 @@ const characters = [
     ],
     ult: { name: 'Crimson Rain', icon: '🌧️', dmg: '6 × 8', desc: 'Rain sharp drops of blood over everything around you.', run: bloodUlt },
   },
+  {   // Story Mode: you, before your power awakens. You're a side character with no power to start with; when and
+      // whether one awakens follows the awakening rules, and nothing here is unlocked by level alone.
+    name: 'No power yet', unawakened: true, color: 0x3a4250, hair: 0x2b1d14, fx: 0x9aa4ae, jump: 8, cds: [0, 0, 0, 0], unlock: [Infinity, Infinity, Infinity, Infinity], ultLevel: Infinity,
+    skills: [1, 2, 3, 4].map(() => ({ name: 'Not awakened', icon: '·', cd: 0, dmg: '-', desc: 'You have no power yet.', run: () => {} })),
+    ult: { name: 'Not awakened', icon: '·', dmg: '-', desc: 'You have no power yet.', run: () => {} },
+  },
 ];
-const BLOOD_CHAR = 4;
+const BLOOD_CHAR = 4, NO_POWER_CHAR = 5;
 let charIdx = 0;
 let unlockedCharIndices = [0, 1]; // the primary/secondary pair chosen at class select; T switches only within this pair
 
@@ -2575,6 +2582,7 @@ function applySoloSave(save) {
   stats.hp = maxHp();
   swordGrip.visible = !!origin.weapon;
   if (Array.isArray(save.unlockedCharIndices) && save.unlockedCharIndices.length >= 1) unlockedCharIndices = save.unlockedCharIndices;
+  if (save.charIdx === BLOOD_CHAR) { save.charIdx = NO_POWER_CHAR; save.unlockedCharIndices = [NO_POWER_CHAR]; unlockedCharIndices = [NO_POWER_CHAR]; }   // (older saves had you holding the protagonist's Blood power: you never had it)
   if (Number.isInteger(save.charIdx) && characters[save.charIdx]) {
     charIdx = save.charIdx;
     const c = characters[charIdx];
@@ -2599,13 +2607,13 @@ function applySoloSave(save) {
 
 }
 
-// Story Mode: no element pick. The protagonist is always the same poor boy, broke in a rented room,
-// and his only power is the Mythic Blood power; its skills unlock as he levels.
+// Story Mode: no element pick. You start poor, broke in a rented room, with no power at all: you're a side character
+// in the story, not its protagonist (he's the one with the Blood power). Your own power, if it ever comes, awakens.
 function storyProtagonist() {
   origin = { roll: null, family: null, backstory: null, stats: { confidence: 50, peace: 50, karma: 50, wisdom: 50 },
     perk: null, wealthTier: 'poor', housing: 'A cold rented room in the poorest district', startingGold: 12, maxHealth: 100, weapon: null };
   stats.gold = origin.startingGold; stats.hp = maxHp(); swordGrip.visible = false;
-  charIdx = BLOOD_CHAR; unlockedCharIndices = [BLOOD_CHAR];
+  charIdx = NO_POWER_CHAR; unlockedCharIndices = [NO_POWER_CHAR];
   P.mats.outfit.color.set(characters[charIdx].color); P.mats.hair.color.set(characters[charIdx].hair);
   buildHotbar();
 }
@@ -5219,6 +5227,7 @@ const skillLevel = (i, c = characters[charIdx]) => (c.unlock || SKILL_UNLOCK_LEV
 const ultLevel = (c = characters[charIdx]) => c.ultLevel ?? ULT_UNLOCK_LEVEL;
 function useSkill(i) {
   const c = characters[charIdx];
+  if (c.unawakened) { toast("You haven't awakened a power yet."); return; }
   if (!canAct() || c.cds[i] > 0) return;
   if (prog.level < skillLevel(i, c)) { toast(`${c.skills[i].name} unlocks at level ${skillLevel(i, c)}`); return; }
   c.cds[i] = c.skills[i].cd;
@@ -5226,6 +5235,7 @@ function useSkill(i) {
 }
 function useUlt() {
   const c = characters[charIdx];
+  if (c.unawakened) { toast("You haven't awakened a power yet."); return; }
   if (!canAct()) return;
   if (prog.level < ultLevel(c)) { toast(`${c.ult.name} unlocks at level ${ultLevel(c)}`); return; }
   if (stats.ult < 100) { toast(`Ultimate not ready (${Math.floor(stats.ult)}%). Land hits to charge it.`); return; }
@@ -7031,7 +7041,7 @@ function buildHotbar() {
   const c = characters[charIdx];
   const slot = (key, s, cls = '', lvl = 0) => `<div class="slot ${cls}" style="--glow:${hex(c.fx)}"><div class="icon">${s.icon}</div>
     <div class="sname">${s.name}</div><div class="key">${key}</div><div class="cd"></div><div class="cdt"></div>
-    <div class="lock">🔒<span class="lvl">Lv ${lvl}</span></div></div>`;
+    <div class="lock">🔒<span class="lvl">${Number.isFinite(lvl) ? 'Lv ' + lvl : 'No power'}</span></div></div>`;
   $('hotbar').innerHTML = slot('Q', { icon: '➤', name: 'Dash' }, 'small')
     + slot('R', { icon: 'SP', name: supportSkills?.name||(specialUnlocked?'Psychic':'Empty special') }, 'small')
     + c.skills.map((s, i) => slot(i + 1, s, '', skillLevel(i, c))).join('')
