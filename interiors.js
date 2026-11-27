@@ -24,6 +24,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
   const worldColliders = colliders; let floorY = 0;
   colliders = { push: (...cs) => { for (const c of cs) { if (!c.baseYAt) { const y = floorY; c.baseYAt = () => y; } worldColliders.push(c); } return worldColliders.length; }, indexOf: c => worldColliders.indexOf(c), splice: (...a) => worldColliders.splice(...a) };
   const lifts = [], uppers = [];   // real lifts; upper floors (for the ground under you)
+  let storeys = 2;   // how many floors the building you're in has (the shared interiors go up to five)
   const mats = new Map();
   const mat = (c, o = {}) => {
     const k = c + '|' + JSON.stringify({ ...o, map: o.map?.uuid });
@@ -276,10 +277,12 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
   const stairHole = (x, z, len) => ({ x0: x - 0.66, x1: x + 0.66, z0: z - len / 2, z1: z + len / 2 });
   const liftHole = (x, z, rot) => { const c = Math.cos(rot), s2 = Math.sin(rot), pts = [[-1.32, -0.05], [1.32, -0.05], [-1.32, 2.15], [1.32, 2.15]].map(([lx, lz]) => [x + lx * c + lz * s2, z - lx * s2 + lz * c]); return { x0: Math.min(...pts.map(p => p[0])), x1: Math.max(...pts.map(p => p[0])), z0: Math.min(...pts.map(p => p[1])), z1: Math.max(...pts.map(p => p[1])) }; };
   // a real lift between a ground floor and the floor on top of it (lifts.js)
-  function stackLift(lower, upper, lx, lz, rot, canGo) {
-    const lift = createLift({ scene, colliders: worldColliders, x: lower.x0 + lx, z: lower.z0 + lz, rot, floors: [{ y: lower.y0, name: 'Ground floor' }, { y: upper.y0, name: upper.floorName || 'Floor 1' }], canGo, toast: hooks.toast, resume: hooks.resume, floorH: H });
-    lifts.push(lift); lift.layouts = [lower, upper];
-    lift.spots.forEach((sp, i) => [lower, upper][i].spots.push(sp)); for (const sp of lift.cabSpots) { lower.spots.push(sp); upper.spots.push(sp); }
+  function stackLift(lower, upper, lx, lz, rot, canGo) {   // upper: the floor on top, or every floor above (a list)
+    const ups = Array.isArray(upper) ? upper : [upper], all = [lower, ...ups];
+    const go = canGo || (i => i < storeys || (hooks.toast(`This building only has ${storeys} floor${storeys > 1 ? 's' : ''}.`), false));
+    const lift = createLift({ scene, colliders: worldColliders, x: lower.x0 + lx, z: lower.z0 + lz, rot, floors: all.map((L, i) => ({ y: L.y0, name: i ? L.floorName || 'Floor ' + i : 'Ground floor' })), canGo: go, available: canGo ? null : () => storeys, toast: hooks.toast, resume: hooks.resume, floorH: H });
+    lifts.push(lift); lift.layouts = all;
+    lift.spots.forEach((sp, i) => all[i].spots.push(sp)); for (const sp of lift.cabSpots) for (const L of all) L.spots.push(sp);
     return lift;
   }
   const stack = (...ls) => { for (const l of ls) l.stack = ls; };
@@ -439,9 +442,10 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
 
   // =========================== UPSTAIRS: OFFICE FLOOR 1 ===========================
   // (on top of the office, and the same floor plan on top of the tech company and the council offices)
-  function officeUp(key, x0, z0, lift, escalator) {
+  function officeUp(key, x0, z0, lift, escalator, k = 1) {   // floor k (1 = first floor) of an office block
     const holes = [liftHole(lift[0], lift[1], lift[2])]; if (escalator) holes.push(stairHole(-9.5, 5.1, 5));
-    const L = makeLayout(key, x0, z0, 0xe9edf1, 0x6f7a86, { exit: false, y0: HS, holes }), { F, spot, seat } = L;
+    if (!FLOOR_KIND[key]) FLOOR_KIND[key] = 'carpet';
+    const L = makeLayout(key, x0, z0, 0xe9edf1, 0x6f7a86, { exit: false, y0: HS * k, holes }), { F, spot, seat } = L; L.floorName = 'Floor ' + k;
     L.partX(-2.5, -12, 12, [-7, 1.5, 8.5]);
     L.partZ(-2, -9, -2.5); L.partZ(5, -9, -2.5);
     if (escalator) L.stairwell(-9.5, 5.1, 5, -1);
@@ -999,13 +1003,16 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
 
   // =========================== UPPER FLOORS AND LIFTS ===========================
   // Every upper floor stands right on top of its ground floor: walk the stairs or the escalator, or ride a lift.
-  const officeUpper = officeUp('office-up', -5300, 0, [11.75, 3.0, -Math.PI / 2], true);
-  const cyberUpper = officeUp('cyber-up', -5400, 0, [11.75, 3.0, -Math.PI / 2], false);
-  const govUpper = officeUp('gov-up', -5700, 0, [-11.75, 1.8, Math.PI / 2], false);
+  // Office blocks, tech firms and government buildings go up to five storeys: the escalator takes you to the first
+  // floor, the lift to every floor the building really has (a two-storey office's lift stops at 0 and 1).
+  const TOP = 4, uppersOf = (key, x0, lift, esc) => Array.from({ length: TOP }, (_, i) => officeUp(i ? `${key}${i + 1}` : key, x0, 0, lift, esc && i === 0, i + 1));
+  const officeUppers = uppersOf('office-up', -5300, [11.75, 3.0, -Math.PI / 2], true);
+  const cyberUppers = uppersOf('cyber-up', -5400, [11.75, 3.0, -Math.PI / 2], false);
+  const govUppers = uppersOf('gov-up', -5700, [-11.75, 1.8, Math.PI / 2], false);
   stack(layouts.home, layouts['home-up']); stack(layouts.shop, layouts['shop-up']);
-  stack(layouts.office, officeUpper); stackLift(layouts.office, officeUpper, 11.75, 3.0, -Math.PI / 2);
-  stack(layouts.cyber, cyberUpper); stackLift(layouts.cyber, cyberUpper, 11.75, 3.0, -Math.PI / 2);
-  stack(layouts.gov, govUpper); stackLift(layouts.gov, govUpper, -11.75, 1.8, Math.PI / 2);
+  stack(layouts.office, ...officeUppers); stackLift(layouts.office, officeUppers, 11.75, 3.0, -Math.PI / 2);
+  stack(layouts.cyber, ...cyberUppers); stackLift(layouts.cyber, cyberUppers, 11.75, 3.0, -Math.PI / 2);
+  stack(layouts.gov, ...govUppers); stackLift(layouts.gov, govUppers, -11.75, 1.8, Math.PI / 2);
   layouts['hotel-room'].floorName = 'Rooms (first floor)';
   stack(layouts.hotel, layouts['hotel-room']);
   stackLift(layouts.hotel, layouts['hotel-room'], -7.75, -8.85, 0, i => i === 0 || hooks.hotelRoom?.(() => {}) === true || (hooks.toast('Book a room at reception first.'), false));
@@ -1046,7 +1053,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       if (/apartment|house|home|residential|terrace|detached|bungalow|flat|dormitory|cabin|farm|building|^yes$/.test(t)) return layouts.home;
       return null;   // civic types use the themed civic hall
     },
-    enter(L) { this.exit(); active = L; L.autoArmed = false; autoCool = 1.5; for (const l of L.lifts || []) { l.armed = false; l.riding = false; } for (const l of L.lights) l.visible = true; for (const w of L.workers) w.h.root.visible = true; },
+    enter(L, o = {}) { storeys = Math.max(2, Math.min(5, Math.round(o.storeys) || 2)); this.exit(); active = L; L.autoArmed = false; autoCool = 1.5; for (const l of L.lifts || []) { l.armed = false; l.riding = false; } for (const l of L.lights) l.visible = true; for (const w of L.workers) w.h.root.visible = true; },
     exit() { if (active) { for (const l of active.lights) l.visible = false; for (const w of active.workers) w.h.root.visible = false; } active = null; },
     get active() { return active; },
     update(dt) {
