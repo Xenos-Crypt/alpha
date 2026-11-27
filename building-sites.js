@@ -6,14 +6,16 @@
 //   -> the frame goes up floor by floor (a tower crane swings steel up to the top)
 //   -> glazing and cladding climb the frame
 //   -> the hoarding comes down and the finished building stays: offices, flats or shops you can walk into.
-// Then the crew packs up and starts on the next plot. Everything follows the real clock, so a
-// building you left half-built is further along when you come back.
+// Then the crew packs up and starts on the next plot; when their last plot is done they're finished and every
+// building they put up stays. Everything follows the real clock, so a building you left half-built is further
+// along when you come back. A building takes as long as a real one: six months on the game's calendar.
 import * as THREE from 'three';
 
 export const BUILD_DAYS = 2;    // the crews' "day" units per building (see siteDaysNow)
-// The crews work to the real clock, not the game's: a building takes SITE_HOURS real hours, carries on
-// while the game is closed, never resets on a reload, and is at the same stage for every player.
-export const SITE_HOURS = 6, SITE_EPOCH = Date.UTC(2026, 10, 10, 6);
+// The crews work to the real clock, not the game's: a building takes SITE_HOURS real hours (180 game days: the
+// game's day is 8 real hours), carries on while the game is closed, never resets on a reload, and is at the same
+// stage for every player. (The crews started in August 2026, so each has a building or two finished already.)
+export const SITE_HOURS = 180 * 8, SITE_EPOCH = Date.UTC(2026, 7, 20, 6);
 export const siteDaysNow = (now = Date.now()) => Math.max(0, (now - SITE_EPOCH) / (SITE_HOURS * 3600e3)) * BUILD_DAYS;
 const FLOOR_H = 3.4;
 
@@ -55,11 +57,12 @@ function frame(p) {
 export function stageOf(t) {
   if (t < 0.1) return 'groundworks'; if (t < 0.22) return 'foundations'; if (t < 0.8) return 'frame'; if (t < 0.97) return 'cladding'; return 'handover';
 }
-// The crews never stop: when every plot is built they start again from the first one, knocking the
-// old building down and putting up a new, different one (a "generation" later).
+// A crew builds its plots one after another; once the last is finished they're done (done: true) and
+// nothing is knocked down.
 export function crewState(crew, day, offset) {
   const total = Math.max(0, Number.isFinite(day) ? day : 0) / BUILD_DAYS + offset, step = Math.floor(total), n = crew.plots.length;
-  return { step, index: step % n, gen: Math.floor(step / n), t: total - step };
+  if (step >= n) return { step: n, index: n - 1, gen: 0, t: 1, done: true };
+  return { step, index: step, gen: 0, t: total - step, done: false };
 }
 const GEN_NAMES = ['', 'Phase II', 'Phase III', 'Phase IV'];
 export function variant(p, gen) {
@@ -270,9 +273,9 @@ export function buildBuildingSites(ctx) {
       if (st.step !== c.step) {   // the crew moved on: everything else stands finished, the current plot is a building site
         if (c.site) { removeSite(c.site); c.site = null; }
         const n = c.crew.plots.length;
-        c.crew.plots.forEach((p, j) => { const g = j < st.index ? st.gen : st.gen - 1; if (j === st.index) clearFinished(p); else if (g >= 0) finishedBuilding(p, g, c.crew); if (g >= 0 || j < st.index) layAccess(p, 1); });
+        c.crew.plots.forEach((p, j) => { const built = st.done || j < st.index; if (built) { finishedBuilding(p, 0, c.crew); layAccess(p, 1); } else if (j === st.index) clearFinished(p); });
         c.step = st.step; void n;
-        c.site = makeSite(c.crew, c.crew.plots[st.index], st.gen);
+        c.site = st.done ? null : makeSite(c.crew, c.crew.plots[st.index], 0);
       }
       if (c.site) drive(c.site, st.t, dt, playerPos, night);
     }
@@ -331,9 +334,9 @@ export function buildBuildingSites(ctx) {
     update, crews, CREWS,
     get sites() { return crews.map(c => c.site).filter(Boolean); },
     describe(site) {
-      const st = stageOf(site.t), pct = Math.round(site.t * 100), left = (1 - site.t) * SITE_HOURS;
+      const st = stageOf(site.t), pct = Math.round(site.t * 100), left = (1 - site.t) * SITE_HOURS, days = Math.max(1, Math.round(left / 24));
       const words = { groundworks: 'digging out the foundations', foundations: 'pouring the concrete slab', frame: `putting up the frame, floor ${Math.max(1, site.built)} of ${site.p.floors}`, cladding: 'fitting the windows and cladding', handover: 'cleaning up for the opening' };
-      return { pct, stage: st, text: `We're ${words[st]}. ${pct}% done; ${site.p.name} opens in about ${left < 1 ? Math.max(5, Math.round(left * 60)) + ' minutes' : left.toFixed(1) + ' hours'}. We work round the clock, so it'll be further on next time you come by.` };
+      return { pct, stage: st, text: `We're ${words[st]}. ${pct}% done; ${site.p.name} opens in about ${days} day${days > 1 ? 's' : ''} (${days * 3} on the game's calendar). We keep working while you're away, so it'll be further on next time you come by.` };
     },
   };
 }
