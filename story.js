@@ -99,7 +99,7 @@ export function createStory(ctx) {
   const beasts = [];
   const hud = document.createElement('div'); hud.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:31;background:rgba(10,20,30,.7);color:#dff3ff;padding:6px 12px;border-radius:10px;font:13px system-ui;display:none'; document.body.append(hud);
   let camp = 0, warnedZone = false;
-  const campIt = { pos: new THREE.Vector3(), get r() { return T.outside && camp <= 0 ? 3 : 0; }, get label() { return T.outside && camp <= 0 ? 'Make camp and warm up' : ''; }, action: () => {
+  const campIt = { pos: new THREE.Vector3(), get r() { return T.outside && camp <= 0 && !ctx.sheltered?.() ? 3 : 0; }, get label() { return T.outside && camp <= 0 && !ctx.sheltered?.() ? 'Make camp and warm up' : ''; }, action: () => {
     if (!T.outside || camp > 0) return; camp = 120;
     const meat = ctx.takeItem?.('Raw game meat');
     T.warmth = Math.min(100, T.warmth + (meat ? 100 : 55)); if (meat) ctx.eat?.(30);
