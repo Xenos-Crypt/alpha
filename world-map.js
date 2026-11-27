@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-export function surfaceDestinations(destinations){return destinations.filter(d=>Number.isFinite(d.x)&&Number.isFinite(d.z)&&Math.hypot(d.x-170,d.z-150)<=1350&&!/BARRACKS/i.test(d.name));}
+export function surfaceDestinations(destinations){return destinations.filter(d=>Number.isFinite(d.x)&&Number.isFinite(d.z)&&Math.hypot(d.x-170,d.z-150)<=3020&&!/BARRACKS/i.test(d.name));}
 export function createWorldMap(ctx){
  const panel=document.createElement('section');panel.id='worldMapPanel';panel.hidden=true;panel.innerHTML='<div><h2>3D world map</h2><p>Drag to rotate, pinch or scroll to zoom. Choose a building to inspect it, then set a waypoint.</p><label>Find a place<input id="worldMapSearch" type="search" placeholder="School, city, airport, rocket..."></label><div id="map3dViewport"></div><p id="worldMapInfo"></p><button id="mapSetWaypoint" disabled type="button">Set waypoint</button><button id="mapResetView" type="button">Whole world</button><div id="worldMapList"></div><button id="worldMapClose" type="button">Close</button></div>';document.body.append(panel);
  const viewport=panel.querySelector('#map3dViewport'),search=panel.querySelector('input'),list=panel.querySelector('#worldMapList'),info=panel.querySelector('#worldMapInfo'),waypoint=panel.querySelector('#mapSetWaypoint');let renderer=null,scene,camera,controls,markers=[],selected=null,playerMarker=null,frame=0,last=0;

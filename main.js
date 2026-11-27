@@ -8974,7 +8974,7 @@ function teleportPlayer(pos, msg, ms = 650) {
   setTimeout(() => { if (inCar) exitVehicle(); player.position.copy(pos); vy = 0; pvel.set(0, 0, 0); $('fade').style.opacity = 0; if (msg) toast(msg); }, ms);
 }
 await startupStage(85,'Preparing world boundaries and landmarks...');
-border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),interactables,toast,makeTex});
+border=buildBorder({scene,groundY,colliders,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),interactables,toast,makeTex});
 // The Yabatan Church: a walled compound out on the frozen plain beyond the mountains (outside the dome)
 yabatan=buildYabatanChurch({scene,colliders,interactables,sitSpots,planeBlocks,DOME,makeTex,toast,makePerson:o=>makeHumanoid(o),animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
   makeFigure:type=>{const m=MONSTERS[type];if(!m)return null;const h=makeHumanoid({...m.look,real:false});h.rig.scale.setScalar(0.9*m.scale);return h;},makeMonster:(t,l,p)=>makeMonster(t,l,p),

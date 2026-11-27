@@ -1,12 +1,11 @@
 // THE WILDS: five forests of different kinds in the open country along the south of the dome, one of them a foggy
-// forest with a church hidden deep inside it, and snow monsters roaming the frozen land outside the shield.
+// forest, and snow monsters roaming the frozen land outside the shield.
 //
 // Where: a scan of the map (sea, roads, colliders, everything already built) found the band south of the last
 // streets, z 1250 to the dome's edge, x -270 to 560, empty but for a few posts. The forests stand there side by
 // side, each with a trail through it; trees keep 9 m off anything already there.
 //
-// The church: no sign, no path, off the trail in the thickest of the mist. Only the admin has its location (the
-// map lists it for the admin alone). Its door is barred.
+// The admin's map also shows the Yabatan Church, out beyond the mountains (yabatan-church.js).
 //
 // Outside the shield (the snow ring round the dome): white wolves in packs, white snakes, ice tigers, ice bears,
 // ice golems and frost foxes. They can't come in and you can't go out; you see them through the shield. They are
@@ -22,7 +21,6 @@ export const FORESTS = [
   { name: 'Willowmere', x0: 460, x1: 560, kinds: ['willow', 'willow', 'cypress'], gap: 6.5, sign: 'WILLOWMERE', sub: 'weeping willows', col: '#2f4a3a' },
 ];
 const Z0 = 1250, EDGE = PLAY_R - 12;   // the band's north edge; trees stop 12 m short of the fence
-export const CHURCH = { x: -205, z: 1335, w: 12, d: 22 };   // deep in Mistwood, off the trail
 
 export function buildWilds(ctx) {
   const { scene, groundY, interactables, toast, makeTex } = ctx;
@@ -36,14 +34,12 @@ export function buildWilds(ctx) {
   // ---------------------------------------------------------------- the forests
   // each has a winding trail from its north edge to the far end; trees keep off it
   const trailX = (F, z) => { const mid = (F.x0 + F.x1) / 2, half = (F.x1 - F.x0) / 2; return mid + Math.sin((z - Z0) / 38 + F.x0) * half * 0.35; };
-  const nearChurch = (x, z, pad) => Math.abs(x - CHURCH.x) < CHURCH.w / 2 + pad && Math.abs(z - CHURCH.z) < CHURCH.d / 2 + pad;
   let planted = 0;
   for (const F of FORESTS) {
     for (let x = F.x0; x <= F.x1; x += F.gap) for (let z = Z0; z < zMax(x); z += F.gap) {
       const tx = x + (rnd() - 0.5) * F.gap * 0.9, tz = z + (rnd() - 0.5) * F.gap * 0.9;
       if (!inDome(tx, tz, 2) || tz < Z0 || tx < F.x0 || tx > F.x1) continue;
       if (Math.abs(tx - trailX(F, tz)) < 3.2) continue;                     // the trail
-      if (F.fog && nearChurch(tx, tz, 7)) continue;                         // the church's clearing
       if (ctx.blocked(tx, tz, 9)) continue;                                 // anything already there
       const kind = F.kinds[Math.floor(rnd() * F.kinds.length)];
       ctx.plant(tx, groundY(tx, tz), tz, kind, (F.fog ? 1.15 : 0.95) + rnd() * 0.5); planted++;
@@ -72,28 +68,9 @@ export function buildWilds(ctx) {
   function mistAt(p) { if (!p || p.y > 40 || p.z < Z0 - 30 || p.x < M.x0 - 30 || p.x > M.x1 + 30) return 0;
     const d = Math.min(p.x - M.x0, M.x1 - p.x, p.z - Z0); return THREE.MathUtils.clamp((d + 30) / 65, 0, 1); }
 
-  // ---------------------------------------------------------------- the hidden church
-  {
-    const C = CHURCH, g = new THREE.Group(); g.name = 'church (hidden, Mistwood)'; const y0 = groundY(C.x, C.z); g.position.set(C.x, y0, C.z); scene.add(g);
-    const stone = mat(0x4b4f52, { rough: 0.95 }), dark = mat(0x23262a, { rough: 0.9 }), slate = mat(0x2c2f36, { rough: 0.8 }), glass = mat(0x3a1212, { em: 0x5a1010, ei: 0.35, rough: 0.4 });
-    const W = C.w, D = C.d, H = 7;
-    box(g, W, 0.4, D, 0, 0.2, 0, dark);                                                     // plinth
-    for (const s of [-1, 1]) box(g, 0.8, H, D, s * (W / 2 - 0.4), H / 2, 0, stone);        // side walls
-    box(g, W, H, 0.8, 0, H / 2, D / 2 - 0.4, stone);                                        // back wall
-    for (const s of [-1, 1]) box(g, W / 2 - 1.3, H, 0.8, s * (W / 4 + 0.65), H / 2, -D / 2 + 0.4, stone);   // front wall, either side of the door
-    box(g, 2.6, H - 3.8, 0.8, 0, 3.8 + (H - 3.8) / 2, -D / 2 + 0.4, stone);                  // over the door
-    box(g, 2.6, 3.8, 0.25, 0, 1.9, -D / 2 + 0.2, mat(0x2a1c14, { rough: 0.7 }));              // the door (barred)
-    box(g, 3, 0.25, 0.3, 0, 2, -D / 2 - 0.02, mat(0x1a1a1a, { metal: 0.6 }));                 // the bar across it
-    for (const s of [-1, 1]) { const r = box(g, W / 2 + 1.2, 0.35, D + 1.4, s * W / 4.4, H + 2.1, 0, slate); r.rotation.z = -s * 0.62; }   // roof
-    for (const s of [-1, 1]) for (let k = -2; k <= 2; k++) box(g, 0.1, 2.8, 1.1, s * (W / 2 + 0.01), 3.8, k * 4, glass);   // tall dark windows
-    box(g, 4, H + 7, 4, 0, (H + 7) / 2, -D / 2 - 1.6, stone);                                 // bell tower
-    { const sp = new THREE.Mesh(new THREE.ConeGeometry(3, 9, 4), slate); sp.position.set(0, H + 7 + 4.5, -D / 2 - 1.6); sp.rotation.y = Math.PI / 4; sp.castShadow = true; g.add(sp); }
-    for (const s of [-1, 1]) box(g, 0.1, 2.2, 1.2, s * 2.01, H + 4, -D / 2 - 1.6, glass);
-    ctx.colliders.push({ minX: C.x - W / 2, maxX: C.x + W / 2, minZ: C.z - D / 2, maxZ: C.z + D / 2 }, { minX: C.x - 2, maxX: C.x + 2, minZ: C.z - D / 2 - 3.6, maxZ: C.z - D / 2 + 0.4 });
-    interactables.push({ pos: new THREE.Vector3(C.x, y0, C.z - D / 2 - 1.2), r: 2.4, label: 'Try the door', action: () => toast('The door is barred from the inside. Somewhere within, something shifts, then goes still.') });
-    ids.push({ cls: 'BLD', kind: 'GEN', mat: 'STN', owner: 'UNK', seed: 'wilds:mistwood-church', name: 'Old stone church (Mistwood)', maker: 'unknown', pos: { x: C.x, z: C.z } });
-    hidden.push({ name: 'Yabatan Church (hidden, admin only)', x: C.x, z: C.z - D / 2 - 4 });
-  }
+  // the Yabatan Church stands outside the dome, north-west, beyond the mountains (yabatan-church.js); the admin's map
+  // shows where
+  hidden.push({ name: 'Yabatan Church (admin only)', x: -1508, z: -1349 });
 
   // ---------------------------------------------------------------- the snow monsters outside the shield
   const DUNGEON = { x: 2000, z: 0, keep: 440 };
@@ -186,9 +163,10 @@ export function buildWilds(ctx) {
     if (Math.abs(p.x - (M.x0 + M.x1) / 2) < 400 && Math.abs(p.z - 1350) < 400) for (const w of wisps) { w.s.position.x = w.x + Math.sin(t * 0.05 * w.sp + w.ph) * 6; w.s.material.rotation = 0; }
     // the monsters: made the first time you come within 450 m of the shield's edge; only those near you move
     const rim = DOME.r - Math.hypot(p.x - DOME.x, p.z - DOME.z);
-    if (!made && rim < 450) make();
+    if (!made && rim < 450 && rim > 0) make();
     if (!made) return;
+    if (rim < 0) { for (const m of monsters) m.g.visible = false; return; }   // out there (story.js) the real beasts take over
     for (const m of monsters) { const near = Math.abs(m.g.position.x - p.x) < 520 && Math.abs(m.g.position.z - p.z) < 520; m.g.visible = near; if (near) updateMonster(m, dt, t); }
   }
-  return { ids, destinations, hidden, update, mistAt, forests: FORESTS, church: CHURCH, get monsters() { return monsters; }, planted, insideDome: inDome };
+  return { ids, destinations, hidden, update, mistAt, forests: FORESTS, get monsters() { return monsters; }, planted, insideDome: inDome };
 }
