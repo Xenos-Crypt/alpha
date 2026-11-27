@@ -9023,7 +9023,7 @@ function frame() {
     updatePursuit(dt);
     updateNeeds(dt);
     if (riding) updateRiding(dt);
-    else if (!inCar) updatePlayer(dt);
+    else if (!inCar) { updatePlayer(dt); deepCity?.contain(player.position); }   // (Deephaven's glass: checked every frame, not just when the city updates)
     updateHover(dt);
     carControls.update(dt);
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
