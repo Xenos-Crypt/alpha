@@ -7308,7 +7308,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||system?.open||phone?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||system?.open||phone?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen || basements?.busy || homeBuilder?.isOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -7449,7 +7449,8 @@ function updatePlayer(dt) {
   if(transport?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if (isSeaWater(player.position.x,player.position.z) && player.position.y < .2 + waterLevelAt(player.position.x,player.position.z)) return updateSwimming(dt);
   if (swimming) { swimming=false; waterExhausted=false; P.rig.rotation.x=0; }
-  if (sitting) { animateHumanoid(P, 'sit', false, false, true, dt); return; } // frozen in the chair until E is pressed again, but still visibly seated
+  if (sitting) { animateHumanoid(P, 'sit', false, false, true, dt); return; }
+  if (routine) { runRoutine(dt); return; } // frozen in the chair until E is pressed again, but still visibly seated
   playerStun = Math.max(0, playerStun - dt);
   iFrames = Math.max(0, iFrames - dt);
   m1Cd = Math.max(0, m1Cd - dt);
@@ -8204,7 +8205,34 @@ function updateCockpit(dt) {
 }
 // A cut-scene camera (the Story Mode opening): while set, the camera glides between marks and the player can't move it.
 let cutCam = null;
+// ---- routines: something you do with your body for a while (a workout, a bowl) ----
+// Each step: where you stand (x, y, z), which way you face (yaw), for how long, and what your body does (a pose,
+// or one that changes with time, jogging, lying down); E or a movement key stops it.
+let routine = null;
+function startRoutine(steps, done) {
+  if (inCar || riding || swimming) return false; if (sitting) toggleSit(null);
+  routine = { steps, i: 0, t: 0, done, back: player.position.clone() }; action = null; vy = 0; pvel.set(0, 0, 0); return true;
+}
+function stopRoutine(finished) {
+  const r = routine; if (!r) return; routine = null; if (r.camOn) camOverride = null; r.steps[r.i]?.leave?.(); player.rotation.x = 0;
+  const s = r.steps[r.i] || r.steps.at(-1); if (s?.exit) player.position.set(s.exit[0], s.exit[1], s.exit[2]);
+  if (finished) r.done?.(); else if (!r.quiet) toast('You stop.');
+}
+function runRoutine(dt) {
+  const r = routine, s = r.steps[r.i]; if (!s) return stopRoutine(true);
+  if (!s.started) { s.started = true; s.enter?.(); }
+  r.t += dt; player.position.set(s.x, s.y, s.z); player.rotation.y = s.yaw; player.rotation.x = s.lie ? -Math.PI / 2 : 0; vy = 0;
+  if (s.cam) { if (!camOverride || camOverride.step !== s) camOverride = { step: s, snap: !r.camOn, pos: new THREE.Vector3(...s.cam), at: new THREE.Vector3(s.x, s.y + (s.lie ? 0.5 : 1.0), s.z) }; r.camOn = true; }   // a camera that shows you doing it
+  s.update?.(dt, r.t);
+  animateHumanoid(P, typeof s.pose === 'function' ? s.pose(r.t) : s.pose || null, !!s.moving, false, true, dt);
+  if (r.t >= s.dur) { s.leave?.(); player.rotation.x = 0; r.i++; r.t = 0; if (r.i >= r.steps.length) { const exit = s.exit; routine = null; if (r.camOn) camOverride = null; if (exit) player.position.set(exit[0], exit[1], exit[2]); r.done?.(); } }
+}
+const MOVE_KEYS_R = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
+addEventListener('keydown', e => { if (routine && !routine.locked && (e.code === 'KeyE' || MOVE_KEYS_R.has(e.code))) { e.stopImmediatePropagation(); stopRoutine(false); } }, true);
+// A fixed camera for a while (bowling: looking down the lane over your shoulder).
+let camOverride = null;
 function updateCamera(dt) {
+  if (camOverride) { player.visible = !inCar; if (camOverride.snap) { camera.position.copy(camOverride.pos); camOverride.snap = false; } else camera.position.lerp(camOverride.pos, 1 - Math.exp(-6 * dt)); camera.lookAt(camOverride.at); return; }   // (you see yourself, even indoors)
   if (cutCam) {
     // the game is paused during a cut-scene (dt is 0 then), so the camera keeps its own clock
     const now = performance.now(), real = Math.min(0.25, (now - (cutCam.t || now)) / 1000); cutCam.t = now;
@@ -8514,7 +8542,9 @@ basements = createMansionBasements({ doors: roomDoors, scene, colliders, interac
   teleport: (x, y, z, look) => { if (inCar) exitVehicle(true); if (sitting) toggleSit(null); player.position.set(x, y, z); vy = 0; pvel.set(0, 0, 0); if (look != null) yaw = look; },
   driveAway: v => { cityServices?.ownedCars?.push(v); enterVehicle(v); },
   workout: () => { stats.energy = clamp(stats.energy - 10, 0, 100); stats.clean = Math.max(0, (stats.clean ?? 60) - 20); gainXp(2); }, gainXp: n => gainXp(n),
-  drink: () => { stats.hunger = Math.min(100, stats.hunger + 3); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
+  drink: () => { stats.hunger = Math.min(100, stats.hunger + 3); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
+  freeMouse: on => { if (on) { setFreeMouse(true); locked = true; document.exitPointerLock(); $('mouseHint').style.display = 'none'; } else { setFreeMouse(false); if (!boardOpen && !settingsOpen) requestGameControl(); } },   // (the game keeps running while you use a panel: bowling, an instrument)
+  routine: (steps, done) => startRoutine(steps, done), stopRoutine: () => stopRoutine(false), lockRoutine: on => { if (routine) routine.locked = on; }, lookFrom: (pos, at) => { camOverride = pos ? { pos, at } : null; }, playerPos: () => player.position });
 hills = buildHills({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
 homeBuilder = createHouseBuilder({ scene, colliders, interactables, sitSpots, planeBlocks, poolZones, doors: roomDoors, makeTex, toast: m => toast(m), sign: signboard, destinations: townPlaces.destinations,
   money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
