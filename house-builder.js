@@ -110,7 +110,9 @@ export function createHouseBuilder(ctx) {
     const Bx = (w, h, d, x, y, z, m) => B(w, h, d, x, y, z, m, false, g);
     const wallMat = s.wall === 'glass' ? flat(s.wallColor, { opacity: 0.35, rough: 0.05, metal: 0.4 }) : new THREE.MeshStandardMaterial({ color: s.wallColor, map: wallTex(s.wall), roughness: s.wall === 'render' ? 0.85 : 0.9 });
     const trim = flat(s.trim, { rough: 0.5 }), glassM = flat(0x9fc4d6, { opacity: 0.3, rough: 0.05, metal: 0.3 }), inner = flat(0xf3efe6, { rough: 0.85 });
-    const wpiece = (alongX, at, a, b, y0, y1) => { const len = b - a, h = y1 - y0; if (len < 0.02 || h < 0.02) return; const m = new THREE.Mesh(alongX ? boxUV(len, h, 0.25, TILE[s.wall]) : boxUV(0.25, h, len, TILE[s.wall]), wallMat); m.position.set(alongX ? (a + b) / 2 : at, (y0 + y1) / 2, alongX ? at : (a + b) / 2); m.castShadow = true; m.receiveShadow = true; g.add(m); };
+    const wpiece = (alongX, at, a, b, y0, y1) => { const len = b - a, h = y1 - y0; if (len < 0.02 || h < 0.02) return; const out = (alongX ? at === hz0 : at === hx0) ? -1 : 1, mats = Array(6).fill(wallMat);   // (plastered inside: only the outside face shows the brick, stone or timber)
+      if (s.wall !== 'glass') mats[alongX ? (out > 0 ? 5 : 4) : (out > 0 ? 1 : 0)] = inner;
+      const m = new THREE.Mesh(alongX ? boxUV(len, h, 0.25, TILE[s.wall]) : boxUV(0.25, h, len, TILE[s.wall]), mats); m.position.set(alongX ? (a + b) / 2 : at, (y0 + y1) / 2, alongX ? at : (a + b) / 2); m.castShadow = true; m.receiveShadow = true; g.add(m); };
     const Wd = WINDOWS[s.windows];
     const openings = (len, isFront, ground) => {   // windows spaced along a wall, the front door in the middle of the front
       const list = [], n = Math.max(1, Math.floor(len / (Wd.w + 1.6))), gap = len / n;
