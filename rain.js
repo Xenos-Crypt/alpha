@@ -6,7 +6,8 @@
 //    (never inside buildings).
 //  - The haze: while it rains the air goes blue-grey and the distance closes in (main.js tints the sky and fog with
 //    `haze`, 0..1, which eases in and out as the rain starts and stops).
-// Indoors you don't see it falling (it would come through the ceiling); fewer drops on phones.
+// Indoors you don't see it falling (it would come through the ceiling); fewer drops on phones. After it stops the
+// ground stays wet for a while: darker, glossy, with puddles (see `wet` below).
 import * as THREE from 'three';
 
 export function createRain({ scene, camera, count = 7000, splashes = 260, groundAt, sheltered }) {
@@ -60,13 +61,67 @@ export function createRain({ scene, camera, count = 7000, splashes = 260, ground
   const sp = Array.from({ length: splashes }, () => ({ x: 0, y: -999, z: 0, t: Math.random() * 0.35, life: 0.35 }));
   const o = new THREE.Object3D(), hide = new THREE.Matrix4().makeScale(0, 0, 0);
 
+  // ---------- after the rain: wet ground and puddles ----------
+  // `wet` (0..1) rises while it rains (soaked in about a minute and a half) and falls slowly after it stops (dry
+  // again in about eight minutes). Roads, pavements, tiles, sand and grass darken and turn glossy with it, and
+  // puddles lie in fixed spots on open ground around you (they shrink as they dry). Indoors stays dry.
+  let wet = 0, wetShown = -1, groundMats = null;
+  // the outdoor ground's materials: flat things lying at street level in the world. Found a few thousand meshes a
+  // frame (the world is big) so the first shower doesn't stall the game.
+  let pending = null; const seen = new Set(), gbox = new THREE.Box3(), gsize = new THREE.Vector3(), gpos = new THREE.Vector3();
+  const scanSome = n => {
+    if (!pending) { pending = []; scene.traverse(o => { if (o.isMesh && !o.isInstancedMesh) pending.push(o); }); groundMats = []; }
+    let found = false;
+    for (let k = 0; k < n && pending.length; k++) {
+      const o = pending.pop(), m = o.material;
+      if (!m || Array.isArray(m) || !m.isMeshStandardMaterial || m.transparent || seen.has(m)) continue;
+      o.getWorldPosition(gpos); if (gpos.x < -4500 || gpos.y > 1.2 || gpos.y < -1.5) continue;   // (the far-away interiors stay dry)
+      const g = o.geometry; if (!g.boundingBox) g.computeBoundingBox(); if (!g.boundingBox) continue;
+      gbox.copy(g.boundingBox).applyMatrix4(o.matrixWorld).getSize(gsize); if (gsize.y > 0.6 || Math.max(gsize.x, gsize.z) < 3) continue;
+      seen.add(m); groundMats.push([m, { color: m.color.clone(), rough: m.roughness, metal: m.metalness }]); found = true;
+    }
+    return found;
+  };
+  const puddleMat = new THREE.MeshStandardMaterial({ color: 0x7d93a8, roughness: 0.03, metalness: 0.35, transparent: true, opacity: 0.6, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  const PUD = 90, puddles = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), puddleMat, PUD);
+  puddles.frustumCulled = false; puddles.visible = false; puddles.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(puddles);
+  const spots = []; let spotCell = '', spotT = 0;
+  const hash = (a, b, k) => { const v = Math.sin(a * 127.1 + b * 311.7 + k * 74.7) * 43758.5453; return v - Math.floor(v); };
+  function findSpots(c) {   // puddles live on a 6 m grid: each cell may hold one, always in the same place
+    spots.length = 0; const cx = Math.round(c.x / 6), cz = Math.round(c.z / 6);
+    for (let i = -6; i <= 6 && spots.length < PUD; i++) for (let j = -6; j <= 6 && spots.length < PUD; j++) {
+      const a = cx + i, b = cz + j; if (hash(a, b, 1) > 0.42) continue;
+      const x = a * 6 + (hash(a, b, 2) - 0.5) * 4, z = b * 6 + (hash(a, b, 3) - 0.5) * 4, y = groundAt(x, z);
+      if (!Number.isFinite(y) || Math.abs(y - c.y) > 6 || sheltered(x, z, y)) continue;
+      spots.push({ x, y, z, r: 0.5 + hash(a, b, 4) * 1.3, sx: 0.6 + hash(a, b, 5) * 0.8, ry: hash(a, b, 6) * Math.PI });
+    }
+  }
+  function wetUpdate(dt, indoors) {
+    wet = level > 0.05 ? Math.min(1, wet + dt / 90 * level) : Math.max(0, wet - dt / 480);
+    if (wet > 0 && (!pending || pending.length) && scanSome(2500)) wetShown = -1;   // newly found ground gets wet too
+    if (Math.abs(wet - wetShown) > 0.02 || (wet === 0 && wetShown > 0)) {
+      for (const [m, o] of groundMats || []) { m.color.copy(o.color).multiplyScalar(1 - 0.28 * wet); m.roughness = o.rough * (1 - 0.6 * wet); m.metalness = Math.min(1, o.metal + 0.15 * wet); }
+      wetShown = wet;
+    }
+    puddles.visible = wet > 0.08 && !indoors;
+    if (!puddles.visible) return;
+    const c = camera.position, cell = Math.round(c.x / 6) + ',' + Math.round(c.z / 6);
+    if ((spotT -= dt) <= 0 || cell !== spotCell) { spotT = 2; spotCell = cell; findSpots(c); }
+    const k = Math.min(1, (wet - 0.08) * 1.6);
+    for (let i = 0; i < PUD; i++) { const p = spots[i]; if (!p) { puddles.setMatrixAt(i, hide); continue; } o.position.set(p.x, p.y + 0.025, p.z); o.rotation.set(0, p.ry, 0); o.scale.set(p.r * k, 1, p.r * p.sx * k); o.updateMatrix(); puddles.setMatrixAt(i, o.matrix); }
+    puddles.instanceMatrix.needsUpdate = true;
+  }
+
   let t = 0, level = 0, want = 0;
   return {
     get haze() { return level; },
+    get wet() { return wet; },
+    soak(v) { wet = v; },   // (for testing)
     set(on, now = false) { want = on ? 1 : 0; if (now) level = want; },
     update(dt, { indoors = false, density = 1 } = {}) {
       level += Math.sign(want - level) * Math.min(Math.abs(want - level), dt / 6);   // eases in over ~6 s
       t += dt; mat.uniforms.uTime.value = t;
+      wetUpdate(dt, indoors);
       const on = level > 0.01 && !indoors;
       lines.visible = crowns.visible = rings.visible = on;
       if (!on) return;
