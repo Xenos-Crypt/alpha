@@ -1,0 +1,20 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({headless:true});try{
+ const page=await browser.newPage({viewport:{width:1280,height:720},serviceWorkers:'block',reducedMotion:'no-preference'});
+ await page.route('**/dist/bundle.js',r=>r.fulfill({contentType:'text/javascript',body:''}));
+ await page.route('**/offline.js',r=>r.fulfill({contentType:'text/javascript',body:''}));
+ await page.goto('http://localhost:8080/',{waitUntil:'load'});
+ await page.evaluate(()=>{gameLoading.hide();document.querySelector('#auth').style.display='flex';});
+ await page.waitForFunction(()=>{const v=document.querySelector('#authGameplayVideo');return !v.paused&&v.currentTime>.2;});
+ await page.evaluate(()=>{document.querySelector('#auth').style.display='none';document.querySelector('#menu').style.display='block';});
+ await page.waitForFunction(()=>{const v=document.querySelector('#authGameplayVideo');return v.parentElement.id==='menu'&&!v.paused;});
+ const time=await page.locator('#authGameplayVideo').evaluate(v=>v.currentTime);
+ await page.waitForFunction(t=>document.querySelector('#authGameplayVideo').currentTime>t+.25,time);
+ assert.equal(await page.locator('#authGameplayVideo').count(),1);
+ await page.screenshot({path:'test-results/menu-gameplay-video.png'});
+ await page.locator('#authVideoToggle').click();assert.equal(await page.locator('#authGameplayVideo').evaluate(v=>v.paused),true);
+ await page.locator('#authVideoToggle').click();
+ await page.evaluate(()=>{document.querySelector('#menu').style.display='none';});
+ await page.waitForFunction(()=>document.querySelector('#authGameplayVideo').paused);
+ console.log('PASS: real video playback carries from sign-in to menu, pause/resume works, gameplay hides and pauses the video');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -19,11 +19,13 @@ const LIFT_U0 = 11, LIFT_U1 = 14;
 const CAR_GAP = 13, CARS = [CAR_GAP, 0, -CAR_GAP];
 const WAIT = 15, TOP_SPEED = 26;
 
-export const ROUTE = [[100,110,6],[100,170,6],[100,230,18],[100,590,18],[100,650,6],[100,950,6],[460,950,6],[460,700,6],[580,700,6],[580,300,6],[900,300,6],[900,-200,6]];
+// Follow Ashford's road corridor rather than the middle of its building plots.
+// The eastern cross-country leg clears the police-station block at (620,300).
+export const ROUTE = [[120,110,6],[120,170,6],[120,230,18],[120,590,18],[120,650,6],[120,950,6],[460,950,6],[460,700,6],[580,700,6],[580,270,6],[900,270,6],[900,-200,6]];
 // Stations: track centre (x, z) on a north-south stretch; side = which side (+1 east, -1 west) the platform is on.
 export const STATIONS = [
-  {name:'Ashford Outskirts',x:100,z:140,side:1},
-  {name:'Riverside Central',x:100,z:925,side:1},   // north of the river channel that runs under the line
+  {name:'Ashford Outskirts',x:120,z:140,side:1},
+  {name:'Riverside Central',x:120,z:925,side:1},   // north of the river channel that runs under the line
   {name:'Capital Central',x:460,z:810,side:1},
   {name:'Cinder Row Terminal',x:580,z:440,side:1},
   {name:'Northhaven Central',x:900,z:-120,side:-1},

@@ -6,6 +6,7 @@
 // a car. Your own house is one of the run-down plots facing the middle lane.
 // Everything gets an ID (world-ids.js) through botany.js's fixture/people helpers.
 import * as THREE from 'three';
+import { subtractBoxHoles } from './box-openings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeBotany } from './botany.js';
 
@@ -263,7 +264,7 @@ export function createSlum(ctx) {
   const leafMs = ['#6b4a2f', '#2f4a6b', '#7a2e2a', '#3d5a3a', '#5a5550'].map((c, i) => std('flatDoor' + i, { map: paintTex(c) }));
   const gbox = (parent, w, h, d, x, y, z, m) => { const b = new THREE.Mesh(boxGeo, m); b.scale.set(w, h, d); b.position.set(x, y, z); b.castShadow = b.receiveShadow = true; parent.add(b); return b; };
   function realDoor(x, y, z, nx, nz, who, W = 1.0) {
-    const H = 2.05, g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = Math.atan2(nx, nz); scene.add(g);   // local +z = out of the wall
+    const H = 2.05, g = new THREE.Group(); g.position.set(x+nx*.12, y, z+nz*.12); g.rotation.y = Math.atan2(nx, nz); scene.add(g);   // local +z = out of the wall
     gbox(g, 0.08, H + 0.08, 0.16, -W / 2 - 0.04, (H + 0.08) / 2, 0.03, frameM); gbox(g, 0.08, H + 0.08, 0.16, W / 2 + 0.04, (H + 0.08) / 2, 0.03, frameM); gbox(g, W + 0.16, 0.08, 0.16, 0, H + 0.04, 0.03, frameM);
     gbox(g, W + 0.3, 0.07, 0.4, 0, 0.035, 0.22, concrete);   // the step
     const hinge = new THREE.Group(); hinge.position.set(-W / 2, 0, 0.02); g.add(hinge);
@@ -289,7 +290,14 @@ export function createSlum(ctx) {
     const [G, M, T] = LEVELS, W = H.maxX - H.minX, D = H.maxZ - H.minZ, cx = H.x, cz = (H.minZ + H.maxZ) / 2;
     const level = base => c => { c.baseYAt = () => base; return c; };
     // the two lower storeys: breeze block downstairs, faded paint on the first floor, stains everywhere
-    box(W, FLOOR_H, D, cx, G + FLOOR_H / 2, cz, breeze); box(W + 0.1, FLOOR_H - 0.05, D + 0.1, cx, M + FLOOR_H / 2 - 0.05, cz, painted[1]);
+    // The old solid storey blocks remained behind the opening doors.
+    // Cut actual entrance recesses instead of laying a door on a solid wall.
+    const facade=(bounds,holes,material)=>{for(const p of subtractBoxHoles(bounds,holes))box(p.max[0]-p.min[0],p.max[1]-p.min[1],p.max[2]-p.min[2],(p.min[0]+p.max[0])/2,(p.min[1]+p.max[1])/2,(p.min[2]+p.max[2])/2,material);};
+    facade({min:[H.minX,G,H.minZ],max:[H.maxX,G+FLOOR_H,H.maxZ]},[-2.6,2.6].map(dx=>({min:[cx+dx-.56,G,H.minZ-.1],max:[cx+dx+.56,G+2.12,H.minZ+1.2]})),breeze);
+    facade({min:[H.minX-.05,M-.025,H.minZ-.05],max:[H.maxX+.05,M+FLOOR_H-.075,H.maxZ+.05]},[
+      {min:[cx-3.16,M-.025,H.maxZ-1.2],max:[cx-2.04,M+2.12,H.maxZ+.1]},
+      {min:[H.maxX-1.2,M-.025,H.maxZ-1.41],max:[H.maxX+.1,M+2.12,H.maxZ-.39]}
+    ],painted[1]);
     box(W + 0.4, 0.14, D + 0.4, cx, M - 0.02, cz, concrete); box(W + 0.3, 0.14, D + 0.3, cx, T - 0.04, cz, concrete);   // slab edges
     level(G)(solid(H.minX, H.maxX, H.minZ, H.maxZ)); level(2.9)(solid(H.minX, H.maxX, H.minZ, H.maxZ));   // you can't walk into other people's flats
     // doors and barred windows of the flats below: two on the ground floor (one is the landlord's), one up a floor

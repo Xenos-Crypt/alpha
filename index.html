@@ -64,12 +64,11 @@
                   border-radius: 10px; padding: 12px 28px; cursor: pointer; }
   #classConfirm:disabled { background: #444b5a; cursor: default; opacity: .6; }
 
-  /* Main menu, shown after login/spawn, before entering the world. The 3D scene
-     keeps rendering behind it as a live preview (the render loop never stops). */
+  /* Recorded gameplay fills the menu while the expensive world render waits. */
   #menu { position: fixed; inset: 0; display: none; z-index: 22; font-family: system-ui, sans-serif;
           background: linear-gradient(90deg, transparent 55%, rgba(5,7,14,.78) 100%); }
   #menu .panel { position: absolute; right: 0; top: 0; bottom: 0; width: min(360px, 86vw);
-                 display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 32px; box-sizing: border-box; }
+                 display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 32px; box-sizing: border-box; z-index:2; background:linear-gradient(90deg,#07111b66,#07111be6); }
   #menu h1 { color: #fff; font-size: 30px; margin: 0 0 18px; letter-spacing: .02em; }
   #menu button { font: inherit; font-size: 16px; color: #fff; background: rgba(20, 24, 38, .7);
                  border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 14px 18px;
@@ -78,7 +77,7 @@
   #menu button .sub { display: block; font-size: 12px; opacity: .65; margin-top: 2px; font-weight: 400; }
   #menu button b { font-weight: 700; }
   #menuSignout { position: absolute; left: 20px; bottom: 16px; color: rgba(255,255,255,.55); font-size: 12px;
-                 background: none; border: 0; cursor: pointer; text-decoration: underline; padding: 4px; }
+                 background: none; border: 0; cursor: pointer; text-decoration: underline; padding: 4px; z-index:2; }
   #contactModal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
                   background: rgba(0,0,0,.6); z-index: 23; }
   #contactModal .box { background: #14182a; border: 1px solid rgba(255,255,255,.15); border-radius: 12px;
@@ -357,6 +356,7 @@
   <button id="classConfirm" disabled>Begin</button>
 </div>
 <div id="menu">
+  <div class="auth-video-shade" aria-hidden="true"></div>
   <div class="panel">
     <h1>Another World</h1>
     <p style="margin:-10px 0 14px;font-size:12px;color:#9fb3c8">Too much lag? <span id="menuLagSettings" style="color:#74b9ff;text-decoration:underline;cursor:pointer">Go to Settings</span></p>

@@ -78,7 +78,7 @@ export function createNeighbours(ctx) {
   const hhmm = t => `${String(Math.floor(t) % 24).padStart(2, '0')}:${String(Math.floor(t % 1 * 60)).padStart(2, '0')}`;
 
   // ---- the doors ----
-  function swing(f, open, hold = 0) { f.target = open; f.close = hold ? performance.now() + hold * 1000 : 0; }
+  function swing(f, open, hold = 0) { f.target = -Math.abs(open); f.close = hold ? performance.now() + hold * 1000 : 0; }
   function reactInside(f, how) {
     const { P } = f;
     if (P.temper === 'friendly') { swing(f, 1.2, 3); return toast(`😮 ${P.first} jumps up. "Oh! You gave me a fright. You could knock, you know." They steer you back out.`); }

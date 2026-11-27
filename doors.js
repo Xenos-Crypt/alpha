@@ -65,7 +65,7 @@ export function buildDoors({ scene, buildings, colliders, groundY, playerPos, ho
     if (b.minX == null || b.noDoor || Math.abs(b.x) > 4000 || Math.abs(b.z) > 4000) continue;   // skip pockets far from the world
     const f = entrance(b), style = doorStyle(b.type);
     const g = new THREE.Group();
-    g.position.set(f.x + f.nx * 0.12, groundY ? groundY(f.x + f.nx * 0.5, f.z + f.nz * 0.5, 0) : 0, f.z + f.nz * 0.12);
+    g.position.set(f.x + f.nx * 0.24, groundY ? groundY(f.x + f.nx * 0.5, f.z + f.nz * 0.5, 0) : 0, f.z + f.nz * 0.24);
     g.rotation.y = Math.atan2(f.nx, f.nz);   // the group's +z points out of the building
     scene.add(g);
     const W = Math.min(style === 'shutter' ? 4.2 : 2.6, f.span * 0.4), H = style === 'shutter' ? 3 : 2.6;
@@ -74,11 +74,12 @@ export function buildDoors({ scene, buildings, colliders, groundY, playerPos, ho
     box(g, W + 0.3, 0.2, 0.25, 0, H + 0.1, 0, frame);
     for (const s of [-1, 1]) box(g, 0.15, H, 0.25, s * (W / 2 + 0.07), H / 2, 0, frame);
     if (style === 'revolving') {
-      const housing = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, H, 20, 1, true, Math.PI * 0.25, Math.PI * 1.5), glass); housing.position.set(0, H / 2, 0.9); g.add(housing);
-      box(g, 2.6, 0.12, 2.6, 0, H, 0.9, frame);
-      const wings = new THREE.Group(); wings.position.set(0, 0, 0.9); g.add(wings);
+      const drumZ = 1.4; // full drum stays outside a solid civic facade
+      const housing = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, H, 20, 1, true, Math.PI * 0.25, Math.PI * 1.5), glass); housing.position.set(0, H / 2, drumZ); g.add(housing);
+      box(g, 2.6, 0.12, 2.6, 0, H, drumZ, frame);
+      const wings = new THREE.Group(); wings.position.set(0, 0, drumZ); g.add(wings);
       for (let i = 0; i < 4; i++) { const arm = new THREE.Group(); arm.rotation.y = i * Math.PI / 2; wings.add(arm); box(arm, 0.05, H - 0.2, 1.15, 0, H / 2, 0.6, glass); box(arm, 0.07, H - 0.2, 0.06, 0, H / 2, 1.17, frame); }
-      box(g, 0.1, H, 0.1, 0, H / 2, 0.9, frame);
+      box(g, 0.1, H, 0.1, 0, H / 2, drumZ, frame);
       d.parts.wings = wings;
     } else if (style === 'sliding') {
       for (const s of [-1, 1]) { const p = box(g, W / 2, H - 0.1, 0.06, s * W / 4, H / 2, 0.05, glass); p.userData.home = s * W / 4; p.userData.side = s; (d.parts.panels ||= []).push(p); }
