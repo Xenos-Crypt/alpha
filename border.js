@@ -13,7 +13,11 @@ export const PLAY_R = FENCE_R - 1.5;                 // how far the player can g
 
 const DUNGEON = { x: 2000, z: 0, keepClear: 420 };   // the dungeon arena lives out east
 
-export function buildBorder({ scene, groundY, makePerson, animatePerson, interactables, toast, makeTex }) {
+// Passes through the mountains outside the dome (angles round the rim, 0 = south): in front of the four gates, the
+// gap in the fence (story.js) and the way to the Yabatan Church (north-west). Everywhere else the peaks are solid.
+const CHURCH_AT = { x: -1508, z: -1349 };   // yabatan-church.js CHURCH
+export const PASSES = [0, Math.PI / 2, Math.PI, -Math.PI / 2, 0.8, Math.atan2(CHURCH_AT.x - DOME.x, CHURCH_AT.z - DOME.z)];
+export function buildBorder({ scene, groundY, makePerson, animatePerson, interactables, toast, makeTex, colliders }) {
   const C = DOME, R = FENCE_R;
   const gy = (x, z) => { const y = groundY(x, z); return Number.isFinite(y) ? Math.max(0, y) : 0; };
   const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.8, metalness: o.metal ?? 0, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1, transparent: o.opacity != null, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide, map: o.map ?? null, flatShading: !!o.flat, depthWrite: o.opacity == null });
@@ -151,9 +155,12 @@ export function buildBorder({ scene, groundY, makePerson, animatePerson, interac
   const peaks = [];
   for (const row of [0, 1]) for (let a = 0; a < Math.PI * 2; a += row ? 0.075 : 0.05) {
     const r = row ? 110 + rnd() * 90 : 55 + rnd() * 45, h = row ? 180 + rnd() * 160 : 90 + rnd() * 80;
-    const [x, z] = onRim(a + rnd() * 0.02, DOME.r + (row ? 260 : 130) + r * 0.6 + rnd() * 50);
-    if (clearOfDungeon(x, z, r)) peaks.push([x, z, r, h]);
+    const aa = a + rnd() * 0.02, dist = DOME.r + (row ? 260 : 130) + r * 0.6 + rnd() * 50, [x, z] = onRim(aa, dist);
+    const inPass = PASSES.some(p => Math.abs(Math.atan2(Math.sin(aa - p), Math.cos(aa - p))) < (r + 45) / dist);   // a 90 m valley through
+    if (clearOfDungeon(x, z, r) && !inPass) peaks.push([x, z, r, h]);
   }
+  // the mountains are solid: you can't walk through them (a circle the size of each peak's foot)
+  if (colliders) for (const [x, z, r] of peaks) colliders.push({ circleX: x, circleZ: z, circleRadius: r * 0.95, minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r });
   const rocks = inst(new THREE.ConeGeometry(1, 1, 9), mat(0x6f7378, { flat: true, rough: 0.95 }), peaks.length);
   const snowCaps = inst(new THREE.ConeGeometry(1, 1, 9), mat(0xf7f9fb, { flat: true, rough: 0.9 }), peaks.length);
   peaks.forEach(([x, z, r, h], i) => {
