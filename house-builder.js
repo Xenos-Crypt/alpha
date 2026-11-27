@@ -366,7 +366,7 @@ export function createHouseBuilder(ctx) {
     // the board at the gate, and the crew to talk to
     S.board = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.3), new THREE.MeshBasicMaterial({ color: 0xffffff })); S.board.position.set(L.cx + 3.6, 1.9, p.z0 + 0.4); S.board.rotation.y = Math.PI; g.add(S.board);
     for (const dx of [-1.2, 1.2]) Bs(0.1, 2.6, 0.1, L.cx + 3.6 + dx, 1.3, p.z0 + 0.45, siteM.pole);
-    { const [wx, wz] = X.toW(L.cx, p.z0 + 2); const it = { pos: new THREE.Vector3(wx, 0, wz), r: 3, label: 'Ask the builders how your house is going', action: () => toast(`👷 "${report(h)}"`) }; ctx.interactables.push(it); S.its.push(it); }
+    { const [wx, wz] = X.toW(L.cx, p.z0 + 2); const it = { pos: new THREE.Vector3(wx, 0, wz), r: 3, label: 'Talk to the builders (how is your house going?)', action: () => toast(`👷 "${report(h)}"`) }; ctx.interactables.push(it); S.its.push(it); }
     stageSite(h, progressOf(h));
   }
   const working = () => { const hr = ctx.hours?.() ?? 12; return hr >= 7 && hr < 18; };
