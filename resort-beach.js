@@ -3,7 +3,6 @@
 // deeper. What's on it, and where each idea comes from:
 //   - a black-and-white wave mosaic promenade (Copacabana, Brazil) and beach soccer
 //   - pastel lifeguard towers (South Beach, Miami) and red-and-yellow surf flags (Bondi, Australia)
-//   - an ocean pool cut into the rocks at the water's edge (Bondi Icebergs)
 //   - a row of colourful beach huts (Brighton, England)
 //   - granite boulders at the end of the bay (Anse Source d'Argent, Seychelles; Boulders Beach, South Africa)
 //   - overwater bungalows on a jetty (Maldives)
@@ -167,19 +166,6 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   for (const fx2 of [120, 150, 200, 230]) { C(root, 0.04, 0.04, 3.2, fx2, 1.6, shore - 3, 0x888888, 5); const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.7), new THREE.MeshBasicMaterial({ map: flagMat, side: THREE.DoubleSide })); fl.position.set(fx2 + 0.46, 2.85, shore - 3); root.add(fl); fx('PRD', 'SGN', 'FAB', PARKS, 'Surf flag (swim between the flags)', fx2, shore - 3); }
   spot(178, 238.5, 2, 'Talk to the lifeguard', () => toast(['🏊 "Swim between the red and yellow flags. Rips pull you out anywhere else."', '🦈 "Shark spotted past the buoys this morning. Stay in the shallows."', '🐢 "Please don\'t touch the turtles. They\'re nesting."'][Math.floor(Math.random() * 3)]));
 
-  // ---------------- Bondi-style ocean pool at the water's edge ----------------
-  {
-    const qx0 = 272, qx1 = 292, qz0 = 244, qz1 = 258;
-    const rim = mat(0xd8d2c6, { rough: 0.8 });
-    for (const [w, d, x, z] of [[qx1 - qx0 + 1.2, 0.6, (qx0 + qx1) / 2, qz0 - 0.3], [qx1 - qx0 + 1.2, 0.6, (qx0 + qx1) / 2, qz1 + 0.3], [0.6, qz1 - qz0, qx0 - 0.3, (qz0 + qz1) / 2], [0.6, qz1 - qz0, qx1 + 0.3, (qz0 + qz1) / 2]]) {
-      B(root, w, 0.45, d, x, 0.22, z, rim); floor(x - w / 2, x + w / 2, z - d / 2, z + d / 2, 0.45);
-    }
-    B(root, qx1 - qx0, 0.05, qz1 - qz0, (qx0 + qx1) / 2, 0.42, (qz0 + qz1) / 2, mat(0x38c6d9, { rough: 0.05, metal: 0.2, opacity: 0.85 }), false);
-    for (let i = 0; i < 4; i++) B(root, 0.08, 0.02, qz1 - qz0 - 1, qx0 + 4 + i * 4, 0.46, (qz0 + qz1) / 2, 0x1971c2, false);   // lane lines
-    pools.push({ minX: qx0, maxX: qx1, minZ: qz0, maxZ: qz1 }); fx('LND', 'POL', 'CON', BUILD, 'Ocean pool', (qx0 + qx1) / 2, (qz0 + qz1) / 2);
-    place(sign('OCEAN POOL', 'icebergs swim club · est. 1929', 4, '#1864ab', '#ffffff', 'sans-serif'), (qx0 + qx1) / 2, 1.6, qz0 - 1.2, 0);
-  }
-
   // ---------------- jetty and overwater bungalows (Maldives) ----------------
   const jx = 150, jz1 = 306;
   const deckMat = mat(0xb5895a, { rough: 0.85 });
@@ -208,7 +194,7 @@ export function buildResortBeach(ctx, { x0 = 60, x1 = 300, z0 = 187, shore = 250
   const towelCols = [0xe63946, 0x1f6fd1, 0xffd23f, 0x22c55e, 0xff8fb1, 0xffffff];
   let k = 0;
   for (let x = 66; x < 296; x += 9) {
-    if (x > 272 || (x > 144 && x < 156)) continue;   // keep the ocean pool and the jetty clear
+    if (x > 272 || (x > 144 && x < 156)) continue;   // keep the east end and the jetty clear
     const z = 244 + ((x * 7) % 4);
     C(root, 0.04, 0.04, 2.4, x, 1.2, z, 0xeeeeee, 6);
     const top = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.55, 8, 1, true), parasolMats[k % parasolMats.length]); top.position.set(x, 2.45, z); root.add(top);

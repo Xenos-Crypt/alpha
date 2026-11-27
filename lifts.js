@@ -18,7 +18,7 @@ function choose(title, floors, current, pick, resume, first = 0) {
   const x = document.createElement('button'); x.type = 'button'; x.textContent = 'Close'; x.style.cssText = 'margin-top:8px;padding:6px 10px;border-radius:8px;border:1px solid #5d6976;background:#111;color:#ccc;cursor:pointer'; x.onclick = close; panel.append(x);
 }
 
-export function createLift({ scene, colliders, x, z, rot = 0, floors, name = 'Lift', canGo, toast, resume, width = 2.3, depth = 1.9, floorH = 3.4, open = 1.8, first = 0 }) {
+export function createLift({ scene, colliders, x, z, rot = 0, floors, name = 'Lift', canGo, toast, resume, width = 2.3, depth = 1.9, floorH = 3.4, open = 3, first = 0, available }) {   // available(): how many of the floors this building really has (a shared interior)
   const c = Math.cos(rot), s = Math.sin(rot);
   const W = (lx, lz) => ({ x: x + lx * c + lz * s, z: z - lx * s + lz * c });
   const rect = (ax, az, bx, bz) => { const a = W(ax, az), b = W(bx, bz); return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minZ: Math.min(a.z, b.z), maxZ: Math.max(a.z, b.z) }; };
@@ -65,7 +65,7 @@ export function createLift({ scene, colliders, x, z, rot = 0, floors, name = 'Li
   // interactions: a call button on each floor, and a button for each floor inside the cab (they ride along)
   const spots = [];
   floors.forEach((f, i) => { const w = W(hw + 0.35, D + 0.9); spots.push({ floor: i, pos: new THREE.Vector3(w.x, f.y, w.z), r: 2, get label() { return at === i && !moving ? (openK > 0.5 ? `${name}: doors open, step in` : `Open the ${name.toLowerCase()} doors`) : `Call the ${name.toLowerCase()} (${f.name})`; }, action: () => { if (at === i && !moving) { want = 1; wait = 0; } else go(i, true); } }); });
-  const cabSpots = [(() => { const w = W(0, D / 2); return { cab: true, pos: new THREE.Vector3(w.x, cabY, w.z), r: 1.0, get label() { return moving ? `${name}: going to ${floors[target].name}` : `${name} buttons: choose a floor`; }, action: () => { if (!moving) choose(name, floors, at, i => go(i, false), resume, first); } }; })()];
+  const cabSpots = [(() => { const w = W(0, D / 2); return { cab: true, pos: new THREE.Vector3(w.x, cabY, w.z), r: 1.0, get label() { return moving ? `${name}: going to ${floors[target].name}` : `${name} buttons: choose a floor`; }, action: () => { if (!moving) choose(name, available ? floors.slice(0, Math.max(1, Math.min(floors.length, available()))) : floors, at, i => go(i, false), resume, first); } }; })()];
   function go(i, called) {
     if (canGo && !called && canGo(i) === false) return;
     if (i === at && !moving) { want = 1; return; }
@@ -86,7 +86,7 @@ export function createLift({ scene, colliders, x, z, rot = 0, floors, name = 'Li
       landings.forEach((l, i) => { const k = i === at && !moving ? openK : 0; l.doors[0].position.x = -hw / 2 - k * (hw - 0.05); l.doors[1].position.x = hw / 2 + k * (hw - 0.05); });
       // travel once the doors are shut
       if (target !== at && openK <= 0.01) {
-        moving = true; const ty = floors[target].y, dy = ty - cabY, step = Math.sign(dy) * Math.min(Math.abs(dy), dt * 2.2);
+        moving = true; const ty = floors[target].y, dy = ty - cabY, speed = Math.min(5, 1.2 + Math.abs(dy) * 0.9), step = Math.sign(dy) * Math.min(Math.abs(dy), dt * speed);   // (like a real lift: up to 5 m/s, slowing as it arrives)
         const carried = p && inCab(p);
         cabY += step; if (carried) p.y = cabY + 0.06;
         if (Math.abs(ty - cabY) < 0.005) { cabY = ty; at = target; moving = false; want = 1; wait = 0; setSign(at); if (carried) toast?.(`🛎️ ${floors[at].name}.`); }

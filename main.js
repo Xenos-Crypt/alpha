@@ -872,7 +872,7 @@ function addBuilding(x, z, faceX, faceZ) {
   const name = (kind === 'apartment' ? buildingAddressN + ' Ashford Apartments' : kind === 'shop' ? buildingAddressN + ' High Street Shop' : buildingAddressN + ' Ashford Offices');
   buildingAddressN += rand() < 0.5 ? 2 : 4;
   civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, cctv: true });
-  const civicRecord = civicBuildings.at(-1);
+  const civicRecord = civicBuildings.at(-1); if (civicRecord) civicRecord.storeys = floors;   // (how many floors it has: its lift goes to all of them)
   if (walkIn) walkIns.add({ b: civicRecord, x, z, w, d, floors, base: CURB, top: mainTop, nx: 0, nz: faceZ || 1, type: kind, name, wallMat });
   // Exterior fire-escape staircase up one side, tall buildings only — a real
   // sloped ramp registered in stairRamps (see groundY) so it's actually climbable,
@@ -3053,8 +3053,8 @@ beach.rotation.x = -Math.PI / 2;
 beach.position.set((BEACH_X0 + 300) / 2, 0.01, (165 + SEA_Z) / 2);
 beach.castShadow = false;
 { const quay = mesh(new THREE.PlaneGeometry(BEACH_X0 + 300, SEA_Z - 165), new THREE.MeshStandardMaterial({ color: 0x9a9c98, roughness: 0.95 })); quay.rotation.x = -Math.PI / 2; quay.position.set((BEACH_X0 - 300) / 2, 0.012, (165 + SEA_Z) / 2); quay.castShadow = false;
-  // the sea wall along the water's edge (gaps where the port's docks and the pier run out to sea), with a rail
-  for (const [a, b] of [[-300, -212], [-48, 17], [23, BEACH_X0]]) { box(b - a, 0.9, 0.6, (a + b) / 2, 0.45, SEA_Z - 0.3, 0xb8b6ae); box(b - a, 0.06, 0.08, (a + b) / 2, 1.45, SEA_Z - 0.3, 0x3a4048, false); for (let x = a + 1; x < b; x += 3) box(0.06, 0.6, 0.06, x, 1.15, SEA_Z - 0.3, 0x3a4048, false); } }
+  // the sea wall along the water's edge (gaps where the port's docks, the pier and the river bridge run out to sea), with a rail
+  for (const [a, b] of [[-300, -212], [-48, BRIDGE_X - BRIDGE_HALF_W - 1], [BRIDGE_X + BRIDGE_HALF_W + 1, 17], [23, BEACH_X0]]) { box(b - a, 0.9, 0.6, (a + b) / 2, 0.45, SEA_Z - 0.3, 0xb8b6ae); box(b - a, 0.06, 0.08, (a + b) / 2, 1.45, SEA_Z - 0.3, 0x3a4048, false); for (let x = a + 1; x < b; x += 3) box(0.06, 0.6, 0.06, x, 1.15, SEA_Z - 0.3, 0x3a4048, false); } }
 const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 900 - SEA_Z), new THREE.MeshStandardMaterial({ color: 0x2a7ab8, roughness: 0.15, metalness: 0.1 }));
 sea.rotation.x = -Math.PI / 2;
 sea.position.set(0, 0.03, (SEA_Z + 900) / 2);
@@ -6968,7 +6968,8 @@ async function enterCivicBuilding(b) {
     inCivicInterior = true;
     const layout = interiors.layoutFor(b.type);
     currentVenueName = b.name;
-    if (layout) { interiors.enter(layout); player.position.copy(layout.spawn); }
+    if (layout) { const shell = b.storeys ? null : buildings.find(q => q.alive && Math.abs(q.x - b.x) < q.w / 2 + 2 && Math.abs(q.z - b.z) < q.d / 2 + 2);   // (how tall it is outside: its lift goes to every floor)
+      interiors.enter(layout, { storeys: b.storeys || (shell ? Math.round((shell.top - CURB) / 3) : 2) }); player.position.copy(layout.spawn); }
     else { interiors.exit(); applyCivicTheme(b.type); player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8); }
     player.rotation.y = Math.PI;
     yaw = 0; vy = 0; pvel.set(0, 0, 0);
@@ -9057,7 +9058,7 @@ function frame() {
     rain ||= createRain({ scene, camera, count: touchDevice ? 3000 : 9000, splashes: touchDevice ? 110 : 260, groundAt: (x, z) => groundY(x, z, player.position.y + 3),
       sheltered: (x, z) => insideFootprint(x, z) || walkIns.floorAt(x, z, 0.5) != null || !!houseAt({ x, z }, 0.2) });
     rain.set(weatherState === 'rain' || weatherState === 'storm');
-    rain.update(dt, { indoors: playerIndoors || !!spaceCentre?.inSpace || !!metro?.underground || !!sewers?.underground || !!dungeon || inCivicInterior || !!interiors?.active, density: optimiser.crowd });
+    rain.update(dt, { indoors: playerIndoors || camera.position.y < -0.5 || !!deepCity?.inside(player.position.x, player.position.z, player.position.y) || !!spaceCentre?.inSpace || !!metro?.underground || !!sewers?.underground || !!dungeon || inCivicInterior || !!interiors?.active, density: optimiser.crowd });
     updateFirefighters(dt);
     updateFireDamage(dt);
     bg('bats', dt, updateBats);
