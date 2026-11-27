@@ -7,6 +7,7 @@
 // It's one basement level built far from the world (like the house interiors), shared by every mansion: you come
 // back up in the mansion you went down from, and the cars come out at that mansion's front door.
 import * as THREE from 'three';
+import { createInstruments } from './instruments.js';
 import { CATALOGUE, applyStats } from './vehicle-catalogue.js';
 
 export const BASEMENT = { x: -7600, z: 900, w: 80, d: 60, h: 4.2 };
@@ -118,18 +119,39 @@ export function createMansionBasements(ctx) {
   place(sign('LIBRARY', 2.2, 0.55, '#1b1f24', '#f2e6c8', 'bold 56px sans-serif'), -23, 3.15, 21.82, Math.PI);
 
   // ---------------- the music room (x 4..40, z 22..30) ----------------
+  // Every instrument here really plays: sit at it (or pick it up) and a panel shows its keys (instruments.js).
+  const instruments = createInstruments({ toast, pause: () => ctx.freeMouse ? ctx.freeMouse(true) : ctx.pause?.(), resume: () => ctx.freeMouse ? ctx.freeMouse(false) : ctx.resume?.() });
+  function playInstrument(kind, at, onNote) {
+    const step = { x: at.x, y: at.y, z: at.z, yaw: at.yaw, pose: at.pose, dur: 1e9, enter: at.enter, leave: at.leave, cam: at.cam && [O.x + at.cam[0], at.cam[1], O.z + at.cam[2]], exit: [at.x, 0.02, at.z + (kind === 'drums' ? 1.2 : 0.9)] };
+    if (ctx.routine && !ctx.routine([step], null)) return; ctx.lockRoutine?.(true);
+    instruments.open(kind, { onNote, onClose: () => { ctx.stopRoutine?.(); ctx.gainXp?.(1); } });
+  }
   B(35.6, 0.01, 7.6, 22, 0.013, 26, mat(0x2a2422, { rough: 0.5 }));
   for (let x = 6; x < 40; x += 2.2) B(1.8, 2.4, 0.08, x, 2, 29.7, mat(x % 4.4 < 2.2 ? 0x3a2f4a : 0x2f3a4a, { rough: 1 }));   // soundproofing panels
   { const x = 10, z = 26; const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = 0.3; root.add(g);   // a concert grand piano
     B(1.6, 0.35, 2.4, 0, 0.9, 0, mat(0x0a0a0a, { rough: 0.15, metal: 0.3 }), 0, g); B(1.5, 0.06, 0.25, 0, 1.08, 1.12, mat(0xf2f2f2), 0, g); const lid = B(1.6, 0.03, 2.2, 0, 1.6, -0.1, mat(0x0a0a0a, { rough: 0.15 }), 0, g); lid.rotation.x = 0.45;
     for (const [a, b] of [[-0.65, -1], [0.65, -1], [0, 1]]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.75, 8), mat(0x0a0a0a)); leg.position.set(a, 0.38, b); g.add(leg); }
     B(0.9, 0.5, 0.4, 0, 0.25, 1.8, mat(0x0a0a0a), 0, g); col(x - 1.1, x + 1.1, z - 1.4, z + 1.4); sit(x + 0.53, z + 1.73, Math.PI + 0.3, 0.5, 'Sit at the piano');
-    act(x + 0.6, z + 2.2, 1.6, 'Play the piano', () => { toast(['🎹 A slow piece in a minor key. The room goes quiet to listen.', '🎹 You play something bright and quick, and get every note right.', '🎹 Chopsticks. Then something better.'][Math.floor(Math.random() * 3)]); ctx.gainXp?.(1); }); }
-  { const x = 22, z = 27.5; Cy(0.35, 0.35, 0.55, x, 0.3, z, mat(0xc0392b, { metal: 0.3 }), 18); for (const [a, b, r, y] of [[-0.6, -0.3, 0.22, 0.75], [0.6, -0.3, 0.22, 0.75], [-0.3, 0.4, 0.2, 0.6], [0.9, 0.5, 0.28, 0.5]]) Cy(r, r, 0.25, x + a, y, z + b, mat(0xc0392b, { metal: 0.3 }), 16);
-    for (const [a, b] of [[-1, 0.3], [1.2, -0.2]]) { Cy(0.38, 0.38, 0.02, x + a, 1.2, z + b, mat(0xd4af37, { metal: 0.8, rough: 0.3 }), 18); Cy(0.015, 0.015, 1.2, x + a, 0.6, z + b, mat(0x888888), 6); }
-    col(x - 1.4, x + 1.5, z - 0.9, z + 1.1); act(x, z - 1.6, 1.6, 'Play the drums', () => { toast('🥁 You lay down a beat that shakes the soundproofing.'); ctx.gainXp?.(1); }); }
+    // the keys (the two octaves you play), going down as you play them
+    const keyW = 1.42 / 11, whiteM = mat(0xf7f5ef, { rough: 0.35 }), blackM = mat(0x111111, { rough: 0.3 }), keyMeshes = {};
+    for (let i = 0; i < 11; i++) { const k = B(keyW * 0.92, 0.03, 0.2, -0.71 + keyW * (i + 0.5), 1.125, 1.14, whiteM, 0, g); keyMeshes['w' + i] = k; }
+    [[1, 0], [3, 1], [6, 3], [8, 4], [10, 5], [13, 7], [15, 8]].forEach(([semi, after]) => { const k = B(keyW * 0.55, 0.035, 0.12, -0.71 + keyW * (after + 1), 1.15, 1.1, blackM, 0, g); keyMeshes['b' + semi] = k; });
+    const WHITE_SEMI = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17];
+    const press = (semi, black) => { const k = black ? keyMeshes['b' + semi] : keyMeshes['w' + WHITE_SEMI.indexOf(semi)]; if (!k) return; k.position.y -= 0.012; k.rotation.x = 0.06; setTimeout(() => { k.position.y += 0.012; k.rotation.x = 0; }, 160); };
+    const sx = x + Math.sin(0.3) * 1.72, sz = z + Math.cos(0.3) * 1.72;
+    act(x + 0.6, z + 2.2, 1.6, 'Play the piano', () => playInstrument('piano', { x: O.x + sx, y: -0.48, z: O.z + sz, yaw: Math.PI + 0.3, pose: 'sit', cam: [12.9, 1.6, 28.1] }, (semi, black) => press(semi, black))); }
+  { const x = 22, z = 27.5, red = mat(0xc0392b, { metal: 0.3 }); const kick = Cy(0.35, 0.35, 0.55, x, 0.3, z, red, 18); kick.rotation.x = Math.PI / 2;
+    const toms = [[-0.6, -0.3, 0.22, 0.75], [0.6, -0.3, 0.22, 0.75], [-0.3, 0.4, 0.2, 0.6], [0.9, 0.5, 0.28, 0.5]].map(([a, b, r, y]) => Cy(r, r, 0.25, x + a, y, z + b, red, 16));
+    const cymbals = [[-1, 0.3], [1.2, -0.2]].map(([a, b]) => { Cy(0.015, 0.015, 1.2, x + a, 0.6, z + b, mat(0x888888), 6); return Cy(0.38, 0.38, 0.02, x + a, 1.2, z + b, mat(0xd4af37, { metal: 0.8, rough: 0.3 }), 18); });
+    Cy(0.22, 0.22, 0.05, x + 0.1, 0.5, z + 1.15, mat(0x1a1a1a), 14); Cy(0.03, 0.03, 0.48, x + 0.1, 0.25, z + 1.15, mat(0x888888), 6);   // the drum stool
+    const hit = n => { const m = { kick, snare: toms[2], tom: toms[0], floor: toms[3], hat: cymbals[0], crash: cymbals[1], ride: cymbals[1] }[n]; if (!m) return; const s = m.scale.clone(); m.scale.multiplyScalar(n === 'crash' || n === 'ride' || n === 'hat' ? 1.08 : 0.92); if (n === 'crash' || n === 'hat') m.rotation.z = 0.12; setTimeout(() => { m.scale.copy(s); m.rotation.z = 0; }, 140); };
+    col(x - 1.4, x + 1.5, z - 0.9, z + 0.9); act(x, z - 1.6, 1.6, 'Play the drums', () => playInstrument('drums', { x: O.x + x + 0.1, y: 0.5 - 0.98, z: O.z + z + 1.15, yaw: Math.PI, pose: 'sit', cam: [24.7, 1.6, 28.3] }, hit)); }
   for (const [k, c] of [[0, 0xb5651d], [1, 0x1a1a1a], [2, 0xc0392b], [3, 0x2f5f8f]]) { const x = 28 + k * 1.3, z = 29.3; B(0.4, 0.9, 0.1, x, 1.35, z, mat(c, { rough: 0.3 })); B(0.08, 0.75, 0.05, x, 2.15, z, mat(0x3a2414)); B(0.5, 0.06, 0.3, x, 0.4, z, mat(0x2a2e33)); }   // guitars on a wall rack
-  act(29.9, 28, 2, 'Play a guitar', () => { toast('🎸 You tune up and play the only riff you really know. It sounds great.'); ctx.gainXp?.(1); });
+  { const guitar = new THREE.Group(); guitar.visible = false; root.add(guitar);   // the one you take off the rack, held across you while you play
+    B(0.36, 0.44, 0.09, 0, 0, 0, mat(0xb5651d, { rough: 0.3 }), 0, guitar); B(0.06, 0.62, 0.04, 0, 0.5, 0, mat(0x3a2414), 0, guitar); guitar.rotation.z = -1.1;
+    const strum = () => { guitar.rotation.x = 0.08; setTimeout(() => { guitar.rotation.x = 0; }, 120); };
+    act(29.9, 28, 2, 'Play a guitar', () => playInstrument('guitar', { x: O.x + 29.9, y: 0.02, z: O.z + 27.6, yaw: Math.PI, pose: 'pick', cam: [31.6, 1.6, 25.8],
+      enter: () => { guitar.visible = true; guitar.position.set(29.9, 1.15, 27.35); }, leave: () => { guitar.visible = false; } }, strum)); }
   { const g = new THREE.Group(); g.position.set(36, 0, 27); root.add(g); const arch = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.06, 6, 20, Math.PI * 0.9), mat(0xc9a24a, { metal: 0.6 })); arch.position.y = 1.0; arch.rotation.z = 0.7; g.add(arch); B(0.12, 1.8, 0.12, -0.4, 0.9, 0, mat(0xc9a24a, { metal: 0.6 }), 0, g); for (let k = 0; k < 9; k++) B(0.01, 1.2 - k * 0.08, 0.01, -0.3 + k * 0.08, 0.8, 0, mat(0xeeeeee), 0, g); col(35.2, 36.8, 26.4, 27.6);   // a harp
     act(36, 25.8, 1.4, 'Play the harp', () => { toast('🎼 A run of notes like water. You didn\'t know you could do that.'); ctx.gainXp?.(1); }); }
   { B(0.6, 1.1, 0.4, 16, 0.55, 29.3, mat(0x1a1a1a)); B(0.5, 0.5, 0.05, 16, 0.6, 29.08, mat(0x555555)); Cy(0.02, 0.02, 1.6, 17.5, 0.8, 27, mat(0x888888), 6); const mic = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat(0x222222)); mic.position.set(17.5, 1.62, 27); root.add(mic);
@@ -187,7 +209,21 @@ export function createMansionBasements(ctx) {
   B(0.45, 0.45, 1.4, 8, 0.23, 6, black); B(1.8, 0.05, 0.05, 8, 1.15, 5.4, chrome); for (const s of [-1, 1]) { Cy(0.25, 0.25, 0.08, 8 + s * 0.9, 1.15, 5.4, black, 16).rotation.z = Math.PI / 2; B(0.06, 1.15, 0.06, 8 + s * 0.6, 0.58, 5.3, chrome); } col(7.7, 8.3, 5.2, 6.8);
   B(0.5, 1, 4, 21.4, 0.5, 6, black); for (let i = 0; i < 8; i++) for (const y of [0.6, 1.0]) { const d = Cy(0.08, 0.08, 0.3, 21.3, y + 0.05, 4.3 + i * 0.5, chrome, 10); d.rotation.x = Math.PI / 2; } col(21.1, 21.7, 4, 8);
   Cy(0.25, 0.25, 1.2, 6, 1.5, 11, mat(0x8a1c1c, { rough: 0.6 }), 14); Cy(0.01, 0.01, 1.8, 6, 3.3, 11, chrome, 4); col(5.7, 6.3, 10.7, 11.3);
-  act(12, 7, 3.2, 'Work out', () => { toast('🏋️ Treadmill, bench press and the bag. You come out dripping and strong.'); ctx.workout?.(); });
+  // the treadmill's belt (its stripes run back under you) and the bag that swings when you hit it
+  const belt = []; for (let k = 0; k < 5; k++) belt.push(B(0.8, 0.005, 0.06, 15, 0.26, 10.8 + k * 0.32, mat(0x3a3a3a)));
+  const bag = root.children.find(o => o.isMesh && Math.abs(o.position.x - 6) < 0.01 && Math.abs(o.position.z - 11) < 0.01 && Math.abs(o.position.y - 1.5) < 0.01);   // (the red cylinder)
+  const W = (x, z) => [O.x + x, O.z + z];
+  const punches = t => (Math.floor(t / 0.35) % 2 ? 'punchL' : 'punchR'), lift = t => (Math.floor(t / 0.9) % 2 ? 'slam' : 'cast');
+  act(12, 7, 3.2, 'Work out', () => {
+    const [tx, tz] = W(15, 11.6), [bx, bz] = W(6, 11.75), [dx, dz] = W(20.5, 6), [nx, nz] = W(8, 7.05);
+    const ok = ctx.routine?.([
+      { x: tx, y: 0.26, z: tz, yaw: Math.PI, moving: true, dur: 7, cam: [O.x + 13, 1.9, O.z + 9.4], enter: () => toast('🏃 The treadmill first: a steady run.'), update: dt => { for (const s of belt) { s.position.z += dt * 2.4; if (s.position.z > 12.4) s.position.z -= 1.6; } } },
+      { x: bx, y: 0.02, z: bz, yaw: Math.PI, dur: 7, pose: punches, cam: [O.x + 8.6, 1.8, O.z + 13.2], enter: () => toast('🥊 Now the bag: left, right, left, right.'), update: (dt, t) => { if (bag) bag.rotation.x = Math.sin(t * 9) * 0.12; }, leave: () => { if (bag) bag.rotation.x = 0; } },
+      { x: dx, y: 0.02, z: dz, yaw: Math.PI / 2, dur: 7, pose: lift, cam: [O.x + 18, 1.8, O.z + 8.6], enter: () => toast('🏋️ Dumbbells: shoulder presses.') },
+      { x: nx, y: 0.62, z: nz, yaw: 0, lie: true, dur: 7, pose: lift, cam: [O.x + 10.6, 2.3, O.z + 8.8], enter: () => toast('🏋️ Last, the bench press.'), exit: [O.x + 9.2, 0.02, O.z + 7] },
+    ], () => { toast('🏋️ Treadmill, the bag, dumbbells and the bench. You come out dripping and strong.'); ctx.workout?.(); });
+    if (ok === undefined) { toast('🏋️ Treadmill, bench press and the bag. You come out dripping and strong.'); ctx.workout?.(); }
+  });
 
   // ---------------- the bowling alley (x 22..40, z 0..14): three lanes, pins at the far (east) end ----------------
   B(2.8, 0.01, 13.6, 23.6, 0.013, 7, mat(0x2a2f5a, { rough: 1 }));
@@ -286,23 +322,30 @@ export function createMansionBasements(ctx) {
   // Five frames, two balls each. Aim (A / D or the mouse) where you stand on the lane, then press Space to bowl:
   // a meter swings for the hook, press Space again to let go. Strikes and spares score bonus balls, like the real thing.
   const ov = document.createElement('div'); ov.id = 'bowling'; ov.hidden = true;
-  ov.innerHTML = `<style>#bowling{position:fixed;inset:0;z-index:45;background:rgba(8,10,14,.62);display:flex;align-items:center;justify-content:center;font:15px system-ui,sans-serif;color:#f4f1ea}#bowling[hidden]{display:none}
-    #bowling .card{background:#1b2027;border-radius:16px;padding:14px 16px;width:min(620px,96vw)}#bowling h2{margin:0;font-size:19px}#bowling .msg{color:#ffd23f;font-weight:700;min-height:20px;margin:6px 0}
+  ov.innerHTML = `<style>#bowling{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:45;font:14px system-ui,sans-serif;color:#f4f1ea}#bowling[hidden]{display:none}
+    #bowling .card{background:rgba(27,32,39,.88);border-radius:14px;padding:10px 14px;width:min(520px,94vw)}#bowling canvas{height:70px}#bowling h2{margin:0;font-size:19px}#bowling .msg{color:#ffd23f;font-weight:700;min-height:20px;margin:6px 0}
     #bowling canvas{width:100%;display:block;border-radius:10px;background:#20262e}#bowling table{border-collapse:collapse;margin:8px 0;width:100%}#bowling td{border:1px solid #3a424c;text-align:center;padding:3px;font-size:13px;min-width:40px}
     #bowling .row{display:flex;justify-content:space-between;align-items:center}#bowling button{background:#444c56;border:0;color:#fff;border-radius:9px;padding:7px 12px;cursor:pointer}</style>
-    <div class="card"><div class="row"><h2>🎳 Bowling</h2><button type="button">Stop (Esc)</button></div><div class="msg"></div><canvas width="600" height="200"></canvas><table><tr class="f"></tr><tr class="s"></tr></table><div class="hint" style="color:#aab4bf;font-size:13px">A / D (or move the mouse) to line up · Space to bowl, Space again to set the hook</div></div>`;
+    <div class="card"><div class="row"><h2>🎳 Bowling</h2><button type="button">Stop (Esc)</button></div><div class="msg"></div><canvas width="600" height="200" style="display:none"></canvas><div class="meter" style="height:12px;background:#3a424c;border-radius:6px;position:relative;margin:4px 0"><div style="position:absolute;left:45%;width:10%;top:0;bottom:0;background:#3ddc97"></div><i style="position:absolute;top:-3px;width:6px;height:18px;background:#ffd23f;left:50%"></i></div><table><tr class="f"></tr><tr class="s"></tr></table><div class="hint" style="color:#aab4bf;font-size:13px">A / D (or move the mouse) to line up · Space to bowl, Space again to set the hook</div></div>`;
   document.body.append(ov);
   const cv = ov.querySelector('canvas'), g2 = cv.getContext('2d'), msgEl = ov.querySelector('.msg');
   ov.querySelector('button').onclick = () => endBowl(false);
   let bw = null, raf = 0, last = 0;
   const FR = 5;
+  // You bowl in the room itself: you stand on the approach, the camera looks down the lane over your shoulder, and
+  // the real ball rolls down the real lane into the pins, which go flying.
+  const ball3 = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), mat(0x1f5fd6, { rough: 0.2, metal: 0.2 })); ball3.visible = false; root.add(ball3);
+  const L3 = { x0: 25.3, x1: 38 }, toLane = (x2, y2) => [L3.x0 + (x2 - 60) / (496 - 60) * (L3.x1 - L3.x0), (y2 - 100) / 100];
   function bowl(lane) {
-    bw = { lane, frame: 0, rolls: [], standing: Array(10).fill(true), aim: 0, phase: 'aim', hook: 0, hookT: 0, ball: null, t: 0, ballN: 0, keys: {} };
-    msgEl.textContent = ''; ov.hidden = false; ctx.pause?.(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); drawScore();
+    bw = { lane, frame: 0, rolls: [], standing: Array(10).fill(true), aim: 0, phase: 'aim', hook: 0, hookT: 0, ball: null, t: 0, ballN: 0, keys: {}, throwT: 0 };
+    const z = LANES[lane];
+    ctx.routine?.([{ x: O.x + 24.9, y: 0.02, z: O.z + z, yaw: Math.PI / 2, dur: 1e9, pose: () => bw?.throwT > 0 ? 'punchR' : bw?.phase === 'hook' ? 'windup' : null, update: (dt) => { if (bw) { bw.throwT = Math.max(0, bw.throwT - dt); } }, exit: [O.x + 24.2, 0.02, O.z + z] }], null); ctx.lockRoutine?.(true);
+    ctx.lookFrom?.(new THREE.Vector3(O.x + 22.2, 2.4, O.z + z - 0.6), new THREE.Vector3(O.x + 37, 0.2, O.z + z));
+    msgEl.textContent = ''; ov.hidden = false; ctx.freeMouse ? ctx.freeMouse(true) : ctx.pause?.(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); drawScore();
   }
   function endBowl(done) {
-    if (ov.hidden) return; ov.hidden = true; cancelAnimationFrame(raf); ctx.resume?.();
-    const lane = bw?.lane; if (lane != null) for (const p of pins[lane]) p.rotation.set(0, 0, 0);
+    if (ov.hidden) return; ov.hidden = true; cancelAnimationFrame(raf); ctx.freeMouse ? ctx.freeMouse(false) : ctx.resume?.(); ctx.lookFrom?.(null); ctx.stopRoutine?.(); ball3.visible = false;
+    const lane = bw?.lane; if (lane != null) for (const p of pins[lane]) resetPin(p);
     if (done) { const s = scoreOf(bw.rolls).total; toast(`🎳 Game over: ${s} points${s >= 120 ? '. Brilliant bowling!' : s >= 70 ? '. Nice game.' : '. Better luck next time.'}`); ctx.gainXp?.(s >= 100 ? 3 : 1); }
     bw = null;
   }
@@ -315,7 +358,7 @@ export function createMansionBasements(ctx) {
   function space() {
     if (!bw) return;
     if (bw.phase === 'aim') { bw.phase = 'hook'; bw.hookT = 0; }
-    else if (bw.phase === 'hook') { bw.phase = 'roll'; bw.ball = { x: 60, y: 100 + bw.aim * 40, vy: 0, curve: bw.hook * 42 }; }
+    else if (bw.phase === 'hook') { bw.phase = 'roll'; bw.throwT = 0.45; bw.ball = { x: 60, y: 100 + bw.aim * 40, vy: 0, curve: bw.hook * 42 }; }
     else if (bw.phase === 'over') endBowl(true);
   }
   function loop(t) {
@@ -330,28 +373,37 @@ export function createMansionBasements(ctx) {
       msgEl.textContent = '…';
     }
     if (bw.phase === 'wait' && (bw.t -= dt) <= 0) nextBall();
-    draw(); raf = requestAnimationFrame(loop);
+    draw(); draw3(dt); raf = requestAnimationFrame(loop);
+  }
+  function resetPin(p) { p.rotation.set(0, 0, 0); if (p.userData.home) p.position.copy(p.userData.home); p.userData.fall = null; }
+  function draw3(dt) {   // the ball and the pins in the room
+    const z = LANES[bw.lane], b = bw.ball;
+    if (bw.phase === 'roll' && b) { const [lx, lz] = toLane(b.x, b.y); ball3.visible = lx < 39.3; ball3.position.set(lx, 0.17, z + lz); ball3.rotation.z -= dt * 20; }
+    else if (bw.phase === 'aim' || bw.phase === 'hook') { ball3.visible = true; ball3.position.set(25.05, bw.phase === 'hook' ? 0.5 + bw.hook * 0.25 : 0.75, z + 0.25 + bw.aim * 0.4 * 0.4); }
+    for (const p of pins[bw.lane]) { const f = p.userData.fall; if (!f) continue; f.t = Math.min(1, f.t + dt * 2.2); p.rotation.z = -1.45 * f.t * f.dir; p.rotation.y = f.spin * f.t; p.position.x = p.userData.home.x + f.push * f.t; p.position.z = p.userData.home.z + f.side * f.t; }
+    const meter = ov.querySelector('.meter i'); if (meter) meter.style.left = `calc(${50 + (bw.phase === 'hook' ? bw.hook : 0) * 48}% - 3px)`;
   }
   function knock(i, off) {   // a pin goes down and takes the ones behind it with it, more often when hit square
     if (!bw.standing[i]) return; bw.standing[i] = false;
+    { const p = pins[bw.lane][i]; p.userData.home ||= p.position.clone(); p.userData.fall = { t: 0, dir: Math.random() < 0.5 ? 1 : -1, push: 0.3 + Math.random() * 0.5, side: (Math.random() - 0.5 + off * 0.02) * 0.6, spin: (Math.random() - 0.5) * 3 }; }
     const [px, py] = PIN_XY[i];
     PIN_XY.forEach(([qx, qy], j) => { if (bw.standing[j] && qx > px && qx - px < 40 && Math.abs(qy - (py - off * 0.6)) < 22 && Math.random() < 0.78) knock(j, off * 0.8); });
   }
   function finishRoll() {
     const down = bw.standing.filter(s => !s).length - (bw.prevDown || 0);
     bw.rolls.push(down); bw.prevDown = (bw.prevDown || 0) + down;
-    const lane = pins[bw.lane]; bw.standing.forEach((s, i) => lane[i].rotation.set(0, 0, s ? 0 : 1.4));
+    ball3.visible = false;
     msgEl.textContent = bw.prevDown === 10 ? (bw.ballN === 0 ? 'STRIKE! 🎉' : 'Spare!') : bw.ball.gutter && down === 0 ? 'Gutter ball…' : `${down} down`;
     bw.phase = 'wait'; bw.t = 1.3; drawScore();
   }
   function nextBall() {
     const lastFrame = bw.frame === FR - 1;
     const strike = bw.ballN === 0 && bw.prevDown === 10, spare = bw.ballN === 1 && bw.prevDown === 10;
-    if (lastFrame && (strike || spare) && !bw.bonus) { bw.bonus = strike ? 2 : 1; bw.standing.fill(true); bw.prevDown = 0; bw.ballN = 0; bw.phase = 'aim'; return; }
-    if (bw.bonus) { bw.bonus--; if (bw.bonus <= 0) return over(); if (bw.prevDown === 10) { bw.standing.fill(true); bw.prevDown = 0; } bw.ballN = 1; bw.phase = 'aim'; return; }
+    if (lastFrame && (strike || spare) && !bw.bonus) { bw.bonus = strike ? 2 : 1; bw.standing.fill(true); for (const p of pins[bw.lane]) resetPin(p); bw.prevDown = 0; bw.ballN = 0; bw.phase = 'aim'; return; }
+    if (bw.bonus) { bw.bonus--; if (bw.bonus <= 0) return over(); if (bw.prevDown === 10) { bw.standing.fill(true); bw.prevDown = 0; for (const p of pins[bw.lane]) resetPin(p); } bw.ballN = 1; bw.phase = 'aim'; return; }
     if (bw.ballN === 0 && !strike) { bw.ballN = 1; bw.phase = 'aim'; return; }
     if (lastFrame) return over();
-    bw.frame++; bw.ballN = 0; bw.standing.fill(true); bw.prevDown = 0; bw.phase = 'aim'; for (const p of pins[bw.lane]) p.rotation.set(0, 0, 0);
+    bw.frame++; bw.ballN = 0; bw.standing.fill(true); bw.prevDown = 0; bw.phase = 'aim'; for (const p of pins[bw.lane]) resetPin(p);
   }
   function over() { bw.phase = 'over'; msgEl.textContent = `Game over: ${scoreOf(bw.rolls).total} points. Press Space.`; drawScore(); }
   function scoreOf(r) {   // standard bowling scoring over FR frames
@@ -385,6 +437,7 @@ export function createMansionBasements(ctx) {
     add, entrances, cinemaTv,
     get inside() { return inside; },
     get bowling() { return !ov.hidden; },
+    get busy() { return !ov.hidden || !!instruments.playing; },
     // the pool's floor is below the basement floor (everything else is the floor at 0)
     groundAt(x, z) { const lx = x - O.x, lz = z - O.z; if (lx < X0 || lx > X1 || lz < Z0 || lz > Z1) return null; return lx > PX0 && lx < PX1 && lz > PZ0 && lz < PZ1 ? DEEP : 0.02; },
   };
