@@ -149,7 +149,8 @@ export function buildMilitary(ctx) {
   const parked = [makeMech(0x6b7280), makeMech(0x8a6b3a)];
   parked[0].g.position.set(1312, 0, 325); parked[0].g.rotation.y = Math.PI / 2;
   parked[1].g.position.set(1312, 0, 342); parked[1].g.rotation.y = Math.PI / 2;
-  for (const pm of parked) colliders.push({ minX: pm.g.position.x - 2, maxX: pm.g.position.x + 2, minZ: pm.g.position.z - 2, maxZ: pm.g.position.z + 2 });
+  for (const pm of parked) pm.v = ctx.makeMech?.(pm.g, pm);   // you can climb into the parked ones and drive them (taking one is a crime: the Military Police come)
+  if (!ctx.makeMech) for (const pm of parked) colliders.push({ minX: pm.g.position.x - 2, maxX: pm.g.position.x + 2, minZ: pm.g.position.z - 2, maxZ: pm.g.position.z + 2 });
   // Two mechs patrol a loop round the bay
   const route = [[1350, 310], [1420, 310], [1420, 370], [1350, 370]].map(([x, z]) => new THREE.Vector3(x, 0, z));
   const walkers = [makeMech(0x4f5a3a), makeMech(0x5a6570)].map((m, k) => { m.leg = k * 2; m.g.position.copy(route[k * 2]); return m; });
@@ -163,29 +164,68 @@ export function buildMilitary(ctx) {
   for (const [x, z] of [[1332, 330], [1332, 336]]) soldier(x, z, -Math.PI / 2, { outfit: 0x2a2f36, pants: 0x1a1d22, helmetColor: 0xffb347 }, 'idle');
   spot(1333, 333, 3, 'Talk to the mech engineer', () => toast('"Combatant Mech Corps. The big ones are crewed walkers with autocannons. The exosuit on the rack is yours if you want it: twice the punch, takes hits like a tank, a bit slow. Press E at the rack to suit up, J to take it off."'));
 
-  // Wearing the exosuit: armour pieces go on your body and change your stats.
-  let wearing = false; const worn = [];
+  // Wearing the exosuit: armour pieces go on your body (each one follows a bone of your body, so it moves with you)
+  // and change your stats. Once you've worn it, J calls it from anywhere: it flies down from the sky to you and
+  // closes round you; J again takes it off and it flies back to the rack.
+  let wearing = false, owned = false, flying = null; const worn = [];
   const suitStats = { get dmg() { return wearing ? 2.2 : 1; }, get def() { return wearing ? 0.35 : 1; }, get speed() { return wearing ? 0.8 : 1; } };
   statSources?.push(suitStats);
+  const unit = new THREE.BoxGeometry(1, 1, 1);
   function suitUp() {
     const h = playerRig(); if (!h || wearing) return;
-    const add = (parent, w, hgt, d, x, y, z, m) => worn.push(B(w, hgt, d, x, y, z, m, false, parent));
-    add(h.rig, 0.62, 0.7, 0.46, 0, 1.3, 0, suitMat); add(h.rig, 0.7, 0.18, 0.5, 0, 1.6, 0, suitDark);          // chest plate, collar
-    add(h.rig, 0.44, 0.42, 0.44, 0, 1.84, 0, suitDark); add(h.rig, 0.34, 0.09, 0.05, 0, 1.86, 0.22, suitGlow);  // helmet and visor
-    add(h.rig, 0.5, 0.5, 0.3, 0, 1.35, -0.34, suitDark);                                                        // power pack
-    for (const a of [h.armL, h.armR]) { add(a.pivot, 0.3, 0.32, 0.32, 0, -0.05, 0, suitMat); add(a.pivot, 0.22, 0.5, 0.22, 0, -0.45, 0, suitDark); }
-    for (const l of [h.legL, h.legR]) { add(l.pivot, 0.24, 0.5, 0.26, 0, -0.3, 0, suitMat); add(l.pivot, 0.24, 0.45, 0.26, 0, -0.75, 0.02, suitDark); }
-    wearing = true; rackSuit.visible = false;
-    toast('🦾 Exosuit on: ×2.2 damage, take 65% less damage, 20% slower. Press J to take it off.');
+    if (ctx.wearOnBody && ctx.realBody?.()) {   // on your real body: plates on the bones
+      const V = (x, y, z) => new THREE.Vector3(x, y, z), piece = (m, spec) => worn.push(ctx.wearOnBody(new THREE.Mesh(unit, m), spec));
+      piece(suitMat, { bone: 'spine_03', w: 0.5, h: 0.5, d: 0.36, off: V(0, 0, 0.02) });           // chest plate
+      piece(suitDark, { bone: 'spine_03', w: 0.4, h: 0.48, d: 0.2, off: V(0, -0.02, -0.25) });      // power pack
+      piece(suitDark, { bone: 'pelvis', w: 0.42, h: 0.2, d: 0.3 });                                 // hips
+      piece(suitDark, { bone: 'neck_01', w: 0.5, h: 0.12, d: 0.34, off: V(0, -0.04, 0) });           // collar
+      piece(suitDark, { bone: 'Head', w: 0.32, h: 0.34, d: 0.34, off: V(0, 0.1, 0.01) });           // helmet
+      piece(suitGlow, { bone: 'Head', w: 0.26, h: 0.07, d: 0.04, off: V(0, 0.12, 0.18) });          // visor
+      for (const sd of ['l', 'r']) {
+        piece(suitMat, { bone: 'upperarm_' + sd, to: 'lowerarm_' + sd, w: 0.17 }); piece(suitDark, { bone: 'lowerarm_' + sd, to: 'hand_' + sd, w: 0.15 });
+        piece(suitMat, { bone: 'thigh_' + sd, to: 'calf_' + sd, w: 0.21 }); piece(suitDark, { bone: 'calf_' + sd, to: 'foot_' + sd, w: 0.18 });
+        piece(suitDark, { bone: 'clavicle_' + sd, w: 0.2, h: 0.14, d: 0.24, off: V(0, 0.04, 0) });   // shoulder pads
+      }
+    } else {   // the simple figure
+      const add = (parent, w, hgt, d, x, y, z, m) => { const b = B(w, hgt, d, x, y, z, m, false, parent); worn.push(() => b.removeFromParent()); };
+      add(h.rig, 0.62, 0.7, 0.46, 0, 1.3, 0, suitMat); add(h.rig, 0.7, 0.18, 0.5, 0, 1.6, 0, suitDark);
+      add(h.rig, 0.44, 0.42, 0.44, 0, 1.84, 0, suitDark); add(h.rig, 0.34, 0.09, 0.05, 0, 1.86, 0.22, suitGlow);
+      add(h.rig, 0.5, 0.5, 0.3, 0, 1.35, -0.34, suitDark);
+      for (const a of [h.armL, h.armR]) { add(a.pivot, 0.3, 0.32, 0.32, 0, -0.05, 0, suitMat); add(a.pivot, 0.22, 0.5, 0.22, 0, -0.45, 0, suitDark); }
+      for (const l of [h.legL, h.legR]) { add(l.pivot, 0.24, 0.5, 0.26, 0, -0.3, 0, suitMat); add(l.pivot, 0.24, 0.45, 0.26, 0, -0.75, 0.02, suitDark); }
+    }
+    wearing = true; owned = true; rackSuit.visible = false;
+    toast('🦾 Exosuit on: ×2.2 damage, take 65% less damage, 20% slower. Press J to take it off, and J again anywhere to call it back.');
   }
+  // the suit in flight: a closed-up suit with jets, flying between the rack and you
+  const flyer = new THREE.Group(); flyer.visible = false; scene.add(flyer);
+  B(0.9, 1.0, 0.6, 0, 1.45, 0, suitMat, false, flyer); B(0.5, 0.5, 0.5, 0, 2.15, 0, suitDark, false, flyer); B(0.42, 0.12, 0.05, 0, 2.18, 0.26, suitGlow, false, flyer); B(0.5, 0.6, 0.3, 0, 1.35, -0.42, suitDark, false, flyer);
+  const jet = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.4, 10), new THREE.MeshBasicMaterial({ color: 0x8fe9ff, transparent: true, opacity: 0.8, toneMapped: false })); jet.rotation.x = Math.PI; jet.position.set(0, 0.35, -0.42); flyer.add(jet);
+  const rackPos = () => new THREE.Vector3(1340, 0, 345);
+  function fly(from, to, done, toYou) { flying = { from: from.clone(), to: to.clone(), t: 0, dur: Math.min(6, 2 + from.distanceTo(to) / 120), done, toYou }; flyer.visible = true; flyer.position.copy(from); }
   function takeOff() {
     if (!wearing) return false;
-    for (const m of worn) m.removeFromParent(); worn.length = 0;
-    wearing = false; rackSuit.visible = true;
-    toast('You take off the exosuit' + (Math.hypot(playerPos().x - 1340, playerPos().z - 345) < 6 ? ' and hang it back on the rack.' : '. It folds itself up and flies back to the mech bay.'));
+    for (const off of worn) off(); worn.length = 0;
+    wearing = false;
+    const p = playerPos();
+    if (Math.hypot(p.x - 1340, p.z - 345) < 6) { rackSuit.visible = true; toast('You take off the exosuit and hang it back on the rack.'); }
+    else { fly(p.clone().setY(p.y), rackPos(), () => { rackSuit.visible = true; }, false); toast('You take off the exosuit. It folds itself up and flies back to the mech bay.'); }
     return true;
   }
-  spot(1340, 347.4, 2.4, 'Suit up in the exosuit', () => wearing ? takeOff() : suitUp());
+  function callSuit() {
+    if (!owned || flying) return false;
+    const p = playerPos(); rackSuit.visible = false;
+    fly(rackPos().setY(0), p.clone(), () => suitUp(), true); toast('🦾 Your exosuit is on its way. Look up.');
+    return true;
+  }
+  function updateFlyer(dt) {
+    if (!flying) return; const F = flying; F.t += dt / F.dur;
+    const to = F.toYou ? playerPos().clone() : F.to, u = Math.min(1, F.t), e = u * u * (3 - 2 * u);
+    const pos = F.from.clone().lerp(to, e); pos.y += Math.sin(u * Math.PI) * Math.min(120, 20 + F.from.distanceTo(to) * 0.25);   // up into the sky and down onto you
+    flyer.lookAt(to.x, flyer.position.y, to.z); flyer.position.copy(pos); jet.scale.y = 0.7 + Math.random() * 0.6;
+    if (u >= 1) { flyer.visible = false; flying = null; F.done?.(); }
+  }
+  { const it = spot(1340, 347.4, 2.4, 'Suit up in the exosuit', () => wearing ? takeOff() : flying ? null : suitUp()); if (it) Object.defineProperty(it, 'label', { get: () => wearing ? 'Take off the exosuit' : 'Suit up in the exosuit', configurable: true }); }
 
   // ---------------------------------------------------------------- HEAVY INFANTRY firing range
   flat(150, 50, 1360, 440, 0x7a6a4a, 0.08);
@@ -240,6 +280,7 @@ export function buildMilitary(ctx) {
   function update(dt) {
     t += dt;
     flag.rotation.y = Math.sin(t * 1.3) * 0.25;
+    updateFlyer(dt);
     if (!near()) return;
     radar.rotation.y += dt * 1.5;
     beacon.visible = (t % 1.2) < 0.4;
@@ -293,7 +334,13 @@ export function buildMilitary(ctx) {
       m.arms[0].rotation.x = -s * 0.2; m.arms[1].rotation.x = s * 0.2;
       m.g.position.y = Math.abs(Math.cos(m.phase)) * 0.25;
     }
-    for (const m of parked) m.phase += dt;
+    for (const m of parked) {   // a parked mech you're driving: its legs stride with its speed
+      const sp = m.v ? Math.abs(m.v.speed) : 0; m.phase += dt * (sp > 0.2 ? sp * 0.55 : 0);
+      const s = sp > 0.2 ? Math.sin(m.phase) : 0;
+      m.legs[0].hip.rotation.x = s * 0.45; m.legs[1].hip.rotation.x = -s * 0.45;
+      m.legs[0].knee.rotation.x = Math.max(0, -s) * 0.6; m.legs[1].knee.rotation.x = Math.max(0, s) * 0.6;
+      m.arms[0].rotation.x = -s * 0.2; m.arms[1].rotation.x = s * 0.2;
+    }
     // shots in flight
     for (let i = shots.length - 1; i >= 0; i--) {
       const s = shots[i];
@@ -307,7 +354,7 @@ export function buildMilitary(ctx) {
       }
     }
   }
-  return { update, takeOff, get wearing() { return wearing; }, jets };
+  return { update, takeOff, toggleSuit: () => wearing ? takeOff() : callSuit(), get wearing() { return wearing; }, jets };
 }
 
 // Navy sailors and an officer at the naval dock.

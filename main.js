@@ -31,7 +31,7 @@ import { createVoice } from './voice.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
-import {buildNavy} from './navy.js';
+import {buildNavy, NAVY_BASE} from './navy.js';
 import {buildIntercityRail} from './intercity-rail.js';
 import {shipNeedsBridge,shipCanAdvance,driftVelocity,rollAircraft} from './transport-rules.js';
 import {fenceSegments,conditionFactors,applyVehicleCondition} from './crash-infrastructure.js';
@@ -78,7 +78,7 @@ import {buildBlackMarket, NARROWS, hasTool} from './black-market.js';
 import { createActionMenu } from './action-menu.js';
 import { createNeighbours } from './neighbours.js';
 import { createRoamingTraffic } from './traffic-roam.js';
-import {buildMilitary, addNavyCrew} from './military.js';
+import {buildMilitary, addNavyCrew, BASE as MIL_BASE} from './military.js';
 import {createConditions,conditionOf} from './condition.js';
 import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
@@ -2203,6 +2203,31 @@ function syncPlayerHeld() {
   }
 }
 holdOnBody(swordGrip, 'hand');
+// Armour worn on the body (the exosuit): each piece follows a bone of your real body, or lies along the segment
+// between two bones (an upper arm, a shin), so it moves with you. Without the real body it sits on the simple figure.
+const ARMOUR = [];
+function wearOnBody(obj, spec) { ARMOUR.push({ obj, ...spec }); player.add(obj); return () => { const i = ARMOUR.findIndex(a => a.obj === obj); if (i >= 0) ARMOUR.splice(i, 1); obj.removeFromParent(); }; }
+const _aA = new THREE.Vector3(), _aB = new THREE.Vector3(), _aInv = new THREE.Matrix4(), _aY = new THREE.Vector3(0, 1, 0);
+// where a bone of your body is (world space): your real body's bone, or the same point on the simple figure
+const SIMPLE_BONE = { pelvis: ['rig', 0, 1.0, 0], spine_03: ['rig', 0, 1.32, 0], neck_01: ['rig', 0, 1.62, 0], Head: ['rig', 0, 1.78, 0],
+  clavicle_l: ['armL', 0, 0, 0], clavicle_r: ['armR', 0, 0, 0], upperarm_l: ['armL', 0, -0.02, 0], upperarm_r: ['armR', 0, -0.02, 0], lowerarm_l: ['armL', 0, -0.36, 0], lowerarm_r: ['armR', 0, -0.36, 0], hand_l: ['armL', 0, -0.7, 0], hand_r: ['armR', 0, -0.7, 0],
+  thigh_l: ['legL', 0, 0, 0], thigh_r: ['legR', 0, 0, 0], calf_l: ['legL', 0, -0.45, 0], calf_r: ['legR', 0, -0.45, 0], foot_l: ['legL', 0, -0.9, 0], foot_r: ['legR', 0, -0.9, 0] };
+function bonePos(r, name, out) {
+  const b = r?.bones?.[name]; if (b) { b.getWorldPosition(out); return true; }
+  const s = SIMPLE_BONE[name]; if (!s) return false; const node = s[0] === 'rig' ? P.rig : P[s[0]]?.pivot; if (!node) return false;
+  out.set(s[1], s[2], s[3]); node.localToWorld(out); return true;
+}
+function syncArmour() {
+  if (!ARMOUR.length) return; const r = P.real;
+  player.updateWorldMatrix(true, false); _aInv.copy(player.matrixWorld).invert();
+  for (const a of ARMOUR) {
+    if (!bonePos(r, a.bone, _aA) || (a.to && !bonePos(r, a.to, _aB))) { a.obj.visible = false; continue; }
+    a.obj.visible = true; _aA.applyMatrix4(_aInv);
+    if (a.to) { _aB.applyMatrix4(_aInv); const d = _aB.clone().sub(_aA), len = d.length() || 0.01;
+      a.obj.position.copy(_aA).addScaledVector(d, 0.5); a.obj.quaternion.setFromUnitVectors(_aY, d.divideScalar(len)); a.obj.scale.set(a.w, len * (a.k ?? 0.95), a.d ?? a.w); }
+    else { a.obj.position.copy(_aA); if (a.off) a.obj.position.add(a.off); a.obj.quaternion.identity(); a.obj.scale.set(a.w, a.h, a.d); }
+  }
+}
 swordGrip.visible = false; // nobody starts armed — whether you get a weapon at all depends on your birth roll
 
 // =====================================================================
@@ -6359,7 +6384,7 @@ function nearestVehicle() {
   let best = null, bd = 3.6;
   for (const v of vehicles) {
     if (v.crashed || v.disabled || (v.noSteal && !v.stealable) || v.stolenBy === 'gone') continue;
-    const d = distXZ(player.position, v.group.position) - (v.kind === 'bus' ? 2.5 : v.kind === 'boat' ? 1.5 : v.kind === 'plane' ? 3 : 0);
+    const d = distXZ(player.position, v.group.position) - (v.kind === 'bus' ? 2.5 : v.kind === 'boat' ? 1.5 : v.kind === 'plane' ? 3 : v.kind === 'mech' ? 2.4 : v.kind === 'tank' ? 1.6 : 0);
     if (d < bd) { bd = d; best = v; }
   }
   return best;
@@ -6412,6 +6437,7 @@ function checkVehicleLicences() {
   toast(need === 'pilot' ? '📡 Air traffic control: unlicensed flight reported to the police. (Get a pilot licence at the Licensing Office.)' : need === 'boat' ? '⚓ Harbour master: unlicensed skipper reported. (Get a boat licence at the Licensing Office.)' : '🏍️ Riding without a motorbike licence: police alerted.');
 }
 function raiseWanted(t = 45) {
+  { const p = inCar && driving ? driving.group.position : player.position; if (militarySiteAt(p.x, p.z)) { militaryCrime('A crime on military property'); return; } }   // (the military deal with their own ground, not the city police)
   if (infoMarkets?.patrolsKnown()) t *= 0.7;   // you bought the patrol schedules on the dark web
   if (wanted <= 0) toast('Police alert: stop and surrender to avoid a pursuit.');
   wanted = Math.max(wanted, t);
@@ -6452,6 +6478,7 @@ function enterVehicle(v) {
   if(adventureServices?.parachuting){toast('Land before entering a vehicle.');return;}
   if(v.noSteal&&!v.stealable){toast('This is a display car. Buy it at the dealership instead.');return;}
   if(v.disabled){toast('This vehicle is wrecked.');return;}
+  if(v.military&&!v.militaryTaken){v.militaryTaken=true;militaryCrime(`Taking a military ${v.kind==='mech'?'mech':'tank'}`);}
   if((v.stealable||v.ai)&&!v.reputationTheft){reputation.record('theft');v.reputationTheft=true;}
   if(v.stealable&&!v.stolen){v.stolen=true;if(v.bikeRider)v.bikeRider.root.visible=false;if(v.driver)v.driver.root.visible=false;v.ai??={cruise:0,stopTimer:0};toast(v.kind==='bicycle'||v.kind==='motorcycle'?'You shove the rider off and take the '+(v.kind==='bicycle'?'bike':'motorbike')+'!':'You drag the taxi driver out and take the cab!');}
   v.routeTraffic=false;
@@ -6496,7 +6523,7 @@ function exitVehicle(force = false) {
     else if(Math.hypot(v.group.position.x-ISLAND.x,v.group.position.z-ISLAND.z)<ISLAND_R+14)player.position.set(ISLAND.x,CURB,ISLAND.z-ISLAND_R+2);
     else player.position.copy(v.group.position).add(new THREE.Vector3(2,.2,0));
   } else {
-    const side = v.kind === 'bus' ? 2.4 : v.kind === 'plane' ? 4 : 2;
+    const side = v.kind === 'bus' ? 2.4 : v.kind === 'plane' ? 4 : v.kind === 'mech' ? 3.2 : v.kind === 'tank' ? 2.4 : 2;
     player.position.set(v.group.position.x + Math.cos(h) * side, 0, v.group.position.z - Math.sin(h) * side);
     collide(player.position, 0.4);
   }
@@ -6593,7 +6620,7 @@ function resolveInteractTarget() {
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
   const v = nearestVehicle();
   if (v) {
-    const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', bicycle: 'bicycle', motorcycle: 'motorbike' };
+    const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', mech: 'mech', bicycle: 'bicycle', motorcycle: 'motorbike' };
     if (v.ai && !v.stolen && !v.isTow && CAR_LIKE.has(v.kind)) return withMenu(carTitle(v, names), () => carActions(v));
     const label = v.isTow ? (v.company && !careers?.job?.tow ? 'Steal the recovery truck' : 'Drive the recovery truck') : v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' && !v.stolen ? 'Steal the ' : ['bicycle','motorcycle'].includes(v.kind) ? 'Ride the ' : 'Drive the ') + (names[v.kind] || v.kind);
     return { label, action: () => enterVehicle(v) };
@@ -7287,7 +7314,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyH' && !e.repeat && (locked || phone?.open)) phone?.toggle();
   if (e.code === 'Escape' && phone?.open) { phone.toggle(false); return; }   // Esc puts the phone away too
   if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
-  if (e.code === 'KeyJ' && military?.takeOff()) return;
+  if (e.code === 'KeyJ' && military?.toggleSuit()) return;
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
   if (e.code === 'KeyR'&&!(inCar&&driving.kind==='plane')) psychicGrip();
@@ -7307,7 +7334,7 @@ addEventListener('mousemove', e => {
   yaw -= e.movementX * 0.0025; if (e.movementX || e.movementY) lastLookAt = performance.now();
   pitch = clamp(pitch + e.movementY * 0.0025, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2);
 });
-addEventListener('mousedown', e => { if (locked && e.button === 0 && !e.target?.closest?.('button, a, input, select, textarea, [role="button"], section, dialog')) { mouseHeld = true; m1(); } });   // tapping a HUD button (torch, taxi, career...) shouldn't also throw a punch
+addEventListener('mousedown', e => { if (locked && e.button === 0 && inCar && (driving?.kind === 'tank' || driving?.kind === 'mech')) { vehicleFire(); return; } if (locked && e.button === 0 && !e.target?.closest?.('button, a, input, select, textarea, [role="button"], section, dialog')) { mouseHeld = true; m1(); } });   // tapping a HUD button (torch, taxi, career...) shouldn't also throw a punch
 addEventListener('mouseup', e => { if (e.button === 0) mouseHeld = false; });
 addEventListener('wheel', e => {
   // Only zoom the game camera while actually playing — scrolling over an open
@@ -7508,6 +7535,9 @@ function updatePlayer(dt) {
   player.position.y += vy * dt;
   // walls only stop you near the ground while flying (the city's walls have no tops, so high up you'd hit thin air)
   if (!adminFlying || player.position.y < groundY(player.position.x, player.position.z) + 3.5) sweepCollide(moveFrom, player.position, 0.4);
+  // Deephaven's dome and tunnel are the only way out (the lift): a wall can't push you out into the sea, where the
+  // ground above would catch you and put you back on the surface.
+  if (deepCity && moveFrom.y < -3 && deepCity.inside(moveFrom.x, moveFrom.z, moveFrom.y) && !deepCity.inside(player.position.x, player.position.z, player.position.y)) { player.position.x = moveFrom.x; player.position.z = moveFrom.z; }
   const floorY = groundY(player.position.x, player.position.z);
   if (player.position.y <= floorY) {
     // Fall damage: only kicks in past a safe landing speed (roughly a two-storey
@@ -7867,6 +7897,63 @@ function updatePursuit(dt) {
 // Police catching you on foot is an arrest, not a kill: they're after cuffing
 // you, not your health bar. Clears the pursuit, costs you a fine (capped at
 // whatever gold you actually have), and hauls you to the nearest station.
+// ---- the Military Police ----
+// A crime on a military base (or taking one of its tanks or mechs) is the military's business, not the city police's.
+// Military Police come out of the base gate on foot and arrest you; you're held at the base guardhouse and fined.
+// Get far enough away and they give up.
+let MP_SITES_ = null; const mpSites = () => MP_SITES_ ||= [{ name: 'Westhaven Defence Force base', r: { x0: MIL_BASE.x0, x1: MIL_BASE.x1, z0: MIL_BASE.z0, z1: MIL_BASE.z1 }, gate: [MIL_BASE.x0 + 3, MIL_BASE.gateZ] },
+  { name: 'Westhaven Naval Base', r: { x0: NAVY_BASE.x0, x1: NAVY_BASE.x1, z0: NAVY_BASE.z0, z1: NAVY_BASE.z1 }, gate: [NAVY_BASE.gateX, NAVY_BASE.z0 + 3] }];   // (made when first needed)
+function militarySiteAt(x, z) { return mpSites().find(s => x > s.r.x0 - 4 && x < s.r.x1 + 4 && z > s.r.z0 - 4 && z < s.r.z1 + 4) || null; }
+const mps = []; let mpSite = null, mpLost = 0;
+function militaryCrime(reason) {
+  const p = inCar && driving ? driving.group.position : player.position;
+  mpSite = militarySiteAt(p.x, p.z) || mpSites().slice().sort((a, b) => Math.hypot(a.gate[0] - p.x, a.gate[1] - p.z) - Math.hypot(b.gate[0] - p.x, b.gate[1] - p.z))[0];
+  militaryAlert = Math.max(militaryAlert, 90); mpLost = 0;
+  if (mps.length) return;
+  toast(`🪖 Military Police: ${reason}. Stay where you are.`);
+  for (let i = 0; i < 2; i++) {
+    const h = makeHumanoid({ outfit: 0x3b4330, pants: 0x2a2f22, hair: 0x1a1410 });
+    const helm = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5 })); helm.position.y = 1.92; h.rig.add(helm);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.2), new THREE.MeshStandardMaterial({ color: 0xc0392b })); band.position.set(0, -0.15, 0); h.armL.pivot.add(band);
+    const g = new THREE.Vector3(mpSite.gate[0], 0, mpSite.gate[1]), dir = g.clone().sub(p).setY(0), dist = dir.length(); dir.normalize();
+    const from = dist > 60 ? p.clone().addScaledVector(dir, 55) : g;   // (out of the guard post nearest you, on your side of the base)
+    h.root.position.set(from.x + i * 1.5, 0, from.z + i); h.root.position.y = groundY(h.root.position.x, h.root.position.z, 0); scene.add(h.root); mps.push(h);
+  }
+}
+function standDownMPs() { for (const h of mps) scene.remove(h.root); mps.length = 0; }
+function militaryArrest() {
+  const site = mpSite || mpSites()[0], fine = Math.min(Math.floor(stats.gold), 300);
+  stats.gold -= fine; standDownMPs(); militaryAlert = 0; wanted = 0; pursuitBackupCooldown = 0;
+  if (inCar) exitVehicle(true);
+  player.position.set(site.gate[0] + (site === mpSites()[0] ? -8 : 0), 0, site.gate[1] + (site === mpSites()[0] ? 0 : -8)); player.position.y = groundY(player.position.x, player.position.z); vy = 0; pvel.set(0, 0, 0);
+  careers?.convict?.('Arrested by the Military Police');
+  toast(`🪖 Arrested by the Military Police. Held at the ${site.name} guardhouse${fine ? ` and fined ${fine} gold` : ''}, then walked out of the gate.`);
+}
+function updateMilitaryPolice(dt) {
+  if (!mps.length) return;
+  const t = inCar && driving ? driving.group.position : player.position; let nearest = Infinity;
+  for (const h of mps) {
+    const p = h.root.position, dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz); nearest = Math.min(nearest, d);
+    if (d > 1.2) { const k = Math.min(d - 1.2, 8.5 * dt) / d; p.x += dx * k; p.z += dz * k; collide(p, 0.35); }
+    p.y = groundY(p.x, p.z, p.y); h.root.rotation.y = Math.atan2(dx, dz); animateHumanoid(h, null, d > 1.3, false, true, dt);
+  }
+  if (nearest < 1.8 && (!inCar || Math.abs(driving.speed) < 2)) return militaryArrest();
+  mpLost = nearest > 140 && !militarySiteAt(t.x, t.z) ? mpLost + dt : 0;
+  if (mpLost > 25) { standDownMPs(); militaryAlert = 0; toast('🪖 The Military Police lost you.'); }
+}
+// Firing from a tank (its main gun) or a mech (autocannons): where the camera looks.
+let vehGunCd = 0;
+function vehicleFire() {
+  const v = driving; if (!v || vehGunCd > performance.now()) return;
+  const tank = v.kind === 'tank', cam = new THREE.Vector3(); camera.getWorldDirection(cam);
+  const flat = cam.clone().setY(0).normalize(), from = v.group.position.clone().add(new THREE.Vector3(0, tank ? 1.6 : 6.6, 0)).addScaledVector(flat, tank ? 3.6 : 2.4);
+  const dir = camera.position.clone().addScaledVector(cam, 90).sub(from).normalize();
+  vehGunCd = performance.now() + (tank ? 1600 : 220); lastPlayerGunshot = performance.now();
+  fireProjectile({ from, dir, speed: tank ? 75 : 95, range: tank ? 140 : 90, color: tank ? 0xff7a1f : 0xffd23f, size: tank ? 0.35 : 0.14,
+    explode: tank ? { r: 4.5, dmg: 55, kb: 14, up: 7, stun: 1 } : { r: 1.3, dmg: 9, kb: 2, up: 0.5, stun: 0.2 } });
+  shake = Math.max(shake, tank ? 0.35 : 0.06);
+  if (v.militaryHome && !v.militaryTaken) { v.militaryTaken = true; militaryCrime('Firing a military weapon'); }
+}
 function arrestPlayer() {
   wanted = 0; pursuitBackupCooldown = 0; militaryAlert = 0; lastPlayerGunshot = -Infinity;
   for (const unit of vehicles) if (unit.ai) { unit.ai.warnedFor = 0; unit.ai.responseWarned = null; }
@@ -8041,7 +8128,7 @@ function tankChase(v,dt){
   if(ai.officer?.out||(d<16&&(!inCar||Math.abs(driving.speed)<1.5)))policeOnFoot(v,ai,dt);
 }
 function updateMilitary(dt){
-  if(militaryAlert>0){militaryAlert-=dt;if(militaryAlert<=0)toast('Defence Force alert stood down.');}
+  updateMilitaryPolice(dt);if(militaryAlert>0){militaryAlert-=dt;if(militaryAlert<=0){toast('Defence Force alert stood down.');standDownMPs();}}
   else for(const v of vehicles){if(!v.militaryHome||v.disabled)continue;
     const away=distXZ(v.group.position,v.militaryHome)>3,watched=distXZ(player.position,v.group.position)<150||distXZ(player.position,v.militaryHome)<150;
     if(away&&!watched){v.group.position.copy(v.militaryHome);v.group.rotation.y=v.militaryYaw;v.speed=0;}}
@@ -8289,7 +8376,7 @@ function updateCamera(dt) {
     }
     const target = new THREE.Vector3(focus.x, focus.y + (inCar ? 1.8 : 1.55), focus.z);
     const offset = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
-    let dist = inCar ? camDist + ({ bus: 7, boat: 5, plane: 12 }[driving.kind] ?? 3) : camDist;
+    let dist = inCar ? camDist + ({ bus: 7, boat: 5, plane: 12, mech: 9, tank: 4 }[driving.kind] ?? 3) : camDist;
 
     // Stop the camera at walls so it never ends up inside a building
     raycaster.set(target, offset);
@@ -8498,7 +8585,10 @@ navy=buildNavy({...regionalTransportContext,colliders,input:()=>locked?{forward:
 military = buildMilitary({ scene, colliders, interactables, civicBuildings, makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, toast, burst, fxSphere, statSources, destinations: townPlaces.destinations,
   playerPos: () => player.position, playerRig: () => P,
   addAircraft: a => makeAircraft(a),
-  makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
+  makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; v.stealable = true; v.military = true; return v; },
+  // a walking mech you can climb into and drive (W/S to walk, A/D to turn, click to fire its autocannons)
+  makeMech(group, parts) { const v = { kind: 'mech', group, wheels: [], speed: 0, radius: 2.4, length: 3.4, maxSpeed: 7, ai: { parked: true }, passengers: null, noSteal: true, stealable: true, military: true, mech: parts }; vehicles.push(v); return v; },
+  wearOnBody, realBody: () => true });
 // the military's spaceships: the Air Force Space Wing at Eastern Command (space-wing.js)
 spaceWing = buildSpaceWing({ scene, colliders, interactables, makeTex, toast, makePerson: o => makeHumanoid(o), addSpaceship: o => makeSpaceship(o),
   alert: () => militaryAlert, wanted: () => wanted, target: () => (inCar && driving ? driving.group.position : player.position),
@@ -9134,7 +9224,7 @@ function frame() {
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
   seatedResidents?.update(rawDt); neighbours?.update(rawDt);
-    OBST.length = 0; for (const v of vehicles) if (!v.disabled) OBST.push(v.group.position); OBST.push(player.position); roamTraffic.update(hitStop > 0 ? 0 : rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld();
+    OBST.length = 0; for (const v of vehicles) if (!v.disabled) OBST.push(v.group.position); OBST.push(player.position); roamTraffic.update(hitStop > 0 ? 0 : rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld(); syncArmour();
   let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
   optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);
