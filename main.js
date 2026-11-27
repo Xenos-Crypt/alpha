@@ -1717,9 +1717,19 @@ const touchText = text => { if (!touchDevice || typeof text !== 'string') return
 const inFilm = () => document.body.classList.contains('cinema');
 const heldToasts = [];
 function releaseHeldToasts() { const list = heldToasts.splice(0); list.forEach((t, i) => setTimeout(() => toast(t), 900 + i * 3800)); }
+// Messages on the screen are only answers to what you just did (pressed a key, clicked, tapped). Anything else the
+// game wants to tell you (it got dark, you're hungry, a delivery arrived, an achievement) goes to the Info Hub on
+// your phone instead, and the phone button shows how many are waiting. The System's messages always show.
+let lastInputAt = -1e9; const notices = []; let unreadNotices = 0;
+const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space']);
+addEventListener('keydown', e => { if (!e.repeat && !MOVE_KEYS.has(e.code)) lastInputAt = performance.now(); }, true);
+for (const ev of ['mousedown', 'touchstart', 'click']) addEventListener(ev, () => { lastInputAt = performance.now(); }, true);
+function noticeBadge() { const b = document.getElementById('phoneBtn'); if (b) b.dataset.unread = unreadNotices ? String(unreadNotices) : ''; }
 function toast(text) {
   if (talkCapture) { talkCapture(text); return; }   // (someone talking to you: it goes in the talk box)
   try { if (snackShop?.talking && snackShop.echo(text)) return; } catch { }   // talking to someone: what they say shows in the talk box
+  if (!/\[SYSTEM\]/.test(String(text)) && performance.now() - lastInputAt > 1500) {   // not an answer to something you just did: to the Info Hub
+    notices.unshift({ text: String(text), time: (() => { try { const h = (dayTime * 24 + 6) % 24; return String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.floor(h % 1 * 60)).padStart(2, '0'); } catch { return ''; } })() }); if (notices.length > 120) notices.length = 120; unreadNotices++; noticeBadge(); return; }
   if (inFilm()) { if (!heldToasts.includes(text)) { heldToasts.push(text); if (heldToasts.length > 3) heldToasts.shift(); } return; }
   if (soloMode && /\[SYSTEM\]/.test(text)) systemVoice?.speak(String(text).replace(/^.*?\[SYSTEM\]\s*/, ''));   // the System says its messages out loud
   text = touchText(text);
@@ -5157,16 +5167,29 @@ function aimForward() {
   return f;
 }
 // M1 locks onto the closest enemy in reach.
+// Punches and swings go where the camera is looking (where your mouse points on a laptop). Someone close and
+// roughly in front of the camera pulls the swing onto them; nobody behind you or off to the side does.
 function aimMelee() {
-  let best = null, bestD = 4.5;
+  const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  let best = null, bestScore = 0.7;
   for (const e of enemies) {
     if (!e.alive || e.hidden) continue;
-    const d = distXZ(e.root.position, player.position);
-    if (d < bestD && Math.abs(e.root.position.y - player.position.y) < 2) { bestD = d; best = e; }
+    const dx = e.root.position.x - player.position.x, dz = e.root.position.z - player.position.z, d = Math.hypot(dx, dz);
+    if (d > 4.5 || d < 0.01 || Math.abs(e.root.position.y - player.position.y) > 2) continue;
+    const dot = (dx * f.x + dz * f.z) / d; if (dot > bestScore) { bestScore = dot; best = e; }
   }
   if (best) player.rotation.y = Math.atan2(best.root.position.x - player.position.x, best.root.position.z - player.position.z);
-  else { const d = inputDir(); if (d.lengthSq()) player.rotation.y = Math.atan2(d.x, d.z); }
+  else player.rotation.y = Math.atan2(f.x, f.z);
   return fwdOf(player);
+}
+// Where a shot goes: along the camera's line of sight (up and down too), from your hands to the point under the
+// crosshair. Someone near that line pulls it onto them.
+function aimShot(range) {
+  const flat = aimForward(), cam = new THREE.Vector3(); camera.getWorldDirection(cam);
+  const assisted = Math.abs(flat.x - (-Math.sin(yaw))) + Math.abs(flat.z - (-Math.cos(yaw))) > 1e-3;   // (aimForward found someone in front)
+  if (assisted) return flat.normalize();
+  const origin = at(player.position, 1.5), target = camera.position.clone().addScaledVector(cam, range);
+  return target.sub(origin).normalize();
 }
 
 function canAct() { return !busRide && !helipads?.flying && !skyCity?.rider && !navy?.rider && !intercityRail?.rider && !cityServices?.rider && !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
@@ -8458,7 +8481,7 @@ adventureServices=buildAdventureServices({licensed:id=>licences.has(id),licenceC
 pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons}),pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},reward(gold,xp){stats.gold+=gold;gainXp(xp);},changed(){saveSolo();},
 repair(price){const car=vehicles.find(v=>isRoadVehicle(v)&&!v.disabled&&!v.noSteal&&distXZ(v.group.position,player.position)<12);if(!car){toast('Bring an operational car within 12 metres of the shop.');return;}if(stats.gold<price){toast('Not enough gold.');return;}stats.gold-=price;car.health=100;applyVehicleCondition(car);toast('Vehicle repaired. Full power and steering restored.');},
 swordAttack(){hitCone(player.position,aimForward(),5,.1,new Set(),{dmg:35,kb:5,stun:.5,from:player.position.clone()},3);},
-shoot(range,damage){lastPlayerGunshot=performance.now();const origin=at(player.position,1.5),dir=aimForward().normalize(),ray=new THREE.Raycaster(origin,dir,.1,range),obstacle=ray.intersectObjects(camBlockers,true)[0],limit=obstacle?.distance??range;
+shoot(range,damage){lastPlayerGunshot=performance.now();const origin=at(player.position,1.5),dir=aimShot(range),ray=new THREE.Raycaster(origin,dir,.1,range),obstacle=ray.intersectObjects(camBlockers,true)[0],limit=obstacle?.distance??range;
  const objects=[...enemies.filter(e=>e.alive&&!e.hidden).map(e=>({entity:e,position:at(e.root.position,1),radius:(e.radius||.4)+.4})),...vehicles.filter(v=>!v.disabled).map(v=>({vehicle:v,position:at(v.group.position,.8),radius:v.radius||2}))];
  const target=objects.map(o=>{const delta=o.position.clone().sub(origin),along=delta.dot(dir),side=delta.clone().addScaledVector(dir,-along).length();return {...o,along,side};}).filter(o=>o.along>0&&o.along<limit&&o.side<o.radius).sort((a,b)=>a.along-b.along)[0];
  const end=origin.clone().addScaledVector(dir,target?.along??limit),tracer=new THREE.Line(new THREE.BufferGeometry().setFromPoints([origin,end]),new THREE.LineBasicMaterial({color:0xffe29a}));scene.add(tracer);setTimeout(()=>disposeObj(tracer),90);worldAudio?.impact(6);if(target?.entity)applyHit(target.entity,{dmg:damage,kb:2,stun:.2,from:origin});else monsterEnvironmentDamage(end,damage,1,true);
@@ -8633,7 +8656,7 @@ phone=createPhone({contacts:()=>phoneContacts(),sendMessage:(c,text)=>phoneSend(
   snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
   openMap:()=>worldMap?.show(),callTaxi:()=>cityServices?.callTaxi(player.position.clone()),openCareer:()=>careers?.openCareer(),openCityHall:()=>society?.openHall(),
   calendar:()=>seasons?.calendar,calendarOn:d=>calendarFor(d),weather:()=>WEATHER_LABEL[weatherState],
-  gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
+  notices:()=>notices,seenNotices:()=>{unreadNotices=0;noticeBadge();},gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
   news:()=>(society?.state?.news||[]).map(n=>n.text),quests:()=>system?.quests?.()||[],
   openBanking:()=>{if(!bankPanel?.phone)return false;bankPanel.openPhone();return true;}});
 // The System's voice (system-voice.js): an OpenAI voice, fetched once per line and kept on this device
