@@ -379,7 +379,8 @@
   </div>
 </div>
 <div id="auth">
-  <video id="authGameplayVideo" autoplay muted loop playsinline webkit-playsinline preload="metadata" poster="./assets/auth-gameplay-poster.jpg" aria-hidden="true"><source src="./assets/auth-gameplay.mp4" type="video/mp4"></video>
+  <video id="authGameplayVideo" muted loop playsinline webkit-playsinline preload="none" poster="./assets/auth-gameplay-poster.jpg" aria-hidden="true"></video>
+  <script>/* the 3 MB sign-in video waits until the game itself has downloaded, so the two don't fight over a slow connection (the poster shows until then) */addEventListener("load",()=>{const v=document.getElementById("authGameplayVideo");if(!v||v.src)return;v.preload="auto";v.src="./assets/auth-gameplay.mp4";},{once:true});</script>
   <div class="auth-video-shade" aria-hidden="true"></div>
   <button id="authVideoToggle" type="button" aria-pressed="false">Pause video</button>
   <div class="auth-shell">
