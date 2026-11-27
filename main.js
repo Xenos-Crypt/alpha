@@ -45,6 +45,7 @@ import { createRain } from './rain.js';
 import { buildYabatanChurch } from './yabatan-church.js';
 import { createMansionBasements } from './mansion-basement.js';
 import { createRoomDoors } from './room-doors.js';
+import { createHouseBuilder } from './house-builder.js';
 import { createHouseVisits } from './house-visits.js';
 import {createOnlineAccount} from './online-account.js';
 import {createSupportSkills} from './support-skills.js';
@@ -666,6 +667,7 @@ function groundY(x, z, bodyY = null) {
   const bayFloor=resortBeach?.groundAt(x,z);if(bayFloor!=null)return bayFloor;   // Anthos Bay sand, decks and jetty (checked first: other layers treat this spot as open sea)
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const hillFloor=hills?.groundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player?.position.y??0));if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
+  if(homeBuilder&&z>1180&&z<1240){const hb=homeBuilder.groundAt(x,z,bodyY??player?.position.y??0);if(hb!=null)return hb;}   // Maple Fields: the houses you build (their floors, stairs and pools)
   const estateFloor=estate?.groundAt(x,z,bodyY??player.position.y);if(estateFloor!=null)return estateFloor;   // The Reserve: mansion upper floors and staircases
   const linkFloor=roadLinks?.groundAt(x,z);if(linkFloor!=null)return linkFloor;   // country roads over the hills, on embankments
   const ridgeFloor=ridge?.groundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player.position.y));if(ridgeFloor!=null)return ridgeFloor;   // Sunset Ridge
@@ -2815,7 +2817,7 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
-let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, estate = null, roadLinks = null, roadCrew = null, property = null;
+let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, homeBuilder = null, estate = null, roadLinks = null, roadCrew = null, property = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let lastPlayerGunshot = -Infinity;
 let riding = null;   // a parkPets horse object currently being ridden
@@ -8490,6 +8492,9 @@ basements = createMansionBasements({ doors: roomDoors, scene, colliders, interac
   workout: () => { stats.energy = clamp(stats.energy - 10, 0, 100); stats.clean = Math.max(0, (stats.clean ?? 60) - 20); gainXp(2); }, gainXp: n => gainXp(n),
   drink: () => { stats.hunger = Math.min(100, stats.hunger + 3); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
 hills = buildHills({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
+homeBuilder = createHouseBuilder({ scene, colliders, interactables, sitSpots, planeBlocks, poolZones, doors: roomDoors, makeTex, toast: m => toast(m), sign: signboard, destinations: townPlaces.destinations,
+  money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
+  sleep: () => sleep(), chore: (k, o) => doChore(k, o), eat: n => { stats.hunger = Math.min(100, stats.hunger + n); }, rest: n => { stats.energy = clamp(stats.energy + n, 0, 100); }, rebuild: () => rebuildSolidProps() });   // Maple Fields: design and build your own house
 estate = buildEstate({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeVehicle: (k, c, st) => makeVehicle(k, c, st),
   sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), sleep: () => sleep(),
@@ -9015,6 +9020,7 @@ function frame() {
     walkInThroughDoors(dt);
     updateWeather(dt);
     roomDoors?.update(dt);
+    homeBuilder?.update(dt);
     rain ||= createRain({ scene, camera, count: touchDevice ? 3000 : 9000, splashes: touchDevice ? 110 : 260, groundAt: (x, z) => groundY(x, z, player.position.y + 3),
       sheltered: (x, z) => insideFootprint(x, z) || walkIns.floorAt(x, z, 0.5) != null || !!houseAt({ x, z }, 0.2) });
     rain.set(weatherState === 'rain' || weatherState === 'storm');
