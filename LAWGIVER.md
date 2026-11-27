@@ -2,6 +2,22 @@
 
 One entry per run: what was decided, why, and what was declined. The owner reviews and merges every change.
 
+## 2026-11-27 — The last three flickering surfaces: indoor rugs, the lobby doormat, the raceway's start line
+
+**Decision:** Two causes, three overlaps, the world audit goes from 3 to 0.
+- `interiors.js`: every indoor rug (`F.rug`) and the lobby doormat were laid at y 0.11, exactly where the tile and marble floor patches lie (both 2 cm thick, top 0.12). Wherever a rug lay on a patch the two shared a plane: the bathroom rug in the furnished flats was simply invisible, and the lobby doormat in front of the exit was torn into stripes. Rugs and the doormat now lie 1.5 cm higher (y 0.125, top 0.135), the same remedy as the bedside rug on 2026-11-14.
+- `venues.js`: the Ashford Raceway start/finish line was 5 mm above the main straight's top (0.08 vs 0.075), too thin for depth precision at a distance (the same gap that made Anthos Bay flicker). It now sits 1 cm above (0.085).
+
+**Where:** interiors (far-region rooms): bathroom rug on bathroom tiles at (-5097, -7), `LND-FLR-WHT.CER-REQ-VHQCUM + LND-SRF-BGE.STN-REQ-1MKCC0`; lobby doormat on the marble floor at (-6500, 8), `LND-SRF-BLK.WOD-REQ-19VPH4 + LND-SRF-WHT.PLR-REQ-M59DOM`. Ashford Raceway start/finish at (-320, -808), `LND-SRF-BLK.SHT-REQ-EAHJT1 + LND-SRF-WHT.PLR-REQ-15XDM4`. (The raised surfaces' own IDs change, because the ID seed includes the surface height.)
+
+**Why:** These three have been deferred in every entry since 2026-11-14. With them gone the overlap audit is clean, so any pair it reports from now on is new and worth reading. Three numbers, no collider, walking height, race logic or save key touched (rugs and lines have no colliders; `race.js` times laps by position, not by the line mesh).
+
+**Input this run:** no open issues, no Petitions issue, no open PRs. Supabase `world_bugs` (fixed = false), `world_events`, `world_entities`: empty. Vercel production logs: no `[world-report]` lines in the last 50 minutes.
+
+**Looked at and declined:**
+- Deephaven's load-time `[world-grid] … can't go` warnings (about 20): not rule-breaking. `deep-city.js` deliberately offers more building plots than fit and lets the grid refuse the colliding ones. The way the city is laid out is correct; only the console is noisy. Not worth a change.
+- The `?audit` solid-clash list (mostly props inside hollow cave shells): still needs a sorting pass before it can be trusted.
+
 ## 2026-11-26 — The world's audit no longer buries Cinder Row's mud and potholes
 
 **Decision:** In `world-ids.js`, the surface scan (which runs on its own about 15 s after the world loads, and "fixes" any two flat surfaces at the same height by lifting the smaller one 1.5–2 cm) now skips decals: materials drawn on top by design (`polygonOffset` towards the camera, `depthWrite: false`). Cinder Row's lanes are dark slabs (top 0.04) with a grime decal 5 mm above them (0.045). The scan took each lane and its grime for two flickering floors, lifted the *lane* to 0.06, and so the main lane (z 500) and the back lane (z 550) rose 1.5 cm over their own grime: every pothole, mud patch and puddle vanished and the lanes went bare black. Decals cannot z-fight (the offset and the missing depth write already settle it), so they are simply not counted.

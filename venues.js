@@ -67,7 +67,7 @@ export function buildVenues(ctx) {
     }
     // infield grass with the pit lane, and tyre walls on the outside of the bends
     const chk = makeTex(256, 32, g => { for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { g.fillStyle = (i + j) % 2 ? '#111' : '#fff'; g.fillRect(i * 16, j * 16, 16, 16); } });
-    flat(w, 2, x - 40, z + r, mat(0xffffff, { map: chk }), 0.08).rotation.z = Math.PI / 2;   // start / finish line
+    flat(w, 2, x - 40, z + r, mat(0xffffff, { map: chk }), 0.085).rotation.z = Math.PI / 2;   // start / finish line (1 cm above the straight's top, 0.075: 5 mm flickered)
     for (const sx of [-1, 1]) B(0.6, 7, 0.6, x - 40, 3.5, z + r + sx * (w / 2 + 1), steel, true);
     B(0.8, 1.2, w + 3, x - 40, 7.3, z + r, mat(0x1d1d1d));
     signBoard('ASHFORD RACEWAY', x - 40, 7.3, z + r - 0.45, 12, Math.PI / 2, '#111111', '#ffd23f', 'START / FINISH');
