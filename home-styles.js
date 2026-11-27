@@ -188,6 +188,14 @@ export function buildAdminEstate(ctx) {
     { const [x, z] = P(1299.3, 235.6); B(root, 0.6, 2.3, 2, x, 1.15, z, wood); }
     // the bathroom (between the dining area and the bedroom): a bath, a shower, a toilet, a basin and mirror
     wallP(1283, 234, 1284.2, 234); wallP(1285.4, 234, 1292, 234); wallP(1283, 234, 1283, 239.8);
+    ctx.doors?.add({ a: P(1284.2, 234), b: P(1285.4, 234), y: 0, color: 0xf2efe9 }); ctx.doors?.add({ a: P(1293.2, 234), b: P(1294.8, 234), y: 0, color: 0x5a3b26 });   // bathroom and bedroom doors
+    // grand paintings: a big landscape on the bathroom wall over the dining table, and two in the lounge upstairs
+    const grand = (cols, x, y, z, ry, w, h) => { const t = makeTex(256, Math.round(256 * h / w), g => { const H2 = Math.round(256 * h / w), sky = g.createLinearGradient(0, 0, 0, H2); sky.addColorStop(0, cols[0]); sky.addColorStop(1, cols[1]); g.fillStyle = sky; g.fillRect(0, 0, 256, H2);
+        for (let k = 0; k < 3; k++) { g.fillStyle = cols[2 + k]; g.beginPath(); g.moveTo(0, H2); for (let xx = 0; xx <= 256; xx += 8) g.lineTo(xx, H2 * (0.55 + k * 0.13) - Math.sin(xx * 0.025 + k * 2) * 16); g.lineTo(256, H2); g.fill(); }
+        g.fillStyle = 'rgba(255,245,210,.9)'; g.beginPath(); g.arc(190, H2 * 0.25, 13, 0, 7); g.fill(); });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); m.position.set(x, y, z); m.rotation.y = ry; root.add(m);
+      const f = B(root, w + 0.35, h + 0.35, 0.06, x - Math.sin(ry) * 0.04, y, z - Math.cos(ry) * 0.04, gold, false); f.rotation.y = ry; };
+    { const [x, z] = P(1288.6, 233.85); grand(['#6d8fb3', '#f2c48a', '#5e7a4a', '#3f5a33', '#2c3e2a'], x, 3.3, z, Math.PI, 5, 2.8); }
     {
       const tile = mat(0xdfe6ea, { rough: 0.35 }), white = mat(0xf8f8f5, { rough: 0.25 }), chrome = mat(0xd0d4da, { metal: 0.9, rough: 0.2 });
       { const [x, z] = P(1287.6, 237); B(root, 8.6, 0.02, 5.6, x, 0.07, z, tile, false); }   // tiled floor
@@ -307,7 +315,7 @@ export function buildAdminEstate(ctx) {
     const wood = mat(0x6b4a33, { rough: 0.6 }), dark = mat(0x2a2e33, { rough: 0.5 }), cream = mat(0xe9e4da, { rough: 0.8 }), white = mat(0xf8f8f5, { rough: 0.25 }), chrome = mat(0xd0d4da, { metal: 0.9, rough: 0.2 }), glow = mat(0xfff1cf, { emissive: 0xffe2a0, ei: 1.3 });
     const Y = FY1;
     // ---- the master bedroom (east, front): a big bed against the east wall, nightstands, a wardrobe wall, a reading chair
-    wallU(1006.85, 1007.15, uz0, -438.6); wallU(1006.85, 1007.15, -437.2, uz1);            // its wall, with a doorway from the lounge
+    wallU(1006.85, 1007.15, uz0, -438.6); wallU(1006.85, 1007.15, -437.2, uz1); ctx.doors?.add({ a: [1007, -438.6], b: [1007, -437.2], y: FY1, color: 0x5a3b26 });            // its wall, with a doorway from the lounge
     { const bx = 1017.3, bz = -438.5; B(root, 3.0, 0.45, 2.4, bx, Y + 0.3, bz, wood); B(root, 2.8, 0.25, 2.3, bx - 0.05, Y + 0.6, bz, white); B(root, 0.2, 1.3, 2.6, ux1 - 0.3, Y + 0.85, bz, mat(0x3b3530, { rough: 0.8 }));
       for (const dz of [-0.6, 0.6]) B(root, 0.4, 0.15, 0.6, bx + 1.1, Y + 0.8, bz + dz, cream); B(root, 1.6, 0.06, 2.35, bx - 0.75, Y + 0.76, bz, mat(0x7b2f2f, { rough: 0.9 }));
       for (const dz of [-1.7, 1.7]) { B(root, 0.55, 0.55, 0.45, ux1 - 0.55, Y + 0.28, bz + dz, wood); S(root, 0.12, ux1 - 0.55, Y + 0.72, bz + dz, glow, 8); }
@@ -316,7 +324,7 @@ export function buildAdminEstate(ctx) {
       upSpot(1013, uz0 + 1.4, 1.4, 'Open the wardrobe', () => toast('👔 Suits, trainers and a row of watches. Everything you own, neatly hung.')); }   // a wall of wardrobes along the glass front
     { const g = new THREE.Group(); g.position.set(1009, Y, -442); g.rotation.y = 0.6; root.add(g); B(g, 0.9, 0.42, 0.9, 0, 0.3, 0, cream); B(g, 0.9, 0.7, 0.2, 0, 0.75, -0.38, cream); upSeat(1009, -442, 0.6, 'Sit in the reading chair'); }
     // ---- the en-suite (east, back): bath, shower, toilet, double basin
-    wallU(1007.15, 1009.2, -432.15, -431.85); wallU(1010.4, ux1, -432.15, -431.85);
+    wallU(1007.15, 1009.2, -432.15, -431.85); wallU(1010.4, ux1, -432.15, -431.85); ctx.doors?.add({ a: [1009.2, -432], b: [1010.4, -432], y: FY1, color: 0xf2efe9 });
     { B(root, ux1 - 1007.2, 0.02, uz1 - (-431.85), (1007.2 + ux1) / 2, Y + 0.012, (-431.85 + uz1) / 2, mat(0xdfe6ea, { rough: 0.35 }), false);
       const bx = 1014.8, bz = uz1 - 0.65; B(root, 3.4, 0.6, 1.0, bx, Y + 0.3, bz, white); B(root, 3.1, 0.03, 0.75, bx, Y + 0.52, bz, mat(0x8cc7de, { opacity: 0.8, rough: 0.1 }), false); C(root, 0.03, 0.03, 0.3, bx + 1.5, Y + 0.78, bz + 0.3, chrome, 8);
       solidAt(FY1, bx - 1.7, bx + 1.7, bz - 0.5, bz + 0.5); upSpot(bx, bz - 1.2, 1.4, 'Take a bath', () => ctx.chore ? ctx.chore('bath') : toast('🛁 A long hot bath.'));
@@ -361,6 +369,10 @@ export function buildAdminEstate(ctx) {
   }
   // a glass lift down to the basement (cinema, bar, gym, bowling, pool, car park), beside the stairs; cars come up to the forecourt
   ctx.basement?.({ name: ctx.title ? 'your mansion' : 'the mansion', x: 995.4, y: 0, z: -444, face: Math.PI / 2, drive: { x: 989, y: 0.06, z: -466, ry: Math.PI / 2 } });
+  // two paintings either side of the lounge TV upstairs
+  for (const [x, c] of [[995, ['#2b3a67', '#f2a65a', '#1f4e6e', '#163a52', '#0e2a3c']], [1005, ['#a7c7e7', '#fbe3c4', '#7a8f5a', '#5f7346', '#3f5233']]]) {
+    const t = makeTex(192, 256, g => { const sky = g.createLinearGradient(0, 0, 0, 256); sky.addColorStop(0, c[0]); sky.addColorStop(1, c[1]); g.fillStyle = sky; g.fillRect(0, 0, 192, 256); for (let k = 0; k < 3; k++) { g.fillStyle = c[2 + k]; g.beginPath(); g.moveTo(0, 256); for (let xx = 0; xx <= 192; xx += 8) g.lineTo(xx, 150 + k * 30 - Math.sin(xx * 0.03 + k) * 14); g.lineTo(192, 256); g.fill(); } });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.9), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); m.position.set(x, FY1 + 2, uz1 - 0.2); m.rotation.y = Math.PI; root.add(m); B(root, 2.5, 3.2, 0.06, x, FY1 + 2, uz1 - 0.16, mat(0xd4af37, { metal: 0.8, rough: 0.3 }), false); }
   const upTV = { at: new THREE.Vector3(1000, FY1, -428), screen: (() => { const m = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.35), new THREE.MeshBasicMaterial({ color: 0x050505 })); m.position.set(1000, FY1 + 1.9, uz1 - 0.31); m.rotation.y = Math.PI; root.add(m); return m; })() };
   const inR = (r, x, z) => x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ;
   const upstairsAt = (x, z, y) => {

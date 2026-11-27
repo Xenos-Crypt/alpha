@@ -260,6 +260,8 @@ export function buildEstate(ctx) {
     wallZ(-7, Z0, -1, [[-8, -5.6]], u); wallZ(7, Z0, -1, [[-8, -5.6]], u);
     wallZ(-7, -1, Z1, [], { ...u }); wallZ(7, -1, Z1, [], { ...u });
     wallX(4, X0, -7, [[-16, -13.6]], u); wallX(4, 7, X1, [[13.6, 16]], u); wallX(-4, 7, X1, [[19, 21.4]], u);
+    // doors in the upstairs doorways (the suites, the master bath, the closet)
+    for (const [a, b] of [[[-7, -8], [-7, -5.6]], [[7, -8], [7, -5.6]], [[-16, 4], [-13.6, 4]], [[13.6, 4], [16, 4]], [[19, -4], [21.4, -4]]]) { const p = W(...a), q = W(...b); ctx.doors?.add({ a: p, b: q, y: FY1, h: 2.4, color: 0x5a4632 }); }
     // master bedroom (front west): bed, lounge chairs; master bath + closet (back west)
     B(4.2, 0.6, 4.6, -18, FY1 + 0.3, 16.5, mat(0xf3efe6)); B(4.4, 1.6, 0.25, -18, FY1 + 0.8, 18.9, mat(0x6b5a4a)); B(4.4, 0.25, 1.4, -18, FY1 + 0.72, 15, mat(0x8a6f9a)); col(-20.1, -15.9, 14.2, 19, 'u');
     act(-18, 13.4, 2.2, 'Sleep in the master bed', () => ctx.sleep ? ctx.sleep() : toast('😴 The best night\'s sleep of your life.'), FY1);

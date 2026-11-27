@@ -40,11 +40,15 @@ export function createMansionBasements(ctx) {
     }
   };
   wall(true, Z1, X0, X1); wall(true, Z0, X0, X1); wall(false, X0, Z0, Z1); wall(false, X1, Z0, Z1);
-  wall(true, 22, X0, -4); wall(true, 22, 4, X1); wall(false, -4, 22, Z1); wall(false, 4, 22, Z1);   // the lift lobby opens onto the corridor
+  wall(true, 22, X0, -4, [[-24, -22]]); wall(true, 22, 4, X1, [[22, 24]]); wall(false, -4, 22, Z1); wall(false, 4, 22, Z1);   // the lift lobby opens onto the corridor; the library and music room open off it
   wall(true, 14, X0, X1, [[-32, -30], [-15, -11], [-4, 4], [9, 12], [24, 27]]);                   // doors into the cinema, pub, spine, gym, bowling
   for (const x of [-22, 22]) wall(false, x, 0, 14); wall(false, -4, 0, 14); wall(false, 4, 0, 14);
   wall(true, 0, X0, -4); wall(true, 0, 4, X1);
   wall(false, -4, Z0, 0, [[-13, -9]]); wall(false, 4, Z0, 0, [[-18, -8]]);                        // the pool hall and the car park off the spine
+  // real doors in the doorways (the spine and the car park's wide entrance stay open)
+  const door = (a, b, along, color, glass) => ctx.doors?.add({ a: along === 'x' ? [O.x + a, O.z + b[0]] : [O.x + b[0], O.z + a], b: along === 'x' ? [O.x + a + b[2], O.z + b[0]] : [O.x + b[0], O.z + a + b[2]], y: 0, h: 2.6, color, glass });
+  door(-32, [14, 0, 2], 'x', 0x5a1820); door(-15, [14, 0, 4], 'x', 0x5a3820); door(9, [14, 0, 3], 'x', 0, true); door(24, [14, 0, 3], 'x', 0x2a5aa6);
+  door(-24, [22, 0, 2], 'x', 0x4a2f1c); door(22, [22, 0, 2], 'x', 0x2a2e33); door(-13, [-4, 0, 4], 'z', 0, true);
   // corridor: a runner, wall lights, art
   B(78, 0.01, 6, 0, 0.012, 18, mat(0x3b3f45, { rough: 1 })); B(6, 0.01, 44, 0, 0.012, -8, mat(0x3b3f45, { rough: 1 }));
   for (let x = -36; x <= 36; x += 8) if (Math.abs(x) > 5) { B(0.5, 0.15, 0.08, x, 3, 21.8, mat(0xfff1cf, { emissive: 0xffe2a0, ei: 1.4 })); B(0.5, 0.15, 0.08, x, 3, 14.2, mat(0xfff1cf, { emissive: 0xffe2a0, ei: 1.4 })); }
@@ -64,6 +68,75 @@ export function createMansionBasements(ctx) {
   act(0, Z1 - 1.4, 1.8, () => `Take the lift up to ${from?.name || 'the house'}`, () => goUp());
   // signs at the corridor's doors
   for (const [t, x, z] of [['CINEMA', -31, 14.2], ['THE CELLAR BAR', -13, 14.2], ['GYM', 10.5, 14.2], ['BOWLING', 25.5, 14.2], ['POOL', -4.2, -11], ['CAR PARK', 4.2, -13]]) { const s = sign(t, 2.6, 0.65, '#1b1f24', '#f2e6c8', 'bold 56px sans-serif'); if (Math.abs(z) > 13) place(s, x, 3.15, z + 0.02, 0); else place(s, x + (x < 0 ? -0.02 : 0.02), 3.15, z, x < 0 ? Math.PI / 2 : -Math.PI / 2); }
+
+  // ---------------- grand paintings along the corridor ----------------
+  const painting = (seed, w, h) => ctx.makeTex(256, Math.round(256 * h / w), g => {
+    const W = 256, Hh = Math.round(256 * h / w), r = k => { const v = Math.sin(seed * 91.7 + k * 12.9) * 43758.5; return v - Math.floor(v); };
+    const kind = seed % 4;
+    if (kind === 0) {   // a landscape: sky, a sun, hills, a lake
+      const sky = g.createLinearGradient(0, 0, 0, Hh); sky.addColorStop(0, `hsl(${200 + r(1) * 40},60%,${55 + r(2) * 15}%)`); sky.addColorStop(1, `hsl(${20 + r(3) * 30},70%,75%)`); g.fillStyle = sky; g.fillRect(0, 0, W, Hh);
+      g.fillStyle = '#fff3c8'; g.beginPath(); g.arc(W * (0.2 + r(4) * 0.6), Hh * 0.3, 14, 0, 7); g.fill();
+      for (let k = 0; k < 3; k++) { g.fillStyle = `hsl(${100 + k * 15},${35 + k * 10}%,${30 + k * 8}%)`; g.beginPath(); g.moveTo(0, Hh); for (let x = 0; x <= W; x += 8) g.lineTo(x, Hh * (0.5 + k * 0.12) - Math.sin(x * 0.02 + r(k + 5) * 6) * 18); g.lineTo(W, Hh); g.fill(); }
+      g.fillStyle = 'rgba(120,170,220,.8)'; g.fillRect(W * 0.1, Hh * 0.82, W * 0.8, Hh * 0.08);
+    } else if (kind === 1) {   // a seascape at sunset
+      const sky = g.createLinearGradient(0, 0, 0, Hh * 0.6); sky.addColorStop(0, '#2b3a67'); sky.addColorStop(1, '#f2a65a'); g.fillStyle = sky; g.fillRect(0, 0, W, Hh * 0.6);
+      g.fillStyle = '#1f4e6e'; g.fillRect(0, Hh * 0.6, W, Hh * 0.4); for (let k = 0; k < 30; k++) { g.fillStyle = 'rgba(255,220,160,.5)'; g.fillRect(W * 0.45 + (r(k) - 0.5) * 60, Hh * 0.62 + k * 3, 20 + r(k + 1) * 30, 2); }
+      g.fillStyle = '#ffd27a'; g.beginPath(); g.arc(W / 2, Hh * 0.6, 22, Math.PI, 0); g.fill();
+      g.fillStyle = '#1b1b1b'; g.beginPath(); g.moveTo(W * 0.15, Hh * 0.7); g.lineTo(W * 0.3, Hh * 0.7); g.lineTo(W * 0.26, Hh * 0.75); g.lineTo(W * 0.18, Hh * 0.75); g.fill(); g.fillRect(W * 0.22, Hh * 0.55, 2, Hh * 0.15);
+    } else if (kind === 2) {   // a portrait: a figure in dark clothes against a deep background
+      g.fillStyle = `hsl(${r(1) * 360},30%,18%)`; g.fillRect(0, 0, W, Hh);
+      g.fillStyle = '#d9b08c'; g.beginPath(); g.ellipse(W / 2, Hh * 0.36, 26, 32, 0, 0, 7); g.fill();
+      g.fillStyle = `hsl(${r(2) * 360},40%,20%)`; g.beginPath(); g.ellipse(W / 2, Hh * 0.26, 30, 20, 0, Math.PI, 0); g.fill();
+      g.fillStyle = `hsl(${r(3) * 360},45%,25%)`; g.beginPath(); g.moveTo(W * 0.2, Hh); g.quadraticCurveTo(W / 2, Hh * 0.5, W * 0.8, Hh); g.fill();
+      g.fillStyle = '#f2efe9'; g.fillRect(W / 2 - 8, Hh * 0.62, 16, 10);
+    } else {   // an abstract: big overlapping colour fields
+      g.fillStyle = '#efe8da'; g.fillRect(0, 0, W, Hh); for (let k = 0; k < 7; k++) { g.fillStyle = `hsla(${r(k) * 360},65%,${40 + r(k + 9) * 30}%,.8)`; g.fillRect(r(k + 2) * W * 0.7, r(k + 3) * Hh * 0.7, 30 + r(k + 4) * 90, 20 + r(k + 5) * 70); }
+      g.strokeStyle = '#1b1b1b'; g.lineWidth = 4; g.beginPath(); g.moveTo(0, Hh * r(20)); g.bezierCurveTo(W * 0.3, 0, W * 0.6, Hh, W, Hh * r(21)); g.stroke();
+    }
+  });
+  const gold = mat(0xc9a24a, { metal: 0.7, rough: 0.35 });
+  const hang = (seed, x, z, ry, w = 4, h = 2.2, y = 1.9) => { const t = painting(seed, w, h); const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); place(m, x, y, z, ry); const f = B(w + 0.3, h + 0.3, 0.06, x - Math.sin(ry) * 0.04, y, z - Math.cos(ry) * 0.04, gold); f.rotation.y = ry; return m; };
+  [-34, -14, 14, 34].forEach((x, i) => hang(i + 1, x, 21.82, Math.PI)); [-37, -24, -7, 17, 34].forEach((x, i) => hang(i + 11, x, 14.18, 0));
+  act(0, 18, 3, 'Look at the paintings', () => toast('🖼️ Landscapes, seascapes, an old family portrait and two big abstracts. Your own little gallery.'));
+
+  // ---------------- the library (x -40..-4, z 22..30) ----------------
+  B(35.6, 0.01, 7.6, -22, 0.013, 26, mat(0x6b4a2f, { rough: 0.6 }));
+  const shelfWood = mat(0x4a2f1c, { rough: 0.6 }), BOOK = [0x8f2f2f, 0x2f5f8f, 0x3f6f3f, 0xb8902f, 0x5a3f6f, 0x2a2a2a, 0x7a4a2a, 0xd8d0c0];
+  const bookcase = (x0, x1, z, face) => { const w = x1 - x0, x = (x0 + x1) / 2; B(w, H - 0.2, 0.45, x, (H - 0.2) / 2, z, shelfWood); col(x0, x1, z - 0.25, z + 0.25);
+    for (let row = 0; row < 7; row++) { const y = 0.3 + row * 0.55; B(w - 0.1, 0.04, 0.42, x, y, z + face * 0.02, shelfWood); for (let bx = x0 + 0.1; bx < x1 - 0.12;) { const bw = 0.05 + ((bx * 31 + row * 7) % 5) * 0.015, bh = 0.32 + ((bx * 17 + row) % 4) * 0.04; B(bw, bh, 0.3, bx + bw / 2, y + 0.02 + bh / 2, z + face * 0.04, BOOK[Math.floor(Math.abs(bx * 13 + row * 3)) % BOOK.length]); bx += bw + 0.01; } } };
+  bookcase(-39.7, -26, 29.6, -1); bookcase(-20, -4.3, 29.6, -1);                       // the north wall, floor to ceiling, round a fireplace
+  B(4, 2.2, 0.6, -23, 1.1, 29.55, mat(0x8a8478, { rough: 0.8 })); B(2.4, 1.2, 0.2, -23, 0.8, 29.3, mat(0x1a1a1a)); const fire = B(2, 0.6, 0.1, -23, 0.55, 29.25, mat(0xff8a2a, { emissive: 0xff6a00, ei: 1.6 }));
+  { const l = new THREE.PointLight(0xff9a4a, 4, 8, 1.6); l.position.set(-23, 1, 28.5); root.add(l); }
+  hang(31, -23, 29.2, Math.PI, 3, 1.7, 3.2);                                            // a painting over the fireplace
+  for (const x of [-30, -16]) { const g = new THREE.Group(); g.position.set(x, 0, 25.5); g.rotation.y = x < -23 ? 0.5 : -0.5; root.add(g); B(1, 0.45, 0.9, 0, 0.3, 0, mat(0x7a2a1c, { rough: 0.5 }), 0, g); B(1, 0.75, 0.22, 0, 0.75, -0.4, mat(0x7a2a1c, { rough: 0.5 }), 0, g); sit(x, 25.5, g.rotation.y, 0.5, 'Sit in the reading chair'); }
+  B(2.4, 0.06, 1.2, -9, 0.78, 25, shelfWood); B(0.08, 0.76, 1.1, -10.1, 0.38, 25, shelfWood); B(0.08, 0.76, 1.1, -7.9, 0.38, 25, shelfWood); col(-10.2, -7.8, 24.4, 25.6); B(0.5, 0.45, 0.5, -9, 0.23, 24, mat(0x7a2a1c)); sit(-9, 24, 0, 0.5, 'Sit at the desk');
+  Cy(0.35, 0.35, 0.02, -36, 1.3, 25, mat(0x2f5f8f), 20); { const globe = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), mat(0x3f7fbf)); globe.position.set(-36, 1.3, 25); root.add(globe); Cy(0.04, 0.2, 0.9, -36, 0.45, 25, shelfWood, 8); }
+  B(0.06, 3.6, 0.5, -28, 1.8, 29.1, shelfWood).rotation.x = -0.2;   // a library ladder
+  B(10, 0.01, 4, -23, 0.02, 26, mat(0x7b2f2f, { rough: 1 }));
+  { const titles = ['an old atlas of the world before the Gates', 'a history of the Old Kingdom', 'a battered detective novel', 'a book of poems someone has underlined', 'a guide to every dungeon rank', 'a biography of a famous hunter', 'a cookbook from the Capital']; let k = 0;
+    act(-33, 28.6, 2, 'Read a book', () => { toast(`📚 You take down ${titles[k++ % titles.length]} and read a few chapters by the fire.`); ctx.gainXp?.(1); }); act(-12, 28.6, 2, 'Read a book', () => { toast(`📚 You take down ${titles[k++ % titles.length]} and lose an hour in it.`); ctx.gainXp?.(1); }); }
+  place(sign('LIBRARY', 2.2, 0.55, '#1b1f24', '#f2e6c8', 'bold 56px sans-serif'), -23, 3.15, 21.82, Math.PI);
+
+  // ---------------- the music room (x 4..40, z 22..30) ----------------
+  B(35.6, 0.01, 7.6, 22, 0.013, 26, mat(0x2a2422, { rough: 0.5 }));
+  for (let x = 6; x < 40; x += 2.2) B(1.8, 2.4, 0.08, x, 2, 29.7, mat(x % 4.4 < 2.2 ? 0x3a2f4a : 0x2f3a4a, { rough: 1 }));   // soundproofing panels
+  { const x = 10, z = 26; const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = 0.3; root.add(g);   // a concert grand piano
+    B(1.6, 0.35, 2.4, 0, 0.9, 0, mat(0x0a0a0a, { rough: 0.15, metal: 0.3 }), 0, g); B(1.5, 0.06, 0.25, 0, 1.08, 1.12, mat(0xf2f2f2), 0, g); const lid = B(1.6, 0.03, 2.2, 0, 1.6, -0.1, mat(0x0a0a0a, { rough: 0.15 }), 0, g); lid.rotation.x = 0.45;
+    for (const [a, b] of [[-0.65, -1], [0.65, -1], [0, 1]]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.75, 8), mat(0x0a0a0a)); leg.position.set(a, 0.38, b); g.add(leg); }
+    B(0.9, 0.5, 0.4, 0, 0.25, 1.8, mat(0x0a0a0a), 0, g); col(x - 1.1, x + 1.1, z - 1.4, z + 1.4); sit(x + 0.53, z + 1.73, Math.PI + 0.3, 0.5, 'Sit at the piano');
+    act(x + 0.6, z + 2.2, 1.6, 'Play the piano', () => { toast(['🎹 A slow piece in a minor key. The room goes quiet to listen.', '🎹 You play something bright and quick, and get every note right.', '🎹 Chopsticks. Then something better.'][Math.floor(Math.random() * 3)]); ctx.gainXp?.(1); }); }
+  { const x = 22, z = 27.5; Cy(0.35, 0.35, 0.55, x, 0.3, z, mat(0xc0392b, { metal: 0.3 }), 18); for (const [a, b, r, y] of [[-0.6, -0.3, 0.22, 0.75], [0.6, -0.3, 0.22, 0.75], [-0.3, 0.4, 0.2, 0.6], [0.9, 0.5, 0.28, 0.5]]) Cy(r, r, 0.25, x + a, y, z + b, mat(0xc0392b, { metal: 0.3 }), 16);
+    for (const [a, b] of [[-1, 0.3], [1.2, -0.2]]) { Cy(0.38, 0.38, 0.02, x + a, 1.2, z + b, mat(0xd4af37, { metal: 0.8, rough: 0.3 }), 18); Cy(0.015, 0.015, 1.2, x + a, 0.6, z + b, mat(0x888888), 6); }
+    col(x - 1.4, x + 1.5, z - 0.9, z + 1.1); act(x, z - 1.6, 1.6, 'Play the drums', () => { toast('🥁 You lay down a beat that shakes the soundproofing.'); ctx.gainXp?.(1); }); }
+  for (const [k, c] of [[0, 0xb5651d], [1, 0x1a1a1a], [2, 0xc0392b], [3, 0x2f5f8f]]) { const x = 28 + k * 1.3, z = 29.3; B(0.4, 0.9, 0.1, x, 1.35, z, mat(c, { rough: 0.3 })); B(0.08, 0.75, 0.05, x, 2.15, z, mat(0x3a2414)); B(0.5, 0.06, 0.3, x, 0.4, z, mat(0x2a2e33)); }   // guitars on a wall rack
+  act(29.9, 28, 2, 'Play a guitar', () => { toast('🎸 You tune up and play the only riff you really know. It sounds great.'); ctx.gainXp?.(1); });
+  { const g = new THREE.Group(); g.position.set(36, 0, 27); root.add(g); const arch = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.06, 6, 20, Math.PI * 0.9), mat(0xc9a24a, { metal: 0.6 })); arch.position.y = 1.0; arch.rotation.z = 0.7; g.add(arch); B(0.12, 1.8, 0.12, -0.4, 0.9, 0, mat(0xc9a24a, { metal: 0.6 }), 0, g); for (let k = 0; k < 9; k++) B(0.01, 1.2 - k * 0.08, 0.01, -0.3 + k * 0.08, 0.8, 0, mat(0xeeeeee), 0, g); col(35.2, 36.8, 26.4, 27.6);   // a harp
+    act(36, 25.8, 1.4, 'Play the harp', () => { toast('🎼 A run of notes like water. You didn\'t know you could do that.'); ctx.gainXp?.(1); }); }
+  { B(0.6, 1.1, 0.4, 16, 0.55, 29.3, mat(0x1a1a1a)); B(0.5, 0.5, 0.05, 16, 0.6, 29.08, mat(0x555555)); Cy(0.02, 0.02, 1.6, 17.5, 0.8, 27, mat(0x888888), 6); const mic = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat(0x222222)); mic.position.set(17.5, 1.62, 27); root.add(mic);
+    act(17.5, 26.2, 1.4, 'Sing into the mic', () => toast('🎤 One, two, one, two… Then a whole song, badly, at full volume.')); }   // an amp and a mic
+  B(3, 0.45, 1, 33, 0.25, 23.2, mat(0x5a4a6a)); B(3, 0.6, 0.22, 33, 0.7, 22.8, mat(0x5a4a6a)); for (const dx of [-1, 0, 1]) sit(33 + dx, 23.3, Math.PI, 0.47, 'Sit on the sofa');
+  place(sign('MUSIC ROOM', 2.4, 0.55, '#1b1f24', '#f2e6c8', 'bold 56px sans-serif'), 23, 3.15, 21.82, Math.PI);
+  { const l = new THREE.PointLight(0xffd9b0, 10, 20, 1.5); l.position.set(-22, 3.4, 26); root.add(l); const l2 = new THREE.PointLight(0xd0c0ff, 10, 20, 1.5); l2.position.set(22, 3.4, 26); root.add(l2); }
 
   // ---------------- cinema (x -40..-22, z 0..14) ----------------
   const cineDark = mat(0x23181c, { rough: 0.9 });
@@ -156,6 +229,7 @@ export function createMansionBasements(ctx) {
   for (const x of [10, 22, 34]) for (const z of [-11, -19]) { B(0.6, H, 0.6, x, H / 2, z, concrete); col(x - 0.3, x + 0.3, z - 0.3, z + 0.3); }
   for (let x = 8; x < 40; x += 6) B(2, 0.005, 0.3, x, 0.022, -15, mat(0xffd23f));   // the aisle's centre dashes
   place(sign('P  ·  RESIDENTS ONLY', 3.6, 0.8, '#1f4fa6', '#ffffff', 'bold 54px sans-serif'), 4.2, 3.3, -6, -Math.PI / 2);
+  place(sign('PICK A CAR · PRESS E BY IT · IT COMES UP TO THE HOUSE', 6.5, 0.6, '#1f4fa6', '#ffffff', 'bold 30px sans-serif'), 4.2, 2.5, -13, -Math.PI / 2);
   const cars = CATALOGUE.filter(e => e.kind === 'car');
   const COLS = [0xd4af37, 0x111111, 0xc0392b, 0xf2f2f2, 0x2f6f8f, 0x22262b, 0x8a5cff, 0xff7a1f, 0x2d5d3a, 0xd0d0d8, 0x7a1c1c, 0x1f5fd6, 0xffd23f, 0x3a3f45, 0xb0c4de, 0x9b2335];
   const bays = []; for (const [zr, face] of [[-4.5, 0], [-25.5, Math.PI]]) for (let x = 8; x <= 36; x += 4) bays.push([x, zr, face]);
@@ -165,7 +239,7 @@ export function createMansionBasements(ctx) {
     v.group.position.set(O.x + x, 0.06, O.z + z); v.group.rotation.y = face; v.group.updateMatrixWorld(true);
     col(x - 1.1, x + 1.1, z - 2.3, z + 2.3);
     place(sign(e.name.toUpperCase(), 2.6, 0.5, '#ffffff', '#111111', 'bold 56px sans-serif'), x, 2.3, face ? Z0 + 0.17 : -0.17, face ? 0 : Math.PI);   // the make on the wall behind the bay
-    act(x, z + (face ? 2.9 : -2.9), 1.5, `Drive the ${e.name} out (${e.category})`, () => driveOut(e, colour));
+    act(x, z, 3.3, `Drive the ${e.name} out (${e.category})`, () => driveOut(e, colour));   // E anywhere round the car
   });
 
   // ---------------- going up and down ----------------

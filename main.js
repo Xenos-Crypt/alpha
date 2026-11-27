@@ -40,6 +40,7 @@ import {createWorldMap} from './world-map.js';
 import {createMovieTv} from './movie-tv.js';
 import { createRain } from './rain.js';
 import { createMansionBasements } from './mansion-basement.js';
+import { createRoomDoors } from './room-doors.js';
 import { createHouseVisits } from './house-visits.js';
 import {createOnlineAccount} from './online-account.js';
 import {createSupportSkills} from './support-skills.js';
@@ -2651,7 +2652,7 @@ let adminGod = (()=>{try{return localStorage.getItem('adminGod')!=='0';}catch{re
 function setUpHome(){
   if(isAdmin){
     if(adminEstate||!homeKitCtx)return;
-    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),chore:(k,o)=>doChore(k,o),planeBlocks,basement:spec=>basements?.add(spec),workout:()=>{stats.energy=clamp(stats.energy-10,0,100);stats.clean=Math.max(0,(stats.clean??60)-20);gainXp(2);},
+    adminEstate=buildAdminEstate({scene,K:makeKit(homeKitCtx),sitSpots,camBlockers,makeTex,toast,curb:CURB,title:'XENOS ESTATE',sleep:()=>sleep(),chore:(k,o)=>doChore(k,o),planeBlocks,basement:spec=>basements?.add(spec),doors:roomDoors,workout:()=>{stats.energy=clamp(stats.energy-10,0,100);stats.clean=Math.max(0,(stats.clean??60)-20);gainXp(2);},
       makeVehicle:(k,c,st)=>makeVehicle(k,c,st),makeAircraft:a=>makeAircraft(a)});
     poolZones.push(...adminEstate.pools);
     if(adminEstate.tv)movieTv?.register(adminEstate.tv.screen,adminEstate.tv.at,()=>Math.abs(player.position.y-adminEstate.tv.at.y)<2);   // the lounge TV upstairs
@@ -7281,7 +7282,7 @@ document.addEventListener('pointerlockerror', () => {
 // =====================================================================
 const DAY_LEN = 8 * 3600; // seconds per in-game day: the clock runs 3x faster than real time (a day lasts 8 real hours)
 let reconstructionDays = 0;
-let basements = null, neighbours = null, venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, systemVoice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
+let basements = null, roomDoors = null, neighbours = null, venueFences = null, slum = null, rent = null, systemOrb = null, voice = null, systemVoice = null, homeKitCtx = null, adminEstate = null, seasons = null, resortBeach = null, beachLife = null, hospitalPlus = null, portPlus = null, navyPlus = null, funfair = null, fairExtras = null, fairGames = null, sportsGames = null, ventura = null, recCentre = null, grandPark = null, flowerPark = null, homePark = null, buildingSites = null, roadWear = null, circus = null, tunnel = null, branches = null, university = null, careers = null, recovery = null;
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
@@ -8454,14 +8455,15 @@ drivingSchool = buildDrivingSchool({ scene, colliders, interactables, makeTex, m
 ridge = buildRidge({ scene, makeTex, interactables, sitSpots, toast, destinations: townPlaces.destinations });
 tunnel = buildTunnel({ scene, colliders, camBlockers, makeTex, destinations: townPlaces.destinations });   // Sunset Ridge Tunnel, beside the road over the top
 // Mansion basements: one lower level (cinema, bar, gym, bowling, pool, car park) reached by a lift in every mansion
-basements = createMansionBasements({ scene, colliders, interactables, sitSpots, poolZones, planeBlocks, makeTex, toast: m => toast(m),
+roomDoors = createRoomDoors({ scene, colliders, interactables });   // hinged doors inside the mansions and their basement
+basements = createMansionBasements({ doors: roomDoors, scene, colliders, interactables, sitSpots, poolZones, planeBlocks, makeTex, toast: m => toast(m),
   makeVehicle: (k, c, st) => makeVehicle(k, c, st), removeVehicle: v => { const i = vehicles.indexOf(v); if (i >= 0) vehicles.splice(i, 1); },
   teleport: (x, y, z, look) => { if (inCar) exitVehicle(true); if (sitting) toggleSit(null); player.position.set(x, y, z); vy = 0; pvel.set(0, 0, 0); if (look != null) yaw = look; },
   driveAway: v => { cityServices?.ownedCars?.push(v); enterVehicle(v); },
   workout: () => { stats.energy = clamp(stats.energy - 10, 0, 100); stats.clean = Math.max(0, (stats.clean ?? 60) - 20); gainXp(2); }, gainXp: n => gainXp(n),
   drink: () => { stats.hunger = Math.min(100, stats.hunger + 3); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
-hills = buildHills({ scene, basement: spec => basements.add(spec), colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
-estate = buildEstate({ scene, basement: spec => basements.add(spec), colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
+hills = buildHills({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
+estate = buildEstate({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeVehicle: (k, c, st) => makeVehicle(k, c, st),
   sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), sleep: () => sleep(),
   eat: (n, cost, msg) => { stats.hunger = Math.min(100, stats.hunger + n); toast(msg); }, rest: (n, msg) => { stats.energy = clamp(stats.energy + n, 0, 100); toast(msg); },
@@ -8977,6 +8979,7 @@ function frame() {
     interiors.update(dt);
     walkInThroughDoors(dt);
     updateWeather(dt);
+    roomDoors?.update(dt);
     rain ||= createRain({ scene, camera, count: touchDevice ? 3000 : 9000, splashes: touchDevice ? 110 : 260, groundAt: (x, z) => groundY(x, z, player.position.y + 3),
       sheltered: (x, z) => insideFootprint(x, z) || walkIns.floorAt(x, z, 0.5) != null || !!houseAt({ x, z }, 0.2) });
     rain.set(weatherState === 'rain' || weatherState === 'storm');
