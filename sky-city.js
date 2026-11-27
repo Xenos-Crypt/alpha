@@ -1,4 +1,4 @@
-// SKYHAVEN: the sky city. A floating island 220 m across, 200 m up over the open land north-west of the airport,
+// SKYHAVEN: the sky city. A floating island 330 m across, 200 m up over the open land north-west of the airport,
 // one of the country's six cities. It stays up because of the Gravity Core in the middle: a power grid run on
 // gravity magic, whose four conduits run out to anchor pylons at the island's edge. The core is the most heavily
 // defended place in the country: a wall round it, guards at its one gate, turrets on the wall. Anyone who goes in
@@ -8,12 +8,14 @@
 // everything, with its own road in from the street to the north). Airships run up and down on a timetable.
 //
 // Layout on the island (all checked against one another with the world grid, so nothing stands in anything):
-//   the core (r 0-24, walled), a ring boulevard (r 30-40), eight radial streets, towers in the blocks between
-//   them (r 46-98), a parapet round the rim (r 108) and the airship dock pier on the side facing the sky port.
+//   the core (r 0-24, walled), a ring boulevard (r 30-40), an outer boulevard (r 96-104), eight radial streets,
+//   towers in the blocks between them (r 46-153), a parapet round the rim (r 163) and the airship dock pier on the
+//   side facing the sky port.
 import * as THREE from 'three';
 import { createWorldGrid } from './world-grid.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-export const SKY = { x: -600, z: -560, y: 200, r: 110 };   // (200 m up: above 250 m counts as space)
+export const SKY = { x: -600, z: -560, y: 200, r: 165 };   // (200 m up: above 250 m counts as space)
 export const SKY_PORT = { minX: -720, maxX: -640, minZ: -440, maxZ: -360, pad: { x: -670, z: -395 }, gate: { x: -660, z: -440 }, roadZ: -470 };
 const CORE_R = 24, GATE_HALF = 0.11;   // the core's wall radius, and half the gate's opening (radians)
 
@@ -25,6 +27,9 @@ export function buildSkyCity(ctx) {
   ctx.planeBlocks?.push({ minX: C.x - C.r, maxX: C.x + C.r, minZ: C.z - C.r, maxZ: C.z + C.r, bottom: Y - 80, top: Y - 1.5 });
   const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.6, metalness: o.metal ?? 0.1, emissive: o.em ?? 0, emissiveIntensity: o.ei ?? 1, transparent: !!o.op, opacity: o.op ?? 1 });
   const box = (p, w, h, d, x, y, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; p.add(o); return o; };
+  // the towers are many boxes: they are collected here and merged into one mesh per material at the end (a few draw calls, not thousands)
+  const bucket = new Map(), mbox = (w, h, d, x, y, z, m, ry = 0) => { const g = new THREE.BoxGeometry(w, h, d); if (ry) g.rotateY(ry); g.translate(x, y, z); if (!bucket.has(m)) bucket.set(m, []); bucket.get(m).push(g); };
+  const flush = () => { for (const [m, gs] of bucket) { const o = new THREE.Mesh(mergeGeometries(gs), m); o.castShadow = o.receiveShadow = true; o.name = 'Skyhaven towers'; root.add(o); gs.forEach(g => g.dispose()); } bucket.clear(); };
   const cols = ctx.colliders, solid = (minX, maxX, minZ, maxZ, base = Y) => cols.push({ minX, maxX, minZ, maxZ, baseYAt: () => base });
   const id = (cls, kind, mat3, owner, name, x, z) => ids.push({ cls, kind, mat: mat3, owner, seed: 'sky:' + name + ':' + Math.round(x) + ',' + Math.round(z), name, maker: 'Skyhaven City Council', pos: { x, z } });
 
@@ -32,42 +37,44 @@ export function buildSkyCity(ctx) {
   const stone = mat(0xe9e4da, { rough: 0.85 }), rock = mat(0x6f6a72, { rough: 1 }), crystal = mat(0x9b7bff, { em: 0x6a3cff, ei: 1.4 });
   const top = new THREE.Mesh(new THREE.CylinderGeometry(C.r, C.r - 2, 4, 96), stone); top.position.set(C.x, Y - 2, C.z); top.receiveShadow = true; root.add(top);
   const under = new THREE.Mesh(new THREE.ConeGeometry(C.r - 2, 80, 48, 4), rock); under.rotation.x = Math.PI; under.position.set(C.x, Y - 44, C.z); root.add(under);
-  for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2, r = 30 + (i % 3) * 22, v = new THREE.Mesh(new THREE.OctahedronGeometry(2 + (i % 4)), crystal); v.position.set(C.x + Math.cos(a) * r, Y - 14 - (i % 5) * 9 - (110 - r) * 0.25, C.z + Math.sin(a) * r); root.add(v); }
+  for (let i = 0; i < 26; i++) { const a = i / 26 * Math.PI * 2, r = (30 + (i % 3) * 22) * C.r / 110, v = new THREE.Mesh(new THREE.OctahedronGeometry(2 + (i % 4)), crystal); v.position.set(C.x + Math.cos(a) * r, Y - 14 - (i % 5) * 9 - (C.r - r) * 0.25, C.z + Math.sin(a) * r); root.add(v); }
   id('LND', 'ISL', 'STN', 'GOV', 'Skyhaven floating island', C.x, C.z);
   // floating rocks below, held by the same magic
-  const drifters = []; for (let i = 0; i < 10; i++) { const a = i * 0.63, r = 140 + (i % 3) * 25, m = new THREE.Mesh(new THREE.DodecahedronGeometry(4 + (i % 3) * 2), rock); m.position.set(C.x + Math.cos(a) * r, Y - 30 - (i % 4) * 12, C.z + Math.sin(a) * r); root.add(m); drifters.push({ m, a, r, y: m.position.y, s: 0.02 + (i % 3) * 0.01 }); }
+  const drifters = []; for (let i = 0; i < 14; i++) { const a = i * 0.45, r = C.r + 30 + (i % 3) * 25, m = new THREE.Mesh(new THREE.DodecahedronGeometry(4 + (i % 3) * 2), rock); m.position.set(C.x + Math.cos(a) * r, Y - 30 - (i % 4) * 12, C.z + Math.sin(a) * r); root.add(m); drifters.push({ m, a, r, y: m.position.y, s: 0.02 + (i % 3) * 0.01 }); }
 
   // ---------------------------------------------------------------- streets
   const paving = mat(0x3c4250, { rough: 0.8 }), kerb = mat(0xd8d2c4);
   const ring = new THREE.Mesh(new THREE.RingGeometry(30, 40, 96), paving); ring.rotation.x = -Math.PI / 2; ring.position.set(C.x, Y + 0.02, C.z); root.add(ring);
-  const STREETS = 8, streetAngle = k => k / STREETS * Math.PI * 2 + Math.PI / STREETS;   // (offset so no street points at the dock)
-  for (let k = 0; k < STREETS; k++) { const a = streetAngle(k), s = new THREE.Mesh(new THREE.PlaneGeometry(64, 8), paving); s.rotation.set(-Math.PI / 2, 0, -a); s.position.set(C.x + Math.cos(a) * 72, Y + 0.025, C.z + Math.sin(a) * 72); root.add(s); }
+  const STREETS = 8, OUTER = 100, streetAngle = k => k / STREETS * Math.PI * 2 + Math.PI / STREETS;   // (offset so no street points at the dock)
+  for (let k = 0; k < STREETS; k++) { const a = streetAngle(k), s = new THREE.Mesh(new THREE.PlaneGeometry(C.r - 46, 8), paving); s.rotation.set(-Math.PI / 2, 0, -a); s.position.set(C.x + Math.cos(a) * (C.r + 34) / 2, Y + 0.025, C.z + Math.sin(a) * (C.r + 34) / 2); root.add(s); }
+  // the outer boulevard, a second ring half way out (r 96-104)
+  const ring2 = new THREE.Mesh(new THREE.RingGeometry(OUTER - 4, OUTER + 4, 128), paving); ring2.rotation.x = -Math.PI / 2; ring2.position.set(C.x, Y + 0.022, C.z); root.add(ring2);
   // the dock faces the sky port
-  const dockA = Math.atan2(SKY_PORT.pad.z - C.z, SKY_PORT.pad.x - C.x), dock = { a: dockA, c: Math.cos(dockA), s: Math.sin(dockA), r0: 104, r1: 134, half: 6 };
-  const onStreet = (x, z, pad) => { const dx = x - C.x, dz = z - C.z, r = Math.hypot(dx, dz); if (r < 40 + pad) return true;
+  const dockA = Math.atan2(SKY_PORT.pad.z - C.z, SKY_PORT.pad.x - C.x), dock = { a: dockA, c: Math.cos(dockA), s: Math.sin(dockA), r0: C.r - 6, r1: C.r + 24, half: 6 };
+  const onStreet = (x, z, pad) => { const dx = x - C.x, dz = z - C.z, r = Math.hypot(dx, dz); if (r < 40 + pad || Math.abs(r - OUTER) < 4 + pad) return true;
     for (let k = 0; k < STREETS; k++) { const a = streetAngle(k), along = dx * Math.cos(a) + dz * Math.sin(a), across = -dx * Math.sin(a) + dz * Math.cos(a); if (along > 0 && Math.abs(across) < 4 + pad) return true; }
     const along = dx * dock.c + dz * dock.s, across = -dx * dock.s + dz * dock.c; return along > 40 && Math.abs(across) < dock.half + 2 + pad; };   // a walk from the boulevard out to the dock
-  { const w = new THREE.Mesh(new THREE.PlaneGeometry(64, dock.half * 2), paving); w.rotation.set(-Math.PI / 2, 0, -dockA); w.position.set(C.x + dock.c * 72, Y + 0.024, C.z + dock.s * 72); root.add(w); }
+  { const w = new THREE.Mesh(new THREE.PlaneGeometry(C.r - 46, dock.half * 2), paving); w.rotation.set(-Math.PI / 2, 0, -dockA); w.position.set(C.x + dock.c * (C.r + 34) / 2, Y + 0.024, C.z + dock.s * (C.r + 34) / 2); root.add(w); }
   grid.place({ minX: C.x - 41, maxX: C.x + 41, minZ: C.z - 41, maxZ: C.z + 41 }, { name: 'core and boulevard', minY: Y, maxY: Y + 60 });
 
   // ---------------------------------------------------------------- towers
   const glass = mat(0x8fb8d8, { rough: 0.15, metal: 0.5, em: 0x2a4a6a, ei: 0.4 }), trim = mat(0xd4af37, { metal: 0.7, rough: 0.3 }), white = mat(0xf4f1ea, { rough: 0.5 });
-  const NAMES = ['Zephyr Tower', 'Cirrus Court', 'Halo Spire', 'Stratos House', 'Nimbus Hall', 'Aurora Heights', 'Altair Lofts', 'Vega Exchange', 'Skyward Academy', 'Cloudline Market', 'Lumen Tower', 'Gale Terrace'];
+  const NAMES = ['Zephyr Tower', 'Cirrus Court', 'Halo Spire', 'Stratos House', 'Nimbus Hall', 'Aurora Heights', 'Altair Lofts', 'Vega Exchange', 'Skyward Academy', 'Cloudline Market', 'Lumen Tower', 'Gale Terrace', 'Meridian House', 'Solstice Court', 'Polaris Tower', 'Corona Lofts', 'Equinox Hall', 'Horizon Exchange', 'Firmament Plaza', 'Breeze Row'];
   let built = 0;
-  for (let gx = C.x - 100; gx <= C.x + 100; gx += 15) for (let gz = C.z - 100; gz <= C.z + 100; gz += 15) {
+  for (let gx = C.x - C.r + 10; gx <= C.x + C.r - 10; gx += 15) for (let gz = C.z - C.r + 10; gz <= C.z + C.r - 10; gz += 15) {
     const w = 9 + ((gx * 7 + gz * 3) & 3) * 1.5, d = 9 + ((gx * 3 + gz * 5) & 3) * 1.5, x0 = gx - w / 2, x1 = gx + w / 2, z0 = gz - d / 2, z1 = gz + d / 2;
     const corners = [[x0, z0], [x1, z0], [x0, z1], [x1, z1]];
-    if (corners.some(([x, z]) => Math.hypot(x - C.x, z - C.z) > 98 || Math.hypot(x - C.x, z - C.z) < 46 || onStreet(x, z, 1))) continue;
+    if (corners.some(([x, z]) => Math.hypot(x - C.x, z - C.z) > C.r - 12 || Math.hypot(x - C.x, z - C.z) < 46 || onStreet(x, z, 1))) continue;
     if (onStreet(gx, gz, 1)) continue;
     const h = 14 + ((Math.abs(gx * 13 + gz * 7)) % 42), name = NAMES[built % NAMES.length] + (built >= NAMES.length ? ' ' + (Math.floor(built / NAMES.length) + 1) : '');
     if (grid.place({ minX: x0 - 1, maxX: x1 + 1, minZ: z0 - 1, maxZ: z1 + 1 }, { name, minY: Y, maxY: Y + h }) == null) continue;
-    const g = new THREE.Group(); g.name = name; root.add(g);
-    box(g, w, h, d, gx, Y + h / 2, gz, built % 3 ? glass : white);
-    for (let y = 4; y < h - 1; y += 4) box(g, w + 0.2, 0.3, d + 0.2, gx, Y + y, gz, trim);   // floor bands
-    box(g, w * 0.6, 2.5, d * 0.6, gx, Y + h + 1.25, gz, white);                             // rooftop plant room
+    mbox(w, h, d, gx, Y + h / 2, gz, built % 3 ? glass : white);
+    for (let y = 4; y < h - 1; y += 4) mbox(w + 0.2, 0.3, d + 0.2, gx, Y + y, gz, trim);   // floor bands
+    mbox(w * 0.6, 2.5, d * 0.6, gx, Y + h + 1.25, gz, white);                             // rooftop plant room
     solid(x0, x1, z0, z1);
     id('BLD', h > 40 ? 'OFF' : 'APT', 'GLS.STL', 'GOV', name, gx, gz); built++;
   }
+  flush();
 
   // ---------------------------------------------------------------- the Gravity Core (power grid)
   const coreG = new THREE.Group(); coreG.name = 'Gravity Core'; root.add(coreG);
@@ -78,10 +85,10 @@ export function buildSkyCity(ctx) {
   const glow = new THREE.PointLight(0x9b6bff, 3, 120, 1.5); glow.position.set(C.x, Y + 38, C.z); coreG.add(glow);
   // the power grid: four conduits from the core to anchor pylons at the rim (they hold the island up)
   const anchors = [];
-  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 8, ax = C.x + Math.cos(a) * 103, az = C.z + Math.sin(a) * 103;
+  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 8, ax = C.x + Math.cos(a) * (C.r - 7), az = C.z + Math.sin(a) * (C.r - 7);
     if (Math.abs(Math.atan2(Math.sin(a - dockA), Math.cos(a - dockA))) < 0.2) continue;
     box(coreG, 2.4, 14, 2.4, ax, Y + 7, az, dark); const tip = new THREE.Mesh(new THREE.OctahedronGeometry(1.8), violet); tip.position.set(ax, Y + 15.5, az); coreG.add(tip); solid(ax - 1.2, ax + 1.2, az - 1.2, az + 1.2);
-    const len = 103 - CORE_R, conduit = new THREE.Mesh(new THREE.BoxGeometry(len, 0.25, 0.6), violet); conduit.position.set(C.x + Math.cos(a) * (CORE_R + len / 2), Y + 0.15, C.z + Math.sin(a) * (CORE_R + len / 2)); conduit.rotation.y = -a; coreG.add(conduit);
+    const len = C.r - 7 - CORE_R, conduit = new THREE.Mesh(new THREE.BoxGeometry(len, 0.25, 0.6), violet); conduit.position.set(C.x + Math.cos(a) * (CORE_R + len / 2), Y + 0.15, C.z + Math.sin(a) * (CORE_R + len / 2)); conduit.rotation.y = -a; coreG.add(conduit);
     anchors.push(tip); id('MCH', 'GRV', 'STL', 'GOV', `Gravity anchor pylon ${k + 1}`, ax, az); }
   id('MCH', 'GRV', 'STL', 'GOV', 'Skyhaven Gravity Core (power grid)', C.x, C.z);
   // its wall (one gate, facing the dock walk), guards and turrets
@@ -101,16 +108,16 @@ export function buildSkyCity(ctx) {
   { const a = gateA, m = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.6), new THREE.MeshBasicMaterial({ map: warn })); m.position.set(C.x + Math.cos(a) * (CORE_R + 0.35), Y + 3.4, C.z + Math.sin(a) * (CORE_R + 0.35)); m.rotation.y = Math.atan2(Math.cos(a), Math.sin(a)); coreG.add(m); }
 
   // ---------------------------------------------------------------- the rim, the dock and the airship
-  for (let i = 0; i < 120; i++) { const a = (i + 0.5) / 120 * Math.PI * 2, da = Math.atan2(Math.sin(a - dockA), Math.cos(a - dockA)); if (Math.abs(da) < 0.07) continue;
-    const s = box(root, 5.8, 1.1, 0.35, C.x + Math.cos(a) * 108, Y + 0.55, C.z + Math.sin(a) * 108, white); s.rotation.y = -a + Math.PI / 2; s.castShadow = false; }
+  { const RIM = C.r - 2, n = Math.round(RIM * Math.PI * 2 / 5.6); for (let i = 0; i < n; i++) { const a = (i + 0.5) / n * Math.PI * 2, da = Math.atan2(Math.sin(a - dockA), Math.cos(a - dockA)); if (Math.abs(da) < 7.5 / RIM) continue;
+    mbox(5.8, 1.1, 0.35, C.x + Math.cos(a) * RIM, Y + 0.55, C.z + Math.sin(a) * RIM, white, Math.PI / 2 - a); } flush(); }
   const pier = new THREE.Group(); pier.name = 'Skyhaven airship dock'; root.add(pier);
   { const len = dock.r1 - dock.r0 + 6, mid = (dock.r0 - 6 + dock.r1) / 2, px = C.x + dock.c * mid, pz = C.z + dock.s * mid;
     const deck = box(pier, len, 1.2, dock.half * 2, px, Y - 0.6, pz, stone); deck.rotation.y = -dockA;
     for (const s of [-1, 1]) { const r = box(pier, len, 1.1, 0.3, px - dock.s * s * (dock.half - 0.15), Y + 0.55, pz + dock.c * s * (dock.half - 0.15), trim); r.rotation.y = -dockA; }
     const end = box(pier, 0.3, 1.1, dock.half * 2, C.x + dock.c * (dock.r1 + 0.2), Y + 0.55, C.z + dock.s * (dock.r1 + 0.2), trim); end.rotation.y = -dockA; }
-  id('BLD', 'DCK', 'STN', 'GOV', 'Skyhaven airship dock', C.x + dock.c * 120, C.z + dock.s * 120);
+  id('BLD', 'DCK', 'STN', 'GOV', 'Skyhaven airship dock', C.x + dock.c * (C.r + 10), C.z + dock.s * (C.r + 10));
   const sign = makeTex(512, 128, g => { g.fillStyle = '#0d2a4a'; g.fillRect(0, 0, 512, 128); g.fillStyle = '#ffe9a8'; g.textAlign = 'center'; g.font = 'bold 54px Georgia, serif'; g.fillText('SKYHAVEN', 256, 66); g.font = '24px sans-serif'; g.fillStyle = '#cfe6ff'; g.fillText('city in the sky · airship dock', 256, 104); });
-  { const x = C.x + dock.c * 102, z = C.z + dock.s * 102, m = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.75), new THREE.MeshBasicMaterial({ map: sign })); m.position.set(x, Y + 5, z); m.rotation.y = Math.atan2(dock.c, dock.s); root.add(m); for (const s of [-1, 1]) box(root, 0.3, 5.9, 0.3, x - dock.s * s * 3.4, Y + 2.95, z + dock.c * s * 3.4, trim); }
+  { const x = C.x + dock.c * (C.r - 8), z = C.z + dock.s * (C.r - 8), m = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.75), new THREE.MeshBasicMaterial({ map: sign })); m.position.set(x, Y + 5, z); m.rotation.y = Math.atan2(dock.c, dock.s); root.add(m); for (const s of [-1, 1]) box(root, 0.3, 5.9, 0.3, x - dock.s * s * 3.4, Y + 2.95, z + dock.c * s * 3.4, trim); }
 
   // the sky port on the ground: a fenced yard with a terminal, a landing pad and its own road in
   const P = SKY_PORT, port = new THREE.Group(); port.name = 'Skyhaven Sky Port'; scene.add(port);
@@ -155,16 +162,28 @@ export function buildSkyCity(ctx) {
   const dockLanding = () => new THREE.Vector3(C.x + dock.c * (dock.r1 - 4), Y, C.z + dock.s * (dock.r1 - 4));
   const padLanding = () => new THREE.Vector3(P.pad.x, 0.1, P.pad.z - 20);
 
-  // people: walkers on the boulevard and the streets, standers at the dock
-  const ringPts = n => Array.from({ length: n }, (_, i) => { const a = i / n * Math.PI * 2; return [C.x + Math.cos(a) * 35, C.z + Math.sin(a) * 35]; });
-  for (let i = 0; i < 8; i++) K.walker(i % 2 ? ringPts(24) : ringPts(24).reverse(), { t: i * 25, speed: 1 + (i % 3) * 0.15, y: Y + 0.05, off: (i % 3 - 1) * 1.2 });
-  for (let k = 0; k < STREETS; k += 2) { const a = streetAngle(k); K.walker([[C.x + Math.cos(a) * 42, C.z + Math.sin(a) * 42], [C.x + Math.cos(a) * 100, C.z + Math.sin(a) * 100]], { t: k * 9, y: Y + 0.05, off: 1.5 }); }
-  for (const s of [-1, 1]) K.stander(C.x + dock.c * 100 - dock.s * s * 4, C.z + dock.s * 100 + dock.c * s * 4, 0, { y: Y + 0.05 });
-  destinations.push({ name: 'Skyhaven (sky city)', x: C.x + dock.c * 100, z: C.z + dock.s * 100 });
+  // people: walkers on both boulevards and the streets, families, people chatting and waiting at the dock. They're
+  // made the first time you come up (not while the game is loading).
+  const ringPts = (r, n) => Array.from({ length: n }, (_, i) => { const a = i / n * Math.PI * 2; return [C.x + Math.cos(a) * r, C.z + Math.sin(a) * r]; });
+  let peopled = false;
+  function populate() {
+    peopled = true;
+    for (let i = 0; i < 10; i++) K.walker(i % 2 ? ringPts(35, 24) : ringPts(35, 24).reverse(), { t: i * 22, speed: 1 + (i % 3) * 0.15, y: Y + 0.05, off: (i % 3 - 1) * 1.2 });
+    for (let i = 0; i < 12; i++) K.walker(i % 2 ? ringPts(OUTER, 48) : ringPts(OUTER, 48).reverse(), { t: i * 52, speed: 1 + (i % 4) * 0.12, y: Y + 0.05, off: (i % 3 - 1) * 1.4 });
+    for (let k = 0; k < STREETS; k++) { const a = streetAngle(k), path = [[C.x + Math.cos(a) * 42, C.z + Math.sin(a) * 42], [C.x + Math.cos(a) * (C.r - 10), C.z + Math.sin(a) * (C.r - 10)]];
+      K.walker(path, { t: k * 9, y: Y + 0.05, off: 1.5 }); if (k % 2) K.walker(path, { t: k * 9 + 60, y: Y + 0.05, off: -1.5, speed: 1.1 }); }
+    for (let i = 0; i < 3; i++) { const pts = i % 2 ? ringPts(OUTER, 48) : ringPts(OUTER, 48).reverse(), t = i * 120 + 40;
+      K.walker(pts, { t, speed: 1.05, off: 0.5, y: Y + 0.05 }); K.walker(pts, { t: t - 0.25, speed: 1.05, off: -0.4, y: Y + 0.05 }); K.walker(pts, { child: true, t: t - 1.3, speed: 1.05, off: 1.2, y: Y + 0.05 }); }
+    for (let i = 0; i < 4; i++) { const a = streetAngle(i * 2) + Math.PI / STREETS, x = C.x + Math.cos(a) * (OUTER + 7), z = C.z + Math.sin(a) * (OUTER + 7), f = Math.atan2(Math.sin(a + 1.6), Math.cos(a + 1.6));
+      K.stander(x, z, f, { y: Y + 0.05, task: 'talk' }); K.stander(x + Math.cos(a + 1.6) * 1.3, z + Math.sin(a + 1.6) * 1.3, f + Math.PI, { y: Y + 0.05, task: 'talk' }); }
+    for (const s of [-1, 1]) for (const k of [0, 1]) K.stander(C.x + dock.c * (C.r - 12 - k * 3) - dock.s * s * 4, C.z + dock.s * (C.r - 12 - k * 3) + dock.c * s * 4, 0, { y: Y + 0.05 });
+  }
+  destinations.push({ name: 'Skyhaven (sky city)', x: C.x + dock.c * (C.r - 10), z: C.z + dock.s * (C.r - 10) });
 
   // ---------------------------------------------------------------- where you can stand, and the core's defence
   const onIsland = (x, z) => Math.hypot(x - C.x, z - C.z) <= C.r;
-  const onPier = (x, z) => { const dx = x - C.x, dz = z - C.z, along = dx * dock.c + dz * dock.s, across = -dx * dock.s + dz * dock.c; return along >= 100 && along <= dock.r1 && Math.abs(across) <= dock.half; };
+  const RIMIN = C.r - 2.4;   // the inside of the parapet
+  const onPier = (x, z) => { const dx = x - C.x, dz = z - C.z, along = dx * dock.c + dz * dock.s, across = -dx * dock.s + dz * dock.c; return along >= C.r - 10 && along <= dock.r1 && Math.abs(across) <= dock.half; };
   function groundAt(x, z, bodyY) { if (bodyY == null || bodyY < Y - 8) return null; return onIsland(x, z) || onPier(x, z) ? Y : null; }
   let fireT = 0, warnT = 0, alarm = 0, t = 0;
   const shots = [];
@@ -184,11 +203,12 @@ export function buildSkyCity(ctx) {
     else if (air.state === 'down') { const u = ease(1 - Math.max(0, air.t) / FLY); ship.position.lerpVectors(highPos, lowPos, u); ship.position.y += Math.sin(u * Math.PI) * 30; if (air.t <= 0) { air.state = 'port'; air.t = DOCK; air.doors = true; ship.position.copy(lowPos); if (air.rider) toast('🎈 Back at the Sky Port.'); } }
     boardSpot.pos.copy(air.state === 'sky' ? dockLanding() : air.state === 'port' ? padLanding().setZ(P.pad.z - 6) : ship.position);
     if (air.rider) ctx.carry(deckPoint());
+    if (!peopled && p && (p.y > Y - 60 || air.rider)) populate();
     if (!p || air.rider) return;
     // keep people on the island: a parapet round the rim (the dock pier is the one way off, onto the airship)
     if (p.y > Y - 3 && p.y < Y + 4) {
       const dx = p.x - C.x, dz = p.z - C.z, r = Math.hypot(dx, dz);
-      if (r > 107.6 && r < 112 && !onPier(p.x, p.z)) { p.x = C.x + dx / r * 107.6; p.z = C.z + dz / r * 107.6; }
+      if (r > RIMIN && r < C.r + 2 && !onPier(p.x, p.z)) { p.x = C.x + dx / r * RIMIN; p.z = C.z + dz / r * RIMIN; }
       if (onPier(p.x, p.z)) { const along = dx * dock.c + dz * dock.s, across = -dx * dock.s + dz * dock.c, a2 = Math.min(along, dock.r1 - 0.5), c2 = Math.max(-dock.half + 0.5, Math.min(dock.half - 0.5, across)); p.x = C.x + dock.c * a2 - dock.s * c2; p.z = C.z + dock.s * a2 + dock.c * c2; }
       // the core's wall: solid all round except the gate
       const a = Math.atan2(dz, dx), da = Math.atan2(Math.sin(a - gateA), Math.cos(a - gateA));
