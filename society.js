@@ -1,3 +1,4 @@
+import {citizenFaction, reputationStanding} from './reputation.js';
 // SOCIETY — everyone in the city has a mind of their own, and they all share one city brain.
 //
 // Every resident is a citizen with a name, an age, a job, a personality (honesty, kindness,
@@ -554,7 +555,9 @@ export function createSociety(ctx) {
     const c = cit(e); if (!c) return null;
     const now = Date.now(), fresh = !c.metAt || now - c.metAt > 60e3;
     if (fresh) { c.opinion = clamp(c.opinion + 2, -100, 100); c.metAt = now; lives.bondUp(c, 2); lives.playerCount('talks', 1, [[1, 'First conversation'], [50, 'Knows everyone on the street']]); }
-    const hostile = c.opinion < -30, P = gov.P, pa = PARTIES[gov.party(c)], famous = S.fame >= 15;
+    const faction=citizenFaction(c), standing=reputationStanding(ctx.reputation?.score, faction);
+    const publicOpinion=c.opinion+standing.opinion;
+    const hostile = publicOpinion < -30, P = gov.P, pa = PARTIES[gov.party(c)], famous = S.fame >= 15;
     c.metPlayer = true; S.fameAcc += .05;
     const stage = lives.stageOf(c.bond || 0), first = c.name.split(' ')[0], title = lives.titleHere(c, e);
     const known = lives.knownName(c) || (c.record ? c.name : null), heading = known ? (title ? `${title} ${known}` : known) : title ? `The ${title.toLowerCase()}` : 'A stranger';
@@ -564,12 +567,14 @@ export function createSociety(ctx) {
     const skillWord = v => v >= 90 ? 'a master' : v >= 70 ? 'very good' : v >= 45 ? 'decent' : v >= 20 ? 'still learning' : 'a beginner';
     const jobLine = () => `${c.job === 'Unemployed' ? "I'm out of work at the moment." : c.job === 'Retired' ? "I'm retired." : c.job === 'Student' ? "I'm a student." : `I work as ${/^[AEIOU]/.test(c.job) ? 'an' : 'a'} ${c.job.toLowerCase()}${c.tenure >= 1 ? `, ${Math.round(c.tenure)} years now` : ', just started'}.`}${c.title ? ` (${c.title}.)` : ''}`;
     const choices = [];
+    choices.push(['How do you see my reputation?', `${standing.title} (${standing.score}). ${faction==='yatan'?'The Church of Yatan':'The people'} see you as ${standing.relationship.toLowerCase()}.`]);
+    if(faction==='yatan') choices.push(['Tell me about the Church of Yatan', 'We are believers of Yatan. Those rejected by the people find friendship with us. The darker your reputation, the closer you are to our church.']);
     // stage 0: a stranger only gives what anyone would
-    if (stage === 0) choices.push(['Hello. Who are you?', () => { lives.bondUp(c, 3); if (c.traits.sociability > .55 || c.opinion > 15) { c.bond = Math.max(c.bond, 10); return `I'm ${first}. ${title ? `I'm the ${title.toLowerCase()} here.` : ''}`; } return pickR(Math.random, ["Just someone on my way somewhere.", "Does it matter?", "I'd rather not say, if that's all right."]); }]);
+    if (stage === 0) choices.push(['Hello. Who are you?', () => { lives.bondUp(c, 3); if (c.traits.sociability > .55 || publicOpinion > 15) { c.bond = Math.max(c.bond, 10); return `I'm ${first}. ${title ? `I'm the ${title.toLowerCase()} here.` : ''}`; } return pickR(Math.random, ["Just someone on my way somewhere.", "Does it matter?", "I'd rather not say, if that's all right."]); }]);
     else choices.push(['What do you do?', jobLine()]);
     choices.push(['How is your day going?', () => { lives.bondUp(c, 2); return c.mood > 65 ? 'Honestly? Pretty good.' : c.mood > 40 ? 'Getting by.' : 'Not great, if I am honest.'; }]);
     choices.push(['Chat for a while', () => { if (c.chatAt && now - c.chatAt < 60e3) return 'We only just talked! Maybe later.'; c.chatAt = now; lives.bondUp(c, 5); c.social = 100; return chatLine(c); }]);
-    choices.push(['Buy them a coffee (5 gold)', () => { if (ctx.gold() < 5) return "You haven't got the money, but thanks for the thought."; if (c.coffeeAt && now - c.coffeeAt < 300e3) return "I've only just had one, thanks!"; ctx.addGold(-5); c.coffeeAt = now; c.opinion = clamp(c.opinion + 4, -100, 100); lives.bondUp(c, 6); return 'Oh, that is kind of you. Thank you.'; }]);
+    choices.push(['Buy them a coffee (5 gold)', () => { if (ctx.gold() < 5) return "You haven't got the money, but thanks for the thought."; if (c.coffeeAt && now - c.coffeeAt < 300e3) return "I've only just had one, thanks!"; ctx.addGold(-5); ctx.reputation?.record('kindness'); c.coffeeAt = now; c.opinion = clamp(c.opinion + 4, -100, 100); lives.bondUp(c, 6); return 'Oh, that is kind of you. Thank you.'; }]);
     if (c.file) choices.push(['(Read the file you bought)', (() => { const f = c.file.fake, pa2 = PARTIES[f ? f.vote : gov.party(c)]; return `PRIVATE FILE · ${c.name}, ${c.age}, ${c.city}. Work: ${c.job}${c.tenure ? ` (${Math.round(c.tenure)} yrs)` : ''}. Money: ${Math.round(c.wealth)} gold. Health: ${f ? f.health : Math.round(c.health)}/100${f ? '; ' + f.illness : c.illnesses?.length ? '; ' + c.illnesses.join(', ') : ''}. Votes: ${pa2 ? pa2.name.replace(/\.$/, '') : 'nobody'}. ${c.crook ? 'Known to the underworld as a ' + c.crook.toLowerCase() + '. ' : ''}Wants to ${lives.AMBITIONS[c.ambition]}. History: ${c.story.join(' ')}`; })()]);
     if (stage >= 1) choices.push(['What have you been up to?', c.memory.length ? c.memory.slice(0, 3).join('. ') + '.' : 'Nothing much. Work, home, the usual.']);
     if (stage >= 2) {
@@ -591,7 +596,7 @@ export function createSociety(ctx) {
     choices.push(['What is the chip?', 'Everyone in A.T. has a Unity chip. It links us to the Unity Network, so news and what we know is shared between all of us. ATLAS, the national AI in the Capital, runs every machine in the country. It is not wired into people. It only reaches us through the chips.']);
     choices.push(['Who made this world?', pickR(Math.random, ['The Lawgiver wrote the laws of this world: the roads, the rules, even how the rain falls. And above the Lawgiver, they say, is a Supreme Being. Nobody knows anything about the Supreme Being. Only that it is there.', "The Lawgiver made it, and keeps rewriting the laws to make it better. When something here doesn't make sense, we petition the Lawgiver. As for the Supreme Being above the Lawgiver… no one knows. We just know it exists."])]);
     if (stage >= 1) choices.push(['Seen anything strange lately?', (() => { const mine = (ctx.petitions?.() || []).find(p => p.who.includes(first) || p.who.includes(c.name)); return mine ? `Yes! ${mine.words} I reported it. ${mine.fixed ? 'The Rule Keepers put it right.' : 'It is with the Lawgiver now.'}` : 'Not lately. If I see something that breaks the laws of the world, I will report it to the Lawgiver.'; })()]);
-    choices.push(['What do people say about me?', S.fame < 15 ? "Honestly? Nobody really knows who you are. It's a big country." : c.opinion > 40 ? 'People like you. Word is you help folks out.' : c.opinion > 5 ? "You seem all right." : c.opinion > -30 ? "Folks don't know what to make of you." : 'People say you hurt folks round here. Everyone knows.']);
+    choices.push(['What do people say about me?', `Your public reputation is ${standing.title.toLowerCase()} (${standing.score}). The people see you as ${reputationStanding(standing.score).relationship.toLowerCase()}; the Church of Yatan sees you as ${reputationStanding(standing.score, 'yatan').relationship.toLowerCase()}. Our own history still matters to me.`]);
     const hk = housekeeper();
     if (stage >= 1 && !hk && !hostile && c.age >= 18 && c.age < 70 && !c.crook) choices.push([`Offer a job: housekeeper (${WAGE.housekeeper} gold a day)`, () => {
       if (c.opinion < 0 && Math.random() < .5) return "No thanks. I don't want to work for you.";
@@ -600,7 +605,7 @@ export function createSociety(ctx) {
       return `Deal! I'll do your laundry, dishes and the rest. ${WAGE.housekeeper} gold a day, paid each city day.`;
     }]);
     if (hk && hk.id === c.id) choices.push(['Let them go', () => { S.staff = S.staff.filter(s => s !== hk); c.opinion -= 10; remember(c, 'Was let go as a housekeeper'); save(); return 'Oh. Right. Well, good luck.'; }]);
-    return { title: heading + (stage >= 1 ? ` · ${BOND_STAGES[stage][0]}` : ''), text: greet, choices };
+    return { title: heading + (faction==='yatan'?' | Yatan believer':'') + (stage >= 1 ? ` · ${BOND_STAGES[stage][0]}` : ''), text: (standing.favor===0 ? '' : standing.favor<0 ? 'Your reputation worries me. ' : standing.favor>=1000 ? (faction==='yatan'?'Yatan welcomes you, Demon. ':'You are a Saint to our people. ') : standing.favor>=500 ? 'Welcome, trusted friend. ' : faction==='yatan'?'Yatan sees you as a friend. ':'I have heard good things about you. ') + greet, choices };
   }
 
   // ---- the City Hall panel -----------------------------------------------------------------------------
@@ -625,7 +630,7 @@ export function createSociety(ctx) {
       <div>Mayors: ${CITIES.map(c => `${c}: ${esc(G.mayors[c] === 'player' ? 'you' : nameOf(G.mayors[c]))}`).join(' · ')}</div>
       <h3>The country</h3><div class="row"><div>Safety ${bar(100 - S.crime)}</div><div>Cleanliness ${bar(S.clean)}</div><div>Health ${bar(S.health)}</div><div>Roads ${bar(S.roads)}</div><div>Schools ${bar(S.edu)}</div></div>
       <div>${ppl.length} residents across ${CITIES.length} cities · unemployment ${unemployedPct().toFixed(1)}% · ${citizens.filter(c => c.jail).length} in jail</div>
-      <h3>You</h3><div>Fame ${bar(S.fame)} · reputation: <b>${S.fame < 15 ? 'nobody knows you yet' : avgOp > 25 ? 'well liked' : avgOp > 5 ? 'liked' : avgOp > -10 ? 'mixed' : avgOp > -30 ? 'distrusted' : 'feared'}</b>${P.office ? ' · <b>' + esc(P.office) + '</b>' : ''}${P.party != null ? ' · member of the ' + esc(PARTIES[P.party].name) : ''}</div>
+      <h3>You</h3><div>Public reputation: <b>${ctx.reputation?.score ?? 0} (${reputationStanding(ctx.reputation?.score).title})</b>. Citizens: ${reputationStanding(ctx.reputation?.score).relationship}. Church of Yatan: ${reputationStanding(ctx.reputation?.score, 'yatan').relationship}.</div><div>Fame ${bar(S.fame)} · local opinion: <b>${S.fame < 15 ? 'nobody knows you yet' : avgOp > 25 ? 'well liked' : avgOp > 5 ? 'liked' : avgOp > -10 ? 'mixed' : avgOp > -30 ? 'distrusted' : 'feared'}</b>${P.office ? ' · <b>' + esc(P.office) + '</b>' : ''}${P.party != null ? ' · member of the ' + esc(PARTIES[P.party].name) : ''}</div>
       <div style="opacity:.75">Fame grows with what you do, what you own and the offices you hold. Until people know you, they don't much care what you do.</div>
       <div>🏅 Achievements: ${lives.P.list.length ? lives.P.list.map(esc).join(' · ') : 'none yet'}</div>
       <h3>Money</h3><div>Treasury <b>${fmt(S.treasury)}</b> gold · income tax <b>${S.tax}%</b> · ${Object.entries(S.budget).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · ')}</div>
@@ -734,7 +739,7 @@ export function createSociety(ctx) {
     if (d.leave != null) return say2(gov.actions.leave());
     if (d.run) return say2(gov.actions.run(d.run, d.city));
     if (d.propose) return say2(gov.actions.propose(d.propose));
-    if (d.donate) { const n = +d.amt; if (ctx.gold() >= n) history.L.donations += n; if (ctx.gold() >= n) lives.playerCount('donated', n, [[100, 'First donation'], [5000, 'Philanthropist']]); if (ctx.gold() < n) return say2(`You need ${n} gold to give that.`); ctx.addGold(-n); const O = S.orgs ||= { funds: {}, helped: {} }; O.funds[d.donate] = (O.funds[d.donate] || 0) + n; S.fameAcc += n / 400; if (S.fame >= 20) for (const c of citizens) c.opinion = clamp(c.opinion + n / 2000, -100, 100); news(`The newcomer gave ${n} gold to ${d.donate}.`, false); return say2(`💛 Thank you. ${d.donate} received ${n} gold.`); }
+    if (d.donate) { const n = +d.amt; if(!Number.isFinite(n)||n<=0)return; if (ctx.gold() >= n) history.L.donations += n; if (ctx.gold() >= n) lives.playerCount('donated', n, [[100, 'First donation'], [5000, 'Philanthropist']]); if (ctx.gold() < n) return say2(`You need ${n} gold to give that.`); ctx.addGold(-n); ctx.reputation?.record('donation',null,n); const O = S.orgs ||= { funds: {}, helped: {} }; O.funds[d.donate] = (O.funds[d.donate] || 0) + n; S.fameAcc += n / 400; if (S.fame >= 20) for (const c of citizens) c.opinion = clamp(c.opinion + n / 2000, -100, 100); news(`The newcomer gave ${n} gold to ${d.donate}.`, false); return say2(`💛 Thank you. ${d.donate} received ${n} gold.`); }
     if (d.askgo != null) { const q = panel.querySelector('[data-ask]').value.trim(), out = panel.querySelector('[data-answer]'); if (!q) return; out.textContent = 'ATLAS is thinking…';
       ctx.askAtlas?.(q, { year: Math.floor(S.tick / YEAR) + 1, president: gov.candName({ id: S.gov.president }), approval: Math.round(S.approval), crime: Math.round(S.crime), treasury: Math.round(S.treasury), tax: S.tax, atlasLevel: S.atlas.level, dev: Math.round(S.dev), discoveries: S.sci.list.slice(0, 3).map(x => x.name), finds: S.dig.finds.slice(-3).map(x => x.relic) })
         .then(a => { out.textContent = a || 'ATLAS is offline right now.'; nation.feedAtlas(2); }).catch(() => { out.textContent = 'ATLAS is offline right now.'; }); return; }

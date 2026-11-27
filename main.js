@@ -1,3 +1,7 @@
+import {createReputation} from './reputation.js';
+import { startupStage } from './startup-scheduler.js';
+import { enforcementResponse } from './enforcement-response.js';
+import { createRainField } from './rain-field.js';
 import { createPeople, makeLook, HAIR_STYLES, HAIR_COLOURS } from './people.js';
 import { createSeatedResidents } from './seated-residents.js';
 import { createBankPanel } from './bank-panel.js';
@@ -161,9 +165,10 @@ let navy=null,intercityRail=null,regionalFacilities=null;
 let worldMap=null,movieTv=null,worldAdvertising=null,capitalServiceBuildings=null;
 let onlineAccount=null;
 let alignmentUserId=null;
-function saveAlignment(){if(alignmentUserId)try{localStorage.setItem('alignment:'+alignmentUserId,JSON.stringify({heroDungeonKills,villainKills}));}catch{}}
+function saveAlignment(){if(alignmentUserId)try{localStorage.setItem('alignment:'+alignmentUserId,JSON.stringify({heroDungeonKills,villainKills,reputation:reputation.snapshot()}));}catch{}}
 let heroDungeonKills=0,onlinePlayers=null,onlinePlayReady=false;
-const playerAlignment=()=>isVillain?'villain':heroDungeonKills>0?'hero':'neutral';
+const reputation=createReputation({onChange:({score,delta})=>{isVillain=score<0;saveAlignment();if(soloMode)saveSolo();toast(`Reputation ${delta>0?'+':''}${delta} | ${score} | ${reputation.standing().title}`);}});
+const playerAlignment=()=>reputation.score<0?'villain':reputation.score>0?'hero':'neutral';
 let specialTrainingKills=Math.min(5,Math.max(0,Number(localStorage.getItem('specialTrainingKills'))||0));
 let activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};
 import { createClient } from '@supabase/supabase-js';
@@ -904,6 +909,7 @@ function addCCTV(x, y, z, faceZ) {
 // and leaves rubble before construction officers secure and rebuild the site.
 function collapseBuilding(b,criminal=true) {
   if (!b.alive) return;
+  if(criminal)reputation.record('destruction');
   const rebuild = reconstruction.begin(b, reconstructionDays);
   b.alive = false;
   const colliderIndex = colliders.indexOf(b.collider);
@@ -2543,7 +2549,7 @@ function saveSolo() {
   try {
     localStorage.setItem(soloSaveKey(soloUserId), JSON.stringify({
       origin, prog, gold: stats.gold, charIdx, unlockedCharIndices,
-      kitchen:kitchen?.snapshot(),rent:rent?.snapshot(),careers:careers?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
+      kitchen:kitchen?.snapshot(),rent:rent?.snapshot(),careers:careers?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,reputation:reputation.snapshot(),stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
       metro:metro?.snapshot(),sewer:sewers?.snapshot(),law:roadLaw?.snapshot(),hunter:hunterGuilds?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
       navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
       driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
@@ -2572,7 +2578,7 @@ function applySoloSave(save) {
   if(save.stats)Object.assign(stats,save.stats);if(Array.isArray(save.inventory))inventory=save.inventory;if(typeof save.hasBag==='boolean'){hasBag=save.hasBag;backpack.visible=hasBag;}
   if(Number.isFinite(save.dayTime))dayTime=save.dayTime;if(Number.isFinite(save.reconstructionDays))reconstructionDays=save.reconstructionDays;if(Number.isFinite(save.pitch))pitch=save.pitch;
   supportSkills?.restore(save.support);if(save.supportCounters)supportCounters=save.supportCounters;specialUnlocked=!!supportSkills?.equipped;buildHotbar();
-  heroDungeonKills=save.heroDungeonKills||0;
+  heroDungeonKills=save.heroDungeonKills||0;reputation.restore(save.reputation);isVillain=reputation.score<0;
   monsterQuestKills=save.monsterQuestKills||0;for(const q of cityLife?.quests||[]){const saved=save.questState?.find(s=>s.name===q.name);if(saved)Object.assign(q,saved);}
   kitchen?.restore(save.kitchen);rent?.restore(save.rent);careers?.restore(save.careers);roadWear?.restore(save.roadWear);conditions?.restore(save.buildingCondition);property?.restore(save.property);licences.restore(save.licences);navy?.restore(save.navy);intercityRail?.restore(save.intercityRail);spaceCentre?.restore(save.space);metro?.restore(save.metro);sewers?.restore(save.sewer);transport?.restore(save.transport);
   if(save.sitting){const seat=sitSpots.find(s=>s.x===save.sitting.x&&s.z===save.sitting.z&&!s.broken);if(seat)toggleSit(seat);}
@@ -2675,8 +2681,11 @@ async function boot() {
   if(navigator.onLine){try{const result=await Promise.race([supabase.auth.getSession(),new Promise(resolve=>setTimeout(()=>resolve(null),8000))]);session=result?.data?.session||null;}catch{}}
   window.gameLoading?.hide();
   const activeSession = navigator.onLine?(session||await showAuthScreen()):offlinePlayerSession();
+  // Keep the city covered while preparing the account/home. Without this,
+  // dismissing sign-in can trigger a costly full-world render before the menu.
+  window.gameLoading?.show(95,'Preparing your menu...');
   registryUserId=activeSession.user.isGuest?null:activeSession.user.id;   // the world registry only takes signed-in players' reports
-  alignmentUserId=activeSession.user.id;try{const role=JSON.parse(localStorage.getItem('alignment:'+alignmentUserId));if(role){heroDungeonKills=role.heroDungeonKills||0;villainKills=role.villainKills||0;isVillain=villainKills>0;}}catch{}
+  alignmentUserId=activeSession.user.id;reputation.restore(0);try{const role=JSON.parse(localStorage.getItem('alignment:'+alignmentUserId));if(role){heroDungeonKills=role.heroDungeonKills||0;villainKills=role.villainKills||0;reputation.restore(role.reputation);isVillain=reputation.score<0;}}catch{}
   playerUsername = activeSession.user.isGuest?(localStorage.getItem('lastPlayerName')||'Guest'):await requireUsername(supabase);
   if(!activeSession.user.isGuest)localStorage.setItem('lastPlayerName',playerUsername);
   try{const support=JSON.parse(localStorage.getItem('support:'+activeSession.user.id));if(support){supportSkills?.restore(support.skill);supportCounters=support.counters||supportCounters;monsterQuestKills=support.kills||monsterQuestKills;specialUnlocked=!!supportSkills?.equipped;buildHotbar();}}catch{}
@@ -2693,6 +2702,7 @@ async function boot() {
   // coming back from a death as a new player: no menu, straight into the opening
   let startOver=null;try{startOver=JSON.parse(sessionStorage.getItem('storyStartOver')||'null');sessionStorage.removeItem('storyStartOver');}catch{}
   if(startOver&&startOver.uid!==activeSession.user.id)startOver=null;
+  window.gameLoading?.hide();
   const mode = startOver?'new':restoringUpdate?'continue':await showMenu(!!existingSave||!!storyRun);
   window.gameLoading?.show(10,'Preparing your adventure...');
   if (mode === 'continue' && !existingSave) {
@@ -2701,7 +2711,7 @@ async function boot() {
     applySoloSave(existingSave);
     wanted = 0; pursuitBackupCooldown = 0;   // a reload should never resume with police already after you
   } else if (mode === 'new') {
-    clearSolo(activeSession.user.id);
+    clearSolo(activeSession.user.id);reputation.restore(0);isVillain=false;saveAlignment();
     window.gameLoading?.hide();
     storyProtagonist();
     window.gameLoading?.show(35,'Creating your character data...');
@@ -2716,7 +2726,7 @@ async function boot() {
     if(onlineSave.prog)Object.assign(prog,onlineSave.prog);if(onlineSave.stats)Object.assign(stats,onlineSave.stats);
     inventory=Array.isArray(onlineSave.inventory)?onlineSave.inventory:inventory;hasBag=onlineSave.hasBag??true;backpack.visible=hasBag;
     supportSkills.restore(onlineSave.support);supportCounters=onlineSave.supportCounters||{dungeons:0,bosses:0};monsterQuestKills=onlineSave.monsterQuestKills||0;
-    heroDungeonKills=onlineSave.heroDungeonKills||0;villainKills=onlineSave.villainKills||0;isVillain=villainKills>0;specialUnlocked=!!supportSkills.equipped;
+    heroDungeonKills=onlineSave.heroDungeonKills||0;villainKills=onlineSave.villainKills||0;reputation.restore(onlineSave.reputation);isVillain=reputation.score<0;specialUnlocked=!!supportSkills.equipped;
     adventureServices.restore(onlineSave.adventure);cityServices.restore({owned:onlineSave.ownedCars||[]});for(const q of cityLife.quests){const state=onlineSave.quests?.find(s=>s.name===q.name);if(state)Object.assign(q,state);}
     saveAlignment();persistSupportProgress();buildHotbar();player.position.copy(SPAWN);
   }
@@ -2750,7 +2760,8 @@ async function boot() {
   if(soloMode&&system){if(mode==='new')system.begin(startOver?.life||storyRun?.life||1);else system.resume(storyRun);}
 }
 addEventListener('game-before-update',event=>{event.detail.waitUntil((async()=>{if(soloMode){if(!saveSolo())throw new Error('Solo progress could not be written to device storage');sessionStorage.setItem('resumeAfterUpdate',soloUserId);shutDownForReload();}else if(hosting.room){await onlineAccount?.save();await hosting.prepareReload();shutDownForReload();}})());});
-boot().catch(error=>window.gameLoading?.fail(error.message));
+// Start boot only after all world construction has finished (at the module end).
+// Construction yields below; starting here would expose uninitialized systems.
 const maxHp = () => (origin?.maxHealth ?? 100) + prog.def * 15;
 const xpToNext = () => 50 + prog.level * 50;
 // A roll of 1 drains hunger/energy 50% faster for this profile, forever; a roll of 6 drains 30% slower.
@@ -2799,6 +2810,7 @@ function spendPoint(key) {
 const vehicles = [];
 let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, estate = null, roadLinks = null, roadCrew = null, property = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
+let lastPlayerGunshot = -Infinity;
 let riding = null;   // a parkPets horse object currently being ridden
 const policeLastSeen = new THREE.Vector3();
 const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2cc, emissiveIntensity: 0.3 });
@@ -3988,6 +4000,7 @@ function applyHit(e, h) {
   // Did the player actually cause this hit? AI traffic, police, raids and other
   // people's explosions must never count against (or for) the player.
   const byPlayer = h.fromPlayer !== false && !h.police;
+  if(byPlayer && e.kind==='npc') reputation.record('assault',e);
   let dmg = h.dmg * dmgMul()*(byPlayer?(supportSkills?.damageMultiplier||1):1);
   e.lastHit = 0;
   if (e.kind === 'npc' && !e.cop) society?.onHit(e, byPlayer);   // they remember, and so do the people who saw it
@@ -4090,6 +4103,7 @@ function killEnemy(e, byPlayer = true) {
     popText(at(e.root.position, e.height + 0.6), `+${gold} gold`, 'info');
     gainXp(e.animal === 'lion' ? 30 : 12);
   } else if (e.kind === 'monster') {
+    if(byPlayer)reputation.record('monster');
     if(dungeon){heroDungeonKills++;saveAlignment();}
     monsterQuestKills++;persistSupportProgress();
     e.respawn = Infinity;   // dungeon monsters stay dead
@@ -4109,7 +4123,7 @@ function killEnemy(e, byPlayer = true) {
     if (e.superArmor) impactFrame(1.5);
   } else if (e.kind === 'npc' && e.cop) {
     e.respawn = 1e9; popText(at(e.root.position, 2.2), 'K.O.', 'break');
-    if (byPlayer) { raiseWanted(Math.min(240, Math.max(110, wanted + 50))); toast('🚨 Officer down! Every unit in the area is coming for you.'); gainXp(10); villainKills++; try { localStorage.setItem('villainKills', String(villainKills)); } catch {} if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); } saveAlignment(); }
+    if (byPlayer) { raiseWanted(Math.min(240, Math.max(110, wanted + 50))); toast('🚨 Officer down! Every unit in the area is coming for you.'); gainXp(10); reputation.record('knockout');villainKills++; try { localStorage.setItem('villainKills', String(villainKills)); } catch {}  saveAlignment(); }
   } else if (e.kind === 'npc') {
     e.respawn = 20;
     popText(at(e.root.position, 2.2), 'K.O.', 'break');
@@ -4118,9 +4132,9 @@ function killEnemy(e, byPlayer = true) {
     // AI traffic, police or someone else's explosion is not the player's crime.
     if (byPlayer) {
       gainXp(10);
-      villainKills++; localStorage.setItem('villainKills', String(villainKills));
+      reputation.record('knockout');villainKills++; localStorage.setItem('villainKills', String(villainKills));
       saveAlignment();
-      if (!isVillain) { isVillain = true; toast('☠ You\'ve become a Villain. Your name now shows in red.'); }
+
     }
     const n = randomCorner();   // comes back later somewhere else in town
     e.spot = cornerPos(n);
@@ -6383,6 +6397,8 @@ function lockTool(on) { lockKey.visible = on; }
 function enterVehicle(v) {
   if(adventureServices?.parachuting){toast('Land before entering a vehicle.');return;}
   if(v.noSteal&&!v.stealable){toast('This is a display car. Buy it at the dealership instead.');return;}
+  if(v.disabled){toast('This vehicle is wrecked.');return;}
+  if((v.stealable||v.ai)&&!v.reputationTheft){reputation.record('theft');v.reputationTheft=true;}
   if(v.stealable&&!v.stolen){v.stolen=true;if(v.bikeRider)v.bikeRider.root.visible=false;if(v.driver)v.driver.root.visible=false;v.ai??={cruise:0,stopTimer:0};toast(v.kind==='bicycle'||v.kind==='motorcycle'?'You shove the rider off and take the '+(v.kind==='bicycle'?'bike':'motorbike')+'!':'You drag the taxi driver out and take the cab!');}
   v.routeTraffic=false;
   if(v.kind==='plane')adventureServices?.giveEmergencyParachute();
@@ -7230,6 +7246,7 @@ let neighbours = null, venueFences = null, slum = null, rent = null, systemOrb =
 let dayTime = 0.1;   // 0 = sunrise, 0.25 = noon, 0.5 = sunset
 // Weather: cycles clear/rain on its own timer, independent of day/night.
 let weatherState = 'clear', weatherT = 90 + rand() * 120;
+const rainField = createRainField({ scene, count: touchDevice ? 300 : 700, groundY: (x,z) => groundY(x,z) });
 $('weatherBadge').textContent = '☀️ Clear';
 let WEATHER_CYCLE = ['clear', 'rain', 'clear', 'snow'], weatherIdx = 0;   // replaced by the season's cycle once seasons.js starts
 const WEATHER_LABEL = { clear: '☀️ Clear', rain: '🌧️ Raining', snow: '❄️ Snowing' };
@@ -7247,12 +7264,13 @@ function updateWeather(dt) {
   // forcing a perpetual "doors open, waiting" state is the only hook available
   // from here without reaching into transport.js's own update loop.
   if (weatherState === 'snow') for (const s of transport?.services ?? []) { s.doors = true; s.wait = 2; }
-  if ((weatherState === 'rain' || weatherState === 'snow') && !spaceCentre?.inSpace && !metro?.underground && !sewers?.underground && Math.random() < 0.9) {
+  const weatherSheltered = inCivicInterior || !!interiors?.active || !!walkIns.inside || !!houseAt(player.position,-.1) || !!slum?.insideShack?.(player.position) || !!neighbours?.inside || !!spaceCentre?.inSpace || !!metro?.underground || !!sewers?.underground || !!dungeon;
+  rainField.update(dt,player.position,weatherState==='rain',weatherSheltered);
+  if (weatherState === 'snow' && !weatherSheltered && Math.random() < 0.9) {
     for (let i = 0; i < (touchDevice ? 2 : 6); i++) {   // fewer weather particles on phones
       const a = rand() * Math.PI * 2, r = rand() * 16;
       const x = player.position.x + Math.cos(a) * r, z = player.position.z + Math.sin(a) * r;
       if (weatherState === 'snow') spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3((Math.random() - 0.5), -2.5, (Math.random() - 0.5)), 0xffffff, 0.07, 1.6, -2.5);
-      else spawnParticle(new THREE.Vector3(x, player.position.y + 9, z), new THREE.Vector3(0, -14, 0), 0x9fc3e0, 0.05, 0.7, -14);
     }
   }
 }
@@ -7745,7 +7763,8 @@ function updatePursuit(dt) {
 // you, not your health bar. Clears the pursuit, costs you a fine (capped at
 // whatever gold you actually have), and hauls you to the nearest station.
 function arrestPlayer() {
-  wanted = 0; pursuitBackupCooldown = 0;
+  wanted = 0; pursuitBackupCooldown = 0; militaryAlert = 0; lastPlayerGunshot = -Infinity;
+  for (const unit of vehicles) if (unit.ai) { unit.ai.warnedFor = 0; unit.ai.responseWarned = null; }
   const fine = Math.min(stats.gold, 50 + Math.floor(rand() * 150));
   stats.gold -= fine;
   const station = civicBuildings.filter(b => b.type === 'police')
@@ -7821,24 +7840,31 @@ function policeOnFoot(v, ai, dt) {
     if (o.cuff > 1.6) { if (inCar) exitVehicle(true); o.out = false; o.h.root.visible = false; o.e.hidden = true; o.cuff = 0; arrestPlayer(); }
   }
 }
-// Police carry pistols. They only open fire when you're armed (a gun out) or very wanted
-// (stolen police car, shooting at people); otherwise they just chase and arrest.
+// Arrest first. Resisting after a warning permits nonlethal lasers; only a
+// drawn gun or recent player gunfire permits firearm response.
 function policeShoot(v, ai, d, target, dt) {
   ai.shootCd = (ai.shootCd ?? 1.5) - dt;
-  const armed = adventureServices?.equipped && adventureServices.equipped !== 'sword';
-  if (ai.shootCd > 0 || d > 32 || inCivicInterior || !(armed || wanted >= 100) || !policeCanSee(v, target)) return;
+  const visible = d <= 32 && !inCivicInterior && policeCanSee(v, target);
+  if (!visible) { ai.warnedFor = 0; return; }
+  ai.warnedFor = (ai.warnedFor || 0) + dt;
+  const armed = ['pistol','rifle'].includes(adventureServices?.equipped);
+  const resisting = inCar ? Math.abs(driving?.speed || 0) > 2 : pvel.length() > 1.5 || (ai.officer?.e?.copAngry || 0) > 0;
+  const response = enforcementResponse({ armed, fired: performance.now() - lastPlayerGunshot < 12000, resisting, warnedFor: ai.warnedFor });
+  if (response === 'arrest') { ai.responseWarned = null; return; }
+  if (ai.shootCd > 0) return;
   ai.shootCd = 1.1 + Math.random() * 0.6;
-  if (!ai.shotWarned) { ai.shotWarned = true; toast(armed ? '🚔 Police: "Armed suspect! Drop the weapon!" They draw their pistols.' : '🚔 Police open fire!'); }
+  if (ai.responseWarned !== response) { ai.responseWarned = response; toast(response === 'laser' ? 'Stop resisting. Nonlethal stun laser deployed.' : 'Armed suspect! Drop your gun and surrender.'); }
   const from = v.group.localToWorld(new THREE.Vector3(0.9, 1.3, 0.6)), to = target.clone(); to.y += inCar ? 0.8 : 1.2;
   const miss = Math.min(0.75, 0.25 + d / 60);
   to.x += (Math.random() - 0.5) * miss * 4; to.z += (Math.random() - 0.5) * miss * 4;
-  const len = from.distanceTo(to), tracer = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, len), new THREE.MeshBasicMaterial({ color: 0xffe08a }));
+  const len = from.distanceTo(to), tracer = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, len), new THREE.MeshBasicMaterial({ color: response === 'laser' ? 0x65dfff : 0xffe08a }));
   tracer.position.copy(from).lerp(to, 0.5); tracer.lookAt(to); scene.add(tracer);
   setTimeout(() => { tracer.removeFromParent(); tracer.geometry.dispose(); tracer.material.dispose(); }, 70);
   burst(from, 4, [0xfff1a0, 0xffa53a], 3, 0.06, 0.12);
   worldAudio?.impact?.(6);
   if (Math.random() > miss) {
-    if (inCar && driving) damageVehicle(driving, 5, to);
+    if (response === 'laser') { stats.energy = Math.max(0, stats.energy - 18); pvel.multiplyScalar(.2); if(inCar&&driving)driving.speed*=.45; }
+    else if (inCar && driving) damageVehicle(driving, 5, to);
     else hurtPlayer(8, from, 2, 'Shot by the police');
   }
 }
@@ -7901,12 +7927,13 @@ function tankChase(v,dt){
   const target=inCar&&driving?driving.group.position:player.position,p=v.group.position;
   const delta=target.clone().sub(p).setY(0),d=delta.length();
   v.group.rotation.y=lerpAngle(v.group.rotation.y,Math.atan2(delta.x,delta.z),1-Math.exp(-2.5*dt));
-  const desired=d>28?9:0;v.speed=lerp(v.speed||0,desired,1-Math.exp(-2*dt));
+  const desired=d>9?9:0;v.speed=lerp(v.speed||0,desired,1-Math.exp(-2*dt));
   const step=fwdOf(v.group).multiplyScalar(v.speed*dt);p.add(step);collide(p,v.radius||2.6);p.y=groundY(p.x,p.z,p.y);
   for(const w of v.wheels||[])w.rotation.x+=v.speed*dt/0.4;
-  if(d<90){v.fireT=(v.fireT??2)-dt;if(v.fireT<=0){v.fireT=4;const miss=new THREE.Vector3((Math.random()-.5)*6,0,(Math.random()-.5)*6),impact=target.clone().add(d>40?miss:new THREE.Vector3());
-    fxSphere(at(impact,.5),0xffa040,4,.4);burst(at(impact,.5),30,[0xff8022,0x666666],10,.2,.6,9,2);shake=Math.max(shake,.45);worldAudio?.impact?.(10);
-    const hitD=distXZ(impact,target);if(hitD<4){if(inCar&&driving)damageVehiclePower(driving,45,impact,false);else hurtPlayer(26*(1-hitD/4),impact,8,'Defence Force tank fire (restricted area)');}}}
+  const ai=v.ai??={};ai.warningTimer=(ai.warningTimer||0)-dt;
+  if(d<35&&ai.warningTimer<=0){toast('Defence Force: stop for arrest. Do not draw a weapon.');ai.warningTimer=10;}
+  policeShoot(v,ai,d,target,dt);
+  if(ai.officer?.out||(d<16&&(!inCar||Math.abs(driving.speed)<1.5)))policeOnFoot(v,ai,dt);
 }
 function updateMilitary(dt){
   if(militaryAlert>0){militaryAlert-=dt;if(militaryAlert<=0)toast('Defence Force alert stood down.');}
@@ -8161,8 +8188,8 @@ function updateCamera(dt) {
 
 function updateHud(dt) {
   const c = characters[charIdx];
-  $('charName').textContent = (playerUsername ? playerUsername + '  ·  ' : '') + (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level} ${powerTier(prog.level).rank}` + (prog.points ? ' (C)' : '') + (isVillain ? '  ☠ Villain' : '');
-  $('charName').style.color = isVillain ? '#ff4d4d' : heroDungeonKills>0?'#67b3ff':'#fff';
+  $('charName').textContent = (playerUsername ? playerUsername + '  ·  ' : '') + (inCar ? 'Driving' : c.name) + `  ·  Lv ${prog.level} ${powerTier(prog.level).rank}` + (prog.points ? ' (C)' : '') + `  | Reputation ${reputation.score} (${reputation.standing().title})`;
+  $('charName').style.color = reputation.score<0 ? '#ff4d4d' : reputation.score>0?'#67b3ff':'#fff';
   $('hpBar').style.width = clamp(stats.hp / maxHp() * 100, 0, 100) + '%';
   $('hpText').textContent = `${Math.max(0, Math.round(stats.hp))} / ${maxHp()}`;
   const hpReasonEl = $('hpReason');
@@ -8253,6 +8280,7 @@ transport=buildTransport({scene,box,makeTex,sitSpots,interactables,makePerson:ma
 });
 urban=buildUrban({scene,box,camBlockers,planeBlocks,sitSpots,interactables,makeTex,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,buyFood:()=>buyFood(12,15),destinations:townPlaces.destinations,busStops,busRoute:BUS_ROUTE,vehicles,playerPos:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')||80)/100))});
 transport.update(0);urban.update(dayTime,0);
+await startupStage(20,'Preparing streets and transport...');
 const streetDesign=buildStreetDesign({scene,box,makeTex,addTrafficLight});
 activeRoadUsers=buildActiveRoadUsers({makeVehicle,makePerson:makeHumanoid,controller:junctionControl,travelLimit:roadTravelLimit,groundY});
 sewers=buildSewersAndOffices({scene,box,colliders,camBlockers,planeBlocks,sitSpots,interactables,makeTex,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),toast,destinations:townPlaces.destinations,playerPos:()=>player.position,
@@ -8284,6 +8312,7 @@ mobileControls = setupMobileControls({
 });
 poisonLand=buildPoisonLand({scene,box,makeTex,colliders,bridgeY:BRIDGE_Y,interactables,toast,makeMonster,removeEnemy,removeGate,destinations:townPlaces.destinations,playerPosition:()=>player.position,inDungeon:()=>!!dungeon,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Toxic gas and waste (Poison Land)'),
 createGate(o){const gm=makeGateMesh(0x92ed2a),pos=new THREE.Vector3(o.x,o.y||0,o.z),rank=rankOf(o.level),gate=Object.assign(gm,{pos,level:o.level,rank,stars:rank+1,theme:'poison',tier:tierOf(o.level),name:o.name,persistent:o.persistent,finalBoss:o.finalBoss,poisonCity:true});gm.group.position.copy(pos);gm.disc.userData.gate=gate;gates.push(gate);return gate;}});
+await startupStage(35,'Preparing islands and countryside...');
 buildHighlandForest({scene,colliders,insideCollider,groundY,addBird});
 volcanicIsland=buildVolcanicIsland({scene,box,interactables,toast,playerPosition:()=>player.position,hurt:(d,p,k)=>hurtPlayer(d,p,k,'Lava and volcanic heat')});regionalEnvironment.islands.push(volcanicIsland.island);
 ghostIsland=buildGhostIsland({scene,box,interactables,toast,stats,destinations:townPlaces.destinations,signboard,rand});regionalEnvironment.islands.push(ghostIsland.island);
@@ -8325,7 +8354,7 @@ adventureServices=buildAdventureServices({licensed:id=>licences.has(id),licenceC
 pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons}),pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},reward(gold,xp){stats.gold+=gold;gainXp(xp);},changed(){saveSolo();},
 repair(price){const car=vehicles.find(v=>isRoadVehicle(v)&&!v.disabled&&!v.noSteal&&distXZ(v.group.position,player.position)<12);if(!car){toast('Bring an operational car within 12 metres of the shop.');return;}if(stats.gold<price){toast('Not enough gold.');return;}stats.gold-=price;car.health=100;applyVehicleCondition(car);toast('Vehicle repaired. Full power and steering restored.');},
 swordAttack(){hitCone(player.position,aimForward(),5,.1,new Set(),{dmg:35,kb:5,stun:.5,from:player.position.clone()},3);},
-shoot(range,damage){const origin=at(player.position,1.5),dir=aimForward().normalize(),ray=new THREE.Raycaster(origin,dir,.1,range),obstacle=ray.intersectObjects(camBlockers,true)[0],limit=obstacle?.distance??range;
+shoot(range,damage){lastPlayerGunshot=performance.now();const origin=at(player.position,1.5),dir=aimForward().normalize(),ray=new THREE.Raycaster(origin,dir,.1,range),obstacle=ray.intersectObjects(camBlockers,true)[0],limit=obstacle?.distance??range;
  const objects=[...enemies.filter(e=>e.alive&&!e.hidden).map(e=>({entity:e,position:at(e.root.position,1),radius:(e.radius||.4)+.4})),...vehicles.filter(v=>!v.disabled).map(v=>({vehicle:v,position:at(v.group.position,.8),radius:v.radius||2}))];
  const target=objects.map(o=>{const delta=o.position.clone().sub(origin),along=delta.dot(dir),side=delta.clone().addScaledVector(dir,-along).length();return {...o,along,side};}).filter(o=>o.along>0&&o.along<limit&&o.side<o.radius).sort((a,b)=>a.along-b.along)[0];
  const end=origin.clone().addScaledVector(dir,target?.along??limit),tracer=new THREE.Line(new THREE.BufferGeometry().setFromPoints([origin,end]),new THREE.LineBasicMaterial({color:0xffe29a}));scene.add(tracer);setTimeout(()=>disposeObj(tracer),90);worldAudio?.impact(6);if(target?.entity)applyHit(target.entity,{dmg:damage,kb:2,stun:.2,from:origin});else monsterEnvironmentDamage(end,damage,1,true);
@@ -8376,7 +8405,7 @@ for(let i=0;i<3;i++){const v=makeVehicle('car',0x526847);detailVehicle(v,'milita
 for(const v of cityServices.traffic)if(v.kind==='car'&&(v.group.position.z>640&&v.group.position.x<500))detailVehicle(v,'luxury');
 regionalFacilities=buildRegionalFacilities({...regionalTransportContext,prepareSite(x,z,w,d){for(const b of buildings)if(b.alive&&Math.abs(b.x-x)<(b.w+w)/2&&Math.abs(b.z-z)<(b.d+d)/2){b.alive=false;b.redeveloped=true;for(const m of b.meshes||[])m.visible=false;for(const [list,item]of [[colliders,b.collider],[planeBlocks,b.planeBlock],...(b.extraColliders||[]).map(c=>[colliders,c])]){const i=list.indexOf(item);if(i>=0)list.splice(i,1);}for(const block of b.blocks||[]){const i=planeBlocks.indexOf(block);if(i>=0)planeBlocks.splice(i,1);}}},civicBuildings,fence:fenceRect,reception:()=>{if(wanted>0)arrestPlayer();else toast('Police reception: reporting desk, patrol office and custody suite.');},addPolice(x,z){const v=makeVehicle('police',0xf5f6fa);v.group.position.set(x,groundY(x,z),z);v.stationHome=v.group.position.clone();v.ai={parked:true,cruise:12,ramCd:0,stopTimer:0};}});
 // Everyone in town gets a mind of their own, a shared city brain, and an elected government (society.js).
-society=createSociety({peds:()=>peds,scene,toast,civicBuildings,groundY,playerPosition:()=>player.position,dayTime:()=>dayTime,
+society=createSociety({reputation,peds:()=>peds,scene,toast,civicBuildings,groundY,playerPosition:()=>player.position,dayTime:()=>dayTime,
   gold:()=>stats.gold,addGold:n=>{stats.gold+=n;},walk:(e,t,sp,dt)=>walkTowards(e,t,sp,dt),animate:(e,pose,moving,run,dt)=>animateHumanoid(e.h,pose,moving,run,e.onGround,dt),
   resumeWander:e=>{const s=e.ped;s.state='wander';s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;s.target=cornerPos(s.node);},
   arrest:(e,done)=>arrestPed(e,done),idOf:o=>worldIds?.idOf(o),notebook:()=>story?.notebook()||[],lead:()=>story?.lead(),playerSurname:()=>playerUsername||'Newcomer',companyReports:()=>infoMarkets?.companyReports(),archive:()=>infoMarkets?.archive(),
@@ -8396,6 +8425,7 @@ seatedResidents=createSeatedResidents({sitSpots,makePerson:o=>makeHumanoid(o),an
 npcConversations=createNpcConversations({listen:cb=>voice?.listenOnce(cb),converse:e=>society?.converse(e),nameOf:e=>society?.knownName(e),people:()=>peds,scene,interactables,playerPosition:()=>player.position,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // Residents report what breaks the laws of the world: Rule Keepers fix it, the Lawgiver hears of it (world-watch.js).
 // What the nation's progress looks like: the ATLAS base, its robots, the temple dig, self-driving cars (atlas-world.js).
+await startupStage(50,'Preparing residents and city services...');
 atlasWorld=buildAtlasWorld({scene,groundY,S:society.state,colliders,planeBlocks,interactables,vehicles:()=>vehicles,openTab:t=>society.openTab(t),makePerson:o=>makeHumanoid(o),animate:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt)});
 // Every building, house, road tile, block, resident, vehicle and the player gets a unique ID (world-ids.js).
 const idBlocks=[];for(const [city,b] of [['Ashford',MAIN_BOUNDS],['Riverside',RIVERSIDE_BOUNDS],['Capital',CAPITAL_BOUNDS]])for(let bx=b.bx0;bx<=b.bx1;bx++)for(let bz=b.bz0;bz<=b.bz1;bz++)idBlocks.push({city,bx,bz});
@@ -8507,7 +8537,7 @@ worldWatch=createWorldWatch({idOf:o=>worldIds?.idOf(o),nearestId:(p,codes)=>worl
   buildings:()=>buildings,roadRects:()=>roadRectList,condition:b=>conditionOf(b),nameOf:e=>society?.citizenOf(e)?.name.split(' ')[0],say:(e,t)=>society?.say(e,t),
   unstick:e=>{const s=e.ped;s.node=nearestCorner(e.root.position,s.bounds);s.prev=null;e.root.position.copy(cornerPos(s.node));e.root.position.y=groundY(e.root.position.x,e.root.position.z);s.target=cornerPos(nextCorner(s.node,null,s.bounds));s.state='wander';},
   onNew:(r,name)=>society?.petitionFiled(r,name)});
-worldExpansion=buildWorldExpansion({...regionalTransportContext,civicBuildings,fence:fenceRect,talk:(name,text)=>npcConversations.show(name,text),playerPosition:()=>player.position,makeMonster,light:addTrafficLight,tree:addTree,seat:(x,z)=>addBench(x,z,Math.PI),heal(){stats.hp=maxHp();toast('Medical treatment complete.');},food:()=>buyFood(15,20),killPlayer(){stats.hp=-1;toast('Strategic security: lethal exclusion zone breached.');},civilians:()=>peds,killCivilian(e){e.alive=false;e.hp=0;e.respawn=30;e.ped.state='down';}});
+worldExpansion=buildWorldExpansion({...regionalTransportContext,civicBuildings,fence:fenceRect,talk:(name,text)=>npcConversations.show(name,text),playerPosition:()=>player.position,makeMonster,light:addTrafficLight,tree:addTree,seat:(x,z)=>addBench(x,z,Math.PI),heal(){stats.hp=maxHp();toast('Medical treatment complete.');},food:()=>buyFood(15,20),reportIntrusion(){if(militaryAlert<=0)toast('Restricted military area: stop for arrest.');militaryAlert=45;raiseWanted(45);},civilians:()=>peds,killCivilian(e){e.alive=false;e.hp=0;e.respawn=30;e.ped.state='down';}});
 townPlaces.destinations.push({name:'Highlands cave entrance',x:-400,z:756});
 registerAdditionalStructures({scene,buildings,colliders,planeBlocks,civicBuildings,houses,interactables,toast});
 const pauseForPanel=()=>{locked=false;mouseHeld=false;for(const key in keys)keys[key]=false;document.exitPointerLock();$('start').style.display='none';};
@@ -8599,7 +8629,8 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
     if(it.label==='Shoot a hoop'){const o={name:'the court regulars',skill:0.6,prize:3};Object.defineProperty(it,'label',{get:()=>sportsGames.label('basketball',o),configurable:true});it.action=()=>sportsGames.menu('basketball',o);}
     else if(it.label==='Play a tennis rally'){const o={name:'Coach Ifeoma',skill:0.7,prize:4};Object.defineProperty(it,'label',{get:()=>sportsGames.label('tennis',o),configurable:true});it.action=()=>sportsGames.menu('tennis',o);}
   } }
-const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations,onShoplift:v=>raiseWanted(Math.min(90,30+v*2))});
+await startupStage(70,'Preparing shops and neighbourhoods...');
+const superstore=buildSupermarket({scene,colliders,camBlockers,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:personAnim,kitchen:()=>kitchen,destinations:townPlaces.destinations,onShoplift:v=>{reputation.record('theft');raiseWanted(Math.min(90,30+v*2));}});
 branches=buildBranches({scene,colliders,civicBuildings,makeTex,glowMats,destinations:townPlaces.destinations});   // shops, arcades, churches, mosques... round the city
 university=buildUniversity({scene,colliders,civicBuildings,makeTex,glowMats,sitSpots,makePerson:makeHumanoid,animatePerson:personAnim,destinations:townPlaces.destinations});
 careers=createCareers({toast,pause:()=>pauseForPanel(),resume:()=>{if(!boardOpen&&!settingsOpen)requestGameControl();},money:()=>stats.gold,earn:n=>{stats.gold+=n;},spend:n=>{stats.gold=Math.max(0,stats.gold-n);},level:()=>prog.level,wanted:()=>wanted,
@@ -8624,6 +8655,7 @@ function teleportPlayer(pos, msg, ms = 650) {
   $('fade').style.opacity = 1;
   setTimeout(() => { if (inCar) exitVehicle(); player.position.copy(pos); vy = 0; pvel.set(0, 0, 0); $('fade').style.opacity = 0; if (msg) toast(msg); }, ms);
 }
+await startupStage(85,'Preparing world boundaries and landmarks...');
 border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),interactables,toast,makeTex});
 // The power grid: the Aegis Prime Generator feeds every dungeon gate and the dungeon
 // arena through cables in the sewers; an open manhole beside each gate shows them.
@@ -8639,7 +8671,7 @@ helipads=buildHelipads({scene,interactables,toast,makeTex,teleport:teleportPlaye
     stats.gold-=300;toast('🚁 SkyLink Charter: request accepted (300 gold). Your pilot is ready.');return true;},
   steal:p=>{if(inCar||!p.heli)return false;const pos=new THREE.Vector3();p.heli.getWorldPosition(pos);const gov=p.owner==='government';
     const v=makeHelicopter({name:gov?'Government helicopter':'SkyLink charter helicopter',color:gov?0x1a1a1a:0x2f6f8f,x:pos.x,z:pos.z,yaw:p.heli.rotation.y});v.group.position.y=pos.y;v.alt=pos.y;v.stolen=true;
-    raiseWanted(gov?240:150);enterVehicle(v);society?.lives?.achieve(null,gov?'Grand theft: a government helicopter':'Grand theft: a helicopter');society?.history?.L.controversies.push(gov?'Stole a government helicopter':'Stole a charter helicopter');toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
+    reputation.record('theft');v.reputationTheft=true;raiseWanted(gov?240:150);enterVehicle(v);society?.lives?.achieve(null,gov?'Grand theft: a government helicopter':'Grand theft: a helicopter');society?.history?.L.controversies.push(gov?'Stole a government helicopter':'Stole a charter helicopter');toast(gov?'🚨 You stole a GOVERNMENT helicopter. Every police unit in the country is looking for you.':'🚨 You stole a charter helicopter. The police have been called.');
     society?.news?.(gov?'The newcomer stole a government helicopter from the Capital helipad!':'A charter helicopter was stolen from '+p.name+'.',true);if(society?.state)society.state.fameAcc+=gov?6:3;return true;}});
 drones=buildDrones({scene,dome:DOME});
 lostPeak=buildHiddenPeak({scene,colliders,interactables,makePerson:makeHumanoid,toast,teleport:teleportPlayer,
@@ -8788,7 +8820,7 @@ for(const it of interactables)if(it.label==='Open town travel board')it.action=(
 movieTv=createMovieTv({interactables,position:()=>player.position,volume:()=>Math.max(0,Math.min(1,Number(localStorage.getItem('masterVolume')??80)/100)),pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});movieTv.register(civicTvScreen,new THREE.Vector3(CIVIC_OFFSET.x,.3,CIVIC_OFFSET.z-7));
 if(interiors.layouts.cinema_screen)movieTv.register(interiors.layouts.cinema_screen,new THREE.Vector3(-7000,.3,-1.5),()=>interiors.active===interiors.layouts.cinema);   // Starlight Cinema's big screen
 const homeTvAt=homeRooms.tv;const homeTv=mesh(new THREE.PlaneGeometry(homeTvAt.w,homeTvAt.h),new THREE.MeshBasicMaterial({map:civicTvTexture}));homeTv.position.set(homeTvAt.x-.03,homeTvAt.y,homeTvAt.z);homeTv.rotation.y=homeTvAt.yaw;movieTv.register(homeTv,new THREE.Vector3(homeTvAt.x-1.4,CURB,homeTvAt.z),()=>houseAt(player.position,-0.05)===houses[0]&&roomAt(player.position)?.name==='living');   // on the living-room wall, facing the sofa
-onlineAccount=createOnlineAccount({client:supabase,active:()=>onlinePlayReady&&!!hosting.room,snapshot:()=>({prog:{...prog},stats:{...stats},inventory,hasBag,adventure:adventureServices.snapshot(),support:supportSkills.snapshot(),supportCounters,monsterQuestKills,heroDungeonKills,villainKills,ownedCars:cityServices.snapshot().owned,quests:cityLife.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target}))})});
+onlineAccount=createOnlineAccount({client:supabase,active:()=>onlinePlayReady&&!!hosting.room,snapshot:()=>({prog:{...prog},stats:{...stats},inventory,hasBag,adventure:adventureServices.snapshot(),support:supportSkills.snapshot(),supportCounters,monsterQuestKills,heroDungeonKills,villainKills,reputation:reputation.snapshot(),ownedCars:cityServices.snapshot().owned,quests:cityLife.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target}))})});
 applyLayout();
 // Open index.html#test to run the simulation without clicking (used for automated checks)
 if (location.hash === '#test') { locked = true; startEl.style.display = 'none'; }
@@ -8928,4 +8960,6 @@ const OVERLAY_IDS=['auth','menu','spawn','classSelect','gameLoading'];
 let overlayCheckAt=0,overlayCovered=true;
 function coveredByOverlay(){const now=performance.now();if(now-overlayCheckAt<250)return overlayCovered;overlayCheckAt=now;overlayCovered=overlayScan();return overlayCovered;}
 function overlayScan(){for(const id of OVERLAY_IDS){const el=document.getElementById(id);if(el&&el.isConnected&&!el.hidden&&getComputedStyle(el).display!=='none'&&getComputedStyle(el).visibility!=='hidden')return true;}return false;}
+if (window.__aw) window.__aw.diagnostics = { buildings, civicBuildings, planeBlocks, doors, transport, intercityRail, rainField, reputation, society, peds };
+boot().catch(error=>window.gameLoading?.fail(error.message));
 frame();

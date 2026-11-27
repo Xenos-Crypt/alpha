@@ -64,7 +64,7 @@ export function createWalkIns(ctx) {
       interior: null,
     };
     W.style = doorStyleFor(o.type); W.glassFront = W.style === 'revolving';
-    const GW = W.gap = W.style === 'revolving' ? 2 * R : G;
+    const GW = W.gap = W.style === 'revolving' ? 2 * (R + 0.12) : G;
     const sc = o.scene || ctx.scene, wall = (a0, a1, b0, b1, y0, y1, alongX, solid = true, m0 = null) => {
       const m = boxL(F, sc, a0, a1, b0, b1, y0, y1, m0 || o.wallMat(alongX)); m.castShadow = m.receiveShadow = true; ctx.camBlockers.push(m); W.meshes.push(m);
       if (solid) { const c = F.rect(a0, a1, b0, b1); ctx.colliders.push(c); W.colliders.push(c); }

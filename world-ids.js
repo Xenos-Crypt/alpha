@@ -16,6 +16,7 @@
 //     CRE-BRD-PAV-GOV-1Z7W3N       a peacock kept by the parks
 // Search by any prefix: "VEH-HEL" finds every helicopter, "BLD-" every building.
 import { INGREDIENTS, AISLES, RECIPES } from './kitchen.js';
+import { separateSurfaceDepth } from './surface-depth.js';
 import { SNACKS } from './snack-shop.js';
 import { ALL as SUPPLY, GROCERY_FROM, MAKER, chainText } from './supply-chain.js';
 import { ORGS } from './organisations.js';
@@ -254,16 +255,12 @@ export function createWorldIds(ctx) {
       if (ox > 1.5 && oz > 1.5) bug('building-overlap', { x: (Math.max(a.minX, c.minX) + Math.min(a.maxX, c.maxX)) / 2, z: (Math.max(a.minZ, c.minZ) + Math.min(a.maxZ, c.maxZ)) / 2 }, [byObj.get(bs[i])?.id, byObj.get(bs[j])?.id].filter(Boolean), 'Two buildings stand inside each other here.');
     }
   }
-  // Two flat surfaces at the same height flicker through each other (z-fighting). Fix it on the spot: lift the
-  // smaller one (a path, a marking, a patch, a rug) 1.5 cm so it sits cleanly on top. Purely visual: walking and
-  // driving heights come from groundY, not from these meshes.
+  // Stabilize overlapping ground in the depth buffer. Never lift geometry
+  // during a background audit: that made the ground visibly change in play.
   let lifted = 0;
   function liftSmaller(a, b) {
-    const area = r => (r.x1 - r.x0) * (r.z1 - r.z0), r = area(a) <= area(b) ? a : b, other = r === a ? b : a;
-    if ((r.m.userData.zLift || 0) >= 0.06) return;   // already lifted a few times: leave it
-    const dy = Math.max(0.015, other.top - r.top + 0.015);
-    if (r.m.parent && r.m.parent !== ctx.scene) { const s = r.m.parent.getWorldScale(new ctx.THREE.Vector3()).y || 1; r.m.position.y += dy / s; } else r.m.position.y += dy;
-    r.m.userData.zLift = (r.m.userData.zLift || 0) + dy; r.top += dy; lifted++;
+    const area = r => (r.x1 - r.x0) * (r.z1 - r.z0), r = area(a) <= area(b) ? a : b;
+    if (separateSurfaceDepth(r.m,area(r))) lifted++;
   }
   function moving(o) { for (let p = o; p; p = p.parent) if (scan.movers.has(p)) return true; return false; }
   function stepScan(n = 1200) {   // flat surfaces at the same height with different looks flicker through each other
@@ -275,7 +272,8 @@ export function createWorldIds(ctx) {
       const w = box.max.x - box.min.x, d = box.max.z - box.min.z;
       if (box.max.y - box.min.y > .08 || w * d < .5 || w > 300 || d > 300) continue;
       const mat = Array.isArray(m.material) ? m.material[0] : m.material;
-      if (mat?.transparent && mat.opacity < .5) continue;
+      if (mat?.polygonOffset || mat?.transparent && mat.opacity < .5) continue;
+      if (!['BoxGeometry','PlaneGeometry'].includes(m.geometry?.type)) continue;
       const rec = { m, mat, x0: box.min.x, x1: box.max.x, z0: box.min.z, z1: box.max.z, top: box.max.y, look: surfMat(mat) };
       const cells = []; for (let gx = Math.floor(rec.x0 / 10); gx <= Math.floor(rec.x1 / 10); gx++) for (let gz = Math.floor(rec.z0 / 10); gz <= Math.floor(rec.z1 / 10); gz++) cells.push(gx + ',' + gz);
       for (const k of cells.slice(0, 64)) {

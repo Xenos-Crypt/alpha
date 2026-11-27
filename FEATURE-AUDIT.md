@@ -31,3 +31,29 @@ Audit updated: 13 October 2026. Verification uses the actual current game module
 Start the local server on port 8080. Run `node verify-feature-audit.cjs`, `node verify-regional-runtime.cjs`, `node verify-street-subway.cjs` and `node verify-offline.cjs`. Run the full-game/scene suites individually to avoid software-renderer contention. `verify-map-tv.cjs` uses the valid gameplay MP4 included in `assets/`, so no external download is required.
 
 Later checks add `node transit-police.test.mjs`, `node verify-auth-video.cjs`, `node auth-feedback.test.mjs`, `node verify-auth-feedback.cjs` and `node visual-condition.test.mjs`. These cover station-only arrests with a walking officer, a 12-second gameplay login video, duplicate-email feedback and deformation of the upgraded rounded car bodies. They do not remove the limitations above.
+
+## 26 November 2026 - website startup recovery and responsiveness
+
+Based on GitHub main 74f6f010, in a separate website checkout. The older local game/Unity/Unreal work was preserved.
+
+- A failed entry-bundle request now shows a connection message and a working reload button. Optional asset failures do not block entry. A loading failure cancels any outstanding phone-rotation completion so it cannot erase the error.
+- Loading video respects reduced motion and pauses when hidden, backgrounded, or failed.
+- World construction yields between stages. Authentication starts after construction to keep partially initialized systems out of the login flow. A loading cover remains during account/home preparation so a full-world render cannot slip between sign-in and the menu.
+- Restored npm test to the current Node tests, added standalone loading regression checks, and added a real-bundle WebGL startup/guest-menu probe.
+
+Validation: production build passed; all 50 existing logic tests passed; loading recovery checks passed. Desktop startup/guest-menu test reported no JavaScript errors, no missing local assets and no world geometry uploaded behind the menu. The measured longest startup task fell from 11.9 seconds in the initial sign-in probe to 4.5 seconds after staging; initial total sign-in time was 18 seconds and the final run was about 22 seconds. This is improved responsiveness, not a total-load-time or real-device FPS improvement claim. A separate guest-transition run before the cover fix exposed an 18.8-second task and 937 uploaded geometries; after the fix, zero geometries were uploaded through guest-menu entry.
+
+Remaining: multi-second construction tasks, actual gameplay profiling, physical phone/Safari verification, and signed-in multiplayer checks. No production deployment was performed for this pass.
+
+### 26 November 2026: reputation and world corrections (local branch)
+
+Reputation is independent of XP, bounded at -1000..1000, and starts at 0 for new lives and saves without the new field. -1000 is Demon, +1000 Saint, and negative reputation immediately makes ordinary citizens unfavorable while Yatan believers regard the player as a friend. Public favor grows continuously in opposite directions for these factions; personal memories still matter. A stable subset of citizens identifies as Church of Yatan believers in conversation. This introduces the faction, not a new church building or individual character storylines.
+
+Current balancing: coffee kindness +1, player-defeated monster +2, paid donations +1 per 20 gold (max +25 per donation), assault -10 (30-second per-target cooldown), NPC knockout -50, vehicle/shop theft -15, criminal building destruction -20. Knockouts can also incur the initial assault penalty. Reputation persists in per-account alignment cache, solo saves, and online account snapshots; new story resets it. HUD and City Hall show the score. Titles are reversible when the score changes.
+
+Other local changes retain moving menu video, move conflicting intercity rail segments, provide door recesses/outward clearance, stabilize overlapping flat surfaces without moving geometry, replace rain meshes with a fixed streak buffer, and make police/military responses arrest-first, lasers for resistance after warning, and firearms for an armed/firing player.
+
+Validation: 61 logic tests passed; production build passed; standalone loading recovery passed. Cloud account roundtrips and full gameplay visual inspection on player hardware have not been verified. Changes have not been deployed to production.
+Browser verification also passed against the production bundle: neutral initial reputation, negative action, inverse Yatan standing, per-account local persistence, return to neutral, guest menu without JS errors or local missing assets, and real menu video playback/pause controls. Software-rendered startup took 38.3 seconds on this run (longest task 7.3 seconds); startup performance still has room for improvement.
+
+27 November follow-up: real bundled NPC conversations passed at -1000, -1, 0, +1 and +1000, including actual Yatan believers. Coffee rewards passed insufficient-funds, successful-payment and repeat-cooldown checks. Older public-opinion dialogue now reports the reputation score consistently. Rail footprint audit returned no candidates across the checked routes (19 door assemblies present). Final production build and whitespace checks passed. This remains local; authenticated cloud persistence and hardware gameplay performance are unverified.
