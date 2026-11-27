@@ -66,6 +66,7 @@ export function createPhone(ctx) {
 body.cinema #phoneBtn{visibility:hidden}`;
   document.head.append(css);
   const el = document.createElement('section'); el.id = 'crypticPhone'; el.hidden = true; document.body.append(el);
+  { const st2 = document.createElement('style'); st2.textContent = '#phoneBtn[data-unread]:not([data-unread=""])::after{content:attr(data-unread);margin-left:6px;background:#d63031;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700}'; document.head.append(st2); }   // (how many messages wait in the Info Hub)
   const btn = document.createElement('button'); btn.id = 'phoneBtn'; btn.type = 'button'; btn.textContent = '📱 Phone (H)'; btn.onclick = () => toggle(); document.body.append(btn);
   let open = false, app = 'home', laptop = false;
 
@@ -141,6 +142,10 @@ body.cinema #phoneBtn{visibility:hidden}`;
       ];
       const body = frame('Info Hub', '<p style="opacity:.7;margin-top:-6px">Your daily information, and what\'s been happening</p>');
       for (const [a, b] of lines) body.append(row(`<b>${a}</b>`, Object.assign(document.createElement('span'), { textContent: b })));
+      const mine = (ctx.notices?.() || []).slice(0, 40); ctx.seenNotices?.();   // messages for you that didn't need to cover your screen
+      body.append(Object.assign(document.createElement('h3'), { textContent: 'For you' }));
+      if (!mine.length) body.insertAdjacentHTML('beforeend', '<p style="opacity:.7">Nothing new.</p>');
+      for (const n of mine) body.append(row(`<small style="opacity:.6">${esc(n.time || '')}</small> ${esc(n.text)}`));
       const top = (ctx.news?.() || []).slice(0, 25);   // what's been happening: buildings destroyed, arrests, the city's news (none of it pops up on your screen)
       body.append(Object.assign(document.createElement('h3'), { textContent: "What's been happening" }));
       if (!top.length) body.insertAdjacentHTML('beforeend', '<p style="opacity:.7">Nothing yet today.</p>');

@@ -1,10 +1,12 @@
 (() => {
  const panel=document.createElement('section');panel.id='gameLoading';panel.setAttribute('aria-label','Loading game');
- panel.innerHTML='<video muted loop playsinline preload="none" poster="./assets/auth-gameplay-poster.jpg" src="./assets/auth-gameplay.mp4"></video><div class="loading-content"><h1>Another World</h1><p id="loadingMessage" role="status">Loading game files...</p><progress id="loadingProgress" max="100" value="1" aria-label="Game loading progress"></progress><strong id="loadingPercent">1%</strong><button id="loadingRetry" hidden>Try again</button></div>';
+ panel.innerHTML='<video muted loop playsinline preload="none" poster="./assets/auth-gameplay-poster.jpg" data-src="./assets/auth-gameplay.mp4"></video><div class="loading-content"><h1>Another World</h1><p id="loadingMessage" role="status">Loading game files...</p><progress id="loadingProgress" max="100" value="1" aria-label="Game loading progress"></progress><strong id="loadingPercent">1%</strong><button id="loadingRetry" hidden>Try again</button></div>';
  document.body.append(panel);const video=panel.querySelector('video'),bar=panel.querySelector('progress'),percent=panel.querySelector('strong'),message=panel.querySelector('p');video.muted=true;
  const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  const reduce=matchMedia('(prefers-reduced-motion: reduce)');let failed=false,completion=null;
- function updateVideo(){if(panel.hidden||document.hidden||reduce.matches||failed)video.pause();else video.play().catch(()=>{});}
+ let codeLoaded=false;   // (the 3 MB video waits until the game's own code has downloaded: on a slow connection the poster shows until then)
+ try{new PerformanceObserver(l=>{for(const e of l.getEntries())if(e.name.endsWith('/dist/bundle.js')){codeLoaded=true;updateVideo();}}).observe({type:'resource',buffered:true});}catch{codeLoaded=true;}
+ function updateVideo(){if(panel.hidden||document.hidden||reduce.matches||failed){video.pause();return;}if(!codeLoaded)return;if(!video.getAttribute('src'))video.src=video.dataset.src;video.play().catch(()=>{});}
  function cancelCompletion(){completion?.abort();completion=null;}
  function show(value,text){panel.hidden=false;bar.value=value;percent.textContent=value+'%';message.textContent=text;updateVideo();}
  function hide(){cancelCompletion();panel.hidden=true;updateVideo();}

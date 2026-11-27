@@ -31,7 +31,7 @@ import { createVoice } from './voice.js';
 import {registerAdditionalStructures} from './destructible-structures.js';
 import {detailVehicle} from './vehicle-design.js';
 import {buildRegionalFacilities} from './regional-facilities.js';
-import {buildNavy} from './navy.js';
+import {buildNavy, NAVY_BASE} from './navy.js';
 import {buildIntercityRail} from './intercity-rail.js';
 import {shipNeedsBridge,shipCanAdvance,driftVelocity,rollAircraft} from './transport-rules.js';
 import {fenceSegments,conditionFactors,applyVehicleCondition} from './crash-infrastructure.js';
@@ -78,7 +78,7 @@ import {buildBlackMarket, NARROWS, hasTool} from './black-market.js';
 import { createActionMenu } from './action-menu.js';
 import { createNeighbours } from './neighbours.js';
 import { createRoamingTraffic } from './traffic-roam.js';
-import {buildMilitary, addNavyCrew} from './military.js';
+import {buildMilitary, addNavyCrew, BASE as MIL_BASE} from './military.js';
 import {createConditions,conditionOf} from './condition.js';
 import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
@@ -872,7 +872,7 @@ function addBuilding(x, z, faceX, faceZ) {
   const name = (kind === 'apartment' ? buildingAddressN + ' Ashford Apartments' : kind === 'shop' ? buildingAddressN + ' High Street Shop' : buildingAddressN + ' Ashford Offices');
   buildingAddressN += rand() < 0.5 ? 2 : 4;
   civicBuildings.push({ type: kind, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, cctv: true });
-  const civicRecord = civicBuildings.at(-1);
+  const civicRecord = civicBuildings.at(-1); if (civicRecord) civicRecord.storeys = floors;   // (how many floors it has: its lift goes to all of them)
   if (walkIn) walkIns.add({ b: civicRecord, x, z, w, d, floors, base: CURB, top: mainTop, nx: 0, nz: faceZ || 1, type: kind, name, wallMat });
   // Exterior fire-escape staircase up one side, tall buildings only — a real
   // sloped ramp registered in stairRamps (see groundY) so it's actually climbable,
@@ -1717,9 +1717,19 @@ const touchText = text => { if (!touchDevice || typeof text !== 'string') return
 const inFilm = () => document.body.classList.contains('cinema');
 const heldToasts = [];
 function releaseHeldToasts() { const list = heldToasts.splice(0); list.forEach((t, i) => setTimeout(() => toast(t), 900 + i * 3800)); }
+// Messages on the screen are only answers to what you just did (pressed a key, clicked, tapped). Anything else the
+// game wants to tell you (it got dark, you're hungry, a delivery arrived, an achievement) goes to the Info Hub on
+// your phone instead, and the phone button shows how many are waiting. The System's messages always show.
+let lastInputAt = -1e9; const notices = []; let unreadNotices = 0;
+const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space']);
+addEventListener('keydown', e => { if (!e.repeat && !MOVE_KEYS.has(e.code)) lastInputAt = performance.now(); }, true);
+for (const ev of ['mousedown', 'touchstart', 'click']) addEventListener(ev, () => { lastInputAt = performance.now(); }, true);
+function noticeBadge() { const b = document.getElementById('phoneBtn'); if (b) b.dataset.unread = unreadNotices ? String(unreadNotices) : ''; }
 function toast(text) {
   if (talkCapture) { talkCapture(text); return; }   // (someone talking to you: it goes in the talk box)
   try { if (snackShop?.talking && snackShop.echo(text)) return; } catch { }   // talking to someone: what they say shows in the talk box
+  if (!/\[SYSTEM\]/.test(String(text)) && performance.now() - lastInputAt > 1500) {   // not an answer to something you just did: to the Info Hub
+    notices.unshift({ text: String(text), time: (() => { try { const h = (dayTime * 24 + 6) % 24; return String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.floor(h % 1 * 60)).padStart(2, '0'); } catch { return ''; } })() }); if (notices.length > 120) notices.length = 120; unreadNotices++; noticeBadge(); return; }
   if (inFilm()) { if (!heldToasts.includes(text)) { heldToasts.push(text); if (heldToasts.length > 3) heldToasts.shift(); } return; }
   if (soloMode && /\[SYSTEM\]/.test(text)) systemVoice?.speak(String(text).replace(/^.*?\[SYSTEM\]\s*/, ''));   // the System says its messages out loud
   text = touchText(text);
@@ -2194,6 +2204,31 @@ function syncPlayerHeld() {
   }
 }
 holdOnBody(swordGrip, 'hand');
+// Armour worn on the body (the exosuit): each piece follows a bone of your real body, or lies along the segment
+// between two bones (an upper arm, a shin), so it moves with you. Without the real body it sits on the simple figure.
+const ARMOUR = [];
+function wearOnBody(obj, spec) { ARMOUR.push({ obj, ...spec }); player.add(obj); return () => { const i = ARMOUR.findIndex(a => a.obj === obj); if (i >= 0) ARMOUR.splice(i, 1); obj.removeFromParent(); }; }
+const _aA = new THREE.Vector3(), _aB = new THREE.Vector3(), _aInv = new THREE.Matrix4(), _aY = new THREE.Vector3(0, 1, 0);
+// where a bone of your body is (world space): your real body's bone, or the same point on the simple figure
+const SIMPLE_BONE = { pelvis: ['rig', 0, 1.0, 0], spine_03: ['rig', 0, 1.32, 0], neck_01: ['rig', 0, 1.62, 0], Head: ['rig', 0, 1.78, 0],
+  clavicle_l: ['armL', 0, 0, 0], clavicle_r: ['armR', 0, 0, 0], upperarm_l: ['armL', 0, -0.02, 0], upperarm_r: ['armR', 0, -0.02, 0], lowerarm_l: ['armL', 0, -0.36, 0], lowerarm_r: ['armR', 0, -0.36, 0], hand_l: ['armL', 0, -0.7, 0], hand_r: ['armR', 0, -0.7, 0],
+  thigh_l: ['legL', 0, 0, 0], thigh_r: ['legR', 0, 0, 0], calf_l: ['legL', 0, -0.45, 0], calf_r: ['legR', 0, -0.45, 0], foot_l: ['legL', 0, -0.9, 0], foot_r: ['legR', 0, -0.9, 0] };
+function bonePos(r, name, out) {
+  const b = r?.bones?.[name]; if (b) { b.getWorldPosition(out); return true; }
+  const s = SIMPLE_BONE[name]; if (!s) return false; const node = s[0] === 'rig' ? P.rig : P[s[0]]?.pivot; if (!node) return false;
+  out.set(s[1], s[2], s[3]); node.localToWorld(out); return true;
+}
+function syncArmour() {
+  if (!ARMOUR.length) return; const r = P.real;
+  player.updateWorldMatrix(true, false); _aInv.copy(player.matrixWorld).invert();
+  for (const a of ARMOUR) {
+    if (!bonePos(r, a.bone, _aA) || (a.to && !bonePos(r, a.to, _aB))) { a.obj.visible = false; continue; }
+    a.obj.visible = true; _aA.applyMatrix4(_aInv);
+    if (a.to) { _aB.applyMatrix4(_aInv); const d = _aB.clone().sub(_aA), len = d.length() || 0.01;
+      a.obj.position.copy(_aA).addScaledVector(d, 0.5); a.obj.quaternion.setFromUnitVectors(_aY, d.divideScalar(len)); a.obj.scale.set(a.w, len * (a.k ?? 0.95), a.d ?? a.w); }
+    else { a.obj.position.copy(_aA); if (a.off) a.obj.position.add(a.off); a.obj.quaternion.identity(); a.obj.scale.set(a.w, a.h, a.d); }
+  }
+}
 swordGrip.visible = false; // nobody starts armed — whether you get a weapon at all depends on your birth roll
 
 // =====================================================================
@@ -3054,8 +3089,8 @@ beach.rotation.x = -Math.PI / 2;
 beach.position.set((BEACH_X0 + 300) / 2, 0.01, (165 + SEA_Z) / 2);
 beach.castShadow = false;
 { const quay = mesh(new THREE.PlaneGeometry(BEACH_X0 + 300, SEA_Z - 165), new THREE.MeshStandardMaterial({ color: 0x9a9c98, roughness: 0.95 })); quay.rotation.x = -Math.PI / 2; quay.position.set((BEACH_X0 - 300) / 2, 0.012, (165 + SEA_Z) / 2); quay.castShadow = false;
-  // the sea wall along the water's edge (gaps where the port's docks and the pier run out to sea), with a rail
-  for (const [a, b] of [[-300, -212], [-48, 17], [23, BEACH_X0]]) { box(b - a, 0.9, 0.6, (a + b) / 2, 0.45, SEA_Z - 0.3, 0xb8b6ae); box(b - a, 0.06, 0.08, (a + b) / 2, 1.45, SEA_Z - 0.3, 0x3a4048, false); for (let x = a + 1; x < b; x += 3) box(0.06, 0.6, 0.06, x, 1.15, SEA_Z - 0.3, 0x3a4048, false); } }
+  // the sea wall along the water's edge (gaps where the port's docks, the pier and the river bridge run out to sea), with a rail
+  for (const [a, b] of [[-300, -212], [-48, BRIDGE_X - BRIDGE_HALF_W - 1], [BRIDGE_X + BRIDGE_HALF_W + 1, 17], [23, BEACH_X0]]) { box(b - a, 0.9, 0.6, (a + b) / 2, 0.45, SEA_Z - 0.3, 0xb8b6ae); box(b - a, 0.06, 0.08, (a + b) / 2, 1.45, SEA_Z - 0.3, 0x3a4048, false); for (let x = a + 1; x < b; x += 3) box(0.06, 0.6, 0.06, x, 1.15, SEA_Z - 0.3, 0x3a4048, false); } }
 const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 900 - SEA_Z), new THREE.MeshStandardMaterial({ color: 0x2a7ab8, roughness: 0.15, metalness: 0.1 }));
 sea.rotation.x = -Math.PI / 2;
 sea.position.set(0, 0.03, (SEA_Z + 900) / 2);
@@ -5158,16 +5193,29 @@ function aimForward() {
   return f;
 }
 // M1 locks onto the closest enemy in reach.
+// Punches and swings go where the camera is looking (where your mouse points on a laptop). Someone close and
+// roughly in front of the camera pulls the swing onto them; nobody behind you or off to the side does.
 function aimMelee() {
-  let best = null, bestD = 4.5;
+  const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  let best = null, bestScore = 0.7;
   for (const e of enemies) {
     if (!e.alive || e.hidden) continue;
-    const d = distXZ(e.root.position, player.position);
-    if (d < bestD && Math.abs(e.root.position.y - player.position.y) < 2) { bestD = d; best = e; }
+    const dx = e.root.position.x - player.position.x, dz = e.root.position.z - player.position.z, d = Math.hypot(dx, dz);
+    if (d > 4.5 || d < 0.01 || Math.abs(e.root.position.y - player.position.y) > 2) continue;
+    const dot = (dx * f.x + dz * f.z) / d; if (dot > bestScore) { bestScore = dot; best = e; }
   }
   if (best) player.rotation.y = Math.atan2(best.root.position.x - player.position.x, best.root.position.z - player.position.z);
-  else { const d = inputDir(); if (d.lengthSq()) player.rotation.y = Math.atan2(d.x, d.z); }
+  else player.rotation.y = Math.atan2(f.x, f.z);
   return fwdOf(player);
+}
+// Where a shot goes: along the camera's line of sight (up and down too), from your hands to the point under the
+// crosshair. Someone near that line pulls it onto them.
+function aimShot(range) {
+  const flat = aimForward(), cam = new THREE.Vector3(); camera.getWorldDirection(cam);
+  const assisted = Math.abs(flat.x - (-Math.sin(yaw))) + Math.abs(flat.z - (-Math.cos(yaw))) > 1e-3;   // (aimForward found someone in front)
+  if (assisted) return flat.normalize();
+  const origin = at(player.position, 1.5), target = camera.position.clone().addScaledVector(cam, range);
+  return target.sub(origin).normalize();
 }
 
 function canAct() { return !busRide && !helipads?.flying && !skyCity?.rider && !navy?.rider && !intercityRail?.rider && !cityServices?.rider && !spaceCentre?.rider && !metro?.rider && !transport?.rider && !swimming && !sitting && !action && !inCar && !riding && playerStun <= 0 && locked; }
@@ -6337,7 +6385,7 @@ function nearestVehicle() {
   let best = null, bd = 3.6;
   for (const v of vehicles) {
     if (v.crashed || v.disabled || (v.noSteal && !v.stealable) || v.stolenBy === 'gone') continue;
-    const d = distXZ(player.position, v.group.position) - (v.kind === 'bus' ? 2.5 : v.kind === 'boat' ? 1.5 : v.kind === 'plane' ? 3 : 0);
+    const d = distXZ(player.position, v.group.position) - (v.kind === 'bus' ? 2.5 : v.kind === 'boat' ? 1.5 : v.kind === 'plane' ? 3 : v.kind === 'mech' ? 2.4 : v.kind === 'tank' ? 1.6 : 0);
     if (d < bd) { bd = d; best = v; }
   }
   return best;
@@ -6390,6 +6438,7 @@ function checkVehicleLicences() {
   toast(need === 'pilot' ? '📡 Air traffic control: unlicensed flight reported to the police. (Get a pilot licence at the Licensing Office.)' : need === 'boat' ? '⚓ Harbour master: unlicensed skipper reported. (Get a boat licence at the Licensing Office.)' : '🏍️ Riding without a motorbike licence: police alerted.');
 }
 function raiseWanted(t = 45) {
+  { const p = inCar && driving ? driving.group.position : player.position; if (militarySiteAt(p.x, p.z)) { militaryCrime('A crime on military property'); return; } }   // (the military deal with their own ground, not the city police)
   if (infoMarkets?.patrolsKnown()) t *= 0.7;   // you bought the patrol schedules on the dark web
   if (wanted <= 0) toast('Police alert: stop and surrender to avoid a pursuit.');
   wanted = Math.max(wanted, t);
@@ -6430,6 +6479,7 @@ function enterVehicle(v) {
   if(adventureServices?.parachuting){toast('Land before entering a vehicle.');return;}
   if(v.noSteal&&!v.stealable){toast('This is a display car. Buy it at the dealership instead.');return;}
   if(v.disabled){toast('This vehicle is wrecked.');return;}
+  if(v.military&&!v.militaryTaken){v.militaryTaken=true;militaryCrime(`Taking a military ${v.kind==='mech'?'mech':'tank'}`);}
   if((v.stealable||v.ai)&&!v.reputationTheft){reputation.record('theft');v.reputationTheft=true;}
   if(v.stealable&&!v.stolen){v.stolen=true;if(v.bikeRider)v.bikeRider.root.visible=false;if(v.driver)v.driver.root.visible=false;v.ai??={cruise:0,stopTimer:0};toast(v.kind==='bicycle'||v.kind==='motorcycle'?'You shove the rider off and take the '+(v.kind==='bicycle'?'bike':'motorbike')+'!':'You drag the taxi driver out and take the cab!');}
   v.routeTraffic=false;
@@ -6474,7 +6524,7 @@ function exitVehicle(force = false) {
     else if(Math.hypot(v.group.position.x-ISLAND.x,v.group.position.z-ISLAND.z)<ISLAND_R+14)player.position.set(ISLAND.x,CURB,ISLAND.z-ISLAND_R+2);
     else player.position.copy(v.group.position).add(new THREE.Vector3(2,.2,0));
   } else {
-    const side = v.kind === 'bus' ? 2.4 : v.kind === 'plane' ? 4 : 2;
+    const side = v.kind === 'bus' ? 2.4 : v.kind === 'plane' ? 4 : v.kind === 'mech' ? 3.2 : v.kind === 'tank' ? 2.4 : 2;
     player.position.set(v.group.position.x + Math.cos(h) * side, 0, v.group.position.z - Math.sin(h) * side);
     collide(player.position, 0.4);
   }
@@ -6571,7 +6621,7 @@ function resolveInteractTarget() {
   if (g) return { label: `Enter gate "${g.name}"`, action: () => enterDungeon(g) };
   const v = nearestVehicle();
   if (v) {
-    const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', bicycle: 'bicycle', motorcycle: 'motorbike' };
+    const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', mech: 'mech', bicycle: 'bicycle', motorcycle: 'motorbike' };
     if (v.ai && !v.stolen && !v.isTow && CAR_LIKE.has(v.kind)) return withMenu(carTitle(v, names), () => carActions(v));
     const label = v.isTow ? (v.company && !careers?.job?.tow ? 'Steal the recovery truck' : 'Drive the recovery truck') : v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' && !v.stolen ? 'Steal the ' : ['bicycle','motorcycle'].includes(v.kind) ? 'Ride the ' : 'Drive the ') + (names[v.kind] || v.kind);
     return { label, action: () => enterVehicle(v) };
@@ -6969,7 +7019,8 @@ async function enterCivicBuilding(b) {
     inCivicInterior = true;
     const layout = interiors.layoutFor(b.type);
     currentVenueName = b.name;
-    if (layout) { interiors.enter(layout); player.position.copy(layout.spawn); }
+    if (layout) { const shell = b.storeys ? null : buildings.find(q => q.alive && Math.abs(q.x - b.x) < q.w / 2 + 2 && Math.abs(q.z - b.z) < q.d / 2 + 2);   // (how tall it is outside: its lift goes to every floor)
+      interiors.enter(layout, { storeys: b.storeys || (shell ? Math.round((shell.top - CURB) / 3) : 2) }); player.position.copy(layout.spawn); }
     else { interiors.exit(); applyCivicTheme(b.type); player.position.set(CIVIC_OFFSET.x, 0, CIVIC_OFFSET.z + 8); }
     player.rotation.y = Math.PI;
     yaw = 0; vy = 0; pvel.set(0, 0, 0);
@@ -7286,7 +7337,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyH' && !e.repeat && (locked || phone?.open)) phone?.toggle();
   if (e.code === 'Escape' && phone?.open) { phone.toggle(false); return; }   // Esc puts the phone away too
   if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
-  if (e.code === 'KeyJ' && military?.takeOff()) return;
+  if (e.code === 'KeyJ' && military?.toggleSuit()) return;
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ'&&!(inCar&&driving.kind==='plane')) dash();
   if (e.code === 'KeyR'&&!(inCar&&driving.kind==='plane')) psychicGrip();
@@ -7306,7 +7357,7 @@ addEventListener('mousemove', e => {
   yaw -= e.movementX * 0.0025; if (e.movementX || e.movementY) lastLookAt = performance.now();
   pitch = clamp(pitch + e.movementY * 0.0025, cameraView === 'first' ? -1.4 : -.1, cameraView === 'first' ? 1.4 : 1.2);
 });
-addEventListener('mousedown', e => { if (locked && e.button === 0 && !e.target?.closest?.('button, a, input, select, textarea, [role="button"], section, dialog')) { mouseHeld = true; m1(); } });   // tapping a HUD button (torch, taxi, career...) shouldn't also throw a punch
+addEventListener('mousedown', e => { if (locked && e.button === 0 && inCar && (driving?.kind === 'tank' || driving?.kind === 'mech')) { vehicleFire(); return; } if (locked && e.button === 0 && !e.target?.closest?.('button, a, input, select, textarea, [role="button"], section, dialog')) { mouseHeld = true; m1(); } });   // tapping a HUD button (torch, taxi, career...) shouldn't also throw a punch
 addEventListener('mouseup', e => { if (e.button === 0) mouseHeld = false; });
 addEventListener('wheel', e => {
   // Only zoom the game camera while actually playing — scrolling over an open
@@ -7331,7 +7382,7 @@ document.addEventListener('pointerlockchange', () => {
   locked = pointerOn || freeMouse;    // with a free mouse the game keeps running
   if (locked && boardOpen) { boardOpen = false; $('board').style.display = 'none'; }
   if (!locked) mouseHeld = false;
-  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||system?.open||phone?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen ? 'none' : 'flex';
+  startEl.style.display = locked || (worldMap?.open||movieTv?.open||npcConversations?.open||society?.open||worldIds?.isOpen||infoMarkets?.open||bankPanel?.open||story?.open||system?.open||phone?.open||adventureServices?.open||supportSkills?.open||cityServices?.open)||roomChat.open || boardOpen || settingsOpen || layoutEditMode || inventoryOpen || basements?.busy || homeBuilder?.isOpen ? 'none' : 'flex';
   if (!locked) startEl.querySelector('p').textContent = 'Paused. Click to resume';
 });
 // If pointer lock is blocked, play without it (mouse movement still turns the camera).
@@ -7472,7 +7523,8 @@ function updatePlayer(dt) {
   if(transport?.rider){animateHumanoid(P,'sit',false,false,true,dt);return;}
   if (isSeaWater(player.position.x,player.position.z) && player.position.y < .2 + waterLevelAt(player.position.x,player.position.z)) return updateSwimming(dt);
   if (swimming) { swimming=false; waterExhausted=false; P.rig.rotation.x=0; }
-  if (sitting) { animateHumanoid(P, 'sit', false, false, true, dt); return; } // frozen in the chair until E is pressed again, but still visibly seated
+  if (sitting) { animateHumanoid(P, 'sit', false, false, true, dt); return; }
+  if (routine) { runRoutine(dt); return; } // frozen in the chair until E is pressed again, but still visibly seated
   playerStun = Math.max(0, playerStun - dt);
   iFrames = Math.max(0, iFrames - dt);
   m1Cd = Math.max(0, m1Cd - dt);
@@ -7507,6 +7559,9 @@ function updatePlayer(dt) {
   player.position.y += vy * dt;
   // walls only stop you near the ground while flying (the city's walls have no tops, so high up you'd hit thin air)
   if (!adminFlying || player.position.y < groundY(player.position.x, player.position.z) + 3.5) sweepCollide(moveFrom, player.position, 0.4);
+  // Deephaven's dome and tunnel are the only way out (the lift): a wall can't push you out into the sea, where the
+  // ground above would catch you and put you back on the surface.
+  if (deepCity && moveFrom.y < -3 && deepCity.inside(moveFrom.x, moveFrom.z, moveFrom.y) && !deepCity.inside(player.position.x, player.position.z, player.position.y)) { player.position.x = moveFrom.x; player.position.z = moveFrom.z; }
   const floorY = groundY(player.position.x, player.position.z);
   if (player.position.y <= floorY) {
     // Fall damage: only kicks in past a safe landing speed (roughly a two-storey
@@ -7866,6 +7921,63 @@ function updatePursuit(dt) {
 // Police catching you on foot is an arrest, not a kill: they're after cuffing
 // you, not your health bar. Clears the pursuit, costs you a fine (capped at
 // whatever gold you actually have), and hauls you to the nearest station.
+// ---- the Military Police ----
+// A crime on a military base (or taking one of its tanks or mechs) is the military's business, not the city police's.
+// Military Police come out of the base gate on foot and arrest you; you're held at the base guardhouse and fined.
+// Get far enough away and they give up.
+let MP_SITES_ = null; const mpSites = () => MP_SITES_ ||= [{ name: 'Westhaven Defence Force base', r: { x0: MIL_BASE.x0, x1: MIL_BASE.x1, z0: MIL_BASE.z0, z1: MIL_BASE.z1 }, gate: [MIL_BASE.x0 + 3, MIL_BASE.gateZ] },
+  { name: 'Westhaven Naval Base', r: { x0: NAVY_BASE.x0, x1: NAVY_BASE.x1, z0: NAVY_BASE.z0, z1: NAVY_BASE.z1 }, gate: [NAVY_BASE.gateX, NAVY_BASE.z0 + 3] }];   // (made when first needed)
+function militarySiteAt(x, z) { return mpSites().find(s => x > s.r.x0 - 4 && x < s.r.x1 + 4 && z > s.r.z0 - 4 && z < s.r.z1 + 4) || null; }
+const mps = []; let mpSite = null, mpLost = 0;
+function militaryCrime(reason) {
+  const p = inCar && driving ? driving.group.position : player.position;
+  mpSite = militarySiteAt(p.x, p.z) || mpSites().slice().sort((a, b) => Math.hypot(a.gate[0] - p.x, a.gate[1] - p.z) - Math.hypot(b.gate[0] - p.x, b.gate[1] - p.z))[0];
+  militaryAlert = Math.max(militaryAlert, 90); mpLost = 0;
+  if (mps.length) return;
+  toast(`🪖 Military Police: ${reason}. Stay where you are.`);
+  for (let i = 0; i < 2; i++) {
+    const h = makeHumanoid({ outfit: 0x3b4330, pants: 0x2a2f22, hair: 0x1a1410 });
+    const helm = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5 })); helm.position.y = 1.92; h.rig.add(helm);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.2), new THREE.MeshStandardMaterial({ color: 0xc0392b })); band.position.set(0, -0.15, 0); h.armL.pivot.add(band);
+    const g = new THREE.Vector3(mpSite.gate[0], 0, mpSite.gate[1]), dir = g.clone().sub(p).setY(0), dist = dir.length(); dir.normalize();
+    const from = dist > 60 ? p.clone().addScaledVector(dir, 55) : g;   // (out of the guard post nearest you, on your side of the base)
+    h.root.position.set(from.x + i * 1.5, 0, from.z + i); h.root.position.y = groundY(h.root.position.x, h.root.position.z, 0); scene.add(h.root); mps.push(h);
+  }
+}
+function standDownMPs() { for (const h of mps) scene.remove(h.root); mps.length = 0; }
+function militaryArrest() {
+  const site = mpSite || mpSites()[0], fine = Math.min(Math.floor(stats.gold), 300);
+  stats.gold -= fine; standDownMPs(); militaryAlert = 0; wanted = 0; pursuitBackupCooldown = 0;
+  if (inCar) exitVehicle(true);
+  player.position.set(site.gate[0] + (site === mpSites()[0] ? -8 : 0), 0, site.gate[1] + (site === mpSites()[0] ? 0 : -8)); player.position.y = groundY(player.position.x, player.position.z); vy = 0; pvel.set(0, 0, 0);
+  careers?.convict?.('Arrested by the Military Police');
+  toast(`🪖 Arrested by the Military Police. Held at the ${site.name} guardhouse${fine ? ` and fined ${fine} gold` : ''}, then walked out of the gate.`);
+}
+function updateMilitaryPolice(dt) {
+  if (!mps.length) return;
+  const t = inCar && driving ? driving.group.position : player.position; let nearest = Infinity;
+  for (const h of mps) {
+    const p = h.root.position, dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz); nearest = Math.min(nearest, d);
+    if (d > 1.2) { const k = Math.min(d - 1.2, 8.5 * dt) / d; p.x += dx * k; p.z += dz * k; collide(p, 0.35); }
+    p.y = groundY(p.x, p.z, p.y); h.root.rotation.y = Math.atan2(dx, dz); animateHumanoid(h, null, d > 1.3, false, true, dt);
+  }
+  if (nearest < 1.8 && (!inCar || Math.abs(driving.speed) < 2)) return militaryArrest();
+  mpLost = nearest > 140 && !militarySiteAt(t.x, t.z) ? mpLost + dt : 0;
+  if (mpLost > 25) { standDownMPs(); militaryAlert = 0; toast('🪖 The Military Police lost you.'); }
+}
+// Firing from a tank (its main gun) or a mech (autocannons): where the camera looks.
+let vehGunCd = 0;
+function vehicleFire() {
+  const v = driving; if (!v || vehGunCd > performance.now()) return;
+  const tank = v.kind === 'tank', cam = new THREE.Vector3(); camera.getWorldDirection(cam);
+  const flat = cam.clone().setY(0).normalize(), from = v.group.position.clone().add(new THREE.Vector3(0, tank ? 1.6 : 6.6, 0)).addScaledVector(flat, tank ? 3.6 : 2.4);
+  const dir = camera.position.clone().addScaledVector(cam, 90).sub(from).normalize();
+  vehGunCd = performance.now() + (tank ? 1600 : 220); lastPlayerGunshot = performance.now();
+  fireProjectile({ from, dir, speed: tank ? 75 : 95, range: tank ? 140 : 90, color: tank ? 0xff7a1f : 0xffd23f, size: tank ? 0.35 : 0.14,
+    explode: tank ? { r: 4.5, dmg: 55, kb: 14, up: 7, stun: 1 } : { r: 1.3, dmg: 9, kb: 2, up: 0.5, stun: 0.2 } });
+  shake = Math.max(shake, tank ? 0.35 : 0.06);
+  if (v.militaryHome && !v.militaryTaken) { v.militaryTaken = true; militaryCrime('Firing a military weapon'); }
+}
 function arrestPlayer() {
   wanted = 0; pursuitBackupCooldown = 0; militaryAlert = 0; lastPlayerGunshot = -Infinity;
   for (const unit of vehicles) if (unit.ai) { unit.ai.warnedFor = 0; unit.ai.responseWarned = null; }
@@ -8040,7 +8152,7 @@ function tankChase(v,dt){
   if(ai.officer?.out||(d<16&&(!inCar||Math.abs(driving.speed)<1.5)))policeOnFoot(v,ai,dt);
 }
 function updateMilitary(dt){
-  if(militaryAlert>0){militaryAlert-=dt;if(militaryAlert<=0)toast('Defence Force alert stood down.');}
+  updateMilitaryPolice(dt);if(militaryAlert>0){militaryAlert-=dt;if(militaryAlert<=0){toast('Defence Force alert stood down.');standDownMPs();}}
   else for(const v of vehicles){if(!v.militaryHome||v.disabled)continue;
     const away=distXZ(v.group.position,v.militaryHome)>3,watched=distXZ(player.position,v.group.position)<150||distXZ(player.position,v.militaryHome)<150;
     if(away&&!watched){v.group.position.copy(v.militaryHome);v.group.rotation.y=v.militaryYaw;v.speed=0;}}
@@ -8227,7 +8339,34 @@ function updateCockpit(dt) {
 }
 // A cut-scene camera (the Story Mode opening): while set, the camera glides between marks and the player can't move it.
 let cutCam = null;
+// ---- routines: something you do with your body for a while (a workout, a bowl) ----
+// Each step: where you stand (x, y, z), which way you face (yaw), for how long, and what your body does (a pose,
+// or one that changes with time, jogging, lying down); E or a movement key stops it.
+let routine = null;
+function startRoutine(steps, done) {
+  if (inCar || riding || swimming) return false; if (sitting) toggleSit(null);
+  routine = { steps, i: 0, t: 0, done, back: player.position.clone() }; action = null; vy = 0; pvel.set(0, 0, 0); return true;
+}
+function stopRoutine(finished) {
+  const r = routine; if (!r) return; routine = null; if (r.camOn) camOverride = null; r.steps[r.i]?.leave?.(); player.rotation.x = 0;
+  const s = r.steps[r.i] || r.steps.at(-1); if (s?.exit) player.position.set(s.exit[0], s.exit[1], s.exit[2]);
+  if (finished) r.done?.(); else if (!r.quiet) toast('You stop.');
+}
+function runRoutine(dt) {
+  const r = routine, s = r.steps[r.i]; if (!s) return stopRoutine(true);
+  if (!s.started) { s.started = true; s.enter?.(); }
+  r.t += dt; player.position.set(s.x, s.y, s.z); player.rotation.y = s.yaw; player.rotation.x = s.lie ? -Math.PI / 2 : 0; vy = 0;
+  if (s.cam) { if (!camOverride || camOverride.step !== s) camOverride = { step: s, snap: !r.camOn, pos: new THREE.Vector3(...s.cam), at: new THREE.Vector3(s.x, s.y + (s.lie ? 0.5 : 1.0), s.z) }; r.camOn = true; }   // a camera that shows you doing it
+  s.update?.(dt, r.t);
+  animateHumanoid(P, typeof s.pose === 'function' ? s.pose(r.t) : s.pose || null, !!s.moving, false, true, dt);
+  if (r.t >= s.dur) { s.leave?.(); player.rotation.x = 0; r.i++; r.t = 0; if (r.i >= r.steps.length) { const exit = s.exit; routine = null; if (r.camOn) camOverride = null; if (exit) player.position.set(exit[0], exit[1], exit[2]); r.done?.(); } }
+}
+const MOVE_KEYS_R = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
+addEventListener('keydown', e => { if (routine && !routine.locked && (e.code === 'KeyE' || MOVE_KEYS_R.has(e.code))) { e.stopImmediatePropagation(); stopRoutine(false); } }, true);
+// A fixed camera for a while (bowling: looking down the lane over your shoulder).
+let camOverride = null;
 function updateCamera(dt) {
+  if (camOverride) { player.visible = !inCar; if (camOverride.snap) { camera.position.copy(camOverride.pos); camOverride.snap = false; } else camera.position.lerp(camOverride.pos, 1 - Math.exp(-6 * dt)); camera.lookAt(camOverride.at); return; }   // (you see yourself, even indoors)
   if (cutCam) {
     // the game is paused during a cut-scene (dt is 0 then), so the camera keeps its own clock
     const now = performance.now(), real = Math.min(0.25, (now - (cutCam.t || now)) / 1000); cutCam.t = now;
@@ -8288,7 +8427,7 @@ function updateCamera(dt) {
     }
     const target = new THREE.Vector3(focus.x, focus.y + (inCar ? 1.8 : 1.55), focus.z);
     const offset = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
-    let dist = inCar ? camDist + ({ bus: 7, boat: 5, plane: 12 }[driving.kind] ?? 3) : camDist;
+    let dist = inCar ? camDist + ({ bus: 7, boat: 5, plane: 12, mech: 9, tank: 4 }[driving.kind] ?? 3) : camDist;
 
     // Stop the camera at walls so it never ends up inside a building
     raycaster.set(target, offset);
@@ -8481,7 +8620,7 @@ adventureServices=buildAdventureServices({licensed:id=>licences.has(id),licenceC
 pause(){locked=false;mouseHeld=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl,counters:()=>({kills:monsterQuestKills,dungeons:supportCounters.dungeons}),pay(price){if(stats.gold<price)return false;stats.gold-=price;return true;},reward(gold,xp){stats.gold+=gold;gainXp(xp);},changed(){saveSolo();},
 repair(price){const car=vehicles.find(v=>isRoadVehicle(v)&&!v.disabled&&!v.noSteal&&distXZ(v.group.position,player.position)<12);if(!car){toast('Bring an operational car within 12 metres of the shop.');return;}if(stats.gold<price){toast('Not enough gold.');return;}stats.gold-=price;car.health=100;applyVehicleCondition(car);toast('Vehicle repaired. Full power and steering restored.');},
 swordAttack(){hitCone(player.position,aimForward(),5,.1,new Set(),{dmg:35,kb:5,stun:.5,from:player.position.clone()},3);},
-shoot(range,damage){lastPlayerGunshot=performance.now();const origin=at(player.position,1.5),dir=aimForward().normalize(),ray=new THREE.Raycaster(origin,dir,.1,range),obstacle=ray.intersectObjects(camBlockers,true)[0],limit=obstacle?.distance??range;
+shoot(range,damage){lastPlayerGunshot=performance.now();const origin=at(player.position,1.5),dir=aimShot(range),ray=new THREE.Raycaster(origin,dir,.1,range),obstacle=ray.intersectObjects(camBlockers,true)[0],limit=obstacle?.distance??range;
  const objects=[...enemies.filter(e=>e.alive&&!e.hidden).map(e=>({entity:e,position:at(e.root.position,1),radius:(e.radius||.4)+.4})),...vehicles.filter(v=>!v.disabled).map(v=>({vehicle:v,position:at(v.group.position,.8),radius:v.radius||2}))];
  const target=objects.map(o=>{const delta=o.position.clone().sub(origin),along=delta.dot(dir),side=delta.clone().addScaledVector(dir,-along).length();return {...o,along,side};}).filter(o=>o.along>0&&o.along<limit&&o.side<o.radius).sort((a,b)=>a.along-b.along)[0];
  const end=origin.clone().addScaledVector(dir,target?.along??limit),tracer=new THREE.Line(new THREE.BufferGeometry().setFromPoints([origin,end]),new THREE.LineBasicMaterial({color:0xffe29a}));scene.add(tracer);setTimeout(()=>disposeObj(tracer),90);worldAudio?.impact(6);if(target?.entity)applyHit(target.entity,{dmg:damage,kb:2,stun:.2,from:origin});else monsterEnvironmentDamage(end,damage,1,true);
@@ -8497,7 +8636,10 @@ navy=buildNavy({...regionalTransportContext,colliders,input:()=>locked?{forward:
 military = buildMilitary({ scene, colliders, interactables, civicBuildings, makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeTex, toast, burst, fxSphere, statSources, destinations: townPlaces.destinations,
   playerPos: () => player.position, playerRig: () => P,
   addAircraft: a => makeAircraft(a),
-  makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; return v; } });
+  makeTank(x, z, ry) { const v = makeVehicle('tank', 0x4f5a3a); v.group.position.set(x, .2, z); v.group.rotation.y = ry; v.ai = { parked: true }; v.militaryHome = new THREE.Vector3(x, .2, z); v.militaryYaw = ry; v.noSteal = true; v.stealable = true; v.military = true; return v; },
+  // a walking mech you can climb into and drive (W/S to walk, A/D to turn, click to fire its autocannons)
+  makeMech(group, parts) { const v = { kind: 'mech', group, wheels: [], speed: 0, radius: 2.4, length: 3.4, maxSpeed: 7, ai: { parked: true }, passengers: null, noSteal: true, stealable: true, military: true, mech: parts }; vehicles.push(v); return v; },
+  wearOnBody, realBody: () => true });
 // the military's spaceships: the Air Force Space Wing at Eastern Command (space-wing.js)
 spaceWing = buildSpaceWing({ scene, colliders, interactables, makeTex, toast, makePerson: o => makeHumanoid(o), addSpaceship: o => makeSpaceship(o),
   alert: () => militaryAlert, wanted: () => wanted, target: () => (inCar && driving ? driving.group.position : player.position),
@@ -8537,7 +8679,9 @@ basements = createMansionBasements({ doors: roomDoors, scene, colliders, interac
   teleport: (x, y, z, look) => { if (inCar) exitVehicle(true); if (sitting) toggleSit(null); player.position.set(x, y, z); vy = 0; pvel.set(0, 0, 0); if (look != null) yaw = look; },
   driveAway: v => { cityServices?.ownedCars?.push(v); enterVehicle(v); },
   workout: () => { stats.energy = clamp(stats.energy - 10, 0, 100); stats.clean = Math.max(0, (stats.clean ?? 60) - 20); gainXp(2); }, gainXp: n => gainXp(n),
-  drink: () => { stats.hunger = Math.min(100, stats.hunger + 3); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); } });
+  drink: () => { stats.hunger = Math.min(100, stats.hunger + 3); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
+  freeMouse: on => { if (on) { setFreeMouse(true); locked = true; document.exitPointerLock(); $('mouseHint').style.display = 'none'; } else { setFreeMouse(false); if (!boardOpen && !settingsOpen) requestGameControl(); } },   // (the game keeps running while you use a panel: bowling, an instrument)
+  routine: (steps, done) => startRoutine(steps, done), stopRoutine: () => stopRoutine(false), lockRoutine: on => { if (routine) routine.locked = on; }, lookFrom: (pos, at) => { camOverride = pos ? { pos, at } : null; }, playerPos: () => player.position });
 hills = buildHills({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
 homeBuilder = createHouseBuilder({ scene, colliders, interactables, sitSpots, planeBlocks, poolZones, doors: roomDoors, makeTex, toast: m => toast(m), sign: signboard, destinations: townPlaces.destinations,
   money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
@@ -8656,7 +8800,7 @@ phone=createPhone({contacts:()=>phoneContacts(),sendMessage:(c,text)=>phoneSend(
   snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
   openMap:()=>worldMap?.show(),callTaxi:()=>cityServices?.callTaxi(player.position.clone()),openCareer:()=>careers?.openCareer(),openCityHall:()=>society?.openHall(),
   calendar:()=>seasons?.calendar,calendarOn:d=>calendarFor(d),weather:()=>WEATHER_LABEL[weatherState],
-  gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
+  notices:()=>notices,seenNotices:()=>{unreadNotices=0;noticeBadge();},gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
   news:()=>(society?.state?.news||[]).map(n=>n.text),quests:()=>system?.quests?.()||[],
   openBanking:()=>{if(!bankPanel?.phone)return false;bankPanel.openPhone();return true;}});
 // The System's voice (system-voice.js): an OpenAI voice, fetched once per line and kept on this device
@@ -9045,7 +9189,7 @@ function frame() {
     updatePursuit(dt);
     updateNeeds(dt);
     if (riding) updateRiding(dt);
-    else if (!inCar) updatePlayer(dt);
+    else if (!inCar) { updatePlayer(dt); deepCity?.contain(player.position); }   // (Deephaven's glass: checked every frame, not just when the city updates)
     updateHover(dt);
     carControls.update(dt);
     carControls.charge(dt, !!chargers.update(dt, inCar && isRoadVehicle(driving) ? driving : null));
@@ -9080,7 +9224,7 @@ function frame() {
     rain ||= createRain({ scene, camera, count: touchDevice ? 3000 : 9000, splashes: touchDevice ? 110 : 260, groundAt: (x, z) => groundY(x, z, player.position.y + 3),
       sheltered: (x, z) => insideFootprint(x, z) || walkIns.floorAt(x, z, 0.5) != null || !!houseAt({ x, z }, 0.2) });
     rain.set(weatherState === 'rain' || weatherState === 'storm');
-    rain.update(dt, { indoors: playerIndoors || !!spaceCentre?.inSpace || !!metro?.underground || !!sewers?.underground || !!dungeon || inCivicInterior || !!interiors?.active, density: optimiser.crowd });
+    rain.update(dt, { indoors: playerIndoors || camera.position.y < -0.5 || !!deepCity?.inside(player.position.x, player.position.z, player.position.y) || !!spaceCentre?.inSpace || !!metro?.underground || !!sewers?.underground || !!dungeon || inCivicInterior || !!interiors?.active, density: optimiser.crowd });
     updateFirefighters(dt);
     updateFireDamage(dt);
     bg('bats', dt, updateBats);
@@ -9133,7 +9277,7 @@ function frame() {
   // Full-screen menus (sign-in, main menu, birth roll, class pick, loading) cover the
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
   seatedResidents?.update(rawDt); neighbours?.update(rawDt);
-    OBST.length = 0; for (const v of vehicles) if (!v.disabled) OBST.push(v.group.position); OBST.push(player.position); roamTraffic.update(hitStop > 0 ? 0 : rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld(); updateDroppedBag(rawDt);
+    OBST.length = 0; for (const v of vehicles) if (!v.disabled) OBST.push(v.group.position); OBST.push(player.position); roamTraffic.update(hitStop > 0 ? 0 : rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld(); syncArmour(); updateDroppedBag(rawDt);
   let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
   optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);
