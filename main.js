@@ -42,6 +42,7 @@ import {buildWorldAdvertising} from './world-advertising.js';
 import {createWorldMap} from './world-map.js';
 import {createMovieTv} from './movie-tv.js';
 import { createRain } from './rain.js';
+import { buildYabatanChurch } from './yabatan-church.js';
 import { createMansionBasements } from './mansion-basement.js';
 import { createRoomDoors } from './room-doors.js';
 import { createHouseVisits } from './house-visits.js';
@@ -529,7 +530,7 @@ const CAVE_BOUNDS = { x0: -414, x1: -386, z0: 758, z1: 808 };   // the Ashford C
 let supportSkills=null,cityServices=null,supportCounters={dungeons:0,bosses:0};
 function persistSupportProgress(){if(alignmentUserId&&supportSkills)try{localStorage.setItem('support:'+alignmentUserId,JSON.stringify({skill:supportSkills.snapshot(),counters:supportCounters,kills:monsterQuestKills}));}catch{}}
 let cityLife=null,monsterQuestKills=0;
-let roadLaw=null,hunterGuilds=null,frontier=null,border=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
+let roadLaw=null,hunterGuilds=null,frontier=null,border=null,yabatan=null,venues=null,powerGrid=null,helipads=null,drones=null,lostPeak=null;   // law, guild system and the northern frontier (created after the base world)
 let poisonLand = null;
 let interiorFloorAt = null;   // upper floors, lifts and stairs inside buildings (interiors.js)
 let resistingUntil = 0;   // you fought the police or the military recently: the patrol ships may open fire (arrest first otherwise)
@@ -8563,7 +8564,7 @@ bankPanel=createBankPanel({scene,colliders,interactables,makePerson:o=>makeHuman
 function openMap(){if(!infoMarkets||infoMarkets.hasMap())return worldMap?.show();toast("🗺️ You don't have a map. Buy one at the Info Market in Ashford Central Market, or use a travel board.");}
 // The story nobody tells you (story.js): the truth beyond the mountains, the ways to it, and the ways out.
 const storyPause=()=>{locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';};
-story=createStory({S:society.state,DOME,scene,interactables,player:()=>player,teleport:teleportPlayer,raiseWanted,toast,setWaypoint,makeMonster:(t,l,p)=>makeMonster(t,l,p),
+story=createStory({sheltered:()=>!!yabatan?.inside(player.position),S:society.state,DOME,scene,interactables,player:()=>player,teleport:teleportPlayer,raiseWanted,toast,setWaypoint,makeMonster:(t,l,p)=>makeMonster(t,l,p),
   achieve:t=>society.lives.achieve(null,t),history:(what,why)=>society.history.record('story',what,why,{player:true}),controversy:t=>society.history.L.controversies.push(t),controversies:()=>society.history.L.controversies.length,
   office:()=>society.gov.P.office,inParty:()=>society.gov.P.party!=null,isHunter:()=>!!hunterGuilds?.licensed,wanted:()=>wanted,isNight:()=>dayTime>0.55&&dayTime<0.95,
   friendWith:jobs=>society.citizens.some(c=>!c.dead&&(c.bond||0)>=55&&jobs.includes(c.job)),
@@ -8763,6 +8764,10 @@ function teleportPlayer(pos, msg, ms = 650) {
 }
 await startupStage(85,'Preparing world boundaries and landmarks...');
 border=buildBorder({scene,groundY,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),interactables,toast,makeTex});
+// The Yabatan Church: a walled compound out on the frozen plain beyond the mountains (outside the dome)
+yabatan=buildYabatanChurch({scene,colliders,interactables,sitSpots,planeBlocks,DOME,makeTex,toast,makePerson:o=>makeHumanoid(o),animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+  makeFigure:type=>{const m=MONSTERS[type];if(!m)return null;const h=makeHumanoid({...m.look,real:false});h.rig.scale.setScalar(0.9*m.scale);return h;},makeMonster:(t,l,p)=>makeMonster(t,l,p),
+  player:()=>player.position,warm:()=>{if(story?.T)story.T.warmth=100;},gainXp:n=>gainXp(n)});
 // The power grid: the Aegis Prime Generator feeds every dungeon gate and the dungeon
 // arena through cables in the sewers; an open manhole beside each gate shows them.
 powerGrid=buildPowerGrid({scene,gates,interactables,toast,groundY,makeTex});
@@ -9003,6 +9008,7 @@ function frame() {
     frontier.update(dt,{sky,camera,inSpace:!!spaceCentre?.inSpace,underground:!!(metro?.underground||sewers?.underground||dungeon||inCivicInterior||navy?.rider?.depth>2)});
     updateMilitary(dt);
     border?.update(dt, player.position);
+    yabatan?.update(dt);
     bg('powerGrid', dt, d => powerGrid?.update(d)); helipads?.update(dt, player.position); bg('drones', dt, d => drones?.update(d)); bg('lostPeak', dt, d => lostPeak?.update(d));
     venues?.update(dt, { playerPos: player.position, driving: inCar && driving ? driving : null });
     interiors.update(dt);
