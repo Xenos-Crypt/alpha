@@ -72,6 +72,7 @@ import {buildShipMesh, buildShipyard} from './spaceships.js';
 import {buildSpaceWing, buildMilitaryShip} from './space-wing.js';
 import {buildSkyCity} from './sky-city.js';
 import {buildDeepCity} from './deep-city.js';
+import {buildWilds} from './wilds.js';
 import {createSolidProps} from './solid-props.js';
 import {auditScene} from './world-grid.js';
 import {buildBlackMarket, NARROWS, hasTool} from './black-market.js';
@@ -535,6 +536,7 @@ let roadLaw=null,hunterGuilds=null,frontier=null,border=null,yabatan=null,venues
 let poisonLand = null;
 let interiorFloorAt = null;   // upper floors, lifts and stairs inside buildings (interiors.js)
 let resistingUntil = 0;   // you fought the police or the military recently: the patrol ships may open fire (arrest first otherwise)
+let wilds = null;   // the forests along the south, the hidden church and the snow monsters outside the shield (wilds.js)
 let skyCity = null, deepCity = null, shipyard = null, spaceWing = null;   // shipyard: Orbital Forge (spaceships.js)   // Skyhaven (sky-city.js) and Deephaven (deep-city.js)
 let spaceCentre = null, volcanicIsland = null, ghostIsland = null, worldAudio = null;
 let harbour = null, townPlaces = null, transport = null, harbourBridge = null, urban = null, sewers = null, regionalEnvironment = null, metro = null;
@@ -2692,7 +2694,7 @@ function showMenu(hasSave) {
 }
 
 let isAdmin = false, phone = null;
-// Admin god mode: infinite health and energy, never hungry, level 1000, maxed stats. On by default for admins;
+// Admin god mode: infinite health, energy and money, never hungry, level 1000, maxed stats. On by default for admins;
 // they can switch it off in the System window (to test deaths, say).
 let adminFlying = false, lastSpaceTap = 0;
 // admin flight: double-tap Space to take off or land (only with god mode on)
@@ -2725,8 +2727,9 @@ function setUpHome(){
 }
 function updateAdminGod(){
   if(!isAdmin||!adminGod)return;
-  if(!adminMaxed){adminMaxed=true;prog.level=Math.max(prog.level,1000);prog.xp=0;prog.str=Math.max(prog.str,100);prog.def=Math.max(prog.def,100);prog.men=Math.max(prog.men,100);prog.agi=Math.max(prog.agi,25);buildHotbar();toast('🛠 Admin: god mode on (infinite health and energy, never hungry, level 1000, maxed stats).');}
+  if(!adminMaxed){adminMaxed=true;prog.level=Math.max(prog.level,1000);prog.xp=0;prog.str=Math.max(prog.str,100);prog.def=Math.max(prog.def,100);prog.men=Math.max(prog.men,100);prog.agi=Math.max(prog.agi,25);buildHotbar();toast('🛠 Admin: god mode on (infinite health, energy and money, never hungry, level 1000, maxed stats).');}
   stats.hp=maxHp();stats.energy=100;stats.hunger=100;
+  if(stats.gold<1e9)stats.gold=1e9;   // the admin never runs out of money
 }
 let playerUsername = null;   // set once the user signs in/up; null for guests or if they skipped it
 function offlinePlayerSession(){let id=localStorage.getItem('lastSoloPlayer')||localStorage.getItem('guestId');if(!id){id='guest-'+crypto.randomUUID();localStorage.setItem('guestId',id);}return {user:{id,isGuest:true}};}
@@ -8324,9 +8327,12 @@ function updateWorldLight(dt) {
     sunDisc.visible = moonDisc.visible = false;
   } else {
     scene.fog.near = 140 - 125 * haze; scene.fog.far = 600 - 450 * haze;   // rain closes the distance in
+    const mist = wilds?.mistAt(player.position) || 0;   // deep in Mistwood the fog closes right in
+    if (mist > 0) { scene.fog.near *= 1 - mist * 0.97; scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, 38, mist); scene.fog.color.lerp(MIST_COLOR, mist * 0.8); horizon.lerp(MIST_COLOR, mist * 0.8); }
   }
 }
 
+const MIST_COLOR = new THREE.Color(0xc3cbcf);
 const raycaster = new THREE.Raycaster();
 // First-person driving: you sit in a proper cabin (car-cockpit.js)
 const cockpit = createCockpit({ scene, makeTex });
@@ -8753,7 +8759,7 @@ const isOwner=()=>{try{if(/[?&]owner\b/.test(location.search))localStorage.setIt
 worldIds=createWorldIds({isOwner,THREE,scene,trees:()=>forest.trees,plants:()=>LIFE.plants,plantId,species:k=>PLANTS[k],belongings:()=>society?.goods?.items()||[],firms:()=>society?.firms?.list()||[],whereIs:c=>{const e=peds[c.id];return e&&!e.hidden?e.root.position:null;},grass:()=>GRASS_TUFTS?(grass?.tufts?.()||[]):[],isRoad:(x,z)=>isRoadAt(x,z),blockedAt:(x,z,r)=>blockedAt(x,z,r),interactables:()=>interactables,
   reportBug:(cat,pos,ids,words)=>worldWatch?.report(cat,new THREE.Vector3(pos.x,0,pos.z),{ids,words}),player:()=>player,driving:()=>driving,peds:()=>peds,vehicles:()=>vehicles,buildings:()=>buildings,civicBuildings:()=>civicBuildings,houses:()=>houses,blocks:()=>idBlocks,
   roads:()=>{if(!idNewRoads&&roadCrew)idNewRoads=roadCrew.NEW_ROADS.map(n=>({minX:n.r[0],maxX:n.r[1],minZ:n.r[2],maxZ:n.r[3],name:n.name,byBots:true}));return [...roadRectList,...(idNewRoads||[])];},
-  extra:()=>[...idExtra,...(shipyard?.ids||[]),...(spaceWing?.ids||[]),...(skyCity?.ids||[]),...(deepCity?.ids||[]),...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
+  extra:()=>[...idExtra,...(wilds?.ids||[]),...(shipyard?.ids||[]),...(spaceWing?.ids||[]),...(skyCity?.ids||[]),...(deepCity?.ids||[]),...LIFE.things,...(phone?.devices?.()||[]),...townWildlife(),...innovationsBuilt.map((b,i)=>(b.idInfo??={cls:'BLD',kind:'GEN',mat:'STL.PLS',owner:'BOT',seed:'innovation:'+b.group.name,maker:'the residents',name:b.group.name.replace('innovation:',''),pos:null}))],
   citizenOf:e=>society?.citizenOf(e),monsters:()=>enemies.filter(e=>e.kind==='monster'),cops:()=>vehicles.filter(v=>v.ai?.officer?.e).map(v=>v.ai.officer.e),robots:()=>atlasWorld?.robots()||[],
   pause(){locked=false;mouseHeld=false;for(const code in keys)keys[code]=false;document.exitPointerLock();$('start').style.display='none';},resume:requestGameControl});
 // every purchase, uniform, worn-out shirt and pram goes on the thing's record (belongings.js → world IDs)
@@ -9061,6 +9067,13 @@ function isRoadAt(x, z) {
   return false;
 }
 harbourBridge?.addPiers((x, z) => isRoadAt(x, z) || isRoadAt(x - 0.7, z) || isRoadAt(x + 0.7, z));   // the harbour bridge's piers, clear of the roads under it
+// the wilds (wilds.js): built once the road grid exists, so its trees keep off the roads
+{ // (only the colliders in the forests' band are checked: blockedAt's lookup is slow for thousands of calls)
+  const band=colliders.filter(c=>c.maxX>-290&&c.minX<580&&c.maxZ>1225&&c.minZ<1510);
+  const near=(x,z,r)=>band.some(c=>{if(c.circleRadius!=null)return Math.hypot(x-c.circleX,z-c.circleZ)<c.circleRadius+r;const cx=clamp(x,c.minX,c.maxX),cz=clamp(z,c.minZ,c.maxZ);return (x-cx)**2+(z-cz)**2<r*r;});
+  wilds=buildWilds({scene,groundY,interactables,toast,makeTex,colliders,blocked:(x,z,r)=>near(x,z,r)||isRoadAt(x,z)||isSeaWater(x,z,0),plant:(x,y,z,kind,s)=>forest.add(x,y,z,{kind,scale:s,owner:'GOV'})}); }
+townPlaces.destinations.push(...wilds.destinations);
+forest.flush();
 intercityRail?.clearRoads?.((x,z)=>isRoadAt(x,z));   // no viaduct legs standing in a road
 roadWear = createRoadWear({ scene, makeTex, groundY, toast, interactables, isRoad: isRoadAt, roadRects: () => roadRectList, makePerson: makeHumanoid, animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt),
   bump(v, sev, speed) { v.health = Math.max(5, (v.health ?? 100) - sev * Math.min(4, speed / 8)); applyVehicleCondition(v); v.speed *= 0.85; shake = Math.max(shake, 0.1 * sev); },
@@ -9124,7 +9137,7 @@ const GRASS_TUFTS = true;
 const GRASS_DENSITY = { low: 3000, medium: 10000, high: 15000, ultra: 20000 };
 if (!GRASS_TUFTS) { grass.mesh.visible = false; grass.setCount(0); }
 const visualAssetsReady=upgradeWorldMaterials({scene,grass:grassTex,lawn:lawnTex,ground:groundTex,paving:paveTex,wood:woodTex,roof:roofTex,roadMaterial:roads.material,facades:facades.map(f=>f.color),anisotropy:Math.min(maxAniso,8),detailed:gfxQuality!=='low'});
-worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,layers:()=>{const cops=vehicles.filter(v=>v.kind==='police'&&!v.disabled),me=inCar&&driving?driving.group.position:player.position,P=o=>({x:o.x,z:o.z});   // map filters: green safe, blue police, red pursuit, and the rest
+worldMap=createWorldMap({buildings:()=>buildings,landmarks:()=>[...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({x:b.x,z:b.z,w:b.maxX-b.minX,d:b.maxZ-b.minZ,h:b.type==='school'?7:9,color:b.type==='school'?0xd8b880:0xb4bdc8})),...townPlaces.rooms.map(r=>({x:r.x,z:r.z,w:r.w,d:r.d,h:6})),...(capitalServiceBuildings?.services||[]).map(([name,x,z,color])=>({x,z,w:22,d:18,h:6,color})),...cityServices.dealers.map(d=>({x:d.x,z:d.z,w:22,d:20,h:5,color:0x789bb1}))],destinations:()=>[...townPlaces.destinations,...(isAdmin?wilds?.hidden||[]:[]),...civicBuildings.filter(b=>/school|hospital|museum|police|bank/i.test(b.name||'')).map(b=>({name:b.name,x:b.x,z:b.z})),...(capitalServiceBuildings?.services||[]).map(([name,x,z])=>({name,x,z})),...regionalEnvironment.islands.map(i=>({name:i.name,x:i.x,z:i.z-i.r+3})),...cityServices.dealers.map((d,i)=>({name:d.city+' car dealership '+(i%3+1),x:d.x,z:d.z-12})),...cityServices.offices.map(d=>({name:d.city+' tourist office',x:d.x,z:d.z-12})),...metro.stations.map(s=>({name:s.name+' subway station',x:s.x,z:s.z}))],islands:()=>[...regionalEnvironment.islands,{name:'Driftwood Island',x:ISLAND.x,z:ISLAND.z,r:ISLAND_R}],position:()=>inCivicInterior?civicReturnPos:metro.underground?metro.stations.reduce((a,b)=>Math.abs(player.position.x-a.tx)<Math.abs(player.position.x-b.tx)?a:b):spaceCentre.inSpace?{x:420,z:684}:player.position,layers:()=>{const cops=vehicles.filter(v=>v.kind==='police'&&!v.disabled),me=inCar&&driving?driving.group.position:player.position,P=o=>({x:o.x,z:o.z});   // map filters: green safe, blue police, red pursuit, and the rest
  return [{key:'safe',label:'Safe places',color:0x2ecc71,points:[{x:HOME.x,z:(HOME.minZ+HOME.maxZ)/2,r:14},...civicBuildings.filter(b=>b.type==='hospital').map(b=>({x:b.x,z:b.z,r:Math.max(b.maxX-b.minX,b.maxZ-b.minZ)/2+8}))]},
   {key:'police',label:'Police cars',color:0x2e86de,points:cops.map(v=>P(v.group.position))},
   {key:'pursuit',label:'Police after you',color:0xe74c3c,points:wanted>0?[{x:me.x,z:me.z,ring:true},...cops.filter(v=>v.ai?.alerted||v.ai?.dispatch).map(v=>P(v.group.position))]:[]},
@@ -9253,7 +9266,7 @@ function frame() {
   { const dtm = dayTime % 1; buildingSites?.update(running ? rawDt : 0, siteDaysNow(), player.position, dtm > 0.52 || dtm < 0.02); roadCrew?.update(rawDt, player.position); }
   if (running) {
     circus?.update(rawDt, player.position, !!sitting);
-    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); skyCity?.update(rawDt, player.position); bg('shipyard', rawDt, d => shipyard?.update(d)); bg('deepCity', rawDt, d => deepCity?.update(d, player.position)); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); bg('grandPark', rawDt, d => grandPark?.update(d, player.position, night)); bg('flowerPark', rawDt, d => flowerPark?.update(d, player.position, night)); bg('homePark', rawDt, d => homePark?.update(d, player.position, night)); bg('beachLife', rawDt, d => beachLife?.update(d, player.position)); resortBeach?.update(rawDt, player.position, swimming); bg('hospitalPlus', rawDt, d => hospitalPlus?.update(d, player.position)); bg('portPlus', rawDt, d => portPlus?.update(d, night)); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
+    { const dtm = dayTime % 1, night = dtm > 0.52 || dtm < 0.02; funfair?.update(rawDt, player.position, night); slum?.update(rawDt, player.position); skyCity?.update(rawDt, player.position); bg('shipyard', rawDt, d => shipyard?.update(d)); bg('deepCity', rawDt, d => deepCity?.update(d, player.position)); wilds?.update(rawDt, player.position); rent?.tick(); fairExtras?.update(rawDt, player.position, night); ventura?.update(rawDt, player.position, night); recCentre?.update(rawDt, player.position); bg('grandPark', rawDt, d => grandPark?.update(d, player.position, night)); bg('flowerPark', rawDt, d => flowerPark?.update(d, player.position, night)); bg('homePark', rawDt, d => homePark?.update(d, player.position, night)); bg('beachLife', rawDt, d => beachLife?.update(d, player.position)); resortBeach?.update(rawDt, player.position, swimming); bg('hospitalPlus', rawDt, d => hospitalPlus?.update(d, player.position)); bg('portPlus', rawDt, d => portPlus?.update(d, night)); navyPlus?.update(rawDt, player.position); venueFences?.update(rawDt, player.position); }
     if (sitting && activeSitSpot?.follow) { const p = activeSitSpot.follow(); player.position.set(p.x, p.y - 0.98, p.z); if (p.yaw != null) player.rotation.y = p.yaw; }   // carried round on a fairground ride
     superstore?.update(rawDt, player.position);
     const extraWear = []; for (const s of buildingSites?.sites || []) if (s.t < 0.45) { if (s.gateRoad === undefined) { s.gateRoad = null; for (let b = -16; b > -46; b -= 2) { const [x, z] = s.F.at(0, b); if (isRoadAt(x, z)) { s.gateRoad = { x, z, rate: 0.35 }; break; } } } if (s.gateRoad) extraWear.push(s.gateRoad); }   // site lorries chew up the road by the gate
