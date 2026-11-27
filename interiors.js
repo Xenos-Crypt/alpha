@@ -115,7 +115,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
       B(0.06, 0.06, 0.2, 0.55, 1.2, D / 2 - 0.02, 0xc9b26b, false, { metal: 0.8, rough: 0.3 });   // handle
       B(0.9, 0.28, 0.06, 0, 2.75, D / 2 - 0.2, 0x0d6b2f, false, { emissive: 0x19c25a, ei: 1.4 });   // EXIT sign
       B(0.22, 0.12, 0.02, 0, 2.75, D / 2 - 0.24, 0xffffff, false, { emissive: 0xffffff, ei: 1 });
-      B(2.4, 0.02, 1.4, 0, 0.11, D / 2 - 1, 0x5b4a3a);                           // doormat
+      B(2.4, 0.02, 1.4, 0, 0.125, D / 2 - 1, 0x5b4a3a);                          // doormat (1.5 cm above the floor patches, which also lie at 0.11)
       { const ex = spot(0, D / 2 - 1, 2.2, 'Leave the building', () => hooks.leave()); ex.autoR = 0.6; ex.pos.z += 0.5; L.auto.push(ex); }   // walk out of the door
     }
 
@@ -163,7 +163,7 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
 
     // ---- furniture ----
     const F = {
-      rug: (x, z, w, d, c) => B(w, 0.02, d, x, 0.11, z, c),
+      rug: (x, z, w, d, c) => B(w, 0.02, d, x, 0.125, z, c),   // 1.5 cm above the tile/marble floor patches (0.11), or the two flicker through each other
       plant: (x, z) => piece(x, z, 0, 0.5, 0.5, g => { const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.17, 0.42, 12), mat(0xb5683f)); pot.position.y = 0.21; g.add(pot); for (const [px, py, pz, s] of [[0, 0.8, 0, 0.36], [0.12, 1.05, 0.05, 0.26], [-0.1, 1.0, -0.08, 0.28]]) { const lf = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), mat(0x3f7d3a)); lf.position.set(px, py, pz); g.add(lf); } }),
       sofa: (x, z, rot, c = 0x56677a, w = 2.2) => { piece(x, z, rot, w, 0.95, g => { P(g, w, 0.42, 0.9, 0, 0.21, 0, c); P(g, w, 0.6, 0.2, 0, 0.6, -0.35, c); for (const s of [-1, 1]) P(g, 0.2, 0.62, 0.9, s * (w / 2 - 0.1), 0.31, 0, c); for (const s of [-1, 1]) P(g, w / 2 - 0.25, 0.12, 0.62, s * (w / 4 - 0.02), 0.48, 0.08, 0xd9d2c3); }); },
       coffeeTable: (x, z, rot = 0) => piece(x, z, rot, 1.2, 0.6, g => { P(g, 1.2, 0.06, 0.6, 0, 0.42, 0, 0x7a5636); for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) P(g, 0.05, 0.4, 0.05, a * 0.55, 0.2, b * 0.25, 0x4a3426); P(g, 0.3, 0.04, 0.2, 0.2, 0.47, 0, 0xc0392b); }),
