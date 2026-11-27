@@ -46,14 +46,14 @@ export function upgradeHospital(ctx, hospital) {
     const fl = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 6, 4), mat(0xffffff), 300), o = new THREE.Object3D(), col = new THREE.Color();
     for (let i = 0; i < 300; i++) { o.position.set(cx - 11 + (i % 50) * 0.45, 0.42, -238.8 + Math.floor(i / 50) * 0.35 + (Math.floor(i / 150) * 3.3)); o.updateMatrix(); fl.setMatrixAt(i, o.matrix); fl.setColorAt(i, col.set([0xff5a8a, 0xffd23f, 0xffffff, 0xc58fff][i % 4])); } root.add(fl);
     for (const [dx, c] of [[-3, '#1f5fa8'], [0, '#ffffff'], [3, '#2e7d32']]) { C(root, 0.06, 0.06, 9, cx + dx, 4.8, -236.5, 0xdddddd, 6); const f = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.1), new THREE.MeshBasicMaterial({ map: makeTex(32, 20, g => { g.fillStyle = c; g.fillRect(0, 0, 32, 20); if (c === '#ffffff') { g.fillStyle = '#e84118'; g.fillRect(13, 3, 6, 14); g.fillRect(9, 7, 14, 6); } }), side: THREE.DoubleSide })); f.position.set(cx + dx + 0.9, 8.6, -236.5); root.add(f); }
-    for (const tx of [-230, -228, -172, -170]) for (const tz of [-228, -216, -204, -192]) if (!(tx > -229 && tx < -171 && tz > -225)) ctx.tree?.(tx, tz, 'birch', 1.0);
+    for (const tx of [-230, -228, -172, -170]) for (const tz of [-228, -216, -204, -192]) if (!(tx > -229 && tx < -171 && tz > -225) && !(tx < -220 && tz > -216) && !(tx > -180 && tz > -210)) ctx.tree?.(tx, tz, 'birch', 1.0);   // (not where the west wing and the bigger tower stand)
     for (const bx of [-214, -186]) { const g = new THREE.Group(); g.position.set(bx, 0, z0 - 8.8); root.add(g); B(g, 1.8, 0.08, 0.5, 0, 0.45, 0, 0x7a5636); B(g, 1.8, 0.4, 0.06, 0, 0.75, 0.22, 0x7a5636); }
     sitter(-214, z0 - 8.8, Math.PI, 0.47, { task: 'talk' }); ctx.sitSpots?.push({ x: -186, z: z0 - 8.8, yaw: Math.PI, seatY: 0.47, label: 'Sit on the bench' });
   }
   // ---------------- rooftop helipad on the tower ----------------
   { const top = hospital?.top ?? 24; const padTex = makeTex(128, 128, g => { g.fillStyle = '#2b2f36'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#ffd23f'; g.lineWidth = 6; g.beginPath(); g.arc(64, 64, 56, 0, 7); g.stroke(); g.fillStyle = '#ffffff'; g.font = 'bold 72px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('H', 64, 68); });
-    const pad = new THREE.Mesh(new THREE.CircleGeometry(6.4, 32), new THREE.MeshStandardMaterial({ map: padTex })); pad.rotation.x = -Math.PI / 2; pad.position.set(cx, top + 0.12, -200); root.add(pad);
-    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; S(root, 0.12, cx + Math.cos(a) * 6.6, top + 0.2, -200 + Math.sin(a) * 6.6, mat(0x22ff88, { emissive: 0x22ff88, ei: 1.6 }), 6); }
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(6.4, 32), new THREE.MeshStandardMaterial({ map: padTex })); pad.rotation.x = -Math.PI / 2; pad.position.set(cx, top + 0.12, -195); root.add(pad);
+    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; S(root, 0.12, cx + Math.cos(a) * 6.6, top + 0.2, -195 + Math.sin(a) * 6.6, mat(0x22ff88, { emissive: 0x22ff88, ei: 1.6 }), 6); }
     for (const [dx, dz] of [[-16, -216], [-8, -218], [10, -217]]) B(root, 3, 1.6, 3, cx + dx, H + 1.9, dz, 0xb9c0c6);   // plant on the wing roof
   }
   // ---------------- people ----------------
