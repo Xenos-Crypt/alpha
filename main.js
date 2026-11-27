@@ -1718,6 +1718,7 @@ const inFilm = () => document.body.classList.contains('cinema');
 const heldToasts = [];
 function releaseHeldToasts() { const list = heldToasts.splice(0); list.forEach((t, i) => setTimeout(() => toast(t), 900 + i * 3800)); }
 function toast(text) {
+  if (talkCapture) { talkCapture(text); return; }   // (someone talking to you: it goes in the talk box)
   try { if (snackShop?.talking && snackShop.echo(text)) return; } catch { }   // talking to someone: what they say shows in the talk box
   if (inFilm()) { if (!heldToasts.includes(text)) { heldToasts.push(text); if (heldToasts.length > 3) heldToasts.shift(); } return; }
   if (soloMode && /\[SYSTEM\]/.test(text)) systemVoice?.speak(String(text).replace(/^.*?\[SYSTEM\]\s*/, ''));   // the System says its messages out loud
@@ -6601,7 +6602,20 @@ const actionMenu = createActionMenu({ onPauseChange: p => { menuPaused = p; for 
 function interact() {
   if (actionMenu.picking) return;
   const t = resolveInteractTarget(); if (!t) return;
-  if (t.actions) actionMenu.open(t.title || t.label, t.actions()); else t.action();
+  if (t.actions) actionMenu.open(t.title || t.label, t.actions()); else if (TALK_RE.test(t.label || '') && npcConversations) talkThrough(t); else t.action();
+}
+// Talking to someone opens the small talk box (what they say, a few things to ask, and a line to type a reply),
+// not a message across the screen: whatever they'd have said in a toast goes into the box instead.
+const TALK_RE = /^(Talk to|Speak to|Chat with) /;
+let talkCapture = null;
+function talkThrough(t) {
+  const said = []; talkCapture = s => said.push(s);
+  try { t.action(); } finally { talkCapture = null; }
+  if (!said.length) return;   // (they opened a menu instead)
+  if (npcConversations.open) { for (const x of said) toast(x); return; }   // (they have a talk of their own, a resident say: anything else is a normal message)
+  const name = t.label.replace(TALK_RE, '').replace(/\s*\(.*$/, '').replace(/^the /, 'The ').trim();
+  const text = said.map(x => String(x).replace(/^[^\p{L}\p{N}"“']+/u, '').trim().replace(/^["“]([\s\S]*?)["”]?$/, '$1')).join(' ');
+  npcConversations.talk(name.charAt(0).toUpperCase() + name.slice(1), text);
 }
 // Several things to do: the prompt says how many, and E opens the menu
 const asTarget = it => it.actions ? withMenu(it.title || it.label, it.actions) : { label: it.label, action: it.action };   // anything in the world can offer a menu
