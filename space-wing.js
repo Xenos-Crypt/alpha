@@ -59,31 +59,68 @@ export function buildSpaceWing(ctx) {
   function beam(a, b) { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: 0xff5a36 })); scene.add(l); beams.push({ l, t: 0.15 }); }
   function steer(s, to, maxSpeed, dt) {
     const p = s.group.position; tmp.subVectors(to, p); const d = tmp.length();
-    s.speed = Math.min(maxSpeed, s.speed + 40 * dt, d * 1.2);
+    s.speed = Math.min(maxSpeed, s.speed + 10 * dt, d * 1.2);   // (big ships pick up speed slowly)
     if (d > 0.5) { p.addScaledVector(tmp.normalize(), Math.min(d, s.speed * dt)); const want = Math.atan2(tmp.x, tmp.z); let da = want - s.yaw; da = Math.atan2(Math.sin(da), Math.cos(da)); s.yaw += da * Math.min(1, dt * 2.5); }
     s.group.rotation.set(-tmp.y * 0.4, s.yaw, 0);
     for (const f of s.glow) f.scale.set(1, 0.4 + s.speed / maxSpeed, 1);
     return d;
   }
+  // ARREST FIRST. The patrol ships only come down after you when the Defence Force is on alert (you went into a
+  // restricted zone), when you're seriously wanted AND resisting (you've attacked the police, or them), or when
+  // you've shot at a ship. Even then they warn you first ("stand down and surrender") and give you time to do it;
+  // they only open fire if you're still at it. Their cannons need a clear line to you: a building or a wall in the
+  // way blocks the shot. They fly at believable speeds (about 45 m/s on patrol, slower when they hunt).
+  // They can be damaged: each ship has armour; a ship you've hit turns on you; one that loses all its armour
+  // goes down in smoke and crashes, and the Space Wing sends a replacement to its pad later.
   let announced = 0;
+  const MAX_HP = 500;
+  for (const s of patrols) { s.hp = MAX_HP; s.angry = 0; s.warn = 0; }
+  function damage(s, dmg, from) {
+    if (!s || s.state === 'down' || s.state === 'wreck' || !(dmg > 0)) return;
+    s.hp -= dmg; s.angry = 90; ctx.onShipHit?.(s);
+    for (const f of s.glow) f.scale.set(1.4, 1.4, 1.4);
+    ctx.burst?.(s.group.position.clone(), 10, [0xffcc66, 0x777777]);
+    if (s.hp <= 0) { s.state = 'down'; s.vy = 0; toast('💥 A Space Wing patrol ship is going down!'); ctx.news?.('A Space Wing patrol ship was shot down'); }
+  }
+  // the ship nearest a point, if one is within reach (for punches, powers and shots)
+  function shipNear(p, r) { let best = null, bd = r; for (const s of patrols) { if (s.state === 'down' || s.state === 'wreck' || s.state === 'ground') continue; const d = s.group.position.distanceTo(p); if (d < bd) { bd = d; best = s; } } return best; }
   function update(dt) {
     for (let i = beams.length - 1; i >= 0; i--) { beams[i].t -= dt; if (beams[i].t <= 0) { scene.remove(beams[i].l); beams[i].l.geometry.dispose(); beams.splice(i, 1); } }
-    const hunting = ctx.alert() > 0 || ctx.wanted() >= 4, target = ctx.target();
-    if (hunting && announced <= 0) { announced = 60; toast('🚀 Air Force Space Wing: patrol ships are coming down after you.'); } announced -= dt; if (!hunting) announced = Math.min(announced, 0);
+    const target = ctx.target(), angry = patrols.some(s => s.angry > 0);
+    const hunting = ctx.alert() > 0 || angry || (ctx.wanted() >= 100 && ctx.resisting());
+    if (hunting && announced <= 0) { announced = 60; toast('🚀 Space Wing patrol: "This is the Air Force. Stand down and surrender to the police, or we open fire."'); for (const s of patrols) s.warn = 8; }
+    announced -= dt; if (!hunting) announced = Math.min(announced, 0);
     for (const s of patrols) {
+      s.angry = Math.max(0, s.angry - dt);
+      if (s.state === 'wreck') { s.t -= dt; if (s.t <= 0) { s.group.visible = true; s.group.position.copy(s.pad); s.group.rotation.set(0, Math.PI, 0); s.hp = MAX_HP; s.state = 'ground'; s.t = 60; s.speed = 0; } continue; }
+      if (s.state === 'down') {   // falling, trailing smoke, then a crash
+        const p = s.group.position; s.vy -= 9.8 * dt; p.y += s.vy * dt; p.x += Math.sin(s.yaw) * 20 * dt; p.z += Math.cos(s.yaw) * 20 * dt; s.group.rotation.z += dt * 1.5;
+        if (Math.random() < 0.5) ctx.burst?.(p.clone(), 3, [0x333333, 0x666666]);
+        const g = ctx.groundY?.(p.x, p.z) ?? 0; if (p.y <= g + 0.5) { p.y = g + 0.5; ctx.explode?.(p.clone()); s.group.visible = false; s.state = 'wreck'; s.t = 600; }
+        continue;
+      }
       if (s.state === 'ground') { s.t -= dt; for (const f of s.glow) f.visible = false; if (s.t <= 0 || hunting) { s.state = 'up'; for (const f of s.glow) f.visible = true; } continue; }
-      if (s.state === 'up') { const p = s.group.position; p.y += 30 * dt; for (const f of s.glow) f.scale.set(1, 1.4, 1); if (p.y > 120) s.state = hunting ? 'hunt' : 'patrol'; continue; }
-      if (s.state === 'patrol') { if (hunting) { s.state = 'hunt'; continue; } const [x, z, y] = LOOP[s.leg % LOOP.length]; if (steer(s, aim.set(x, y, z), 120, dt) < 25) { s.leg++; if (s.leg % (LOOP.length * 2) === 0) s.state = 'home'; } continue; }
-      if (s.state === 'home') { const d = steer(s, aim.copy(s.pad).setY(s.pad.y + (s.group.position.distanceTo(s.pad) > 40 ? 150 : 0)), 100, dt); if (d < 1.5 && s.group.position.distanceTo(s.pad) < 2) { s.group.position.copy(s.pad); s.state = 'ground'; s.t = 90; s.speed = 0; s.group.rotation.set(0, s.yaw, 0); } continue; }
+      if (s.state === 'up') { const p = s.group.position; p.y += 12 * dt; for (const f of s.glow) f.scale.set(1, 1.4, 1); if (p.y > 120) s.state = hunting ? 'hunt' : 'patrol'; continue; }
+      if (s.state === 'patrol') { if (hunting) { s.state = 'hunt'; continue; } const [x, z, y] = LOOP[s.leg % LOOP.length]; if (steer(s, aim.set(x, y, z), 45, dt) < 25) { s.leg++; if (s.leg % (LOOP.length * 2) === 0) s.state = 'home'; } continue; }
+      if (s.state === 'home') { const d = steer(s, aim.copy(s.pad).setY(s.pad.y + (s.group.position.distanceTo(s.pad) > 40 ? 150 : 0)), 35, dt); if (d < 1.5 && s.group.position.distanceTo(s.pad) < 2) { s.group.position.copy(s.pad); s.state = 'ground'; s.t = 90; s.speed = 0; s.group.rotation.set(0, s.yaw, 0); } continue; }
       if (s.state === 'hunt') {
         if (!hunting) { s.state = 'patrol'; continue; }
-        // hold off 60 m behind and 25 m above the target, then fire when lined up and in range
+        // hold off 60 m behind and 25 m above you; fire only after the warning, in range, and with a clear line
         const off = aim.copy(target).add(new THREE.Vector3(Math.sin(s.yaw) * -60, 25, Math.cos(s.yaw) * -60));
-        const d = steer(s, off, 150, dt); s.fire -= dt;
+        steer(s, off, 40, dt); s.fire -= dt; s.warn -= dt;
         const range = s.group.position.distanceTo(target);
-        if (range < 160 && s.fire <= 0) { s.fire = 1.1; for (const side of [-1, 1]) { const from = s.group.localToWorld(new THREE.Vector3(side * 2.4, 1.4, 3)); beam(from, target.clone().add(new THREE.Vector3(0, 1, 0))); } ctx.hurt(18, s.group.position); }
+        if (s.warn <= 0 && range < 160 && s.fire <= 0) {
+          s.fire = 1.4;
+          const to = target.clone().add(new THREE.Vector3(0, 1, 0));
+          for (const side of [-1, 1]) {
+            const from = s.group.localToWorld(new THREE.Vector3(side * 2.4, 1.4, 3));
+            const stop = ctx.firstHit?.(from, to);   // a wall or building in the way: the beam stops there
+            beam(from, stop || to);
+            if (!stop && side === 1) ctx.hurt(18, s.group.position);
+          }
+        }
       }
     }
   }
-  return { ids, patrols, strike, update };
+  return { ids, patrols, strike, update, damage, shipNear };
 }

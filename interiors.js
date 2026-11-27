@@ -324,9 +324,9 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.wardrobe(-11.5, -4.5, Math.PI / 2); F.plant(-1.0, -8.3);
     spot(-6, -6.0, 2.0, 'Sleep in the bed', () => hooks.sleep());
     // Bathroom (back middle)
-    F.bath(2.5, -8.4, 0); F.toilet(4.45, -4.2, -Math.PI / 2); F.basin(0.45, -4.6, Math.PI / 2);
+    F.bath(2.5, -8.4, 0); F.toilet(4.45, -4.2, -Math.PI / 2); seat(4.45, -4.2, -Math.PI / 2, 0.45, 'Use the toilet'); F.basin(0.45, -4.6, Math.PI / 2);
     F.rug(2.5, -6.6, 1.4, 0.8, 0xe8e2d0);
-    spot(2.5, -7.4, 1.6, 'Take a bath', () => hooks.rest(15, 'A warm bath. You feel refreshed.'));
+    spot(2.5, -7.4, 1.6, 'Take a bath', () => hooks.chore ? hooks.chore('bath') : hooks.rest(15, 'A warm bath. You feel refreshed.'));
     spot(0.9, -4.6, 0.7, 'Wash your hands', () => hooks.chore ? hooks.chore('handwash') : hooks.toast('🧼 Squeaky clean.'));
     // Study (back right)
     F.bed(10.8, -7.8, 0, false, 0x8f5b3e); F.desk(5.9, -5.2, Math.PI / 2); F.officeChair(6.8, -5.2, -Math.PI / 2);
@@ -425,8 +425,8 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     F.wardrobe(6.6, 8.5, Math.PI); F.rug(8.5, 5, 2.6, 3, 0xb8a888);
     spot(9.6, 5.0, 2.0, 'Sleep in the bed', () => hooks.sleep());
     // Family bathroom (back left)
-    F.bath(-8, -8.4, 0); F.toilet(-11.5, -4.5, Math.PI / 2); F.basin(-4.5, -5.0, -Math.PI / 2);
-    spot(-8, -7.4, 1.6, 'Take a bath', () => hooks.rest(15, 'A warm bath. You feel refreshed.'));
+    F.bath(-8, -8.4, 0); F.toilet(-11.5, -4.5, Math.PI / 2); seat(-11.5, -4.5, Math.PI / 2, 0.45, 'Use the toilet'); F.basin(-4.5, -5.0, -Math.PI / 2);
+    spot(-8, -7.4, 1.6, 'Take a bath', () => hooks.chore ? hooks.chore('bath') : hooks.rest(15, 'A warm bath. You feel refreshed.'));
     // Reading room (back middle)
     F.sofa(0, -7.9, 0, 0x8a5a4a); seat(0, -7.9, 0, 0.9, 'Sit on the sofa');
     F.coffeeTable(0, -5.8, 0); F.bookshelf(-3.6, -3.5, Math.PI / 2); F.bookshelf(3.6, -3.5, -Math.PI / 2); F.plant(2.8, -8.3);
@@ -987,8 +987,8 @@ export function buildInteriors({ scene, colliders, camBlockers = [], sitSpots, m
     spot(10.8, 7.4, 1.2, 'Open the fridge', () => hooks.kitchen ? hooks.kitchen().openFridge() : hooks.eat(25, 0, 'You grab a snack from the fridge.'));
     spot(10.8, 5.2, 0.9, () => hooks.kitchen ? hooks.kitchen().cookerLabel() : 'Cook a meal', () => hooks.kitchen?.().openCooker());
     // bathroom (back middle) and bedroom (back right)
-    F.bath(1.5, -8.4, 0); F.toilet(3.4, -4.2, -Math.PI / 2); F.basin(-0.6, -4.6, Math.PI / 2);
-    spot(1.5, -7.4, 1.6, 'Take a bath', () => hooks.rest(15, 'A warm bath. You feel refreshed.'));
+    F.bath(1.5, -8.4, 0); F.toilet(3.4, -4.2, -Math.PI / 2); seat(3.4, -4.2, -Math.PI / 2, 0.45, 'Use the toilet'); F.basin(-0.6, -4.6, Math.PI / 2);
+    spot(1.5, -7.4, 1.6, 'Take a bath', () => hooks.chore ? hooks.chore('bath') : hooks.rest(15, 'A warm bath. You feel refreshed.'));
     F.bed(8, -7.6, 0, true, 0x8a4a5a); F.bedside(6.6, -8.5, 0); F.bedside(9.4, -8.5, 0); F.wardrobe(11.5, -3.5, -Math.PI / 2);
     spot(8, -6, 2.0, 'Sleep in the bed', () => hooks.sleep());
     // the landing (back left): a coat rack and a plant

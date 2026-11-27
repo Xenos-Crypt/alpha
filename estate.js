@@ -197,6 +197,8 @@ export function buildEstate(ctx) {
     Cy(1.1, 1.1, 0.08, 0, 0.95, 14, oak, 24); Cy(0.25, 0.4, 0.9, 0, 0.5, 14, oak, 10); Cy(0.25, 0.18, 0.5, 0, 1.25, 14, mat(0xffffff), 10); for (let k = 0; k < 7; k++) B(0.2, 0.2, 0.2, Math.cos(k) * 0.18, 1.6, 14 + Math.sin(k) * 0.18, [0xe84393, 0xffffff, 0xf9ca24][k % 3]);
     { const [x, z] = W(0, 14); colliders.push({ circleX: x, circleZ: z, circleRadius: 1.15, minX: x - 1.15, maxX: x + 1.15, minZ: z - 1.15, maxZ: z + 1.15 }); }
     { const [x, z] = W(3, 17.5); stander(x, z, ry(Math.PI), { outfit: 0x1a1a1a, task: 'idle' }); act(3, 17.5, 1.8, 'Talk to the butler', () => toast(`🤵 "Welcome to ${P.name.split(' · ')[1]}. The cinema is through on the right, the kitchen and great room on the left, the ${P.wing === 'court' ? 'basketball court' : 'indoor pool'} past the games room, and the cars are in the auto gallery. The stairs take you up to the suites."`)); }
+    // a glass lift between the two staircases down to the basement level; cars come round to the circular drive
+    { const [x, z] = W(0, 3.5), [dx, dz] = W(0, 28); ctx.basement?.({ name: P.name.split(' · ')[1], x, y: FY0, z, face: ry(0), drive: { x: dx, y: 0.06, z: dz, ry: ry(Math.PI / 2) } }); }
     // ---- the double staircase: two ramps rising from z 9 to the landing at z -1 ----
     for (const sx of [-1, 1]) {
       const xa = sx * 4.6, xb = sx * 6.6, xm = (xa + xb) / 2;
@@ -258,12 +260,19 @@ export function buildEstate(ctx) {
     wallZ(-7, Z0, -1, [[-8, -5.6]], u); wallZ(7, Z0, -1, [[-8, -5.6]], u);
     wallZ(-7, -1, Z1, [], { ...u }); wallZ(7, -1, Z1, [], { ...u });
     wallX(4, X0, -7, [[-16, -13.6]], u); wallX(4, 7, X1, [[13.6, 16]], u); wallX(-4, 7, X1, [[19, 21.4]], u);
+    // doors in the upstairs doorways (the suites, the master bath, the closet)
+    for (const [a, b] of [[[-7, -8], [-7, -5.6]], [[7, -8], [7, -5.6]], [[-16, 4], [-13.6, 4]], [[13.6, 4], [16, 4]], [[19, -4], [21.4, -4]]]) { const p = W(...a), q = W(...b); ctx.doors?.add({ a: p, b: q, y: FY1, h: 2.4, color: 0x5a4632 }); }
     // master bedroom (front west): bed, lounge chairs; master bath + closet (back west)
     B(4.2, 0.6, 4.6, -18, FY1 + 0.3, 16.5, mat(0xf3efe6)); B(4.4, 1.6, 0.25, -18, FY1 + 0.8, 18.9, mat(0x6b5a4a)); B(4.4, 0.25, 1.4, -18, FY1 + 0.72, 15, mat(0x8a6f9a)); col(-20.1, -15.9, 14.2, 19, 'u');
     act(-18, 13.4, 2.2, 'Sleep in the master bed', () => ctx.sleep ? ctx.sleep() : toast('😴 The best night\'s sleep of your life.'), FY1);
     for (const x of [-24, -12]) { B(1.0, 0.6, 1.0, x, FY1 + 0.3, 7, mat(0xd8cfc0)); sit(x, 7, 0, FY1 + 0.55, 'Sit in the armchair'); }
     { const [x, z] = W(-22, -6); const tub = new THREE.Mesh(new THREE.CapsuleGeometry(0.75, 1.2, 6, 14), mat(0xffffff, { rough: 0.2 })); tub.rotation.z = Math.PI / 2; tub.rotation.y = ry(0); tub.scale.set(1, 1, 0.6); tub.position.set(x, FY1 + 0.45, z); scene.add(tub); }
-    col(-23.5, -20.5, -6.8, -5.2, 'u'); act(-22, -4.2, 1.8, 'Take a bath', () => ctx.rest ? ctx.rest(18, '🛁 A long soak in the freestanding tub, looking out over the pool.') : toast('🛁 Bliss.'), FY1);
+    col(-23.5, -20.5, -6.8, -5.2, 'u'); act(-22, -4.2, 1.8, 'Take a bath', () => ctx.chore ? ctx.chore('bath') : ctx.rest ? ctx.rest(18, '🛁 A long soak in the freestanding tub, looking out over the pool.') : toast('🛁 Bliss.'), FY1);
+    // the rest of the master bathroom: a walk-in shower in the corner and a toilet against the back wall
+    B(1.7, 0.12, 1.7, -26, FY1 + 0.06, 2.6, white2); B(0.05, 2.2, 1.7, -25.15, FY1 + 1.15, 2.6, glass); B(1.7, 2.2, 0.05, -26, FY1 + 1.15, 1.75, glass); Cy(0.16, 0.16, 0.04, -26.3, FY1 + 2.2, 3.0, mat(0xd0d4da, { metal: 0.9 }), 12);
+    act(-26, 2.6, 1.0, 'Take a shower', () => ctx.chore ? ctx.chore('shower') : toast('🚿 A hot shower.'), FY1);
+    B(0.42, 0.42, 0.52, -10, FY1 + 0.21, Z0 + 0.75, white2); B(0.44, 0.38, 0.16, -10, FY1 + 0.62, Z0 + 0.42, white2); B(0.46, 0.05, 0.52, -10, FY1 + 0.44, Z0 + 0.78, mat(0xffffff)); col(-10.25, -9.75, Z0, Z0 + 0.5, 'u');
+    sit(-10, Z0 + 0.8, 0, FY1 + 0.45, 'Use the toilet');
     B(4, 0.9, 0.6, -14, FY1 + 0.45, Z0 + 0.6, white2); B(4.2, 1.4, 0.06, -14, FY1 + 1.7, Z0 + 0.35, mat(0xcfe4ee, { metal: 0.9, rough: 0.05 })); col(-16, -12, Z0, Z0 + 0.9, 'u');
     act(-14, Z0 + 1.6, 1.4, 'Wash your hands', () => ctx.chore ? ctx.chore('handwash') : toast('🧼 Squeaky clean.'), FY1);
     for (let k = 0; k < 6; k++) B(0.6, 2.2, 0.5, -26.8, FY1 + 1.1, -10 + k * 1.0, mat([0x2c3e50, 0x8e44ad, 0xc0392b, 0xecf0f1][k % 4])); col(-27.3, -26.3, -10.5, -4.5, 'u');

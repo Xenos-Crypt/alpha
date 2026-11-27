@@ -167,6 +167,7 @@ export function buildBuildingSites(ctx) {
   function clearFinished(base) {
     const f = finished.get(base); if (!f) return; finished.delete(base);
     scene.remove(f.g); for (const [arr, x] of [[colliders, f.collider], [civicBuildings, f.civic], [ctx.destinations || [], f.dest]]) { const i = arr.indexOf(x); if (i >= 0) arr.splice(i, 1); }
+    if (f.walkIn) ctx.walkIns?.remove(f.walkIn);
   }
   function finishedBuilding(base, gen, crew) {
     if (finished.get(base)?.gen === gen) return; clearFinished(base);
@@ -174,19 +175,27 @@ export function buildBuildingSites(ctx) {
     const [cx, cz] = F.at(0, 2), h = p.floors * FLOOR_H, w = F.alongX ? BW : BD, d = F.alongX ? BD : BW;
     const tex = facade(p.kind).clone(); tex.needsUpdate = true; tex.repeat.set(Math.max(w, d) / 12, p.floors / 4);
     const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffd58a, emissiveIntensity: 0, roughness: 0.7, metalness: p.kind === 'office' ? 0.3 : 0 }); glowMats?.push(m);
-    B(g, w, h, d, cx, h / 2, cz, m);
+    // A finished building is a real walk-in building (walkin.js), like the city's: a door you open yourself, rooms on
+    // every floor, stairs or a lift. The ground storey is its walls; the facade above starts at the first floor.
+    const S = ctx.walkInStorey || 3, walk = !!ctx.walkIns;
+    if (walk) B(g, w, h - S, d, cx, S + (h - S) / 2, cz, m); else B(g, w, h, d, cx, h / 2, cz, m);
     B(g, w + 0.6, 0.6, d + 0.6, cx, h + 0.3, cz, 0x3a3f44);                      // roof parapet
     B(g, w + 1.5, 0.15, d + 1.5, cx, 0.08, cz, concrete);                        // plinth
     for (const [a, b] of [[-5, 3], [4, 4]]) { const [x, z] = F.at(a, 2 + b); B(g, 3, 1.6, 2.2, x, h + 0.8, z, 0x8a9096); }   // roof plant
     const [dx, dz] = F.at(0, 2 - (F.alongX ? d : w) / 2 - 0.05);
-    const door = B(g, F.alongX ? 3 : 0.1, 2.6, F.alongX ? 0.1 : 3, dx, 1.3, dz, 0x203040, { rough: 0.2, metal: 0.5 });
+    const door = walk ? null : B(g, F.alongX ? 3 : 0.1, 2.6, F.alongX ? 0.1 : 3, dx, 1.3, dz, 0x203040, { rough: 0.2, metal: 0.5 });
     const [sx, sz] = F.at(0, 2 - (F.alongX ? d : w) / 2 - 0.12);
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: signTex(p.name.toUpperCase(), { office: 'Offices', apartments: 'Apartments', shop: 'Shops and cafés' }[p.kind] + ' · built by ' + crew.name) }));
     sign.position.set(sx, 4.2, sz); sign.rotation.y = F.yaw; g.add(sign);
-    const collider = { minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 }; colliders.push(collider);
+    const collider = walk ? null : { minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 }; if (collider) colliders.push(collider);
     const civic = { builtBy: 'bots', type: p.kind === 'shop' ? 'shop' : p.kind === 'office' ? 'office' : 'apartments', name: p.name, x: cx, z: cz, minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 }; civicBuildings.push(civic);
     const dest = { name: p.name, x: cx, z: cz }; ctx.destinations?.push(dest);
-    void door; finished.set(base, { gen, g, collider, civic, dest });
+    let walkIn = null;
+    if (walk) {
+      const len = Math.hypot(dx - cx, dz - cz) || 1, wallM = new THREE.MeshStandardMaterial({ color: p.kind === 'office' ? 0x9aa3ab : p.kind === 'shop' ? 0xc9b79a : 0xbfae9a, roughness: 0.85 });
+      walkIn = ctx.walkIns.add({ b: civic, x: cx, z: cz, w, d, floors: p.floors, base: 0, top: h, nx: (dx - cx) / len, nz: (dz - cz) / len, type: p.kind === 'shop' ? 'shop' : p.kind === 'office' ? 'office' : 'apartment', name: p.name, wallMat: () => wallM });
+    }
+    void door; finished.set(base, { gen, g, collider, civic, dest, walkIn });
   }
 
   // ---------- the active site ----------

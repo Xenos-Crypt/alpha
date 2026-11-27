@@ -2,6 +2,21 @@
 
 One entry per run: what was decided, why, and what was declined. The owner reviews and merges every change.
 
+## 2026-11-26 — The world's audit no longer buries Cinder Row's mud and potholes
+
+**Decision:** In `world-ids.js`, the surface scan (which runs on its own about 15 s after the world loads, and "fixes" any two flat surfaces at the same height by lifting the smaller one 1.5–2 cm) now skips decals: materials drawn on top by design (`polygonOffset` towards the camera, `depthWrite: false`). Cinder Row's lanes are dark slabs (top 0.04) with a grime decal 5 mm above them (0.045). The scan took each lane and its grime for two flickering floors, lifted the *lane* to 0.06, and so the main lane (z 500) and the back lane (z 550) rose 1.5 cm over their own grime: every pothole, mud patch and puddle vanished and the lanes went bare black. Decals cannot z-fight (the offset and the missing depth write already settle it), so they are simply not counted.
+
+**Where:** Cinder Row (slum), x 596…844, z 447…598. The 16 false world-audit pairs no longer appear (24 → 8 in a full scan), e.g.
+`LND-SRF-BLK.WOD-REQ-6D31AJ + LND-SRF-WHT.PLR-REQ-1SLHNZ` (600, 500) … (840, 500), `LND-SRF-BLK.WOD-REQ-6D31AJ + LND-SRF-WHT.PLR-REQ-10JDF7` (720, 500), `LND-SRF-BLK.WOD-REQ-18E93I + LND-SRF-WHT.PLR-REQ-14M971` (720, 550), and the seven north-south lane pairs at (600…840, 523). Other decals that now count as decals too: road wear (`road-wear.js`) and house grime (`home-styles.js`).
+
+**Why:** The Lawgiver's own auditor was breaking the world it audits — a rule-breaking at its cause, seen by every player who walks Cinder Row a few seconds after loading — and it also filled two-thirds of the overlap reports with noise. One condition, no geometry, collider, walking height or save key touched.
+
+**Input this run:** no open issues, no Petitions issue. Open PRs #103–#106 (`main.js`, `npc-conversations.js`, `snack-shop.js`, `space-wing.js`, `building-sites.js`, `walkin.js`, `chores.js`); this change stays out of all of them. Supabase `world_bugs` (fixed = false), `world_events`, `world_entities`: empty. Vercel production logs: no `[world-report]` lines in the last hour (Hobby plan keeps one hour).
+
+**Looked at and deferred:**
+- The remaining 8 audit pairs, unchanged from earlier runs: far-region floors at (-5097, -7) and (-6500, 8); glass/plastic at (1157, 545); road paint at (-320, -808), (277, 702), (243, 702); the funfair/karting bounding-box false positives (248, -710), (668, -953).
+- The `?audit` solid-clash list (376 entries, mostly cave interiors and the Bone Crypt): largely props inside hollow shells; needs a sorting pass before it can be trusted.
+
 ## 2026-11-21 — The Ashford Supermarket's entrance path no longer runs under its car park
 
 **Decision:** In `places.js`, the Ashford Supermarket's car park was centred at z -29 (z -38…-20) while the supermarket's 12 m entrance path runs from the door (z -49) to z -37. Both are slabs with their top at y 0.08, so for 1 m the path and the car park lay in the same plane and flickered through each other. The car park now starts where the path ends (centre z -28, z -37…-19), the same layout as the police HQ car park next door.

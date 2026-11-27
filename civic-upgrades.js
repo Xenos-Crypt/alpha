@@ -149,20 +149,6 @@ export function upgradeNavy(ctx, navy) {
       for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.9), new THREE.MeshBasicMaterial({ map: num('S85', 0, '#1e262b') })); p.position.set(sx * 0.95, 4.4, 3.5); p.rotation.y = sx * Math.PI / 2; g.add(p); }
     }
   }
-  // ---------------- the base: submarine pen roof, sign, guard post, flags, anchor memorial ----------------
-  { const roof = new THREE.Mesh(new THREE.CylinderGeometry(14.5, 14.5, 18, 24, 1, true, -Math.PI / 2, Math.PI), mat(0x5f6f78, { metal: 0.4, rough: 0.5, side: THREE.DoubleSide })); roof.rotation.x = Math.PI / 2; roof.scale.set(1, 1, 0.45); roof.position.set(-235, 7.1, 236); root.add(roof);
-    const s = sign('SUBMARINE PEN', 'restricted area', 10, '#1f3a8a', '#ffffff', 'sans-serif'); place(s, -235, 11.5, 226.9, Math.PI); }
-  { const s = sign('WESTHAVEN NAVAL BASE', 'HMS Westhaven · authorised personnel only', 16, '#1f3a8a', '#ffffff', 'sans-serif'); place(s, -235, 5.2, 172, Math.PI); for (const sx of [-7.6, 7.6]) C(root, 0.2, 0.2, 5.4, -235 + sx, 2.7, 172, 0x1f3a8a, 8); }
-  { // guard post at the pier root
-    B(root, 2.4, 2.8, 2.4, -230.5, 1.4, 177, 0xf4f4f2); B(root, 2.8, 0.25, 2.8, -230.5, 2.95, 177, 0x1f3a8a); B(root, 2.42, 0.8, 1.6, -230.5, 1.8, 177, mat(0x9fd3ff, { opacity: 0.5 }));
-    solid(-231.7, -229.3, 175.8, 178.2); stander(-232.5, 178.5, Math.PI, { outfit: 0xffffff, pants: 0x1c2f43, task: 'idle' });
-    const bar = B(root, 0.12, 0.12, 4, -233, 1.1, 175, 0xc0392b); bar.rotation.y = Math.PI / 2; bar.position.x = -235; }
-  for (const [dx, c] of [[-5, '#1f3a8a'], [5, '#ffffff']]) { C(root, 0.06, 0.06, 10, -235 + dx, 5, 181, 0xdddddd, 6); const f = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.4), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, map: makeTex(48, 32, q => { q.fillStyle = c; q.fillRect(0, 0, 48, 32); q.strokeStyle = c === '#ffffff' ? '#1f3a8a' : '#ffd23f'; q.lineWidth = 3; q.beginPath(); q.arc(24, 13, 6, 0, 7); q.moveTo(24, 7); q.lineTo(24, 27); q.moveTo(16, 22); q.quadraticCurveTo(24, 30, 32, 22); q.stroke(); }) })); f.position.set(-235 + dx + 1.1, 9.2, 181); root.add(f); }
-  { // anchor memorial
-    const g = new THREE.Group(); g.position.set(-247, 0, 177); root.add(g); B(g, 3, 0.8, 3, 0, 0.4, 0, 0xbfb6a0); const am = mat(0x2a2f33, { metal: 0.6, rough: 0.4 });
-    C(g, 0.12, 0.12, 3, 0, 2.3, 0, am, 8); const ring = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.08, 6, 14), am); ring.position.y = 4.0; g.add(ring); B(g, 1.6, 0.18, 0.18, 0, 3.3, 0, am);
-    const arc = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.12, 6, 18, Math.PI), am); arc.rotation.z = Math.PI; arc.position.y = 1.9; g.add(arc); solid(-248.5, -245.5, 175.5, 178.5); }
-  // sailors on the dock
-  for (let i = 0; i < 4; i++) stander(-244 + i * 3, 234, Math.PI, { outfit: 0xffffff, pants: 0x1c2f43, task: i % 2 ? 'talk' : 'idle' });
-  return { update(dt, p) { for (const r of radars) r.rotation.y += dt * 2; if (Math.abs(p.x + 235) < 150 && Math.abs(p.z - 220) < 150) K.update(dt, p, 80); } };
+  // (the base itself, its gate, sheds, pen and parade ground, is built by navy.js at Westhaven Naval Base)
+  return { update(dt, p) { for (const r of radars) r.rotation.y += dt * 2; if (Math.abs(p.x + 380) < 160 && Math.abs(p.z - 380) < 160) K.update(dt, p, 80); } };
 }

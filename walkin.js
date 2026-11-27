@@ -364,5 +364,15 @@ export function createWalkIns(ctx) {
     const inside = at(p.x, p.z); const now = inside && p.y > inside.base - 1 && p.y < inside.top ? inside : null;
     if (now !== insideNow) { insideNow = now; ctx.onInside?.(now); }
   }
-  return { add, floorAt, at, update, list, revolve, get inside() { return insideNow; } };
+  // take a walk-in building away again (a building that's knocked down and rebuilt: building-sites.js)
+  function remove(W) {
+    if (!W) return; if (insideNow === W) insideNow = null;
+    disposeInterior(W);
+    for (const m of W.meshes) { m.removeFromParent(); const i = ctx.camBlockers.indexOf(m); if (i >= 0) ctx.camBlockers.splice(i, 1); }
+    for (const c of W.colliders) { const i = ctx.colliders.indexOf(c); if (i >= 0) ctx.colliders.splice(i, 1); }
+    if (W.doorSpot) { const i = ctx.interactables.indexOf(W.doorSpot); if (i >= 0) ctx.interactables.splice(i, 1); }
+    const i = list.indexOf(W); if (i >= 0) list.splice(i, 1);
+    for (const l of grid.values()) { const j = l.indexOf(W); if (j >= 0) l.splice(j, 1); }
+  }
+  return { add, remove, floorAt, at, update, list, revolve, get inside() { return insideNow; } };
 }
