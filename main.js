@@ -667,7 +667,7 @@ function groundY(x, z, bodyY = null) {
   const bayFloor=resortBeach?.groundAt(x,z);if(bayFloor!=null)return bayFloor;   // Anthos Bay sand, decks and jetty (checked first: other layers treat this spot as open sea)
   const railwayFloor=intercityRail?.groundAt(x,z,bodyY??player.position.y);if(railwayFloor!=null)return railwayFloor;   // overhead railway stations
   const hillFloor=hills?.groundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player?.position.y??0));if(hillFloor!=null)return hillFloor;   // Highcliff Hills: real slopes
-  if(homeBuilder&&z>1180&&z<1240){const hb=homeBuilder.groundAt(x,z,bodyY??player?.position.y??0);if(hb!=null)return hb;}   // Maple Fields: the houses you build (their floors, stairs and pools)
+  if(homeBuilder){const hb=homeBuilder.groundAt(x,z,bodyY??player?.position.y??0);if(hb!=null)return hb;}   // the houses you build (Maple Fields or your own land): their floors, stairs, pools and building sites
   const estateFloor=estate?.groundAt(x,z,bodyY??player.position.y);if(estateFloor!=null)return estateFloor;   // The Reserve: mansion upper floors and staircases
   const linkFloor=roadLinks?.groundAt(x,z);if(linkFloor!=null)return linkFloor;   // country roads over the hills, on embankments
   const ridgeFloor=ridge?.groundAt(x,z,bodyY??(inCar&&driving?driving.group.position.y:player.position.y));if(ridgeFloor!=null)return ridgeFloor;   // Sunset Ridge
@@ -8494,7 +8494,16 @@ basements = createMansionBasements({ doors: roomDoors, scene, colliders, interac
 hills = buildHills({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
 homeBuilder = createHouseBuilder({ scene, colliders, interactables, sitSpots, planeBlocks, poolZones, doors: roomDoors, makeTex, toast: m => toast(m), sign: signboard, destinations: townPlaces.destinations,
   money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
-  sleep: () => sleep(), chore: (k, o) => doChore(k, o), eat: n => { stats.hunger = Math.min(100, stats.hunger + n); }, rest: n => { stats.energy = clamp(stats.energy + n, 0, 100); }, rebuild: () => rebuildSolidProps() });   // Maple Fields: design and build your own house
+  sleep: () => sleep(), chore: (k, o) => doChore(k, o), eat: n => { stats.hunger = Math.min(100, stats.hunger + n); }, rest: n => { stats.energy = clamp(stats.energy + n, 0, 100); }, rebuild: () => rebuildSolidProps(),
+  makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), hours: () => (dayTime * 24 + 6) % 24, placeNear: (x, z) => placeNear(x, z),
+  view: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw }),
+  landCheck: (x, z) => {   // can a house go here? (for picking your own spot)
+    if (Math.hypot(x - DOME.x, z - DOME.z) > PLAY_R - 25) return "it's too close to the edge of the dome";
+    if (isSeaWater(x, z, 0)) return "there's water there";
+    if (isRoadAt(x, z)) return "there's a road in the way";
+    if (Math.abs(groundY(x, z, 0)) > 0.4) return "the ground isn't flat";
+    for (const c of collidersAround(x, z, 1)) if (x > c.minX - 0.5 && x < c.maxX + 0.5 && z > c.minZ - 0.5 && z < c.maxZ + 0.5) return 'something is already built there';
+    return null; } });   // Maple Fields: design and build your own house
 estate = buildEstate({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, camBlockers, planeBlocks, poolZones, interactables, sitSpots, makeTex, toast, civicBuildings, destinations: townPlaces.destinations,
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), makeVehicle: (k, c, st) => makeVehicle(k, c, st),
   sweep: (...a) => doorSweep(...a), blocked: by => doorBlocked(by), chore: (k, o) => doChore(k, o), sleep: () => sleep(),
@@ -8673,7 +8682,7 @@ buildingSites=buildBuildingSites({scene,colliders,civicBuildings,interactables,m
   foreman(site){const d=buildingSites.describe(site);snackShop.open(`${site.p.name}: site foreman`,'visit',[
     {name:'How is it going?',icon:'👷',price:0,desc:d.text,onBuy:()=>{toast(`👷 "${d.text}"`);return false;}},
     {name:'Work a shift on site',icon:'🧱',price:0,desc:'Carry, dig and fix with the crew: +60 gold, +12 XP, −20 energy. One shift a minute.',onBuy:()=>{if(performance.now()<nextConstructionShift){toast('The crew is on a break. Next shift in '+Math.ceil((nextConstructionShift-performance.now())/1000)+' seconds.');return false;}if(stats.energy<20){toast('You are too tired for a shift. Get some rest first.');return false;}nextConstructionShift=performance.now()+60000;stats.gold+=60;stats.energy-=20;gainXp(12);toast(`🧱 Shift done on ${site.p.name}: +60 gold, +12 XP.`);return false;}},
-    {name:'Who is building this?',icon:'🏗️',price:0,desc:`${site.crew.name}. When they finish here they move straight on to their next plot: Westhaven never stops building.`,onBuy:()=>false}]);}});
+    {name:'Who is building this?',icon:'🏗️',price:0,desc:`${site.crew.name}. When they finish here they move on to their next plot; everything they build stays.`,onBuy:()=>false}]);}});
 const personAnim=(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt);
 circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,toast,stats,makePerson:makeHumanoid,animatePerson:personAnim,callout:t=>callout(t,0xffd166,false),gainXp:n=>gainXp(n),openShop:(title,items)=>snackShop.open(title,'visit',items),destinations:townPlaces.destinations});
 // Westhaven Funfair round the circus: Ferris wheel, carousel, swings, drop tower, dodgems, stalls, all fenced in.

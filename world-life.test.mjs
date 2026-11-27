@@ -17,7 +17,8 @@ for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++
   const a = rects[i].r, b = rects[j].r;
   assert(!(a.maxX > b.minX && a.minX < b.maxX && a.maxZ > b.minZ && a.minZ < b.maxZ), `${rects[i].p.name} overlaps ${rects[j].p.name}`);
 }
-for (const c of CREWS) for (const day of [0, 1.3, 7.9, 55, 400]) { const s = crewState(c, day, 0.2); assert(s.index >= 0 && s.index < c.plots.length && s.t >= 0 && s.t < 1); }
+for (const c of CREWS) for (const day of [0, 1.3, 7.9, 55, 400]) { const s = crewState(c, day, 0.2); assert(s.index >= 0 && s.index < c.plots.length && s.t >= 0 && s.t <= 1); }
+for (const c of CREWS) { const s = crewState(c, 1e6, 0); assert(s.done && s.gen === 0); }   // crews finish and stop: nothing is knocked down
 assert.equal(crewState(CREWS[0], NaN, 0).index, 0);
 assert(variant(CREWS[0].plots[0], 1).name !== CREWS[0].plots[0].name);
 assert.deepEqual(['groundworks', 'foundations', 'frame', 'cladding', 'handover'], [0.05, 0.15, 0.5, 0.9, 0.98].map(stageOf));
