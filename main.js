@@ -8250,7 +8250,7 @@ function updateCamera(dt) {
     if (hit) dist = Math.max(1, hit.distance - 0.3);
 
     camera.position.copy(target).addScaledVector(offset, dist);
-    camera.position.y = Math.max(camera.position.y,navy?.rider?.depth>2?-navy.rider.depth+.4:metro?.entrances.groundAt(player.position.x,player.position.z)!=null?player.position.y+.2:.4);
+    camera.position.y = Math.max(camera.position.y,navy?.rider?.depth>2?-navy.rider.depth+.4:metro?.entrances.groundAt(player.position.x,player.position.z)!=null||deepCity?.inside(player.position.x,player.position.z,player.position.y)?player.position.y+.2:.4);   // (down a subway or in Deephaven the camera stays down with you, not up at street or sea level)
     camera.lookAt(target);
   }
 
