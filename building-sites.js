@@ -221,6 +221,11 @@ export function buildBuildingSites(ctx) {
     const exc = excavator(g); { const [x, z] = F.at(6, 1); exc.g.position.set(x, 0, z); exc.g.rotation.y = F.yaw + Math.PI; }
     const dump = truck(g, 'dump'); { const [x, z] = F.at(-4, -10); dump.g.position.set(x, 0, z); dump.g.rotation.y = F.yaw + Math.PI / 2; }
     const mixer = truck(g, 'mixer'); { const [x, z] = F.at(5, -10.5); mixer.g.position.set(x, 0, z); mixer.g.rotation.y = F.yaw + Math.PI / 2; }
+    // the excavator, dump truck and mixer can be stolen and driven off (main.js registerWorkMachine)
+    const steal = (m, id, name, o) => { m.v = ctx.workMachine?.(m.g, { id: `site:${p.name}:${id}`, name, ...o }); };
+    steal(exc, 'exc', 'excavator', { maxSpeed: 4, radius: 2.4, length: 5, onSteal: () => { exc.top.rotation.y = 0; } });
+    steal(dump, 'dump', 'dump truck', { maxSpeed: 12, radius: 2.4, length: 7, stats: { accel: 0.5 } });
+    steal(mixer, 'mixer', 'cement mixer lorry', { maxSpeed: 11, radius: 2.4, length: 7, stats: { accel: 0.45 } });
     const crn = crane(g, p.floors * FLOOR_H + 10); { const [x, z] = F.at(-14, 4); crn.g.position.set(x, 0, z); }
     // frame: columns + floor slabs as instanced meshes, filled in as the floors go up
     const cols = [], nx = 5, nz = 4;
@@ -300,13 +305,14 @@ export function buildBuildingSites(ctx) {
     if (nBuilt !== s.built) { s.built = nBuilt; s.colMesh.count = nBuilt * 20; s.floors.forEach((f, i) => { f.visible = i < nBuilt; }); }
     if (nClad !== s.clad) { s.clad = nClad; s.clads.forEach((c, i) => { c.visible = i < nClad; }); }
     s.scaffold.visible = t >= 0.22 && t < 0.97; s.scaffold.scale.y = Math.max(0.05, Math.min(1, (nBuilt * FLOOR_H + 1.5) / s.scaffold.userData.H));
-    s.exc.g.visible = t < 0.25; s.dump.g.visible = t < 0.3; s.mixer.g.visible = t >= 0.08 && t < 0.4; s.crn.g.visible = t >= 0.1 && t < 0.97;
+    const keep = m => !m.v?.stolen;   // a stolen machine is out in the world now: the site no longer shows or hides it
+    if (keep(s.exc)) s.exc.g.visible = t < 0.25; if (keep(s.dump)) s.dump.g.visible = t < 0.3; if (keep(s.mixer)) s.mixer.g.visible = t >= 0.08 && t < 0.4; s.crn.g.visible = t >= 0.1 && t < 0.97;
     s.pit.visible = t < 0.15; s.ground.visible = t < 0.98;
     for (const l of s.g.userData.lamps || []) l.material.emissiveIntensity = night ? 2 : 0;
     if (!near) return;
     // machines
     const k = clock;
-    if (s.exc.g.visible) { s.exc.top.rotation.y = Math.sin(k * 0.5) * 0.9; s.exc.boom.rotation.x = -0.35 + Math.sin(k * 1.1) * 0.3; s.exc.stick.rotation.x = 0.9 + Math.sin(k * 1.1 + 1) * 0.4; }
+    if (s.exc.g.visible && keep(s.exc)) { s.exc.top.rotation.y = Math.sin(k * 0.5) * 0.9; s.exc.boom.rotation.x = -0.35 + Math.sin(k * 1.1) * 0.3; s.exc.stick.rotation.x = 0.9 + Math.sin(k * 1.1 + 1) * 0.4; }
     if (s.mixer.drum) s.mixer.drum.rotation.z += dt * 2.2;
     if (s.crn.g.visible) { s.crn.slew.rotation.y = Math.sin(k * 0.08 + p.x) * 1.6; s.crn.trolley.position.x = 14 + Math.sin(k * 0.21) * 9;
       const top = 0.6 + s.built * FLOOR_H + 2, drop = Math.max(2, s.crn.height + 2.7 - top - (Math.sin(k * 0.3) * 0.5 + 0.5) * Math.max(0, s.crn.height - top - 4));

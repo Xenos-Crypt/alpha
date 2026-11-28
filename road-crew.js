@@ -22,7 +22,7 @@ export function roadCrewState(now = Date.now()) {
 }
 export function roadStage(t) { return t < 0.1 ? 'survey' : t < 0.35 ? 'earthworks' : t < 0.6 ? 'sub-base' : t < 0.85 ? 'asphalt' : 'lines'; }
 
-export function buildRoadCrew({ scene, interactables, toast, makePerson, animatePerson, resurface = [], groundY = () => 0 }) {
+export function buildRoadCrew({ scene, interactables, toast, makePerson, animatePerson, resurface = [], groundY = () => 0, workMachine }) {
   const root = new THREE.Group(); scene.add(root);
   const geo = new THREE.BoxGeometry(1, 1, 1), mats = new Map();
   const mat = (c, o = {}) => { const k = c + JSON.stringify(o); if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1 })); return mats.get(k); };
@@ -57,11 +57,18 @@ export function buildRoadCrew({ scene, interactables, toast, makePerson, animate
   const job = new THREE.Group(); root.add(job);
   const layerGroup = new THREE.Group(); job.add(layerGroup);
   const machine = (body, extra) => { const g = new THREE.Group(); job.add(g); B(g, 2.4, 1.4, 4, 0, 1.0, 0, body); B(g, 2.2, 1.4, 1.6, 0, 2.3, -0.8, mat(0x223344, { metal: 0.3 })); extra?.(g); return g; };
-  const excavator = machine(yellow, g => { const arm = B(g, 0.4, 0.4, 4, 0, 2.6, 2.6, yellow); arm.rotation.x = -0.5; B(g, 1.2, 0.8, 0.8, 0, 1.2, 4.6, mat(0x333333)); for (const s of [-1, 1]) B(g, 0.6, 0.7, 4.4, s * 1.2, 0.35, 0, mat(0x222222)); });
-  const roller = machine(yellow, g => { const d = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 2.2, 16), mat(0x777777, { metal: 0.6 })); d.rotation.z = Math.PI / 2; d.position.set(0, 0.75, 2.4); g.add(d); });
-  const paver = machine(mat(0xe8a317), g => { B(g, 3.2, 0.5, 1.2, 0, 0.4, -2.4, mat(0x333333)); B(g, 2.0, 0.8, 1.4, 0, 1.0, 2.4, mat(0x3a3a3a)); });
-  const liner = machine(mat(0xf2f2f2), g => { B(g, 0.3, 0.3, 0.6, 0, 0.3, 2.3, yellow); });
-  const van = machine(mat(0xf2f2f2), g => { B(g, 2.4, 0.2, 4.1, 0, 2.0, 0, mat(0xff6a00)); });
+  // the machines can be stolen (main.js registerWorkMachine): when one goes, the crew sends for a replacement
+  const BUILD = {
+    excavator: () => machine(yellow, g => { const arm = B(g, 0.4, 0.4, 4, 0, 2.6, 2.6, yellow); arm.rotation.x = -0.5; B(g, 1.2, 0.8, 0.8, 0, 1.2, 4.6, mat(0x333333)); for (const s of [-1, 1]) B(g, 0.6, 0.7, 4.4, s * 1.2, 0.35, 0, mat(0x222222)); }),
+    roller: () => machine(yellow, g => { const d = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 2.2, 16), mat(0x777777, { metal: 0.6 })); d.rotation.z = Math.PI / 2; d.position.set(0, 0.75, 2.4); g.add(d); }),
+    paver: () => machine(mat(0xe8a317), g => { B(g, 3.2, 0.5, 1.2, 0, 0.4, -2.4, mat(0x333333)); B(g, 2.0, 0.8, 1.4, 0, 1.0, 2.4, mat(0x3a3a3a)); }),
+    liner: () => machine(mat(0xf2f2f2), g => { B(g, 0.3, 0.3, 0.6, 0, 0.3, 2.3, yellow); }),
+    van: () => machine(mat(0xf2f2f2), g => { B(g, 2.4, 0.2, 4.1, 0, 2.0, 0, mat(0xff6a00)); }),
+  };
+  const SPEC = { excavator: ['road crew excavator', 4], roller: ['road roller', 3.5], paver: ['asphalt paver', 3], liner: ['line-painting truck', 9], van: ['road crew van', 16] };
+  const M = {};
+  const fresh = k => { const g = BUILD[k](); g.visible = false; g.userData.v = workMachine?.(g, { id: `roadcrew:${k}`, name: SPEC[k][0], maxSpeed: SPEC[k][1], radius: 2.2, length: 5 }); return g; };
+  for (const k in BUILD) M[k] = fresh(k);
   const coneMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.22, 0.7, 10), cone, 120); coneMesh.count = 0; job.add(coneMesh);
   const signMesh = (() => { const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128; const q = cv.getContext('2d'); q.fillStyle = '#ffd400'; q.fillRect(0, 0, 256, 128); q.fillStyle = '#111'; q.font = 'bold 30px sans-serif'; q.textAlign = 'center'; q.fillText('ROAD WORKS', 128, 52); q.font = '20px sans-serif'; q.fillText('Westhaven Highways', 128, 92); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide })); job.add(m); return m; })();
   const workers = [];
@@ -73,8 +80,9 @@ export function buildRoadCrew({ scene, interactables, toast, makePerson, animate
   const I0 = { x: 0 };
   let lastKey = '';
   function layout(st) {
-    const machines = [excavator, roller, paver, liner, van];
-    for (const m of machines) m.visible = false;
+    for (const k in M) if (M[k].userData.v?.stolen) M[k] = fresh(k);   // the stolen one is gone; a new one is on site
+    const { excavator, roller, paver, liner, van } = M;
+    for (const k in M) M[k].visible = false;
     for (const c of [...layerGroup.children]) { layerGroup.remove(c); c.geometry?.dispose(); }
     coneMesh.count = 0;
     let I, prog = 0, name = '';
@@ -110,8 +118,9 @@ export function buildRoadCrew({ scene, interactables, toast, makePerson, animate
       const [sx, , sz] = P(I, a - 34, I.c + I.w / 2 + 2); signMesh.position.set(sx, groundY(sx, sz) + 1.4, sz); signMesh.rotation.y = I.alongX ? Math.PI / 2 : 0; signMesh.visible = true;
       jobText = '🚧 Westhaven Highways: "Every new road we had planned is open. Now we\'re resurfacing the country roads, a stretch at a time. One lane\'s coned off while we work."';
     }
-    ask.pos.copy(head); void I0;
+    void I0;
     workers.forEach((h, k) => { const side = k % 2 ? 1 : -1, wx = head.x + (I.alongX ? -3 - k * 2 : side * (I.w / 2 + 1.5)), wz = head.z + (I.alongX ? side * (I.w / 2 + 1.5) : -3 - k * 2); h.root.position.set(wx, groundY(wx, wz), wz); h.root.rotation.y = Math.atan2(head.x - h.root.position.x, head.z - h.root.position.z); });
+    if (workers[0]) { ask.pos.copy(workers[0].root.position); ask.r = 2.2; } else ask.pos.copy(head);   // you ask a worker, not the machine
   }
 
   let acc = 0;

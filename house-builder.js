@@ -361,6 +361,12 @@ export function createHouseBuilder(ctx) {
       const boom = new THREE.Group(); boom.position.set(0.5, 0.8, -0.7); top2.add(boom); B(0.3, 0.3, 3, 0, 0.6, -1.4, siteM.yellow, false, boom); boom.rotation.x = 0.5; S.excTop = top2; S.excBoom = boom; }
     { const m = new THREE.Group(); m.position.set(L.cx + 5, 0, p.z0 + 5); g.add(m); S.mixer = m; B(2.4, 2, 1.8, 0, 1.2, -2.6, siteM.yellow, false, m); B(2.4, 0.5, 6, 0, 0.5, 0, siteM.dark, false, m);
       const drum = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.7, 3.2, 12), flat(0xdcdcdc)); drum.rotation.x = Math.PI / 2 - 0.25; drum.position.set(0, 2, 0.9); m.add(drum); S.drum = drum; }
+    // Both machines can be stolen and driven (main.js registerWorkMachine). Vehicles drive towards +z, and these two
+    // were modelled facing -z, so each sits in a holder turned round: same look, but the front is the front.
+    const flip = m => { const o = new THREE.Group(); o.position.copy(m.position); o.rotation.y = m.rotation.y - Math.PI; m.parent.add(o); o.add(m); m.position.set(0, 0, 0); m.rotation.y = Math.PI; return o; };
+    S.exc = flip(S.exc); S.mixer = flip(S.mixer); S.excHome = S.exc.position.clone();
+    S.excV = ctx.workMachine?.(S.exc, { id: `home:${h.id}:exc`, name: 'excavator', maxSpeed: 4, radius: 2, length: 4, onSteal: () => { S.excTop.rotation.y = 0; } });
+    S.mixerV = ctx.workMachine?.(S.mixer, { id: `home:${h.id}:mixer`, name: 'cement mixer lorry', maxSpeed: 11, radius: 2.2, length: 6.5, stats: { accel: 0.45 } });
     S.pile = new THREE.Group(); S.pile.position.set(p.x0 + 4, 0, p.z0 + 5); g.add(S.pile);
     for (let i = 0; i < 4; i++) { B(1.2, 0.15, 1.2, (i % 2) * 1.5, 0.08, Math.floor(i / 2) * 1.5, siteM.board, false, S.pile); B(1.1, 0.9, 1.1, (i % 2) * 1.5, 0.6, Math.floor(i / 2) * 1.5, i < 3 ? siteM.block : siteM.timber, false, S.pile); }
     // the board at the gate, and the crew to talk to
@@ -385,7 +391,7 @@ export function createHouseBuilder(ctx) {
     S.truss.visible = t >= 0.62 && t < 0.68; S.roof.visible = t >= 0.68;
     S.wins.forEach(m => { m.visible = t >= 0.78; });
     S.scaf.visible = t >= 0.14 && t < 0.9; S.scaf.scale.y = Math.max(0.05, Math.min(1, (wallTop + 1) / S.scafH));
-    S.exc.visible = t < 0.1; S.mixer.visible = t >= 0.04 && t < 0.18; S.pile.visible = t >= 0.1 && t < 0.97;
+    if (!S.excV?.stolen) S.exc.visible = t < 0.1; if (!S.mixerV?.stolen) S.mixer.visible = t >= 0.04 && t < 0.18; S.pile.visible = t >= 0.1 && t < 0.97;
     // once the walls are knee high you can't walk through them (the front has a gap for the door)
     if (wallTop > 1 && !S.shellCols) { S.shellCols = true; const X = h.X;
       for (const [alongX, at, a, b, , kind] of wallsOf(S.L)) { const pieces = kind === 'front' ? [[a, (a + b) / 2 - 0.6], [(a + b) / 2 + 0.6, b]] : kind === 'back' && S.L.wing ? [[a, S.L.dc - 0.65], [S.L.dc + 0.65, b]] : [[a, b]];
@@ -412,7 +418,7 @@ export function createHouseBuilder(ctx) {
     if (!on) { if (S.team.length) { for (const m of S.team) root.remove(m.p.root); S.team = []; } return; }
     if (!S.team.length) for (let i = 0; i < 4; i++) { const pp = worker(i); if (pp) S.team.push({ p: pp, role: ['carry', 'hammer', 'top', 'walk'][i], ph: i * 2.3 }); }
     S.clock += dt; const L = S.L, X = h.X, t = S.t, key = S.stage?.key;
-    if (S.exc.visible) { S.excTop.rotation.y = Math.sin(S.clock * 0.5) * 0.9; S.excBoom.rotation.x = 0.3 + Math.sin(S.clock * 1.1) * 0.3; }
+    if (S.exc.visible && !S.excV?.stolen) { S.excTop.rotation.y = Math.sin(S.clock * 0.5) * 0.9; S.excBoom.rotation.x = 0.3 + Math.sin(S.clock * 1.1) * 0.3; }
     if (S.mixer.visible) S.drum.rotation.y += dt * 2;
     const place = (m, x, y, z, yaw) => { const [wx, wz] = X.toW(x, z); m.p.root.position.set(wx, y, wz); m.p.root.rotation.y = yaw + X.rot; };
     for (const m of S.team) {
@@ -425,7 +431,7 @@ export function createHouseBuilder(ctx) {
         const inside = key === 'inside'; place(m, inside ? L.hx0 + 1 : L.hx0 - 1.6, inside ? Y0 : 0, (L.hz0 + L.hz1) / 2, inside ? -Math.PI / 2 : Math.PI / 2); ctx.animatePerson?.(P, false, dt);
         P.armR.pivot.rotation.x = -1.6 + Math.sin(m.ph * 8) * 0.7; P.rig.rotation.x = 0.2;
       } else if (m.role === 'top') {   // up on the scaffold where the wall is being built (or the roof), or by the digger early on
-        if (t < 0.14) { place(m, S.exc.position.x + 2, 0, S.exc.position.z + 2.5, -Math.PI * 0.75); ctx.animatePerson?.(P, false, dt); P.armR.pivot.rotation.x = -0.8; continue; }
+        if (t < 0.14) { place(m, S.excHome.x + 2, 0, S.excHome.z + 2.5, -Math.PI * 0.75); ctx.animatePerson?.(P, false, dt); P.armR.pivot.rotation.x = -0.8; continue; }
         const y = Math.min(S.top, Math.max(0, (S.wallTop ?? 0) - 0.9)), u = 0.5 + 0.5 * Math.sin(m.ph * 0.2);
         place(m, L.hx0 + (L.hx1 - L.hx0) * u, key === 'roof' ? S.top : y, L.hz0 - 0.9, Math.PI); ctx.animatePerson?.(P, false, dt); P.armR.pivot.rotation.x = -1.3 + Math.sin(m.ph * 6) * 0.4; P.rig.rotation.x = 0.3;
       } else {   // the site manager walks round with the plans
