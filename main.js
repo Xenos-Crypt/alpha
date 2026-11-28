@@ -2607,7 +2607,7 @@ function saveSolo() {
       kitchen:kitchen?.snapshot(),rent:rent?.snapshot(),careers:careers?.snapshot(),roadWear:roadWear?.snapshot(),adventure:adventureServices?.snapshot(),buildingCondition:conditions?.snapshot(),property:property?.snapshot(),licences:licences.snapshot(),cityServices:cityServices?.snapshot(),support: supportSkills?.snapshot(),supportCounters,heroDungeonKills,reputation:reputation.snapshot(),stats:{...stats},inventory,hasBag,dayTime,reconstructionDays,pitch,cameraView,monsterQuestKills,
       metro:metro?.snapshot(),sewer:sewers?.snapshot(),law:roadLaw?.snapshot(),hunter:hunterGuilds?.snapshot(),transport:transport?.snapshot(),sitting:sitting&&activeSitSpot?{x:activeSitSpot.x,z:activeSitSpot.z}:null,
       navy:navy?.snapshot(),intercityRail:intercityRail?.snapshot(),questState:cityLife?.quests.map(q=>({name:q.name,active:q.active,claimed:q.claimed,target:q.target})),space:spaceCentre?.snapshot(),
-      driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
+      driving:inCar&&driving?{kind:driving.kind,name:driving.name,ownedId:driving.ownedId,machineId:driving.machineId,heli:!!driving.heli&&!driving.spaceship&&!driving.ownedId,color:driving.heli?driving.color:undefined,index:vehicles.indexOf(driving),position:driving.group.position.toArray(),rotation:driving.group.rotation.toArray(),health:driving.health,speed:driving.speed,alt:driving.alt}:null,
       dungeon:dungeon?{gate:{name:dungeon.gate.name,level:dungeon.gate.level,rank:dungeon.gate.rank,stars:dungeon.gate.stars,theme:dungeon.gate.theme,tier:dungeon.gate.tier,finalBoss:dungeon.gate.finalBoss,persistent:dungeon.gate.persistent},wave:dungeon.wave,waves:dungeon.waves,cleared:dungeon.cleared,nextT:dungeon.nextT,entryLevel:dungeon.entryLevel,secretBonus:dungeon.secretBonus,returnPos:dungeon.returnPos.toArray(),mobs:dungeon.mobs.map(m=>({type:m.type,level:m.level,hp:m.hp,alive:m.alive,position:m.root.position.toArray(),boss:m===dungeon.boss}))}:null,
       pos: { x: player.position.x, y: player.position.y, z: player.position.z }, yaw,
     }));
@@ -2641,7 +2641,10 @@ function applySoloSave(save) {
   adventureServices?.restore(save.adventure);
   roadLaw?.restore(save.law);hunterGuilds?.restore(save.hunter);
   cityServices?.restore(save.cityServices);
-  if(save.driving){const v=save.driving.ownedId?vehicles.find(v=>v.ownedId===save.driving.ownedId):vehicles[save.driving.index]?.kind===save.driving.kind?vehicles[save.driving.index]:null;if(v&&!v.disabled){v.group.position.fromArray(save.driving.position);v.group.rotation.fromArray(save.driving.rotation);v.health=save.driving.health??v.health;v.speed=save.driving.speed||0;if(save.driving.alt!=null)v.alt=save.driving.alt;driving=v;inCar=true;v.ai=null;activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};}}
+  if(save.driving){const sd=save.driving,mach=sd.machineId&&workMachines.find(m=>m.machineId===sd.machineId);if(mach)takeWorkMachine(mach);
+    // a stolen helicopter isn't part of the world until you take it: bring it back
+    const stolenHeli=!mach&&sd.heli?Object.assign(makeHelicopter({name:sd.name,color:sd.color??0x2f6f8f}),{stolen:true,reputationTheft:true}):null;
+    const v=mach||stolenHeli||(save.driving.ownedId?vehicles.find(v=>v.ownedId===save.driving.ownedId):vehicles[save.driving.index]?.kind===save.driving.kind?vehicles[save.driving.index]:null);if(v&&!v.disabled){v.group.position.fromArray(save.driving.position);v.group.rotation.fromArray(save.driving.rotation);v.health=save.driving.health??v.health;v.speed=save.driving.speed||0;if(save.driving.alt!=null)v.alt=save.driving.alt;driving=v;inCar=true;v.ai=null;activeDrivingControls={carMovement:controlPrefs.carMovement,drivingMode:controlPrefs.drivingMode};}}
   if(save.dungeon){const d=save.dungeon;dungeon={...d,returnPos:new THREE.Vector3().fromArray(d.returnPos),mobs:[],boss:null};applyTheme(d.gate.theme);for(const saved of d.mobs){if(!MONSTERS[saved.type])continue;const m=makeMonster(saved.type,saved.level,new THREE.Vector3().fromArray(saved.position));m.hp=saved.hp;m.alive=saved.alive;m.root.visible=saved.alive;m.respawn=saved.alive?0:Infinity;dungeon.mobs.push(m);if(saved.boss)dungeon.boss=m;}setGateColor(exitGate,d.cleared?0xffd166:0xffffff);}
 
 }
@@ -2866,6 +2869,27 @@ function spendPoint(key) {
 // VEHICLES (your car, traffic, police, buses) + PLANES
 // =====================================================================
 const vehicles = [];
+// WORK MACHINES: the excavators, dump trucks, mixer lorries, rollers, pavers, crew vans and port forklifts are scenery
+// that the building sites, road crews and the port move about themselves. Each one is registered here so you can also
+// steal it and drive it (slowly; they're heavy). Until it's stolen it is NOT in vehicles: it can sit inside a moved or
+// hidden site group, so nothing else should treat it as traffic. Once stolen it joins the world like any other vehicle,
+// and its module sees machine.stolen and leaves it alone (a road crew sends for a replacement).
+const workMachines = [];
+const inScene = o => { for (let p = o; p; p = p.parent) { if (!p.visible) return false; if (p === scene) return true; } return false; };
+function registerWorkMachine(g, { id, name, maxSpeed = 5, radius = 1.8, length = 4, stats = {}, onSteal } = {}) {
+  if (!g) return null;
+  for (let i = workMachines.length - 1; i >= 0; i--) { const o = workMachines[i]; if (!o.stolen && (o.machineId === id || !o.group.parent)) workMachines.splice(i, 1); }   // replaced or torn down
+  const v = { kind: 'machine', machineId: id, name, group: g, wheels: [], speed: 0, radius, length, maxSpeed, ai: { parked: true }, passengers: null,
+    stealable: true, workMachine: true, health: 100, stats: { accel: 0.35, brake: 0.7, handling: 0.7, ...stats }, onSteal };
+  workMachines.push(v); return v;
+}
+function takeWorkMachine(v) {   // it leaves its site and becomes an ordinary (stolen) vehicle
+  if (v.stolen) return;
+  if (v.group.parent !== scene) { v.group.parent?.updateWorldMatrix(true, false); scene.attach(v.group); }
+  v.group.rotation.set(0, v.group.rotation.y, 0); v.group.visible = true;
+  v.stolen = true; v.ai = null; if (!vehicles.includes(v)) vehicles.push(v);
+  v.onSteal?.(v);
+}
 let drivingSchool = null, ridge = null, blackMarket = null, military = null, navyCrew = null, conditions = null, football = null, race = null, doors = null, hills = null, homeBuilder = null, estate = null, roadLinks = null, roadCrew = null, property = null;
 let driving = null, inCar = false, wanted = 0, pursuitBackupCooldown = 0, militaryAlert = 0;
 let lastPlayerGunshot = -Infinity;
@@ -3948,7 +3972,7 @@ function makeHelicopter({ name = 'Helicopter', color = 0x2f6f8f, x = 0, z = 0, y
   const rotor = new THREE.Group(); rotor.position.y = 3.0; g.add(rotor);
   for (let i = 0; i < 4; i++) { const arm = new THREE.Group(); arm.rotation.y = i * Math.PI / 2; const blade = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 5.2), dark); blade.position.z = 2.6; arm.add(blade); rotor.add(arm); }
   g.position.set(x, groundY(x, z, 0), z); g.rotation.y = yaw;
-  const v = { kind: 'plane', heli: true, name, group: g, wheels: [], speed: 0, radius: 3, wingSpan: 6, length: 7, maxSpeed: 40, takeoff: 0, turnRate: 1.3, ai: null, passengers: null,
+  const v = { kind: 'plane', heli: true, name, color, group: g, wheels: [], speed: 0, radius: 3, wingSpan: 6, length: 7, maxSpeed: 40, takeoff: 0, turnRate: 1.3, ai: null, passengers: null,
     alt: g.position.y, crashed: false, prop: null, exhaust: null, rotor, tail, plane: { throttle: 0, pitch: 0, roll: 0, yaw }, home: { x, z, yaw } };
   vehicles.push(v);
   return v;
@@ -6498,8 +6522,14 @@ function nearestVehicle() {
     const d = distXZ(player.position, v.group.position) - (v.kind === 'bus' ? 2.5 : v.kind === 'boat' ? 1.5 : v.kind === 'plane' ? 3 : v.kind === 'mech' ? 2.4 : v.kind === 'tank' ? 1.6 : 0);
     if (d < bd) { bd = d; best = v; }
   }
+  for (const v of workMachines) {
+    if (v.stolen || !inScene(v.group)) continue;
+    const d = distXZ(player.position, v.group.getWorldPosition(_machinePos)) - (v.radius - 1.2);
+    if (d < bd && Math.abs(player.position.y - _machinePos.y) < 3) { bd = d; best = v; }
+  }
   return best;
 }
+const _machinePos = new THREE.Vector3();
 // Riding the town buses as a passenger: board at a stop, pay the fare, get off at any later stop.
 let busRide = null;
 function boardBus(v) {
@@ -6590,6 +6620,7 @@ function enterVehicle(v) {
   if(v.noSteal&&!v.stealable){toast('This is a display car. Buy it at the dealership instead.');return;}
   if(v.disabled){toast('This vehicle is wrecked.');return;}
   if(v.military&&!v.militaryTaken){v.militaryTaken=true;militaryCrime(`Taking a military ${v.kind==='mech'?'mech':'tank'}`);}
+  if(v.workMachine&&!v.stolen){takeWorkMachine(v);if(!v.reputationTheft){reputation.record('theft');v.reputationTheft=true;}if(seenBy(40))raiseWanted(30);toast(`You climb into the ${v.name} and fire it up. The crew shout after you!`);}
   if((v.stealable||v.ai)&&!v.reputationTheft){reputation.record('theft');v.reputationTheft=true;}
   if(v.stealable&&!v.stolen){v.stolen=true;if(v.bikeRider)v.bikeRider.root.visible=false;if(v.driver)v.driver.root.visible=false;v.ai??={cruise:0,stopTimer:0};toast(v.kind==='bicycle'||v.kind==='motorcycle'?'You shove the rider off and take the '+(v.kind==='bicycle'?'bike':'motorbike')+'!':'You drag the taxi driver out and take the cab!');}
   v.routeTraffic=false;
@@ -6634,7 +6665,7 @@ function exitVehicle(force = false) {
     else if(Math.hypot(v.group.position.x-ISLAND.x,v.group.position.z-ISLAND.z)<ISLAND_R+14)player.position.set(ISLAND.x,CURB,ISLAND.z-ISLAND_R+2);
     else player.position.copy(v.group.position).add(new THREE.Vector3(2,.2,0));
   } else {
-    const side = v.kind === 'bus' ? 2.4 : v.kind === 'plane' ? 4 : v.kind === 'mech' ? 3.2 : v.kind === 'tank' ? 2.4 : 2;
+    const side = v.kind === 'bus' ? 2.4 : v.kind === 'plane' ? 4 : v.kind === 'mech' ? 3.2 : v.kind === 'tank' ? 2.4 : v.workMachine ? v.radius + 0.8 : 2;
     player.position.set(v.group.position.x + Math.cos(h) * side, 0, v.group.position.z - Math.sin(h) * side);
     collide(player.position, 0.4);
   }
@@ -6732,6 +6763,7 @@ function resolveInteractTarget() {
   const v = nearestVehicle();
   if (v) {
     const names = { car: v.cab ? 'taxi' : 'car', police: 'police car', bus: 'bus', boat: 'boat', ambulance: 'ambulance', tank: 'tank', mech: 'mech', bicycle: 'bicycle', motorcycle: 'motorbike' };
+    if (v.workMachine) return { label: `${v.stolen ? 'Drive' : 'Steal'} the ${v.name}`, action: () => enterVehicle(v) };
     if (v.ai && !v.stolen && !v.isTow && CAR_LIKE.has(v.kind)) return withMenu(carTitle(v, names), () => carActions(v));
     const label = v.isTow ? (v.company && !careers?.job?.tow ? 'Steal the recovery truck' : 'Drive the recovery truck') : v.kind === 'plane' ? `Fly the ${v.name.toLowerCase()}` : (v.ai && v.kind !== 'boat' && !v.stolen ? 'Steal the ' : ['bicycle','motorcycle'].includes(v.kind) ? 'Ride the ' : 'Drive the ') + (names[v.kind] || v.kind);
     return { label, action: () => enterVehicle(v) };
@@ -7777,7 +7809,7 @@ function hitStreetSeats(v, from, to) {
 // under 3.2 m across and 3.6 m tall) are knocked flat. A chain-link fence gives way over 6 m and does the vehicle no
 // harm. Anything bigger stops the vehicle like a wall. Returns true when the vehicle has been stopped.
 const SMASH_M4 = new THREE.Matrix4().makeScale(0, 0, 0), smashFrom = new THREE.Vector3();
-function vehicleMass(v) { return v.kind === 'tank' || v.kind === 'mech' ? 10 : v.kind === 'bus' || v.kind === 'truck' || v.kind === 'firetruck' ? 3 : v.kind === 'bike' || v.kind === 'motorbike' ? 0.6 : 1.5; }
+function vehicleMass(v) { return v.kind === 'tank' || v.kind === 'mech' ? 10 : v.workMachine ? 5 : v.kind === 'bus' || v.kind === 'truck' || v.kind === 'firetruck' ? 3 : v.kind === 'bike' || v.kind === 'motorbike' ? 0.6 : 1.5; }
 function smashProp(o) {
   if (o.inst >= 0 && o.mesh.isInstancedMesh) { o.mesh.setMatrixAt(o.inst, SMASH_M4); o.mesh.instanceMatrix.needsUpdate = true; } else o.mesh.visible = false;
   solidProps.remove(o);
@@ -8680,7 +8712,7 @@ addEventListener('aw-clear-wanted', () => { wanted = 0; pursuitBackupCooldown = 
 spaceCentre=buildSpaceCentre({safeFence:fenceRect,colliders,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
 if(spaceCentre?.gate)accessPoints.push({...spaceCentre.gate,dir:[-1,0],name:'Space Centre gate'});
 buildHotbar();
-harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
+harbour = buildHarbour({scene,workMachine:registerWorkMachine,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
   returnDock(x,z){player.position.set(x,1.2,z);swimming=false;vy=0;pvel.set(0,0,0);}
 });
@@ -8840,7 +8872,7 @@ basements = createMansionBasements({ doors: roomDoors, scene, colliders, interac
   freeMouse: on => { if (on) { setFreeMouse(true); locked = true; document.exitPointerLock(); $('mouseHint').style.display = 'none'; } else { setFreeMouse(false); if (!boardOpen && !settingsOpen) requestGameControl(); } },   // (the game keeps running while you use a panel: bowling, an instrument)
   routine: (steps, done) => startRoutine(steps, done), stopRoutine: () => stopRoutine(false), lockRoutine: on => { if (routine) routine.locked = on; }, lookFrom: (pos, at) => { camOverride = pos ? { pos, at } : null; }, playerPos: () => player.position });
 hills = buildHills({ doors: roomDoors, scene, basement: spec => basements.add(spec), colliders, civicBuildings, interactables, makeTex, toast, destinations: townPlaces.destinations, playerPos: () => player.position, sitSpots, planeBlocks, chore: (k, o) => doChore(k, o), sleep: () => sleep() });
-homeBuilder = createHouseBuilder({ scene, colliders, interactables, sitSpots, planeBlocks, poolZones, doors: roomDoors, makeTex, toast: m => toast(m), sign: signboard, destinations: townPlaces.destinations,
+homeBuilder = createHouseBuilder({ scene, workMachine: registerWorkMachine, colliders, interactables, sitSpots, planeBlocks, poolZones, doors: roomDoors, makeTex, toast: m => toast(m), sign: signboard, destinations: townPlaces.destinations,
   money: () => stats.gold, spend: n => { stats.gold = Math.max(0, stats.gold - n); }, pause: () => pauseForPanel(), resume: () => { if (!boardOpen && !settingsOpen) requestGameControl(); },
   sleep: () => sleep(), chore: (k, o) => doChore(k, o), eat: n => { stats.hunger = Math.min(100, stats.hunger + n); }, rest: n => { stats.energy = clamp(stats.energy + n, 0, 100); }, rebuild: () => rebuildSolidProps(),
   makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), hours: () => (dayTime * 24 + 6) % 24, placeNear: (x, z) => placeNear(x, z),
@@ -9026,7 +9058,7 @@ frontier=buildFrontierWorld({forest,scene,colliders,planeBlocks,interactables,ci
 // Leisure park, business district and the other real-life places on the outer land.
 venues=buildVenues({forest,scene,colliders,civicBuildings,interactables,sitSpots,makeTex,toast,poolZones,destinations:townPlaces.destinations,makeVehicle,makePerson:makeHumanoid,openShop:(name,kind)=>snackShop.open(name,kind)});
 // Westhaven is always building: crews put up new buildings round the edge of the city over in-game days.
-buildingSites=buildBuildingSites({scene,colliders,civicBuildings,interactables,makeTex,toast,glowMats,walkIns,walkInStorey:WALKIN_STOREY,destinations:townPlaces.destinations,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
+buildingSites=buildBuildingSites({scene,workMachine:registerWorkMachine,colliders,civicBuildings,interactables,makeTex,toast,glowMats,walkIns,walkInStorey:WALKIN_STOREY,destinations:townPlaces.destinations,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),
   foreman(site){const d=buildingSites.describe(site);snackShop.open(`${site.p.name}: site foreman`,'visit',[
     {name:'How is it going?',icon:'👷',price:0,desc:d.text,onBuy:()=>{toast(`👷 "${d.text}"`);return false;}},
     {name:'Work a shift on site',icon:'🧱',price:0,desc:'Carry, dig and fix with the crew: +60 gold, +12 XP, −20 energy. One shift a minute.',onBuy:()=>{if(performance.now()<nextConstructionShift){toast('The crew is on a break. Next shift in '+Math.ceil((nextConstructionShift-performance.now())/1000)+' seconds.');return false;}if(stats.energy<20){toast('You are too tired for a shift. Get some rest first.');return false;}nextConstructionShift=performance.now()+60000;stats.gold+=60;stats.energy-=20;gainXp(12);toast(`🧱 Shift done on ${site.p.name}: +60 gold, +12 XP.`);return false;}},
@@ -9090,7 +9122,7 @@ circus=buildCircus({scene,colliders,interactables,sitSpots,planeBlocks,makeTex,t
   // connector roads so every district joins the network (road-links.js)
   roadLinks = buildRoadLinks({scene,makeTex});
   // Westhaven Highways builds new roads on the real clock (road-crew.js)
-  roadCrew = buildRoadCrew({ scene, interactables, toast, makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), resurface: roadLinks.links, groundY: (x, z) => groundY(x, z, 0) });
+  roadCrew = buildRoadCrew({ scene, workMachine: registerWorkMachine, interactables, toast, makePerson: o => makeHumanoid(o), animatePerson: (h, moving, dt) => animateHumanoid(h, null, moving, false, true, dt), resurface: roadLinks.links, groundY: (x, z) => groundY(x, z, 0) });
   // everything at the fair, the leisure strip, the beach and the upgraded venues answers E first
   for(let i=priorityFrom;i<interactables.length;i++)if(!interactables[i].door&&!interactables[i].window)interactables[i].priority=true;
   // the outdoor courts: real basketball and tennis against the regulars (or an online player)

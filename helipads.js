@@ -48,7 +48,16 @@ export function buildHelipads({ scene, interactables, toast, makeTex, teleport, 
     const p = { name, x, z, y, r, roof, owner, choice: 0, sock, heli: h, group: g };
     p.fly = { pos: new THREE.Vector3(x, y + 0.2, z), r: r + 1, label: '', action: () => { if (p.stolen) { toast('The helicopter has been stolen. A replacement is on its way.'); return; } if (flight) { toast('The helicopter is already flying.'); return; } if (request && !request(p)) return; flyFrom(p); } };
     Object.defineProperty(p.fly, 'label', { get: () => p.stolen ? 'No helicopter here (stolen)' : flight ? 'The helicopter is out on a flight' : owner === 'government' ? `Request a government flight to ${dest(p).name}` : `Request a SkyLink charter flight to ${dest(p).name}` });
-    if (h) interactables.push({ pos: new THREE.Vector3(x - r * .6, y + 0.2, z), r: 1.8, get label() { return p.stolen || flight ? '' : 'Steal the helicopter (crime)'; }, action: () => { if (p.stolen || flight || !steal) return; if (steal(p)) { p.stolen = Date.now(); h.visible = false; } } });
+    // Anywhere on the pad, E offers everything you can do with the helicopter: ask for a flight, or climb in and take it
+    // (a crime). Stealing used to need one small spot on one side of the pad, so most players never found it.
+    const stealIt = () => { if (p.stolen || flight || !steal) return; if (steal(p)) { p.stolen = Date.now(); h.visible = false; } };
+    p.fly.title = owner === 'government' ? 'Government helicopter' : 'SkyLink charter helicopter';
+    p.fly.actions = () => {
+      if (p.stolen || flight) return [{ label: p.fly.label, run: p.fly.action }];
+      const list = [{ label: p.fly.label, run: p.fly.action }, { label: `Change destination (now ${dest(p).name})`, run: p.pick.action }];
+      if (h && steal) list.push({ label: 'Steal the helicopter (crime)', run: stealIt });
+      return list;
+    };
     p.pick = { pos: new THREE.Vector3(x + r + 1.2, y + 0.2, z + 1.5), r: 1.4, label: 'Pick another destination', action: () => { p.choice++; toast(`Destination: ${dest(p).name}`); } };
     interactables.push(p.fly, p.pick);
     if (roof) {
