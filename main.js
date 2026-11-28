@@ -85,7 +85,7 @@ import {createConditions,conditionOf} from './condition.js';
 import {createLicences} from './licences.js';
 import {createFootball} from './football.js';
 import {createRace} from './race.js';
-import {buildDoors,shopOpen} from './doors.js';
+import {buildDoors,shopOpen,doorReach} from './doors.js';
 import { profileDevice, createQualityGovernor, createOptimiser } from './device-profile.js';
 import {createWalkIns,WALKIN_STOREY} from './walkin.js';
 import {buildHills, buildRidge, onHillRoad} from './hills.js';
@@ -7130,7 +7130,10 @@ function nearestCivicBuilding() {
     // well inside solid walls for anything bigger than a small house, which made
     // most of the city effectively unenterable (you could never get "close enough").
     let d;
-    if (b.minX != null) {
+    if (b.door) {
+      // A building with a door is entered at its door, never through a back or side wall.
+      d = doorReach(b, player.position); if (d == null) continue;
+    } else if (b.minX != null) {
       const cx = clamp(player.position.x, b.minX, b.maxX), cz = clamp(player.position.z, b.minZ, b.maxZ);
       d = Math.hypot(player.position.x - cx, player.position.z - cz);
     } else {
