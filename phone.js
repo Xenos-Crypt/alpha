@@ -71,7 +71,7 @@ export function createPhone(ctx) {
 #crypticPhone .app i{font-style:normal;font-size:24px;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:#ffffff1c}
 #crypticPhone h3{margin:2px 0 10px;font:700 18px system-ui}#crypticPhone .row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #ffffff14}
 #crypticPhone button.b{font:600 13px system-ui;padding:8px 12px;min-height:36px;border-radius:10px;border:0;background:#2f6fdf;color:#fff;cursor:pointer}#crypticPhone button.g{background:#ffffff22}
-#crypticPhone .pbtns{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:8px}#crypticPhone .home{height:5px;width:110px;border:0;padding:0;border-radius:3px;background:#fff9;cursor:pointer}#crypticPhone .pback{background:none;border:0;color:#8ec5ff;font:600 14px system-ui;padding:4px 2px;min-height:32px;cursor:pointer}#crypticPhone .apphead{display:flex;align-items:center;gap:6px;margin:2px 0 4px}#crypticPhone .apphead h3{margin:0}#crypticPhone .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}#crypticPhone .chip{font:600 12px system-ui;padding:5px 10px;min-height:30px;border-radius:999px;border:1px solid #ffffff33;background:#ffffff12;color:#fff;cursor:pointer}#crypticPhone .chip.on{background:#2f6fdf;border-color:#2f6fdf}#crypticPhone .app{position:relative}#crypticPhone .app b.n{position:absolute;top:-4px;right:2px;background:#e74c3c;color:#fff;border-radius:9px;padding:0 6px;font:700 11px/18px system-ui;min-width:18px}#crypticPhone .pclose{background:#ffffff1a;color:#fff;border:1px solid #ffffff33;border-radius:999px;padding:3px 10px;font:12px system-ui;cursor:pointer}
+#crypticPhone .pbtns{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:8px}#crypticPhone .home{height:5px;width:110px;border:0;padding:0;border-radius:3px;background:#fff9;cursor:pointer}#crypticPhone .pback{background:none;border:0;color:#8ec5ff;font:600 14px system-ui;padding:4px 2px;min-height:32px;cursor:pointer}#crypticPhone .apphead{display:flex;align-items:center;gap:6px;margin:2px 0 4px}#crypticPhone .apphead h3{margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#crypticPhone .apphead .pback{flex:none}#crypticPhone .body>button.b{margin:6px 8px 4px 0}#crypticPhone .body>input+button.b,#crypticPhone .body>textarea+button.b{margin-top:8px}#crypticPhone .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}#crypticPhone .chip{font:600 12px system-ui;padding:5px 10px;min-height:30px;border-radius:999px;border:1px solid #ffffff33;background:#ffffff12;color:#fff;cursor:pointer}#crypticPhone .chip.on{background:#2f6fdf;border-color:#2f6fdf}#crypticPhone .app{position:relative}#crypticPhone .app b.n{position:absolute;top:-4px;right:2px;background:#e74c3c;color:#fff;border-radius:9px;padding:0 6px;font:700 11px/18px system-ui;min-width:18px}#crypticPhone .vf{display:block;width:100%;aspect-ratio:3/4;border-radius:14px;background:#000;touch-action:none;cursor:grab}#crypticPhone .vf.flash{animation:camflash .35s}@keyframes camflash{0%{filter:brightness(3)}100%{filter:none}}#crypticPhone .camtools{display:flex;align-items:center;justify-content:space-between;margin:10px 4px 4px}#crypticPhone .shutter{width:62px;height:62px;border-radius:50%;border:4px solid #fff;background:#ffffffd0;cursor:pointer;box-shadow:0 0 0 3px #0006 inset}#crypticPhone .lastpic{width:44px;height:44px;border-radius:10px;border:2px solid #fff8;background:#222 center/cover;cursor:pointer}#crypticPhone .camzoom{display:flex;justify-content:center;gap:6px;margin-top:8px}#crypticPhone .camzoom button.b{margin:0;padding:4px 10px;min-height:30px}#crypticPhone .camhint{opacity:.65;font-size:12px;text-align:center;margin:4px 0 0}#crypticPhone .pclose{background:#ffffff1a;color:#fff;border:1px solid #ffffff33;border-radius:999px;padding:3px 10px;font:12px system-ui;cursor:pointer}
 #crypticPhone .crack{position:absolute;inset:0;pointer-events:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 200'%3E%3Cg stroke='white' stroke-opacity='.35' fill='none' stroke-width='.4'%3E%3Cpath d='M0 8 L14 18 L22 15 L35 30 M14 18 L10 34 L18 52 M22 15 L30 4 M35 30 L48 33 M35 30 L37 47'/%3E%3C/g%3E%3C/svg%3E") top left/100% 100% no-repeat}
 #crypticPhone img.ph{width:100%;border-radius:10px;display:block}#crypticPhone .pics{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}#crypticPhone .pics img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:pointer}
 #crypticPhone textarea,#crypticPhone input{width:100%;box-sizing:border-box;background:#ffffff14;color:#fff;border:1px solid #ffffff2a;border-radius:10px;padding:8px;font:14px system-ui}
@@ -84,6 +84,7 @@ body.cinema #phoneBtn{visibility:hidden}`;
   { const st2 = document.createElement('style'); st2.textContent = '#phoneBtn[data-unread]:not([data-unread=""])::after{content:attr(data-unread);margin-left:6px;background:#d63031;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700}'; document.head.append(st2); }   // (how many messages wait in the Info Hub)
   const btn = document.createElement('button'); btn.id = 'phoneBtn'; btn.type = 'button'; btn.textContent = '📱 Phone (H)'; btn.onclick = () => toggle(); document.body.append(btn);
   let open = false, app = 'home', laptop = false;
+  const cam = { selfie: false, turn: 0, tilt: 0, zoom: 1 }; let camTimer = 0;   // the Camera app's lens
   // Esc is Back, even while typing a message (the game's own key handler ignores keys typed into a box)
   el.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); back(); } });
 
@@ -122,12 +123,37 @@ body.cinema #phoneBtn{visibility:hidden}`;
       const body = frame('Torch', `<div style="text-align:center;font-size:90px;margin:30px 0;filter:${on ? 'drop-shadow(0 0 30px #fff7c2)' : 'grayscale(1)'}">🔦</div>`);
       body.append(button(on ? 'Turn the torch off' : 'Turn the torch on', () => { ctx.torch.toggle(); go('torch'); }));
     },
+    // The camera shows what it's pointing at before you take the picture: a live viewfinder, rear or selfie.
     camera() {
-      const body = frame('Camera', '<p style="opacity:.75">Point the game camera where you want, then take the picture. The phone hides while it snaps.</p>');
-      body.append(button('📸 Take a picture', () => {
-        el.style.visibility = 'hidden';
-        requestAnimationFrame(() => { const shot = ctx.snap(); el.style.visibility = ''; if (shot) { st().photos.push({ src: shot, at: Date.now() }); if (S.photos.length > 30) S.photos.shift(); save(); ctx.toast('📸 Saved to Photos.'); go('gallery'); } });
-      }));
+      const body = frame('Camera', '');
+      const vf = document.createElement('canvas'); vf.width = 240; vf.height = 320; vf.className = 'vf';
+      vf.title = cam.selfie ? 'Drag to swing the camera round you, or up and down' : 'Drag to aim';
+      const tools = document.createElement('div'); tools.className = 'camtools';
+      const flip = button(cam.selfie ? '🔄 Rear' : '🤳 Selfie', () => { cam.selfie = !cam.selfie; cam.turn = 0; cam.tilt = 0; cam.zoom = 1; go('camera'); }, 'g');
+      const shutter = document.createElement('button'); shutter.type = 'button'; shutter.className = 'shutter'; shutter.title = 'Take the picture';
+      const last = document.createElement('button'); last.type = 'button'; last.className = 'lastpic'; last.title = 'Photos';
+      const lp = st().photos[st().photos.length - 1]; if (lp) last.style.backgroundImage = `url(${lp.src})`; last.onclick = () => go('gallery');
+      tools.append(last, shutter, flip);
+      const zoom = document.createElement('div'); zoom.className = 'camzoom';
+      if (!cam.selfie) for (const z of [1, 2, 4]) { const b = button(z + '×', () => { cam.zoom = z; go('camera'); }, cam.zoom === z ? 'b' : 'g'); zoom.append(b); }
+      const hint = document.createElement('p'); hint.className = 'camhint'; hint.textContent = cam.selfie ? 'Drag the picture to move the camera round you.' : 'Drag the picture to aim.';
+      body.append(vf, zoom, tools, hint);
+      // aim by dragging the viewfinder (mouse or finger)
+      let drag = null;
+      vf.onpointerdown = e => { drag = { x: e.clientX, y: e.clientY }; vf.setPointerCapture(e.pointerId); };
+      vf.onpointermove = e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY };
+        cam.turn -= dx * 0.008 / cam.zoom; cam.tilt = Math.max(-1.2, Math.min(1.2, cam.tilt + dy * (cam.selfie ? -0.006 : 0.006) / cam.zoom)); };
+      vf.onpointerup = vf.onpointercancel = () => { drag = null; };
+      const live = () => { if (!open || app !== 'camera' || !vf.isConnected) return; ctx.lens?.(cam, vf); camTimer = setTimeout(live, 150); };   // about 7 times a second
+      clearTimeout(camTimer); live();
+      shutter.onclick = () => {
+        const c = document.createElement('canvas'); c.width = 480; c.height = 640;
+        if (!ctx.lens?.(cam, c, true)) return ctx.toast('The camera could not take the picture.');
+        const src = c.toDataURL('image/jpeg', 0.85);
+        st().photos.push({ src, at: Date.now(), selfie: cam.selfie }); if (S.photos.length > 30) S.photos.shift(); save();
+        vf.classList.remove('flash'); void vf.offsetWidth; vf.classList.add('flash');   // the flash
+        last.style.backgroundImage = `url(${src})`; ctx.toast(cam.selfie ? '🤳 Selfie saved to Photos.' : '📸 Saved to Photos.');
+      };
     },
     gallery() {
       const body = frame('Photos', st().photos.length ? '' : '<p style="opacity:.7">No photos yet. Use the Camera app.</p>');
@@ -277,7 +303,7 @@ body.cinema #phoneBtn{visibility:hidden}`;
     const p = S.photos[i]; if (!p) return go('gallery'); remember('photo:' + i); app = 'photo:' + i;
     const body = frame('Photo', `<img class="ph" src="${p.src}"><p style="opacity:.7">${new Date(p.at).toLocaleString()}</p>`);
     const a = document.createElement('a'); a.href = p.src; a.download = 'anthos-photo.jpg'; a.textContent = 'Save to your device'; a.style.color = '#8ec5ff';
-    body.append(a, document.createElement('br'), button('Delete', () => { S.photos.splice(i, 1); save(); go('gallery'); }, 'g'), button('Back', () => go('gallery'), 'g'));
+    body.append(a, document.createElement('br'), button('Delete', () => { S.photos.splice(i, 1); save(); back(); }, 'g'));
   }
   function install(id, a) {
     if (a.price && ctx.stats.gold < a.price) return ctx.toast('Not enough gold for ' + a.name + '.');
@@ -297,7 +323,7 @@ body.cinema #phoneBtn{visibility:hidden}`;
     const input = document.createElement('input'); input.placeholder = 'Type a message'; input.maxLength = 300; body.append(input);
     const sendIt = () => { const text = input.value.trim(); if (!text) return; input.value = ''; add(c.id, { me: true, text }); ctx.sendMessage?.(c, text); thread(c); };
     input.addEventListener('keydown', e => { if (e.key === 'Escape') return; e.stopPropagation(); if (e.key === 'Enter') sendIt(); });   // (Esc bubbles up to the phone: Back)
-    body.append(button('Send', sendIt), button('Back', () => go('messages')));
+    body.append(button('Send', sendIt));
     setTimeout(() => input.focus(), 30);
   }
   function add(id, m) { const s = st(); s.msgs ||= {}; (s.msgs[id] ||= []).push({ ...m, at: Date.now() }); if (s.msgs[id].length > 80) s.msgs[id].splice(0, s.msgs[id].length - 80); save(); }

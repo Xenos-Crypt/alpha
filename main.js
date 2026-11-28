@@ -8985,9 +8985,40 @@ function phoneSend(c,text){
   else if(c.id==='police')reply=wanted>0?"We know who you are. Hand yourself in at the nearest station and it'll go easier.":/report|crime|stole|attack|help|robbed/.test(t)?"Thank you for your report. An officer will look into it. If it's an emergency, get somewhere safe.":any(["Ashford Police. How can we help?","Noted. Stay safe.","For emergencies, get to a police station or a hospital."]);
   if(reply)setTimeout(()=>phone?.receive(c,reply),1800+Math.random()*3500);
 }
+// THE PHONE'S CAMERA: what the lens sees, live in the Camera app and when you take the picture. The rear camera looks out
+// from your eyes the way your view faces (drag the viewfinder to aim, zoom in or out); the selfie camera is held out at
+// arm's length in front of your face, looking back at you (drag to swing it round you, or raise and lower it).
+// It draws into a corner of the game's canvas and copies that out. The live viewfinder does it in the game's own frame,
+// just before the game view is drawn over it (so it costs no extra frame); the shutter does it at once and redraws.
+const phoneLens = new THREE.PerspectiveCamera(62, 3 / 4, 0.05, 3000), _lensSize = new THREE.Vector2();
+let lensJob = null;
+function phoneLensShot({ selfie = false, turn = 0, tilt = 0, zoom = 1 } = {}, out, restore = true) {
+  if (!out) return false;
+  const r = renderer, pr = r.getPixelRatio(), vis = player.visible; r.getSize(_lensSize);
+  const k = Math.min(1, 640 / out.width, _lensSize.x / out.width, _lensSize.y / out.height), w = Math.floor(out.width * k), h = Math.floor(out.height * k);   // (rendered no bigger than the screen)
+  try {
+    if (selfie && !inCar) {
+      const head = at(player.position, swimming ? 0.25 : 1.55), a = player.rotation.y + turn;   // (swimming, you're lying in the water)
+      phoneLens.position.set(head.x + Math.sin(a) * 0.75, head.y + 0.12 + tilt * 0.5, head.z + Math.cos(a) * 0.75);
+      phoneLens.lookAt(head.x, head.y - 0.05, head.z);
+      player.visible = true;
+    } else {
+      const y = yaw + turn, p = clamp((cameraView === 'first' ? pitch : 0) + tilt, -1.3, 1.3);
+      const fwd = new THREE.Vector3(-Math.sin(y) * Math.cos(p), -Math.sin(p), -Math.cos(y) * Math.cos(p));
+      if (inCar) phoneLens.position.copy(camera.position); else phoneLens.position.copy(at(player.position, 1.62)).addScaledVector(fwd, 0.3);
+      phoneLens.lookAt(phoneLens.position.clone().add(fwd));
+      player.visible = false;   // (the lens is at your eyes)
+    }
+    phoneLens.fov = 62 / Math.max(1, zoom); phoneLens.aspect = w / h; phoneLens.layers.mask = camera.layers.mask; phoneLens.updateProjectionMatrix();
+    r.setScissorTest(true); r.setViewport(0, 0, w, h); r.setScissor(0, 0, w, h); r.render(scene, phoneLens);
+    const src = r.domElement; out.getContext('2d').drawImage(src, 0, src.height - h * pr, w * pr, h * pr, 0, 0, out.width, out.height);
+    return true;
+  } catch { return false; }
+  finally { player.visible = vis; r.setScissorTest(false); r.getSize(_lensSize); r.setViewport(0, 0, _lensSize.x, _lensSize.y); if (restore) try { r.render(scene, camera); } catch { } }
+}
 phone=createPhone({contacts:()=>phoneContacts(),sendMessage:(c,text)=>phoneSend(c,text),where:()=>player.position,userId:()=>soloUserId||registryUserId||'guest',stats,toast,pause:()=>pauseForPanel(),resume:()=>requestGameControl(),premium:()=>isAdmin,
   torch:{on:()=>flashlightOn,toggle:()=>toggleFlashlight()},
-  snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
+  lens:(o,out,now)=>{if(now)return phoneLensShot(o,out);const opts={...o};lensJob=covered=>phoneLensShot(opts,out,covered);return true;},  snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
   openMap:()=>worldMap?.show(),callTaxi:()=>cityServices?.callTaxi(player.position.clone()),openCareer:()=>careers?.openCareer(),openCityHall:()=>society?.openHall(),
   calendar:()=>seasons?.calendar,calendarOn:d=>calendarFor(d),weather:()=>WEATHER_LABEL[weatherState],
   notices:()=>notices,unreadNotices:()=>unreadNotices,seenNotices:()=>{unreadNotices=0;noticeBadge();},gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
@@ -9499,6 +9530,7 @@ function frame() {
   // whole canvas: drawing the city behind them every frame only burns battery/CPU.
   seatedResidents?.update(rawDt); neighbours?.update(rawDt);
     OBST.length = 0; for (const v of vehicles) if (!v.disabled) OBST.push(v.group.position); OBST.push(player.position); roamTraffic.update(hitStop > 0 ? 0 : rawDt); actionMenu.update(rawDt, { moved: playerMoving }); if (REAL_BODIES) people.update(hitStop > 0 ? 0 : rawDt); syncPlayerHeld(); syncArmour(); updateDroppedBag(rawDt);
+  if(lensJob){const j=lensJob;lensJob=null;j(coveredByOverlay());}   // the phone camera's viewfinder: drawn just before the game view, which then covers it
   let drawMs=0;if(!coveredByOverlay()){if(++shadowFrame%optimiser.shadowEvery===0)renderer.shadowMap.needsUpdate=true;const d0=performance.now();renderer.render(scene, camera);drawMs=performance.now()-d0;}
   optimiser.sample(simMs, drawMs, frameMs, rawDt, locked && !document.hidden && perfWarmup > 5000);
   requestAnimationFrame(frame);
