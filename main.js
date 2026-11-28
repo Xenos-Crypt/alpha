@@ -1727,7 +1727,8 @@ let lastInputAt = -1e9; const notices = []; let unreadNotices = 0;
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space']);
 addEventListener('keydown', e => { if (!e.repeat && !MOVE_KEYS.has(e.code)) lastInputAt = performance.now(); }, true);
 for (const ev of ['mousedown', 'touchstart', 'click']) addEventListener(ev, () => { lastInputAt = performance.now(); }, true);
-function noticeBadge() { const b = document.getElementById('phoneBtn'); if (b) b.dataset.unread = unreadNotices ? String(unreadNotices) : ''; }
+function noticeBadge() { let ph = null; try { ph = phone; } catch { }   // (not created yet early in loading)
+  if (ph?.badge) return ph.badge(); const b = document.getElementById('phoneBtn'); if (b) b.dataset.unread = unreadNotices ? `ℹ️ ${unreadNotices}` : ''; }   // the phone button says which app has something new
 function toast(text) {
   if (talkCapture) { talkCapture(text); return; }   // (someone talking to you: it goes in the talk box)
   try { if (snackShop?.talking && snackShop.echo(text)) return; } catch { }   // talking to someone: what they say shows in the talk box
@@ -7460,6 +7461,7 @@ function setFreeMouse(on) {
 
 addEventListener('keydown', e => {
   if(e.target.closest?.('input,textarea,select,[contenteditable=true]'))return;
+  if (!e.repeat && e.code === 'Escape' && phone?.open) { phone.back(); return; }   // Esc goes back a screen, like a phone's back button (from the home screen it puts the phone away)
   if (actionMenu.key(e)) { e.preventDefault(); return; }   // the action menu (and a lock you're working) takes the keys first
   if(e.code==='KeyP'&&!e.ctrlKey&&!e.metaKey){if(!e.repeat&&(locked||settingsOpen||hosting.open||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
   if(e.code==='KeyS'&&!e.ctrlKey&&!e.metaKey&&(controlPrefs.desktopMovement==='arrows'||e.shiftKey&&!inCar&&!navy?.rider)){if(!e.repeat&&(locked||settingsOpen||$('start').style.display==='flex'))toggleSettings(!settingsOpen);e.preventDefault();return;}
@@ -7477,7 +7479,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyU' && locked && !e.repeat) society?.openHall();
   if (e.code === 'KeyO' && !e.repeat && system?.active()) system.toggle();
   if (e.code === 'KeyH' && !e.repeat && (locked || phone?.open)) phone?.toggle();
-  if (e.code === 'Escape' && phone?.open) { phone.toggle(false); return; }   // Esc puts the phone away too
   if (e.code === 'KeyK' && locked && !e.repeat && isOwner()) worldIds?.open();
   if (e.code === 'KeyJ' && military?.toggleSuit()) return;
   if (e.code === 'KeyE') interact();
@@ -8989,7 +8990,7 @@ phone=createPhone({contacts:()=>phoneContacts(),sendMessage:(c,text)=>phoneSend(
   snap:()=>{try{renderer.render(scene,camera);const src=renderer.domElement,c=document.createElement('canvas'),w=640,h=Math.round(640*src.height/src.width);c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);return c.toDataURL('image/jpeg',0.82);}catch{return null;}},
   openMap:()=>worldMap?.show(),callTaxi:()=>cityServices?.callTaxi(player.position.clone()),openCareer:()=>careers?.openCareer(),openCityHall:()=>society?.openHall(),
   calendar:()=>seasons?.calendar,calendarOn:d=>calendarFor(d),weather:()=>WEATHER_LABEL[weatherState],
-  notices:()=>notices,seenNotices:()=>{unreadNotices=0;noticeBadge();},gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
+  notices:()=>notices,unreadNotices:()=>unreadNotices,seenNotices:()=>{unreadNotices=0;noticeBadge();},gameTime:()=>{const h=(dayTime*24+6)%24;return String(Math.floor(h)).padStart(2,'0')+':'+String(Math.floor(h%1*60)).padStart(2,'0');},
   news:()=>(society?.state?.news||[]).map(n=>n.text),quests:()=>system?.quests?.()||[],
   openBanking:()=>{if(!bankPanel?.phone)return false;bankPanel.openPhone();return true;}});
 // The System's voice (system-voice.js): an OpenAI voice, fetched once per line and kept on this device
