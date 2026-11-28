@@ -56,7 +56,7 @@ export function createSolidProps(THREE) {
       if (g.type === 'CapsuleGeometry') return;                                     // people's limbs
       if (g.type === 'BufferGeometry' && g.attributes.color) return;                // tree crowns and bushes (the trunk is what's solid)
       const kind = g.type === 'BoxGeometry' ? 'box' : g.type === 'CylinderGeometry' ? 'cyl' : round ? 'round' : 'other';
-      const one = mw => {
+      const one = (mw, inst = -1) => {
         mw.decompose(v, q, s);
         // the box's 8 corners in the world: its height range, and its footprint as a turned rectangle
         let minY = Infinity, maxY = -Infinity, k = 0;
@@ -86,9 +86,9 @@ export function createSolidProps(THREE) {
         for (const r of stairs) if (x > r.minX - 0.5 && x < r.maxX + 0.5 && z > r.minZ - 0.5 && z < r.maxZ + 0.5) return;
         if (hasSeat(x, z, hx, hz, c, sn)) return;                                     // benches, chairs and beds you sit or lie on
         if (Math.abs(c) > 0.999 || Math.abs(sn) > 0.999 ? covered(x, z, Math.abs(c) > 0.999 ? hx : hz, Math.abs(c) > 0.999 ? hz : hx) : false) return;   // already solid
-        add({ x, z, hx, hz, c, s: sn, minY, maxY, name: o.name || o.parent?.name || g.type }, ng, nl); added++;
+        add({ x, z, hx, hz, c, s: sn, minY, maxY, name: o.name || o.parent?.name || g.type, mesh: o, inst }, ng, nl); added++;
       };
-      if (o.isInstancedMesh) { for (let i = 0; i < Math.min(o.count, 6000); i++) { o.getMatrixAt(i, m4); one(m4.premultiply(o.matrixWorld)); } }
+      if (o.isInstancedMesh) { for (let i = 0; i < Math.min(o.count, 6000); i++) { o.getMatrixAt(i, m4); one(m4.premultiply(o.matrixWorld), i); } }
       else one(o.matrixWorld);
     };
     return {
@@ -112,5 +112,17 @@ export function createSolidProps(THREE) {
     }
     return hit;
   }
-  return { build, buildInSlices, push, get count() { return list.length; }, at(x, z) { return (grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL))) || []).filter(o => { const dx = x - o.x, dz = z - o.z, lx = dx * o.c + dz * o.s, lz = -dx * o.s + dz * o.c; return Math.abs(lx) <= o.hx && Math.abs(lz) <= o.hz; }); } };
+  // everything solid that a circle at p (radius r, feet at p.y) overlaps: for vehicles, which smash small things
+  function overlap(p, r) {
+    const out = [], seen = new Set();
+    for (let i = Math.floor((p.x - r) / CELL); i <= Math.floor((p.x + r) / CELL); i++) for (let k = Math.floor((p.z - r) / CELL); k <= Math.floor((p.z + r) / CELL); k++) for (const o of grid.get(key(i, k)) || []) {
+      if (seen.has(o) || p.y > o.maxY - 0.35 || p.y + 1.7 < o.minY) continue; seen.add(o);
+      const dx = p.x - o.x, dz = p.z - o.z, lx = dx * o.c + dz * o.s, lz = -dx * o.s + dz * o.c;
+      const ex = lx - Math.max(-o.hx, Math.min(o.hx, lx)), ez = lz - Math.max(-o.hz, Math.min(o.hz, lz)); if (ex * ex + ez * ez < r * r) out.push(o);
+    }
+    return out;
+  }
+  // take a thing out of the grid (it has been knocked over)
+  function remove(o) { const r = Math.hypot(o.hx, o.hz); for (let i = Math.floor((o.x - r) / CELL); i <= Math.floor((o.x + r) / CELL); i++) for (let k = Math.floor((o.z - r) / CELL); k <= Math.floor((o.z + r) / CELL); k++) { const l = grid.get(key(i, k)); const j = l ? l.indexOf(o) : -1; if (j >= 0) l.splice(j, 1); } o.gone = true; }
+  return { build, buildInSlices, push, overlap, remove, get count() { return list.length; }, at(x, z) { return (grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL))) || []).filter(o => { const dx = x - o.x, dz = z - o.z, lx = dx * o.c + dz * o.s, lz = -dx * o.s + dz * o.c; return Math.abs(lx) <= o.hx && Math.abs(lz) <= o.hz; }); } };
 }

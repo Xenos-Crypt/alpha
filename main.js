@@ -88,7 +88,7 @@ import {createRace} from './race.js';
 import {buildDoors,shopOpen} from './doors.js';
 import { profileDevice, createQualityGovernor, createOptimiser } from './device-profile.js';
 import {createWalkIns,WALKIN_STOREY} from './walkin.js';
-import {buildHills, buildRidge} from './hills.js';
+import {buildHills, buildRidge, onHillRoad} from './hills.js';
 import {buildVehicleDealers} from './vehicle-dealers.js';
 import {createMarketPanel} from './market-panel.js';
 import {createProperty} from './property.js';
@@ -142,7 +142,7 @@ import { makeRundown, buildAdminEstate } from './home-styles.js';
 import { createSlum, createRent, SLUM_HOME, SLUM_HOME_Y, SLUM_HOME_YARD, slumGroundAt, RENT } from './slum.js';
 import { upgradeHospital, upgradePort, upgradeNavy } from './civic-upgrades.js';
 import { buildVenueFences } from './venue-fences.js';
-import { buildRoadLinks } from './road-links.js';
+import { buildRoadLinks, LINKS as ROAD_LINKS, linkGroundAt } from './road-links.js';
 import { createCockpit, EYE as COCKPIT_EYE } from './car-cockpit.js';
 import { buildSupermarket } from './supermarket.js';
 import { createRoadWear } from './road-wear.js';
@@ -3457,7 +3457,7 @@ const accessPoints = [];   // places that must be joined to the road network (a 
     for (const s of [-1, 1]) box(pw, 1, 0.25, px, 13.6, pz + s * pd / 2, 0x7b7f84, false);
     signboard('HOSPITAL CAR PARK', px, 14.6, pz - pd / 2 - 0.1, 12, '#1f5fa8');
     civicBuildings.push({ type: 'parking', name: 'St. Mary Hospital car park', x: px, z: pz, minX: px - pw / 2, maxX: px + pw / 2, minZ: pz - pd / 2, maxZ: pz + pd / 2, noDoor: true });
-    accessPoints.push({ x: px + pw / 2 + 4, z: pz, name: 'Hospital car park entrance' }); }
+    accessPoints.push({ x: px + pw / 2 + 0.5, z: pz, dir: [1, 0], name: 'Hospital car park entrance' }); }
 })();
 // Hand-placed fire station, next door to the hospital — firefighters standing by.
 const firefighters = [];
@@ -3481,13 +3481,31 @@ const firefighters = [];
 // (optional) leaves a gap in one edge for a vehicle/pedestrian entrance.
 const fenceWireMat = new THREE.MeshStandardMaterial({ color: 0x8a949e, transparent: true, opacity: 0.3, side: THREE.DoubleSide, roughness: 0.6 });
 function fenceRect(x0,x1,z0,z1,{postSpacing=4,h=2.6,gate=null}={}){
- for(const [side,x1a,z1a,x2a,z2a]of [['z0',x0,z0,x1,z0],['z1',x0,z1,x1,z1],['x0',x0,z0,x0,z1],['x1',x1,z0,x1,z1]])for(const span of fenceSegments(x1a,z1a,x2a,z2a,gate?.side===side?[gate.from,gate.to]:null)){
-  const len=Math.hypot(span.x2-span.x1,span.z2-span.z1),alongX=Math.abs(span.x2-span.x1)>.1,mx=(span.x1+span.x2)/2,mz=(span.z1+span.z2)/2;
-  for(let d=0;d<=len;d+=len/Math.max(1,Math.ceil(len/postSpacing)))box(.12,h,.12,span.x1+(span.x2-span.x1)*d/len,h/2,span.z1+(span.z2-span.z1)*d/len,0x454c50,false);
-  for(const y of [.5,1.4,2.3])box(alongX?len:.04,.04,alongX?.04:len,mx,y,mz,0x596468,false);
-  const fabric=mesh(new THREE.PlaneGeometry(len,h),fenceWireMat);fabric.position.set(mx,h/2,mz);if(!alongX)fabric.rotation.y=Math.PI/2;fabric.castShadow=false;
-  const collider={minX:Math.min(span.x1,span.x2)-.12,maxX:Math.max(span.x1,span.x2)+.12,minZ:Math.min(span.z1,span.z2)-.12,maxZ:Math.max(span.z1,span.z2)+.12};colliders.push(collider);planeBlocks.push({...collider,bottom:0,top:h});
- }
+ for(const [side,x1a,z1a,x2a,z2a]of [['z0',x0,z0,x1,z0],['z1',x0,z1,x1,z1],['x0',x0,z0,x0,z1],['x1',x1,z0,x1,z1]])for(const span of fenceSegments(x1a,z1a,x2a,z2a,gate?.side===side?[gate.from,gate.to]:null))wireSpan(span.x1,span.z1,span.x2,span.z2,h,postSpacing);
+}
+// One straight run of chain-link fence (posts, three rails, the mesh, barbed wire on the posts). Its collider
+// remembers its parts: a vehicle that drives into it at speed knocks a 6 m stretch down (breakWireFence) and goes
+// through undamaged; the rest stays standing.
+function wireSpan(x1,z1,x2,z2,h,postSpacing){
+ const len=Math.hypot(x2-x1,z2-z1);if(len<0.3)return null;const alongX=Math.abs(x2-x1)>.1,mx=(x1+x2)/2,mz=(z1+z2)/2,parts=[];
+ for(let d=0;d<=len+1e-6;d+=len/Math.max(1,Math.ceil(len/postSpacing)))parts.push(box(.12,h,.12,x1+(x2-x1)*d/len,h/2,z1+(z2-z1)*d/len,0x454c50,false));
+ for(const y of [.5,1.4,2.3])if(y<h)parts.push(box(alongX?len:.04,.04,alongX?.04:len,mx,y,mz,0x596468,false));
+ const fabric=mesh(new THREE.PlaneGeometry(len,h),fenceWireMat);fabric.position.set(mx,h/2,mz);if(!alongX)fabric.rotation.y=Math.PI/2;fabric.castShadow=false;parts.push(fabric);
+ const collider={minX:Math.min(x1,x2)-.12,maxX:Math.max(x1,x2)+.12,minZ:Math.min(z1,z2)-.12,maxZ:Math.max(z1,z2)+.12,wire:{x1,z1,x2,z2,h,postSpacing,parts}};colliders.push(collider);
+ const pb={minX:collider.minX,maxX:collider.maxX,minZ:collider.minZ,maxZ:collider.maxZ,bottom:0,top:h};planeBlocks.push(pb);collider.wire.pb=pb;
+ return collider;
+}
+function breakWireFence(c,x,z){
+ const w=c.wire,len=Math.hypot(w.x2-w.x1,w.z2-w.z1),t=clamp(((x-w.x1)*(w.x2-w.x1)+(z-w.z1)*(w.z2-w.z1))/(len*len),0,1)*len,a=Math.max(0,t-3),b=Math.min(len,t+3);
+ const at2=d=>[w.x1+(w.x2-w.x1)*d/len,w.z1+(w.z2-w.z1)*d/len];
+ for(const m of w.parts)m.removeFromParent();
+ const i=colliders.indexOf(c);if(i>=0)colliders.splice(i,1);const j=planeBlocks.indexOf(w.pb);if(j>=0)planeBlocks.splice(j,1);
+ if(a>0.5){const [ex,ez]=at2(a);wireSpan(w.x1,w.z1,ex,ez,w.h,w.postSpacing);}
+ if(b<len-0.5){const [sx,sz]=at2(b);wireSpan(sx,sz,w.x2,w.z2,w.h,w.postSpacing);}
+ // the knocked-down stretch, flat on the ground, and a bent post
+ const [cx,cz]=at2((a+b)/2),flat=mesh(new THREE.PlaneGeometry(b-a,w.h),fenceWireMat);flat.rotation.set(-Math.PI/2,0,Math.abs(w.x2-w.x1)>.1?0:Math.PI/2);flat.position.set(cx,.06,cz);flat.castShadow=false;
+ const post=box(.12,w.h,.12,cx,.4,cz,0x454c50,false);post.rotation.z=1.25;
+ burst(new THREE.Vector3(x,1,z),14,[0x8a949e,0x596468],5,.06,.4,8,1);
 }
 
 function buildWatchtower(x, z) {
@@ -3619,7 +3637,7 @@ const PRISON = { x: -880, z: 580, hx: 110, z0: -95, z1: 95 };   // the outer wal
   for (let i = 0; i < 8; i++) { const h = makeHumanoid({ outfit: 0x2a3a4a, hair: pick([0x1a1a1a, 0x3a2a1a, 0x222]), pants: 0x1c242c }); const wp = i % 4; h.root.position.set(patrolLoop[wp][0], 0, patrolLoop[wp][1]); hqPeople.push({ h, kind: 'guard', wp, speed: 2.1 + Math.random() * 0.4 }); }
   for (let i = 0; i < 16; i++) { const h = makeHumanoid({ outfit: 0xff7a1a, hair: pick([0x1a1a1a, 0x5a4a3a, 0x2a2a2a]), pants: 0xff7a1a, shoes: 0x2a2a2a }); h.root.position.set(yardCX + (Math.random() - 0.5) * (YW - 6), 0, yardCZ + (Math.random() - 0.5) * (YD - 4)); hqPeople.push({ h, kind: 'prisoner', target: null, speed: 1.1 + Math.random() * 0.5, waitT: Math.random() * 3, bounds: { x0: yardCX - YW / 2 + 2, x1: yardCX + YW / 2 - 2, z0: yardCZ - YD / 2 + 2, z1: yardCZ + YD / 2 - 2 } }); }
   for (let i = 0; i < 4; i++) { const h = makeHumanoid({ outfit: 0x2a3a4a, hair: pick([0x1a1a1a, 0x3a2a1a]), pants: 0x1c242c }); h.root.position.set(yardCX + (Math.random() - 0.5) * 20, 0, yardCZ + YD / 2 + 3); hqPeople.push({ h, kind: 'yardGuard', target: null, speed: 1.4, waitT: Math.random() * 3, bounds: { x0: yardCX - YW / 2, x1: yardCX + YW / 2, z0: yardCZ + YD / 2 + 1.5, z1: yardCZ + YD / 2 + 5 } }); }
-  accessPoints.push({ x: hx, z: WZ1 + 16, name: 'Police HQ and State Prison gate' });
+  accessPoints.push({ x: hx, z: WZ1 + 7, dir: [0, 1], name: 'Police HQ and State Prison gate' });   // (where the sally port's apron ends)
   let t = 0;
   addTask({ dur: 1e9, update(dt) {
     t += dt;
@@ -3966,7 +3984,7 @@ function flyHelicopter(v, dt) {
     if (d3 > 1325) { const k = 1325 / d3; p.x = 170 + dx * k; p.z = 150 + dz * k; v.alt = Math.min(v.alt, v.alt * k); v.speed *= 0.3; }
   }
   if (v.alt < ground + 4 && collide(p, 2.4) && Math.abs(v.speed) > 12) return crashPlane(v);
-  if (planeBlocks.some(b => p.x + 3 > b.minX && p.x - 3 < b.maxX && p.z + 3 > b.minZ && p.z - 3 < b.maxZ && v.alt + 1 > (b.bottom ?? 0) && v.alt - 1 < b.top)) { if (Math.abs(v.speed) > 15) return crashPlane(v); v.speed = 0; }
+  if (v.alt > ground + 0.6 && planeTouches(v, p.x, p.z, v.alt, P.yaw, 0)) { if (Math.abs(v.speed) > 15) return crashPlane(v); p.x -= Math.sin(P.yaw) * v.speed * dt * 1.5; p.z -= Math.cos(P.yaw) * v.speed * dt * 1.5; v.speed = 0; }   // helicopters and ships too: buildings, masts, trees
   p.y = v.alt;
   v.group.rotation.set(P.pitch, P.yaw, P.roll);
   if (v.rotor) { v.rotor.rotation.y += dt * 30 * P.throttle; v.tail.rotation.x += dt * 40 * P.throttle; }
@@ -3976,6 +3994,40 @@ function flyHelicopter(v, dt) {
 // fast travel — same "for now, revert later" spirit as CHEAT_NO_NEEDS/SPEED.
 makeAircraft({ name: 'Your plane', color: 0xf5f6fa, accent: 0xd63031, maxSpeed: 60, takeoff: 24, turn: 0.95, jet: false, home: [RUNWAY.x, RUNWAY.z - 35] });
 
+// What an aircraft touches: its nose, tail and wingtips (turned with its heading and tilted with its roll), each a
+// small circle, against the building blocks (planeBlocks) and against every collider below it. Plenty of buildings
+// have no plane block, so a collider's height is found once, the first time an aircraft is over it, by looking
+// straight down at what is there.
+const planeTopRay = new THREE.Raycaster(), DOWN = new THREE.Vector3(0, -1, 0), planeRayFrom = new THREE.Vector3();
+function colliderTop(c, x, z) {
+  if (c.planeTop != null) return c.planeTop;
+  if (c.baseYAt) return (c.planeTop = -1);   // floors and upper storeys: their building has its own block
+  planeRayFrom.set(clamp(x, c.minX + 0.2, c.maxX - 0.2), 400, clamp(z, c.minZ + 0.2, c.maxZ - 0.2)); planeTopRay.set(planeRayFrom, DOWN); planeTopRay.far = 400; planeTopRay.camera = camera;
+  let top = 0;
+  for (const h of planeTopRay.intersectObjects(scene.children, true)) {
+    const o = h.object, m = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (!o.isMesh || (m && m.transparent && m.opacity < 0.4) || o.geometry?.boundingSphere?.radius > 400) continue;
+    let mine = false; for (let n = o; n; n = n.parent) if (n === driving?.group || n === player) { mine = true; break; } if (mine) continue;
+    top = h.point.y; break;
+  }
+  return (c.planeTop = top);
+}
+let planeTouched = null;   // what it last touched (for checking)
+const planePts = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 0]];   // nose, tail, right tip, left tip, middle
+function planeTouches(v, x, z, alt, yaw, roll = 0) {
+  const half = (v.length || 8) / 2, span = (v.wingSpan || 10) / 2, s = Math.sin(yaw), c = Math.cos(yaw), cr = Math.cos(roll);
+  for (const [f, r] of planePts) {
+    const px = x + s * f * half - c * r * span * cr, pz = z + c * f * half + s * r * span * cr, py = alt + r * span * Math.sin(roll) * (f === 0 ? 1 : 0), rad = 1.2;
+    for (const b of planeBlocks) if (px + rad > b.minX && px - rad < b.maxX && pz + rad > b.minZ && pz - rad < b.maxZ && py + 1 > (b.bottom ?? 0) && py - 1 < b.top) { if (v === driving) planeTouched = { block: b, px, pz, py }; return true; }
+    if (py > 260) continue;
+    for (const k of collidersAround(px, pz, rad)) {
+      if (k.circleRadius != null) { if (Math.hypot(px - k.circleX, pz - k.circleZ) > k.circleRadius + rad) continue; }
+      else if (!(px + rad > k.minX && px - rad < k.maxX && pz + rad > k.minZ && pz - rad < k.maxZ)) continue;
+      if (py - 0.6 < colliderTop(k, px, pz)) { if (v === driving) planeTouched = { collider: k, px, pz, py }; return true; }
+    }
+  }
+  return false;
+}
 function crashPlane(v) {
   const p = v.group.position.clone();
   // Flying into a building at speed brings it down
@@ -4042,11 +4094,11 @@ function flyPlane(v, dt) {
     P.pitch = Math.max(0, P.pitch);
   }
   p.y = v.alt;
-  const planeRadius=v.wingSpan? v.wingSpan/2:5;
-  if ((airborne||Math.abs(v.speed)>2)&&planeBlocks.some(b=>p.x+planeRadius>b.minX&&p.x-planeRadius<b.maxX&&p.z+planeRadius>b.minZ&&p.z-planeRadius<b.maxZ&&v.alt+1.2>(b.bottom??0)&&v.alt-1.2<b.top))return crashPlane(v);
-  if (v.alt < 6 && collide(p, 2.5)) {
-    if (airborne || v.speed > 20) return crashPlane(v);
-    v.speed *= 0.2;
+  if (planeTouches(v, p.x, p.z, v.alt + (airborne ? 0 : 0.8), P.yaw, P.roll + (P.stuntRoll || 0))) {
+    // in the air, or rolling fast, that's a crash; taxiing slowly into something, the plane just stops against it
+    if (airborne || v.speed > 12) return crashPlane(v);
+    p.x -= Math.sin(P.yaw) * v.speed * dt * 1.5; p.z -= Math.cos(P.yaw) * v.speed * dt * 1.5; v.speed = 0; P.throttle = Math.min(P.throttle, 0.05);
+    if (v === driving && !v.bumpNote) { v.bumpNote = true; toast('Your wing is up against something. Turn away to get clear.'); addTask({ dur: 4, end: () => { v.bumpNote = false; } }); }
   }
   v.group.rotation.set(-P.pitch, P.yaw, P.roll+(P.stuntRoll||0));
   if (v.prop) v.prop.rotation.z += (5 + v.speed) * dt * 3;
@@ -7658,7 +7710,7 @@ const busDoor = v => v.group.localToWorld(new THREE.Vector3(2.0, 0, v.length / 2
 // A vehicle you are driving, or one that is parked
 const isRoadVehicle = v => ['car', 'police', 'bus','ambulance','motorcycle'].includes(v.kind);
 function vehicleVelocity(v) { return v.slideVelocity||{ x: Math.sin(v.group.rotation.y) * v.speed, z: Math.cos(v.group.rotation.y) * v.speed }; }
-function damageVehicle(v, deltaSpeed, point) {
+function damageVehicle(v, deltaSpeed, point, opt) {
   if(deltaSpeed>3&&point.distanceTo(player.position)<60)worldAudio?.impact(deltaSpeed);
   if (!isRoadVehicle(v)) return;
   const damage = impactDamage(deltaSpeed);
@@ -7666,7 +7718,7 @@ function damageVehicle(v, deltaSpeed, point) {
   v.health = Math.max(0, (v.health ?? 100) - damage);
   v.crashCooldown = 0.3;applyVehicleCondition(v);conditions?.crash(point, deltaSpeed, v === driving);
   // hit a tree? it takes damage too, and falls over at 0%
-  const tr = forest.nearest(point.x, point.z, 3.2), treeHit = tr && forest.damage(tr, deltaSpeed, v.group.position.x, v.group.position.z);
+  const tr = opt?.tree !== undefined ? null : forest.nearest(point.x, point.z, 3.2), treeHit = opt?.tree || (tr && forest.damage(tr, deltaSpeed, v.group.position.x, v.group.position.z));
   const treeNote = !treeHit ? '' : treeHit.fell ? ' · 🌳 You knocked the tree down!' : ` · 🌳 Tree condition ${Math.ceil(treeHit.before)}% → ${Math.ceil(treeHit.after)}%`;
   if (deltaSpeed > 5) burst(at(point, 0.7), Math.min(25, Math.ceil(deltaSpeed)), [0xffc266, 0x777777], 5, 0.08, 0.3, 8, 1);
   if (deltaSpeed > 8) breakLampsNear(point, 1.5);   // ram a lamp post hard enough and it goes down
@@ -7720,6 +7772,48 @@ function hitStreetSeats(v, from, to) {
     if (v === driving) { raiseWanted(30); toast('Street bench broken by the impact.'); }
   }
 }
+// A vehicle meeting the small things of the world. A tree takes the hit (a heavy or fast vehicle fells it and carries
+// on; otherwise the vehicle stops against the trunk). Benches, bins, planters, bollards, signs and railings (anything
+// under 3.2 m across and 3.6 m tall) are knocked flat. A chain-link fence gives way over 6 m and does the vehicle no
+// harm. Anything bigger stops the vehicle like a wall. Returns true when the vehicle has been stopped.
+const SMASH_M4 = new THREE.Matrix4().makeScale(0, 0, 0), smashFrom = new THREE.Vector3();
+function vehicleMass(v) { return v.kind === 'tank' || v.kind === 'mech' ? 10 : v.kind === 'bus' || v.kind === 'truck' || v.kind === 'firetruck' ? 3 : v.kind === 'bike' || v.kind === 'motorbike' ? 0.6 : 1.5; }
+function smashProp(o) {
+  if (o.inst >= 0 && o.mesh.isInstancedMesh) { o.mesh.setMatrixAt(o.inst, SMASH_M4); o.mesh.instanceMatrix.needsUpdate = true; } else o.mesh.visible = false;
+  solidProps.remove(o);
+  const m = Array.isArray(o.mesh.material) ? o.mesh.material[0] : o.mesh.material, c = m?.color?.getHex?.() ?? 0x777777;
+  burst(new THREE.Vector3(o.x, (o.minY + o.maxY) / 2, o.z), 12, [c, 0x777777, 0x555555], 5, 0.09, 0.45, 9, 1.2);
+}
+function smashThings(v, prev, p, vel) {
+  const speed = Math.hypot(vel.x, vel.z), mass = vehicleMass(v), sign = Math.sign(v.speed) || 1, r = v.radius || 2;
+  const stop = (dS, point, opt) => { p.copy(prev); if (!v.crashCooldown) damageVehicle(v, dS, point, opt); v.speed = -sign * Math.min(2, speed * 0.12); return true; };
+  // trees
+  const t = forest.nearest(p.x, p.z, r * 0.75 + 0.35);
+  if (t && t.hp > 0 && !t.falling) {
+    smashFrom.set(t.x, p.y + 0.6, t.z);
+    if (speed < 2) { p.copy(prev); v.speed = 0; return true; }
+    const hit = v.crashCooldown ? null : forest.damage(t, speed * mass, prev.x, prev.z);   // (a car at 100 km/h fells a tree; slower, it takes a few hits)
+    if (hit?.fell) { if (!v.crashCooldown) damageVehicle(v, speed * 0.4 * 1.5 / mass, smashFrom, { tree: hit }); v.speed *= mass >= 3 ? 0.85 : 0.6; }
+    else return stop(speed, smashFrom, { tree: hit });
+  }
+  // small things on the ground
+  if (solidProps.count) for (const o of solidProps.overlap(p, r * 0.8)) {
+    if (o.gone) continue;
+    const small = Math.max(o.hx, o.hz) * 2 <= 3.2 && o.maxY - o.minY <= 3.6 && !/rock|boulder|stone|statue|monument|pillar|column/i.test(o.name || '');
+    smashFrom.set(o.x, p.y + 0.5, o.z);
+    if (small && (speed > 2.5 || mass >= 3)) { smashProp(o); v.speed *= mass >= 3 ? 0.97 : 0.9; if (!v.crashCooldown && speed > 8) damageVehicle(v, speed * 0.25, smashFrom, { tree: null }); if (v === driving && Math.random() < 0.3) raiseWanted(10); }
+    else if (!small && mass < 10) return stop(speed, smashFrom, { tree: null });
+    else if (!small) smashProp(o);   // a tank flattens it anyway
+  }
+  // chain-link fences: a security fence (soft) stops you without harming the vehicle; the plain ones give way
+  for (const c of collidersAround(p.x, p.z, r)) if (c.soft && p.x + r + 0.3 > c.minX && p.x - r - 0.3 < c.maxX && p.z + r + 0.3 > c.minZ && p.z - r - 0.3 < c.maxZ) { p.copy(prev); v.speed = 0; return true; }
+  if (speed > 3) for (const c of [...collidersAround(p.x, p.z, r)]) {
+    if (!c.wire || p.x + r + 0.3 < c.minX || p.x - r - 0.3 > c.maxX || p.z + r + 0.3 < c.minZ || p.z - r - 0.3 > c.maxZ) continue;
+    breakWireFence(c, p.x, p.z); v.speed *= 0.85;
+    if (v === driving) toast('You burst through the fence.');
+  }
+  return false;
+}
 function resolveRoadMovement(v, start, dt) {
   if (!isRoadVehicle(v)||v.bridgeFlight) return;
   const p = v.group.position, destination = p.clone();
@@ -7730,6 +7824,7 @@ function resolveRoadMovement(v, start, dt) {
     const previous = p.clone();
     p.lerpVectors(start, destination, i / steps);
     hitStreetSeats(v, previous, p);
+    if (smashThings(v, previous, p, velocity)) break;   // trees, benches, bins, signs, wire fences
     const attempted = p.clone();
     if (collide(p, v.radius)) {
       const normal = p.clone().sub(attempted).setY(0).normalize();
@@ -8583,7 +8678,7 @@ blackMarket = buildBlackMarket({ openVehicleShop: (t, cats, place, o) => openVeh
 statSources.push(blackMarket);
 addEventListener('aw-clear-wanted', () => { wanted = 0; pursuitBackupCooldown = 0; });
 spaceCentre=buildSpaceCentre({safeFence:fenceRect,colliders,makePerson:makeHumanoid,animatePerson:(h,moving,dt)=>animateHumanoid(h,null,moving,false,true,dt),playerPosition:()=>player.position,resume:()=>requestGameControl(),scene,box,makeTex,interactables,toast,destinations:townPlaces.destinations,canTravel:()=>!navy?.rider&&!intercityRail?.rider&&!adventureServices?.parachuting&&!spaceCentre?.rider&&!inCar&&!sitting&&!transport?.rider&&!metro?.rider&&!action&&wanted===0,moveTo(x,y,z){player.position.set(x,y,z);vy=0;pvel.set(0,0,0);swimming=false;}});
-if(spaceCentre?.gate)accessPoints.push({...spaceCentre.gate,name:'Space Centre gate'});
+if(spaceCentre?.gate)accessPoints.push({...spaceCentre.gate,dir:[-1,0],name:'Space Centre gate'});
 buildHotbar();
 harbour = buildHarbour({scene,box,colliders,planeBlocks,interactables,makeTex,toast,makePerson:makeHumanoid,animatePerson:(h,moving,dt,pose)=>animateHumanoid(h,pose||null,moving,false,true,dt),playerPosition:()=>player.position,restrictedEntry:()=>raiseWanted(90),canEnter:()=>wanted===0,machineImpact:(from,dt)=>{if(!inCar)hurtPlayer(12,from,5);},
   boardShip(x,z){player.position.set(x,2.8,z);swimming=false;vy=0;pvel.set(0,0,0);toast('Aboard the moored cargo ship. Use Interact to return to the dock.');},
@@ -9099,7 +9194,7 @@ const roadGrid = new Map(), ROAD_CELL = 20;
     if (!o.isMesh || o.isInstancedMesh) return; const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m?.color) return;
     const g = o.geometry;
     if (g.type === 'BufferGeometry' && g.attributes.position && !m.map) {   // roads merged into one mesh (frontier-world, The Reserve, the road crew...): read their flat tops
-      tmpC.copy(m.color); if (tmpC.r * 0.3 + tmpC.g * 0.59 + tmpC.b * 0.11 > 0.2) return;
+      tmpC.copy(m.color); if (tmpC.r * 0.3 + tmpC.g * 0.59 + tmpC.b * 0.11 > 0.32) return;
       if (!g.boundingBox) g.computeBoundingBox(); const wb = g.boundingBox.clone().applyMatrix4(o.matrixWorld); if (wb.max.y > 0.35 || wb.min.y < -0.4) return;
       const P = g.attributes.position, I = g.index, n = I ? I.count : P.count, a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
       for (let t = 0; t < n; t += 3) {
@@ -9114,7 +9209,7 @@ const roadGrid = new Map(), ROAD_CELL = 20;
       return;
     }
     if (!['BoxGeometry', 'PlaneGeometry'].includes(g.type)) return;
-    tmpC.copy(m.color); const lum = tmpC.r * 0.3 + tmpC.g * 0.59 + tmpC.b * 0.11; if (lum > 0.08 && !m.map) { if (lum > 0.2) return; }
+    tmpC.copy(m.color); const lum = tmpC.r * 0.3 + tmpC.g * 0.59 + tmpC.b * 0.11; if (lum > 0.08 && !m.map) { if (lum > 0.32) return; }   // (up to mid-grey: the Capital's roads are 0x444b50)
     if (!g.boundingBox) g.computeBoundingBox(); const bb = g.boundingBox.clone().applyMatrix4(o.matrixWorld);
     if (bb.max.y > 0.35 || bb.min.y < -0.4 || bb.max.y - bb.min.y > 0.3) return;
     const w = bb.max.x - bb.min.x, d = bb.max.z - bb.min.z; if (Math.max(w, d) < 6 || w * d > 200000 || (m.map && lum > 0.2)) return;
@@ -9122,6 +9217,8 @@ const roadGrid = new Map(), ROAD_CELL = 20;
     for (let i = Math.floor(rect.minX / ROAD_CELL); i <= Math.floor(rect.maxX / ROAD_CELL); i++) for (let k = Math.floor(rect.minZ / ROAD_CELL); k <= Math.floor(rect.maxZ / ROAD_CELL); k++) { const key = i * 100003 + k; let l = roadGrid.get(key); if (!l) roadGrid.set(key, l = []); l.push(rect); }
   });
 }
+// the country link roads (road-links.js) rise over hills on embankments, so the scan above can't see them: add them
+for (const [x0, x1, z0, z1] of ROAD_LINKS) { const rect = { minX: x0, maxX: x1, minZ: z0, maxZ: z1 }; for (let i = Math.floor(x0 / ROAD_CELL); i <= Math.floor(x1 / ROAD_CELL); i++) for (let k = Math.floor(z0 / ROAD_CELL); k <= Math.floor(z1 / ROAD_CELL); k++) { const key = i * 100003 + k; let l = roadGrid.get(key); if (!l) roadGrid.set(key, l = []); l.push(rect); } }
 // Roads wear out (heavy traffic, weather, blasts) and road crews fix them — see road-wear.js.
 const roadRectList = (() => { const set = new Set(); for (const l of roadGrid.values()) for (const r of l) if ((r.maxX - r.minX) * (r.maxZ - r.minZ) < 60000) set.add(r); const out = [...set];
   for (let k = -4; k <= 4; k++) out.push({ minX: k * 40 - 4.5, maxX: k * 40 + 4.5, minZ: -178, maxZ: 178 }, { minX: -178, maxX: 178, minZ: k * 40 - 4.5, maxZ: k * 40 + 4.5 });   // the town's street grid
@@ -9135,7 +9232,11 @@ const roamTraffic = createRoamingTraffic({ rects: roadRectList, makeVehicle, veh
   obstacles: () => OBST });
 console.log('[traffic]', roamTraffic.nodes.length, 'junctions,', roamTraffic.edges.length / 2, 'stretches of road');
 function isRoadAt(x, z) {
-  if (groundY(x, z, 0) > 0.12) return false;   // pavements, kerbs, floors
+  if (groundY(x, z, 0) > 0.12) {   // pavements, kerbs, floors; but the roads over the hills are roads however high they are
+    if (onHillRoad(x, z)) return true;
+    if (linkGroundAt(x, z) == null) return false;
+    return ROAD_LINKS.some(([x0, x1, z0, z1]) => x > x0 && x < x1 && z > z0 && z < z1);
+  }
   if (Math.abs(x) < 180 && Math.abs(z) < 180) { const mx = ((x % 40) + 40) % 40, mz = ((z % 40) + 40) % 40; if (mx < 4.5 || mx > 35.5 || mz < 4.5 || mz > 35.5) return true; }
   for (const r of roadGrid.get(Math.floor(x / ROAD_CELL) * 100003 + Math.floor(z / ROAD_CELL)) || []) if (x > r.minX + 0.5 && x < r.maxX - 0.5 && z > r.minZ + 0.5 && z < r.maxZ - 0.5) return true;
   return false;
