@@ -34,6 +34,21 @@ export const APPS = {
   laptop:   { name: 'Cryptic Book (laptop)', icon: '💻', price: 300, device: true, about: 'A laptop: the same apps, full-size. Delivered to you straight away.' },
 };
 
+// Info Hub filters: what a message is about, from its words. Order is the order of the chips.
+export const HUB_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'wanted', label: '🚨 Wanted', re: /wanted|police|pursu|ANPR|tipped off|surrender|security has been alerted|stop for arrest|military police/i },
+  { id: 'arrest', label: '🚔 Arrests', re: /arrest|custody|jail|prison|court|sentenc|guilty|convict|charged|impound|\bfined?\b|bail/i },
+  { id: 'escape', label: '🏃 Escapes', re: /escap|lost you|lose (them|your trail|interest)|got away|broke out|break(s)? out|on the run/i },
+  { id: 'bounty', label: '🎯 Bounties', re: /bount|hunter|guild|reward|wanted poster/i },
+  { id: 'money', label: '💰 Money', re: /gold|\bpaid\b|\bpay|bank|salary|wage|bought|\bsold\b|fare|debt|loan|tax|rent/i },
+  { id: 'messages', label: '💬 Messages', re: /💬|message|texted|calls? you/i },
+  { id: 'work', label: '💼 Work', re: /\bjob\b|shift|career|\bboss\b|hired|fired|promot|delivery|contract/i },
+  { id: 'health', label: '❤️ Health', re: /hunger|hungry|health|hurt|injur|hospital|doctor|sleep|tired|energy|sick|ill\b/i },
+  { id: 'world', label: '🌍 World', re: /weather|rain|snow|storm|dark|night|morning|sunrise|sunset|holiday|season|festival|destroyed|built|opens?\b/i },
+  { id: 'other', label: 'Other' },
+];
+
 export function createPhone(ctx) {
   const uid = () => ctx.userId?.() || 'guest';
   const load = () => { try { return JSON.parse(localStorage.getItem('cryptic:' + uid()) || 'null'); } catch { return null; } };
@@ -56,7 +71,7 @@ export function createPhone(ctx) {
 #crypticPhone .app i{font-style:normal;font-size:24px;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:#ffffff1c}
 #crypticPhone h3{margin:2px 0 10px;font:700 18px system-ui}#crypticPhone .row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #ffffff14}
 #crypticPhone button.b{font:600 13px system-ui;padding:8px 12px;min-height:36px;border-radius:10px;border:0;background:#2f6fdf;color:#fff;cursor:pointer}#crypticPhone button.g{background:#ffffff22}
-#crypticPhone .pbtns{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:8px}#crypticPhone .home{height:5px;width:110px;border:0;padding:0;border-radius:3px;background:#fff9;cursor:pointer}#crypticPhone .pclose{background:#ffffff1a;color:#fff;border:1px solid #ffffff33;border-radius:999px;padding:3px 10px;font:12px system-ui;cursor:pointer}
+#crypticPhone .pbtns{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:8px}#crypticPhone .home{height:5px;width:110px;border:0;padding:0;border-radius:3px;background:#fff9;cursor:pointer}#crypticPhone .pback{background:none;border:0;color:#8ec5ff;font:600 14px system-ui;padding:4px 2px;min-height:32px;cursor:pointer}#crypticPhone .apphead{display:flex;align-items:center;gap:6px;margin:2px 0 4px}#crypticPhone .apphead h3{margin:0}#crypticPhone .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}#crypticPhone .chip{font:600 12px system-ui;padding:5px 10px;min-height:30px;border-radius:999px;border:1px solid #ffffff33;background:#ffffff12;color:#fff;cursor:pointer}#crypticPhone .chip.on{background:#2f6fdf;border-color:#2f6fdf}#crypticPhone .app{position:relative}#crypticPhone .app b.n{position:absolute;top:-4px;right:2px;background:#e74c3c;color:#fff;border-radius:9px;padding:0 6px;font:700 11px/18px system-ui;min-width:18px}#crypticPhone .pclose{background:#ffffff1a;color:#fff;border:1px solid #ffffff33;border-radius:999px;padding:3px 10px;font:12px system-ui;cursor:pointer}
 #crypticPhone .crack{position:absolute;inset:0;pointer-events:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 200'%3E%3Cg stroke='white' stroke-opacity='.35' fill='none' stroke-width='.4'%3E%3Cpath d='M0 8 L14 18 L22 15 L35 30 M14 18 L10 34 L18 52 M22 15 L30 4 M35 30 L48 33 M35 30 L37 47'/%3E%3C/g%3E%3C/svg%3E") top left/100% 100% no-repeat}
 #crypticPhone img.ph{width:100%;border-radius:10px;display:block}#crypticPhone .pics{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}#crypticPhone .pics img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:pointer}
 #crypticPhone textarea,#crypticPhone input{width:100%;box-sizing:border-box;background:#ffffff14;color:#fff;border:1px solid #ffffff2a;border-radius:10px;padding:8px;font:14px system-ui}
@@ -69,6 +84,8 @@ body.cinema #phoneBtn{visibility:hidden}`;
   { const st2 = document.createElement('style'); st2.textContent = '#phoneBtn[data-unread]:not([data-unread=""])::after{content:attr(data-unread);margin-left:6px;background:#d63031;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700}'; document.head.append(st2); }   // (how many messages wait in the Info Hub)
   const btn = document.createElement('button'); btn.id = 'phoneBtn'; btn.type = 'button'; btn.textContent = '📱 Phone (H)'; btn.onclick = () => toggle(); document.body.append(btn);
   let open = false, app = 'home', laptop = false;
+  // Esc is Back, even while typing a message (the game's own key handler ignores keys typed into a box)
+  el.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); back(); } });
 
   function frame(title, inner, opts = {}) {
     const d = new Date(), time = d.toTimeString().slice(0, 5);
@@ -76,9 +93,14 @@ body.cinema #phoneBtn{visibility:hidden}`;
     el.className = laptop ? 'laptop' : '';
     el.innerHTML = `<div class="scr"><div class="bar"><span>${time}</span><span>${laptop ? 'Cryptic Book' : model} · 5G · ${Math.floor(ctx.stats.gold)}g</span></div><div class="body"></div>${!laptop && !ctx.premium?.() ? '<div class="crack"></div>' : ''}</div><div class="pbtns"><button type="button" class="home" title="Home"></button><button type="button" class="pclose" title="Put the phone away (H or Esc)">✕ Close</button></div>`;
     const body = el.querySelector('.body');
-    if (title) { const h = document.createElement('h3'); h.textContent = title; body.append(h); }
+    if (app !== 'home') {   // every app has a way back
+      const head = document.createElement('div'); head.className = 'apphead';
+      const bk = document.createElement('button'); bk.type = 'button'; bk.className = 'pback'; bk.textContent = '‹ Back'; bk.onclick = back; head.append(bk);
+      if (title) { const h = document.createElement('h3'); h.textContent = title; head.append(h); }
+      body.append(head);
+    } else if (title) { const h = document.createElement('h3'); h.textContent = title; body.append(h); }
     if (typeof inner === 'string') body.insertAdjacentHTML('beforeend', inner); else if (inner) body.append(inner);
-    el.querySelector('.home').onclick = () => go('home'); el.querySelector('.pclose').onclick = () => toggle(false);
+    el.querySelector('.home').onclick = () => go('home'); const pc = el.querySelector('.pclose'); pc.onclick = back; if (app !== 'home') { pc.textContent = '‹ Back'; pc.title = 'Back (Esc). H puts the phone away.'; }
     return body;
   }
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -92,7 +114,7 @@ body.cinema #phoneBtn{visibility:hidden}`;
       const hello = document.createElement('div'); hello.style.cssText = 'text-align:center;margin:8px 0 14px'; hello.innerHTML = `<div style="font:200 44px system-ui">${new Date().toTimeString().slice(0, 5)}</div><div style="opacity:.75">${new Date().toDateString()}</div><div style="opacity:.5;font-size:11px;margin-top:4px">CRYPTIC · made in Anthos by the Government of Anthos</div>`;
       body.append(hello);
       const grid = document.createElement('div'); grid.className = 'grid';
-      for (const [id, a] of Object.entries(APPS)) { if (a.device || !has(id)) continue; const b = document.createElement('button'); b.className = 'app'; b.type = 'button'; b.innerHTML = `<i>${a.icon}</i>${esc(a.name)}`; b.onclick = () => go(id); grid.append(b); }
+      for (const [id, a] of Object.entries(APPS)) { if (a.device || !has(id)) continue; const b = document.createElement('button'); b.className = 'app'; b.type = 'button'; const n = unreadFor(id); b.innerHTML = `<i>${a.icon}</i>${esc(a.name)}${n ? `<b class="n">${n > 99 ? '99+' : n}</b>` : ''}`; if (n) b.title = `${a.name}: ${n} new`; b.onclick = () => go(id); grid.append(b); }
       body.append(grid);
     },
     torch() {
@@ -141,14 +163,25 @@ body.cinema #phoneBtn{visibility:hidden}`;
         ['💰 Your gold', Math.floor(ctx.stats.gold) + ' gold'], ['❤️ Health', Math.round(ctx.stats.hp) + ''], ['🍽️ Hunger', Math.round(ctx.stats.hunger) + '%'], ['⚡ Energy', Math.round(ctx.stats.energy) + '%'],
       ];
       const body = frame('Info Hub', '<p style="opacity:.7;margin-top:-6px">Your daily information, and what\'s been happening</p>');
-      for (const [a, b] of lines) body.append(row(`<b>${a}</b>`, Object.assign(document.createElement('span'), { textContent: b })));
-      const mine = (ctx.notices?.() || []).slice(0, 40); ctx.seenNotices?.();   // messages for you that didn't need to cover your screen
+      // Filter by what it's about. A message can belong to more than one (an arrest is also about being wanted).
+      const all = ctx.notices?.() || [], news = ctx.news?.() || []; ctx.seenNotices?.(); badge();
+      const f = HUB_FILTERS.find(x => x.id === S.hubFilter) || HUB_FILTERS[0], keep = t => f.id === 'all' || (f.id === 'other' ? !HUB_FILTERS.some(x => x.re?.test(t)) : f.re.test(t));
+      const chips = document.createElement('div'); chips.className = 'chips';
+      for (const x of HUB_FILTERS) {
+        const n = x.id === 'all' ? all.length + news.length : [...all.map(m => m.text), ...news].filter(t => x.id === 'other' ? !HUB_FILTERS.some(y => y.re?.test(t)) : x.re.test(t)).length;
+        if (!n && x.id !== 'all' && x.id !== f.id) continue;   // only the filters that have something in them
+        const c = document.createElement('button'); c.type = 'button'; c.className = 'chip' + (x.id === f.id ? ' on' : ''); c.textContent = `${x.label} ${n}`;
+        c.onclick = () => { S.hubFilter = x.id; save(); go('infohub'); }; chips.append(c);
+      }
+      body.append(chips);
+      if (f.id === 'all') for (const [a, b] of lines) body.append(row(`<b>${a}</b>`, Object.assign(document.createElement('span'), { textContent: b })));   // the day at a glance
+      const mine = all.filter(n => keep(n.text)).slice(0, 40);   // messages for you that didn't need to cover your screen
       body.append(Object.assign(document.createElement('h3'), { textContent: 'For you' }));
-      if (!mine.length) body.insertAdjacentHTML('beforeend', '<p style="opacity:.7">Nothing new.</p>');
+      if (!mine.length) body.insertAdjacentHTML('beforeend', `<p style="opacity:.7">${f.id === 'all' ? 'Nothing new.' : 'Nothing here.'}</p>`);
       for (const n of mine) body.append(row(`<small style="opacity:.6">${esc(n.time || '')}</small> ${esc(n.text)}`));
-      const top = (ctx.news?.() || []).slice(0, 25);   // what's been happening: buildings destroyed, arrests, the city's news (none of it pops up on your screen)
+      const top = news.filter(keep).slice(0, 25);   // what's been happening: buildings destroyed, arrests, the city's news (none of it pops up on your screen)
       body.append(Object.assign(document.createElement('h3'), { textContent: "What's been happening" }));
-      if (!top.length) body.insertAdjacentHTML('beforeend', '<p style="opacity:.7">Nothing yet today.</p>');
+      if (!top.length) body.insertAdjacentHTML('beforeend', '<p style="opacity:.7">Nothing yet.</p>');
       for (const n of top) body.append(row(`📰 ${esc(n)}`));
     },
     store() {
@@ -241,7 +274,7 @@ body.cinema #phoneBtn{visibility:hidden}`;
     return posts.map((p, i) => ({ user: users[(i + day) % users.length], emoji: p[0], cap: p[1], bg: p[2], likes: 40 + ((i * 97 + day * 13) % 900), at: Date.now() - (i + 1) * 3600e3 }));
   }
   function viewPhoto(i) {
-    const p = S.photos[i]; if (!p) return go('gallery');
+    const p = S.photos[i]; if (!p) return go('gallery'); remember('photo:' + i); app = 'photo:' + i;
     const body = frame('Photo', `<img class="ph" src="${p.src}"><p style="opacity:.7">${new Date(p.at).toLocaleString()}</p>`);
     const a = document.createElement('a'); a.href = p.src; a.download = 'anthos-photo.jpg'; a.textContent = 'Save to your device'; a.style.color = '#8ec5ff';
     body.append(a, document.createElement('br'), button('Delete', () => { S.photos.splice(i, 1); save(); go('gallery'); }, 'g'), button('Back', () => go('gallery'), 'g'));
@@ -256,14 +289,14 @@ body.cinema #phoneBtn{visibility:hidden}`;
   function setLaptop(on) { if (on && !st().laptop) return ctx.toast('You need a Cryptic Book. Get one in the Cryptic Store.'); laptop = on; if (!open) toggle(true); go('home'); }
 
   function thread(c) {
-    const s = st(); s.msgs ||= {}; s.unread ||= {}; s.unread[c.id] = 0; save(); app = 'thread:' + c.id;
+    const s = st(); s.msgs ||= {}; s.unread ||= {}; s.unread[c.id] = 0; save(); badge(); remember('thread:' + c.id); app = 'thread:' + c.id; threads[app] = c;
     const body = frame(`${c.icon || '👤'} ${c.name}`, '');
     const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:330px;overflow-y:auto;margin-bottom:8px';
     for (const m of s.msgs[c.id] || []) { const b = document.createElement('div'); b.textContent = m.text; b.style.cssText = `max-width:78%;padding:7px 10px;border-radius:14px;font:14px system-ui;${m.me ? 'align-self:flex-end;background:#2f80ed' : 'align-self:flex-start;background:#ffffff1c'}`; list.append(b); }
     body.append(list); setTimeout(() => { list.scrollTop = list.scrollHeight; }, 0);
     const input = document.createElement('input'); input.placeholder = 'Type a message'; input.maxLength = 300; body.append(input);
     const sendIt = () => { const text = input.value.trim(); if (!text) return; input.value = ''; add(c.id, { me: true, text }); ctx.sendMessage?.(c, text); thread(c); };
-    input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') sendIt(); });
+    input.addEventListener('keydown', e => { if (e.key === 'Escape') return; e.stopPropagation(); if (e.key === 'Enter') sendIt(); });   // (Esc bubbles up to the phone: Back)
     body.append(button('Send', sendIt), button('Back', () => go('messages')));
     setTimeout(() => input.focus(), 30);
   }
@@ -272,15 +305,35 @@ body.cinema #phoneBtn{visibility:hidden}`;
   function receive(c, text) {
     const s = st(); s.unread ||= {}; add(c.id, { me: false, text });
     if (open && app === 'thread:' + c.id) { thread(c); return; }
-    s.unread[c.id] = (s.unread[c.id] || 0) + 1; save(); ctx.toast(`💬 ${c.name}: ${text.length > 60 ? text.slice(0, 60) + '…' : text}`);
+    s.unread[c.id] = (s.unread[c.id] || 0) + 1; save(); badge(); ctx.toast(`💬 ${c.name}: ${text.length > 60 ? text.slice(0, 60) + '…' : text}`);
     if (open && app === 'messages') go('messages');
   }
-  function go(id) { app = id; if (!has(id) && APPS[id]) { ctx.toast('Download it from the Cryptic Store first.'); id = 'store'; app = id; } (screens[id] || screens.home)(); }
+  // What's new, per app: the phone button says which app it's in (e.g. "💬 2 · ℹ️ 5"), and so do the home-screen icons.
+  function unreadFor(id) {
+    if (id === 'messages') { const u = st().unread || {}; return Object.values(u).reduce((a, b) => a + (b || 0), 0); }
+    if (id === 'infohub') return ctx.unreadNotices?.() || 0;
+    return 0;
+  }
+  function badge() {
+    const parts = [['messages', '💬'], ['infohub', 'ℹ️']].map(([id, icon]) => [unreadFor(id), icon, APPS[id].name]).filter(([n]) => n > 0);
+    btn.dataset.unread = parts.map(([n, icon]) => `${icon} ${n}`).join(' · ');
+    btn.title = parts.length ? 'New: ' + parts.map(([n, , name]) => `${n} in ${name}`).join(', ') : 'Your phone (H)';
+  }
+  // Where you've been, so Back (on screen, the bottom button, or Esc) returns to it, the way a real phone does.
+  let hist = []; const threads = {};
+  function remember(next) { if (app === next) return; if (hist[hist.length - 1] === next) hist.pop(); else hist.push(app); if (hist.length > 30) hist.shift(); }
+  function show(id) { if (id.startsWith('thread:') && threads[id]) return thread(threads[id]); if (id.startsWith('photo:')) return viewPhoto(+id.slice(6)); (screens[id] || screens.home)(); }
+  function go(id) { remember(id); app = id; if (!has(id) && APPS[id]) { ctx.toast('Download it from the Cryptic Store first.'); id = 'store'; app = id; } if (id === 'home') hist = []; show(id); }
+  function back() {   // back one screen; from the home screen it puts the phone away
+    if (!open) return;
+    if (app === 'home') return toggle(false);
+    app = hist.pop() || 'home'; show(app);
+  }
   function toggle(force) {
     const want = force ?? !open;
     if (want === open) { if (want) go(app); return; }
     open = want; el.hidden = !open;
-    if (open) { st(); ctx.pause(); go('home'); } else { ctx.resume(); }
+    if (open) { st(); ctx.pause(); hist = []; app = 'home'; show('home'); } else { ctx.resume(); }
   }
   function close() { if (open) toggle(false); }
   // count distance on foot for the Fit Tracker
@@ -300,7 +353,7 @@ body.cinema #phoneBtn{visibility:hidden}`;
   return {
     devices,
     get open() { return open; },
-    toggle, close, openLaptop: () => setLaptop(true), receive,
+    toggle, close, back, badge, openLaptop: () => setLaptop(true), receive,
     reset() { S = null; things.clear(); },   // a different player signed in
     update(p, onFoot) { if (onFoot && last) { const d = Math.hypot(p.x - last.x, p.z - last.z); if (d < 3) { st().steps += d; } } last = onFoot ? { x: p.x, z: p.z } : null; },
     save,
