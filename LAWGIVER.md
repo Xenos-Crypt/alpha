@@ -2,6 +2,24 @@
 
 One entry per run: what was decided, why, and what was declined. The owner reviews and merges every change.
 
+## 2026-11-28 — Buildings are entered at their door, not through the back wall
+
+**Decision:** In `main.js` `nearestCivicBuilding()`, "E: Enter <building>" was offered whenever you stood within 6 m of *any* edge of a building's footprint, so you could walk round to a blank back or side wall and go in (the owner found this). Now, when a building has a door, it is entered only at that door: `doors.js` gains `doorReach(b, p)`, which accepts you only in front of the doorway (no more than 0.3 m behind its plane, 3.5 m out, plus 2.7 m for a revolving drum, and within half the door's width + 1.5 m to either side). Buildings whose door is only a point on the wall get a 3.5 m reach from that point. `frontier-world.js` now records the visible front door of every Frontier building and Frontier Lane house as that point, so they are covered too. Buildings without a door record keep the old edge rule for now (see below), so nothing becomes unenterable.
+
+**Where:** all 25 buildings with a `doors.js` door (St. Mary Hospital and its wings, Ashford Fire Station, the three Downtown police posts, Police HQ and canteen, Anthos State Prison intake and cell blocks A–D, Ashford School, Government Offices, Capital Clinic, …) and the 122 Frontier buildings and houses (x ≈ -300…610, z ≈ -570…-450). Example: Ashford School (-60, 60), door on the east face at (-48, 60).
+
+**Why:** A "what if" rule break the owner reported himself, and "said must match seen": the prompt claimed a way in where there is only wall. Fixed at the cause (the range test), not per building. No save keys, colliders or interiors touched; the walk-through-the-door entry (`walkInThroughDoors`) already used the door and is unchanged.
+
+**Tested:** headless sweep over every building with a door: before, 23/25 enterable from behind and 25/25 from the side; after, 0 and 0 across all 147 (the 25 + 122), and every doors.js door still enterable from 2 m in front. New unit test in `door-clearance.test.mjs`.
+
+**Input this run:** no open issues, no Petitions issue, no open PRs. Supabase `world_bugs` (fixed = false), `world_events`, `world_entities`: empty. Vercel production logs: no `[world-report]` lines in the last 50 minutes.
+
+**Problems noted for later:**
+- 61 enterable buildings still have no door record and keep the any-wall rule: Northhaven civic row (x 980…1180, z -300…-220; `world-expansion.js` builds a door gap on the z-11 side, so it could pass `door: {x, z: z-11}`), the Riverside, Capital and Poison Land police stations (-60, 700), (380, 900), (620, 300), the Presidential Residence (500, 880), and the venue/arcade/church/mosque/pub buildings added after `buildDoors` runs. Each module should record where its visible door is, as Frontier now does.
+- The St. Mary General Hospital door's forecourt point at (-200, -210) is blocked by a collider 2 m out; Frontier Building 98 (75, -460) and 99 (285, -462) likewise. Check that a player can actually walk up to these doors.
+- Frontier buildings: standing at the front door, E offers the desk/counter inside (e.g. "Guild hall desk") instead of entering, because those services are placed by the door. Not wrong, but worth a look.
+- Anthos State Prison cell blocks A–D (-932…-828, 511…546) offer "Enter" to anyone walking up from the street; a real prison has one controlled entrance (the intake building).
+
 ## 2026-11-27 — The last three flickering surfaces: indoor rugs, the lobby doormat, the raceway's start line
 
 **Decision:** Two causes, three overlaps, the world audit goes from 3 to 0.

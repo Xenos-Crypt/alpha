@@ -104,7 +104,8 @@ export function buildFrontierWorld(ctx) {
   // A rectangular building with windows on all sides and a door on the side facing `face` (+z by default).
   // Every frontier building with a door can be entered (E near it), like the town's.
   let frontierN = 1;
-  const enterable = (type, name, x, z, w, d) => ctx.civicBuildings?.push({ type, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  // door: the visible front door's spot on the wall, so the building is only entered there (main.js nearestCivicBuilding)
+  const enterable = (type, name, x, z, w, d, door) => ctx.civicBuildings?.push({ type, name, x, z, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, ...(door ? { door } : {}) });
   function building(x, z, w, d, h, wall, { roof = C.slate, floors = Math.max(1, Math.round(h / 3.4)), door = true, flatRoof = true, face = 1, kind = 'frontier-office', name } = {}) {
     box(w, h, d, x, h / 2, z, wall, true);
     if (flatRoof) box(w + 0.4, 0.4, d + 0.4, x, h + 0.2, z, roof);
@@ -118,7 +119,7 @@ export function buildFrontierWorld(ctx) {
       }
     }
     if (door) { box(2.4, 2.8, 0.15, x, 1.4, z + face * (d / 2 + 0.08), C.door); box(4, 0.25, 1.6, x, 3.1, z + face * (d / 2 + 0.8), C.darkConcrete); }
-    if (door) enterable(kind, name || `Frontier Building ${frontierN++}`, x, z, w, d);
+    if (door) enterable(kind, name || `Frontier Building ${frontierN++}`, x, z, w, d, { x, z: z + face * d / 2 });
     return { doorPos: new THREE.Vector3(x, 0.2, z + face * (d / 2 + 2.2)) };
   }
   function house(x, z, face, wall, roofMat) {
@@ -129,7 +130,7 @@ export function buildFrontierWorld(ctx) {
     box(1.1, 2.4, 1.1, x + w * 0.25, h + 2.2, z - d * 0.2, C.brick);                  // chimney
     for (const sx of [-2.2, 2.2]) for (const y of [1.6, 4]) box(1.4, 1.1, 0.08, x + sx, y, z + face * (d / 2 + 0.04), C.window);
     box(1.2, 2.2, 0.12, x, 1.1, z + face * (d / 2 + 0.06), C.door);
-    enterable('house', `${frontierN++} Frontier Lane`, x, z, w, d);
+    enterable('house', `${frontierN++} Frontier Lane`, x, z, w, d, { x, z: z + face * d / 2 });
     box(1.4, 0.06, 1.6, x, 0.03, z + face * (d / 2 + 0.8), C.concrete);               // front path
     for (const sx of [-1, 1]) box(w / 2 - 0.9, 0.6, 0.25, x + sx * (w / 4 + 0.45), 0.3, z + face * (d / 2 + 1.6), C.darkStone);   // garden wall with a gap for the path
   }

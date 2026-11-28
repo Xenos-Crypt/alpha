@@ -12,3 +12,16 @@ test('civic swing and revolving doors stay outside the facade through their open
   }
  }
 });
+test('a building is entered at its door, not through its back or side walls',async()=>{
+ const {doorReach}=await import('./doors.js');
+ for(const type of ['shop','house','office'])for(const face of [-1,1]){
+  const b={x:0,z:0,minX:-5,maxX:5,minZ:-5,maxZ:5,type,doorFace:face};
+  buildDoors({scene:new THREE.Scene(),buildings:[b],colliders:[],playerPos:()=>new THREE.Vector3(),hourNow:()=>12,groundY:()=>0});
+  const at=(x,z)=>doorReach(b,{x,z});
+  assert.ok(at(0,face*6.5)!=null,`${type}: the door works from the street in front of it`);
+  assert.equal(at(0,-face*6),null,`${type}: no way in from behind the back wall`);
+  assert.equal(at(6,0),null,`${type}: no way in from the east wall`);
+  assert.equal(at(-6,0),null,`${type}: no way in from the west wall`);
+  assert.equal(at(0,face*14),null,`${type}: not from across the street`);
+ }
+});

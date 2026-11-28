@@ -17,6 +17,25 @@ export function doorStyle(type = '') {
 export const SHOP_OPEN = 7, SHOP_CLOSE = 22;
 export const shopOpen = hour => hour >= SHOP_OPEN && hour < SHOP_CLOSE;
 
+// Where you can go in: only in front of the door, within a few steps of it. Returns how far
+// you are from the door, or null if you are behind it, beside it or too far away. Without
+// this a building let you in from any wall (the old check measured to the nearest edge of
+// the footprint), so you could walk in through the back of a shop where there is no door.
+export function doorReach(b, p, reach = 3.5) {
+  const d = b.door; if (!d) return null;
+  if (!d.f || !d.g) {   // a door given only as a point on the wall (e.g. the branch offices)
+    if (d.x == null) return null;
+    const r = Math.hypot(p.x - d.x, p.z - d.z), inside = b.minX != null && p.x > b.minX && p.x < b.maxX && p.z > b.minZ && p.z < b.maxZ;
+    return r <= reach && !inside ? r : null;
+  }
+  const f = d.f, ox = p.x - d.g.position.x, oz = p.z - d.g.position.z;
+  const out = ox * f.nx + oz * f.nz;                  // how far out in front of the doorway
+  const along = Math.abs(ox * f.nz - oz * f.nx);      // how far to the side of its centre line
+  const drum = d.style === 'revolving' ? 2.7 : 0;     // a revolving door's drum stands 2.7 m out
+  if (out < -0.3 || out > reach + drum || along > (d.W || 2.6) / 2 + 1.5) return null;
+  return Math.hypot(Math.max(0, out - drum), along);
+}
+
 export function buildDoors({ scene, buildings, colliders, groundY, playerPos, hourNow, makeTex, sweep, blocked }) {
   const glass = new THREE.MeshStandardMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0.6, depthWrite: false, side: THREE.DoubleSide });
   const frame = new THREE.MeshStandardMaterial({ color: 0x2b2f33, metalness: 0.7, roughness: 0.35 });
@@ -69,7 +88,7 @@ export function buildDoors({ scene, buildings, colliders, groundY, playerPos, ho
     g.rotation.y = Math.atan2(f.nx, f.nz);   // the group's +z points out of the building
     scene.add(g);
     const W = Math.min(style === 'shutter' ? 4.2 : 2.6, f.span * 0.4), H = style === 'shutter' ? 3 : 2.6;
-    const d = { b, style, g, f, open: 0, spin: 0, parts: {} };
+    const d = { b, style, g, f, W, open: 0, spin: 0, parts: {} };
     // door frame
     box(g, W + 0.3, 0.2, 0.25, 0, H + 0.1, 0, frame);
     for (const s of [-1, 1]) box(g, 0.15, H, 0.25, s * (W / 2 + 0.07), H / 2, 0, frame);
