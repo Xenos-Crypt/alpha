@@ -145,8 +145,8 @@ export function buildFrontierWorld(ctx) {
   // ---- security fence with a guarded gate ------------------------------------------
   function perimeter(r, h = 3.4) {
     const [g0, g1] = r.gate;
-    const segX = (x0, x1, z) => { if (x1 - x0 < 0.5) return; const w = x1 - x0, cx = (x0 + x1) / 2; box(w, h, 0.12, cx, h / 2, z, C.fenceMesh); ctx.colliders.push({ minX: x0, maxX: x1, minZ: z - 0.3, maxZ: z + 0.3 }); for (let x = x0; x <= x1; x += 6) cyl(0.08, 0.08, h + 0.4, x, (h + 0.4) / 2, z, C.steel, 5); box(w, 0.08, 0.3, cx, h + 0.35, z, C.steel); };
-    const segZ = (z0, z1, x) => { const d = z1 - z0, cz = (z0 + z1) / 2; box(0.12, h, d, x, h / 2, cz, C.fenceMesh); ctx.colliders.push({ minX: x - 0.3, maxX: x + 0.3, minZ: z0, maxZ: z1 }); for (let z = z0; z <= z1; z += 6) cyl(0.08, 0.08, h + 0.4, x, (h + 0.4) / 2, z, C.steel, 5); box(0.3, 0.08, d, x, h + 0.35, cz, C.steel); };
+    const segX = (x0, x1, z) => { if (x1 - x0 < 0.5) return; const w = x1 - x0, cx = (x0 + x1) / 2; box(w, h, 0.12, cx, h / 2, z, C.fenceMesh); ctx.colliders.push({ minX: x0, maxX: x1, minZ: z - 0.3, maxZ: z + 0.3, soft: true }); for (let x = x0; x <= x1; x += 6) cyl(0.08, 0.08, h + 0.4, x, (h + 0.4) / 2, z, C.steel, 5); box(w, 0.08, 0.3, cx, h + 0.35, z, C.steel); };
+    const segZ = (z0, z1, x) => { const d = z1 - z0, cz = (z0 + z1) / 2; box(0.12, h, d, x, h / 2, cz, C.fenceMesh); ctx.colliders.push({ minX: x - 0.3, maxX: x + 0.3, minZ: z0, maxZ: z1, soft: true }); for (let z = z0; z <= z1; z += 6) cyl(0.08, 0.08, h + 0.4, x, (h + 0.4) / 2, z, C.steel, 5); box(0.3, 0.08, d, x, h + 0.35, cz, C.steel); };
     segX(r.x0, r.x1, r.z0); segX(r.x0, g0, r.z1); segX(g1, r.x1, r.z1); segZ(r.z0, r.z1, r.x0); segZ(r.z0, r.z1, r.x1);
     // gatehouse and barrier
     box(4, 3.2, 4, g0 - 3, 1.6, r.z1 + 1, C.concrete, true); box(4.6, 0.3, 4.6, g0 - 3, 3.35, r.z1 + 1, C.darkConcrete);

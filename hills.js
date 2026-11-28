@@ -19,6 +19,13 @@ export function roadPoint(t) {   // t: 0 (bottom) .. 1 (top)
   return { x: HILL.x + Math.cos(a) * r, z: HILL.z + Math.sin(a) * r, r, a };
 }
 
+// is (x, z) on the spiral road? (for the road checks in main.js: traffic, grass, the access-road audit)
+export function onHillRoad(x, z) {
+  const dx = x - HILL.x, dz = z - HILL.z, r = Math.hypot(dx, dz); if (r > HILL.base || r < HILL.flat) return false;
+  let t = 1 + (Math.atan2(dz, dx) - ROAD_END_A) / (TURNS * Math.PI * 2); t -= Math.floor(t);
+  for (const tt of [t, t + 1, t - 1]) { if (tt < 0 || tt > 1) continue; if (Math.abs(r - THREE.MathUtils.lerp(HILL.base - 6, HILL.flat + 6, tt)) < ROAD_W / 2) return true; }
+  return false;
+}
 export function buildHills({ doors, basement, scene, colliders, civicBuildings, interactables, makeTex, toast, destinations, playerPos, sitSpots, planeBlocks, chore, sleep }) {
   const mats = new Map();
   const mat = (c, o = {}) => { const k = c + JSON.stringify(o); if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0, map: o.map ?? null, transparent: o.opacity != null, opacity: o.opacity ?? 1, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? 1 })); return mats.get(k); };
